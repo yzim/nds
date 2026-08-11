@@ -1,30 +1,33 @@
 # NDS
 
-NDS is an independent C++17/C project for a direct RoCE RC-QP path between one Huawei Ascend NPU RNIC and one host Mellanox RNIC.
+NDS is a small experiment for bringing up a direct RoCE connection between one Ascend NPU RNIC and one Mellanox RNIC on the host.
 
-- The NPU side dynamically loads the selected CANN installation's `libra.so` RA ABI.
-- The CPU side is ordinary `libibverbs` and contains no CANN dependency.
-- NDS owns its TCP control plane and wire format; it does not serialize private CANN structures.
-- The normal path is intentionally **one NPU ↔ one CPU RNIC**. It does not use HCOMM, HCCL, a rank table, or a second NPU.
+The two sides intentionally stay simple:
 
-## Current validated milestone
+- **NPU:** CANN's RA interface from `libra.so`.
+- **CPU:** plain `libibverbs`.
+- **Control plane:** a small TCP exchange owned by this project.
 
-The QP-only connection milestone is complete on the validated CANN release:
+This is a one-NPU-to-one-CPU setup. It is not an HCCL job and does not need HCOMM, rank tables, or a second NPU in the normal path.
 
-1. The NPU establishes its direct CANN/RA context.
-2. It creates one RA RC QP and sends a project-owned endpoint record to the CPU.
-3. The CPU `libibverbs` server transitions its QP `RESET → INIT → RTR → RTS`, returns its endpoint record, and keeps the QP alive.
-4. The NPU passes the returned QPN/GID/PSN metadata to `RaTypicalQpModify`, which succeeds.
-5. Both sides cleanly destroy their QPs.
+## What works today
 
-This is deliberately **not** a data-path test: no memory region is registered and no send, receive, read, or write work request is posted.
+The QP bring-up path has been tested on the target CANN release.
 
-## Architecture
+1. The NPU creates its ACL/runtime/RA context and one RC QP.
+2. The CPU server creates one `libibverbs` RC QP and moves it through `INIT`, `RTR`, and `RTS`.
+3. The two programs exchange the QP details they need over TCP.
+4. The NPU passes the CPU endpoint information to `RaTypicalQpModify`.
+5. Both QPs are torn down cleanly.
+
+This is only a connection test. There is no memory registration and no data transfer yet—no RDMA read, write, send, or receive work request is posted.
+
+## How it fits together
 
 ```text
 NPU client                                      CPU server
 ----------                                      ----------
-AscendCL → CANN runtime → RA (`libra.so`)       libibverbs only
+AscendCL → CANN runtime → RA (`libra.so`)       libibverbs
        │                                                │
 create RA rdev and RC QP                         create RC QP
        │                                                │
@@ -33,13 +36,13 @@ create RA rdev and RC QP                         create RC QP
               RaTypicalQpModify / RTR + RTS
 ```
 
-## Open-source acknowledgements
+## Open-source references
 
-We thank the maintainers and contributors of the open-source [HCCL](https://gitcode.com/cann/hccl) and [HCOMM](https://gitcode.com/cann/hcomm) projects. The technical information used by NDS for lifecycle sequencing, transport behavior, and ABI validation is based on information already publicly available through these projects; HCOMM includes the HCCP sources relevant to RA behavior. The installed CANN libraries remain the runtime authority for the NPU-facing ABI.
+Thanks to the contributors to [HCCL](https://gitcode.com/cann/hccl) and [HCOMM](https://gitcode.com/cann/hcomm). The lifecycle, transport, and ABI details used here are based on information already public in those projects. HCOMM includes the HCCP source that is useful when checking RA behavior.
 
-### NPU lifecycle
+At runtime, NDS uses the CANN libraries installed on the machine. Those installed libraries define the ABI that the NPU program actually calls.
 
-The direct path is source-validated against those publicly available references:
+For the QP path, the NPU side follows this order:
 
 ```text
 aclInit
@@ -57,24 +60,22 @@ aclInit
 → aclFinalize
 ```
 
-`NOTIFY` is the source-verified numeric value `1`. `NO_USE` (`0`) is invalid for the offline HDC rdev implementation.
+For an offline HDC rdev, `NOTIFY` is `1`. `NO_USE` (`0`) does not work for this path.
 
-## Project layout
+## Layout
 
 ```text
-src/common/             Project-owned endpoint wire codec and TCP control plane
-src/cpu_server/         Plain libibverbs CPU QP-only server
-src/npu_client/
-  npu_ra_context.cpp    Direct one-NPU CANN/RA lifecycle
-  npu_ra_qp.cpp         RA rdev/QP creation and peer QP modification
-  loaders/              Narrow dynamic ABI adapters
-include/nds/            Public project headers
-tests/                  Host-runnable protocol and RA-wrapper tests
+src/common/             TCP control plane and endpoint wire format
+src/cpu_server/         CPU-side libibverbs server
+src/npu_client/         NPU-side CANN/RA client
+  loaders/              Dynamic CANN ABI loaders
+include/nds/            Project headers
+tests/                  Host-runnable protocol and wrapper tests
 ```
 
 ## Build
 
-A host build validates the project-owned code without CANN hardware:
+You can build and run the host-side tests without CANN hardware:
 
 ```sh
 cmake -S . -B build
@@ -82,18 +83,18 @@ cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 ```
 
-The CPU server is built only where `libibverbs` development files are available. The NPU client receives absolute CANN library paths at runtime, keeping the private/version-coupled RA boundary dynamic.
+The CPU server is built only when `libibverbs` development files are available. The NPU client takes absolute library paths at runtime so it can use one selected CANN installation.
 
-## QP-only programs
+## Run the QP test
 
-The CPU server requires its RDMA device and GID index:
+Start the CPU server with its RDMA device and GID index:
 
 ```sh
 nds_verbs_server --device <rdma-device> --gid-index <index> \
   [--listen <cpu-ipv4>] [--tcp-port <port>] [--ib-port <port>]
 ```
 
-The NPU client requires explicit CANN paths and one selected physical/logical NPU:
+Then start the NPU client with one selected NPU and the matching CANN libraries:
 
 ```sh
 nds_npu_qp_client \
@@ -105,8 +106,8 @@ nds_npu_qp_client \
   --cpu-ip <cpu-rnic-ipv4> --execute
 ```
 
-Use a whole-process timeout for accelerator experiments. Do not add a second NPU to this test. Sensitive deployment values and machine-specific commands belong under ignored `.local/`, never in this README.
+Use a whole-process timeout when running accelerator experiments. Keep this test to one NPU and one CPU RNIC. Put machine-specific commands and deployment values in ignored `.local/`, not in this README.
 
-## Data-path next step
+## Next step
 
-Only after repeating the QP-only validation as needed should NDS add the next isolated stage: RA memory registration, explicit remote-memory metadata exchange, and one bounded operation using symbols verified in the installed `libra.so`. The CPU server must remain free of CANN dependencies.
+The next milestone is one small, bounded RDMA write from the NPU to the CPU: register memory on both sides, exchange only the public memory descriptor fields needed by the test, post one operation, and check the payload on the CPU. The CPU side will remain plain `libibverbs`.
