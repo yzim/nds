@@ -56,6 +56,20 @@ typedef struct nds_ra_rdev {
     nds_ra_ip_address local_ip;
 } nds_ra_rdev;
 
+/*
+ * HCCP v9.0.0 RdevInitInfo.  The legacy RaRdevInit() hard-codes
+ * disabled_lite_thread=false, which starts HCOMM's background Lite-CQ
+ * poller.  NDS uses the V2 form so the explicit RaPollCq host-submit path
+ * has exactly one send-CQ consumer.
+ */
+typedef struct nds_ra_rdev_init_info {
+    int mode;
+    unsigned int notify_type;
+    bool enabled_910a_lite;
+    bool disabled_lite_thread;
+    bool enabled_2mb_lite;
+} nds_ra_rdev_init_info;
+
 typedef struct nds_ra_init_config {
     unsigned int phy_id;
     unsigned int nic_position;
@@ -154,6 +168,7 @@ typedef struct nds_ra_typical_qp {
 typedef int (*nds_ra_init_fn)(nds_ra_init_config *config);
 typedef int (*nds_ra_deinit_fn)(nds_ra_init_config *config);
 typedef int (*nds_ra_rdev_init_fn)(int mode, unsigned int notify_type, nds_ra_rdev rdev, void **rdma_handle);
+typedef int (*nds_ra_rdev_init_v2_fn)(nds_ra_rdev_init_info init_info, nds_ra_rdev rdev, void **rdma_handle);
 typedef int (*nds_ra_rdev_deinit_fn)(void *rdma_handle, unsigned int notify_type);
 typedef int (*nds_ra_rdev_get_port_status_fn)(void *rdma_handle, int *status);
 typedef int (*nds_ra_rdev_get_support_lite_fn)(void *rdma_handle, int *support_lite);
@@ -185,6 +200,7 @@ typedef struct nds_ra_api {
     nds_ra_init_fn ra_init;
     nds_ra_deinit_fn ra_deinit;
     nds_ra_rdev_init_fn ra_rdev_init;
+    nds_ra_rdev_init_v2_fn ra_rdev_init_v2;
     nds_ra_rdev_deinit_fn ra_rdev_deinit;
     nds_ra_rdev_get_port_status_fn ra_rdev_get_port_status;
     nds_ra_rdev_get_support_lite_fn ra_rdev_get_support_lite;

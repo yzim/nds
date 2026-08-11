@@ -7,6 +7,7 @@
 
 _Static_assert(sizeof(nds_ra_init_config) == 16, "unexpected RaInitConfig ABI layout");
 _Static_assert(sizeof(nds_ra_rdev) == 24, "unexpected rdev ABI layout");
+_Static_assert(sizeof(nds_ra_rdev_init_info) == 12, "unexpected RdevInitInfo ABI layout");
 _Static_assert(sizeof(nds_ra_mr_info) == 32, "unexpected MrInfoT ABI layout");
 _Static_assert(sizeof(nds_ra_sge) == 16, "unexpected SgList ABI layout");
 _Static_assert(sizeof(nds_ra_send_wr) == 40, "unexpected SendWr ABI layout");
@@ -77,6 +78,7 @@ int nds_ra_open(nds_ra_api *api, const char *library_path)
     NDS_RESOLVE(ra_init, "RaInit");
     NDS_RESOLVE(ra_deinit, "RaDeinit");
     NDS_RESOLVE(ra_rdev_init, "RaRdevInit");
+    NDS_RESOLVE(ra_rdev_init_v2, "RaRdevInitV2");
     NDS_RESOLVE(ra_rdev_deinit, "RaRdevDeinit");
     NDS_RESOLVE(ra_rdev_get_port_status, "RaRdevGetPortStatus");
     NDS_RESOLVE(ra_rdev_get_support_lite, "RaRdevGetSupportLite");

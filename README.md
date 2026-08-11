@@ -53,7 +53,7 @@ aclInit
 → aclrtSetDevice
 → rtOpenNetService(--hdcType=18)
 → RaInit
-→ RaRdevInit(NETWORK_OFFLINE, NOTIFY, ...)
+→ RaRdevInitV2(NETWORK_OFFLINE, NOTIFY, disabledLiteThread=true, ...)
 → RaTypicalQpCreate
 → endpoint exchange
 → RaTypicalQpModify
@@ -65,7 +65,7 @@ aclInit
 → aclFinalize
 ```
 
-For an offline HDC rdev, `NOTIFY` is `1`. `NO_USE` (`0`) does not work for this path.
+For an offline HDC rdev, `NOTIFY` is `1`. `NO_USE` (`0`) does not work for this path. The host-submitted mode uses `RaRdevInitV2` with `disabledLiteThread=true`: NDS owns the send-CQ through `RaPollCq`, rather than racing HCOMM's legacy background Lite-CQ poller. A future AICPU-submission mode must define its own single completion owner; it must not enable this poller and then call `RaPollCq` for the same CQ.
 
 ## Layout
 

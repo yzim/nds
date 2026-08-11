@@ -60,6 +60,7 @@ bool NpuRaQp::build_typical_qp(const nds_ra_qp_attr &attributes,
 bool NpuRaQp::create(nds_ra_api &api, const NpuRaQpConfig &config)
 {
     nds_ra_rdev rdev{};
+    nds_ra_rdev_init_info rdev_init{};
     nds_ra_typical_qp initial_qp{};
     int result;
 
@@ -71,7 +72,7 @@ bool NpuRaQp::create(nds_ra_api &api, const NpuRaQpConfig &config)
         set_error("NPU RA QP requires a local IPv4 address, nonzero port, and nonzero path MTU");
         return false;
     }
-    if (api.ra_rdev_init == nullptr || api.ra_rdev_deinit == nullptr || api.ra_typical_qp_create == nullptr ||
+    if (api.ra_rdev_init_v2 == nullptr || api.ra_rdev_deinit == nullptr || api.ra_typical_qp_create == nullptr ||
         api.ra_qp_destroy == nullptr || api.ra_get_qp_attr == nullptr) {
         set_error("RA API is missing a required rdev/QP/query operation");
         return false;
@@ -86,9 +87,14 @@ bool NpuRaQp::create(nds_ra_api &api, const NpuRaQpConfig &config)
 
     api_ = &api;
     config_ = config;
-    result = api_->ra_rdev_init(NDS_RA_NETWORK_OFFLINE, NDS_RA_NOTIFY, rdev, &rdev_handle_);
+    rdev_init.mode = NDS_RA_NETWORK_OFFLINE;
+    rdev_init.notify_type = NDS_RA_NOTIFY;
+    rdev_init.enabled_910a_lite = false;
+    rdev_init.disabled_lite_thread = true;
+    rdev_init.enabled_2mb_lite = false;
+    result = api_->ra_rdev_init_v2(rdev_init, rdev, &rdev_handle_);
     if (result != 0 || rdev_handle_ == nullptr) {
-        set_error("RaRdevInit failed: " + std::to_string(result));
+        set_error("RaRdevInitV2(disabledLiteThread=true) failed: " + std::to_string(result));
         reset();
         return false;
     }

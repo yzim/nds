@@ -33,12 +33,14 @@ The verified bounded NPU-device-memory RDMA Write dynamically uses AscendCL, CAN
 
 ```text
 aclInit → aclrtSetDevice → rtOpenNetService → RaInit
-→ RaRdevInit → RaTypicalQpCreate → RaGetQpAttr → endpoint exchange
+→ RaRdevInitV2 → RaTypicalQpCreate → RaGetQpAttr → endpoint exchange
 → RaTypicalQpModify → RaRegisterMr → RaTypicalSendWr
 → rtRDMADBSend → RaPollCq → RaDeregisterMr
 → RaQpDestroy → RaRdevDeinit → RaDeinit → rtCloseNetService → aclFinalize
 ```
 
-The matching HCCP reference source establishes that the offline HDC rdev path requires `NOTIFY` (`1`) for rdev creation and destruction. For OPBASE Lite QPs, `RaTypicalSendWr` returns the runtime doorbell information but does not ring it; the HCOMM OPBASE transport then calls `hrtRDMADBSend`, which NDS maps to dynamically resolved `rtRDMADBSend` after re-selecting the logical device.
+The matching HCCP reference source establishes that the offline HDC rdev path requires `NOTIFY` (`1`) for rdev creation and destruction. NDS uses the CANN 9.0.0 `RaRdevInitV2` entry point with `disabledLiteThread=true`. The legacy `RaRdevInit` hard-codes that field false and starts HCOMM's background Lite-CQ polling thread; because NDS calls `RaPollCq` after its signaled write, allowing both consumers would make completion ownership racy. For OPBASE Lite QPs, `RaTypicalSendWr` returns the runtime doorbell information but does not ring it; the HCOMM OPBASE transport then calls `hrtRDMADBSend`, which NDS maps to dynamically resolved `rtRDMADBSend` after re-selecting the logical device.
+
+This completion policy applies only to the host-RA submission mode. An AICPU-submission mode must have a separately validated, single-owner completion design before it is enabled; NDS will not reuse HCOMM's packaged CCL AICPU kernel or assume its private parameter/completion ABI.
 
 The same source basis fixes the CPU-side path-MTU policy: HCOMM's `RsDrvQpStateModifytoRtr` selects `IBV_QP_PATH_MTU` from the local active port through `RsDrvSetMtu`; its `TypicalQp` ABI has no path-MTU field. NDS therefore treats the peer MTU record as diagnostic rather than constraining the CPU QP with it.
