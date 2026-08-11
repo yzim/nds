@@ -19,7 +19,7 @@ The implementation must be portable across compatible CANN installations: do **n
 
 ## Implementation principles
 
-- Use the open-source HCOMM/HCCP tree only as a behavioral and ABI-reference aid. Do not copy its source or implementation into this repository.
+- Use the public [HCCL](https://gitcode.com/cann/hccl) and [HCOMM](https://gitcode.com/cann/hcomm) open-source projects as behavioral and ABI-reference material. HCCP is part of the HCOMM reference tree; record the source basis for lifecycle and ABI decisions.
 - Link only platform dependencies and the CPU-only `libibverbs` target. The portable NPU client dynamically loads the selected CANN root; see `docs/linkage.md` for the per-library ownership policy.
 - Use `dlopen(3)`, `dlsym(3)`, and `dlerror(3)` (or the platform equivalent) for the CANN/HCCP runtime boundary.
 - Keep all library names, search paths, symbol names, ABI/version validation, and optional-symbol handling behind a narrow runtime-loader module.

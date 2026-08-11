@@ -33,9 +33,13 @@ create RA rdev and RC QP                         create RC QP
               RaTypicalQpModify / RTR + RTS
 ```
 
+## Open-source acknowledgements
+
+We thank the maintainers and contributors of the open-source [HCCL](https://gitcode.com/cann/hccl) and [HCOMM](https://gitcode.com/cann/hcomm) projects. The technical information used by NDS for lifecycle sequencing, transport behavior, and ABI validation is based on information already publicly available through these projects; HCOMM includes the HCCP sources relevant to RA behavior. The installed CANN libraries remain the runtime authority for the NPU-facing ABI.
+
 ### NPU lifecycle
 
-The direct path is source-validated against the matching open-source HCOMM/HCCP tree but does not copy its implementation:
+The direct path is source-validated against those publicly available references:
 
 ```text
 aclInit

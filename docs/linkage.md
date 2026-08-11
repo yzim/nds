@@ -15,6 +15,10 @@ The production interoperability path does **not** use HCOMM, HCCL, TSD, a rank t
 | `libra.so` | `RaInit`, rdev/QP lifecycle, MR/data-plane APIs | Runtime-load | Required ABI is private/version-coupled; NDS transcribes only the interfaces it uses. |
 | `libhcomm.so`, HCCL, TSD | none in the direct path | Do not load for normal QP establishment | They are not required for the CPU-peer topology and add unwanted multi-rank/global lifecycle ownership. |
 
+## Reference boundary
+
+We thank the maintainers and contributors of the open-source [HCCL](https://gitcode.com/cann/hccl) and [HCOMM](https://gitcode.com/cann/hcomm) projects. The technical basis for NDS lifecycle, transport, and ABI validation is based on information already publicly available through those projects. HCCP source under HCOMM is especially relevant to RA. The installed CANN shared objects are authoritative at runtime.
+
 ## Dynamic-loader invariants
 
 1. All CANN libraries used by one NPU process must come from one selected CANN release.
