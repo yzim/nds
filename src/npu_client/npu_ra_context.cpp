@@ -118,6 +118,78 @@ bool NpuRaContext::initialized() const noexcept
     return initialized_;
 }
 
+bool NpuRaContext::allocate_device_memory(std::size_t size, void **device_ptr)
+{
+    int result;
+
+    if (!initialized_ || device_ptr == nullptr || size == 0U) {
+        set_error("device allocation requires an initialized context, nonzero size, and output pointer");
+        return false;
+    }
+    *device_ptr = nullptr;
+    result = acl_.malloc_device(device_ptr, size, NDS_ACL_MEM_MALLOC_DIRECT_NPU);
+    if (result != 0 || *device_ptr == nullptr) {
+        set_error("aclrtMalloc failed: " + std::to_string(result));
+        return false;
+    }
+    error_.clear();
+    return true;
+}
+
+bool NpuRaContext::free_device_memory(void *device_ptr)
+{
+    int result;
+
+    if (!initialized_ || device_ptr == nullptr) {
+        set_error("device free requires an initialized context and allocation pointer");
+        return false;
+    }
+    result = acl_.free_device(device_ptr);
+    if (result != 0) {
+        set_error("aclrtFree failed: " + std::to_string(result));
+        return false;
+    }
+    error_.clear();
+    return true;
+}
+
+bool NpuRaContext::copy_host_to_device(void *device_ptr, const void *host_ptr, std::size_t size)
+{
+    const int result = (!initialized_ || device_ptr == nullptr || host_ptr == nullptr || size == 0U || acl_.memcpy == nullptr)
+                           ? -1
+                           : acl_.memcpy(device_ptr, size, host_ptr, size, NDS_ACL_MEMCPY_HOST_TO_DEVICE);
+    if (result != 0) {
+        set_error("aclrtMemcpy(host-to-device) failed: " + std::to_string(result));
+        return false;
+    }
+    error_.clear();
+    return true;
+}
+
+bool NpuRaContext::submit_rdma_doorbell(std::uint32_t db_index, std::uint64_t db_info)
+{
+    int result;
+
+    if (!initialized_ || runtime_.set_device == nullptr || runtime_.rdma_db_send == nullptr) {
+        set_error("RDMA doorbell submission requires an initialized context and runtime doorbell ABI");
+        return false;
+    }
+    /* HCOMM's OPBASE path selects the device immediately before rtRDMADBSend. */
+    result = runtime_.set_device(static_cast<std::int32_t>(config_.logical_device_id));
+    if (result != 0) {
+        set_error("rtSetDevice before rtRDMADBSend failed: " + std::to_string(result));
+        return false;
+    }
+    /* A null stream uses the runtime default stream for the selected device. */
+    result = runtime_.rdma_db_send(db_index, db_info, nullptr);
+    if (result != 0) {
+        set_error("rtRDMADBSend failed: " + std::to_string(result));
+        return false;
+    }
+    error_.clear();
+    return true;
+}
+
 nds_ra_api &NpuRaContext::ra_api() noexcept
 {
     return ra_;

@@ -69,6 +69,7 @@ int nds_runtime_open(nds_runtime_api *api, const char *library_path)
     NDS_RUNTIME_RESOLVE(set_device, "rtSetDevice");
     NDS_RUNTIME_RESOLVE(open_net_service, "rtOpenNetService");
     NDS_RUNTIME_RESOLVE(close_net_service, "rtCloseNetService");
+    NDS_RUNTIME_RESOLVE(rdma_db_send, "rtRDMADBSend");
 
 #undef NDS_RUNTIME_RESOLVE
     api->error[0] = '\0';

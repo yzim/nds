@@ -21,6 +21,10 @@ add_library(nds_wire STATIC src/common/rdma_wire.c)
 target_include_directories(nds_wire PUBLIC include)
 target_compile_options(nds_wire PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
+add_library(nds_rdma_path_mtu STATIC src/common/rdma_path_mtu.c)
+target_include_directories(nds_rdma_path_mtu PUBLIC include)
+target_compile_options(nds_rdma_path_mtu PRIVATE -Wall -Wextra -Wpedantic -Werror)
+
 add_library(nds_ra_loader STATIC
     src/npu_client/loaders/ra_loader.c
     src/npu_client/loaders/runtime_loader.c
@@ -56,7 +60,7 @@ target_compile_options(nds_ra_probe PRIVATE -Wall -Wextra -Wpedantic -Werror)
 if(IBVERBS_FOUND)
     add_executable(nds_verbs_server src/cpu_server/verbs_server.c)
     target_include_directories(nds_verbs_server PRIVATE include)
-    target_link_libraries(nds_verbs_server PRIVATE nds_wire PkgConfig::IBVERBS)
+    target_link_libraries(nds_verbs_server PRIVATE nds_wire nds_rdma_path_mtu PkgConfig::IBVERBS)
     target_compile_options(nds_verbs_server PRIVATE -Wall -Wextra -Wpedantic -Werror)
 else()
     message(WARNING "libibverbs was not found; nds_verbs_server will not be built")
@@ -66,6 +70,19 @@ add_executable(nds_rdma_wire_test tests/rdma_wire_test.c)
 target_link_libraries(nds_rdma_wire_test PRIVATE nds_wire)
 target_compile_options(nds_rdma_wire_test PRIVATE -Wall -Wextra -Wpedantic -Werror)
 add_test(NAME nds_rdma_wire_test COMMAND nds_rdma_wire_test)
+
+add_executable(nds_rdma_path_mtu_test tests/rdma_path_mtu_test.c)
+target_link_libraries(nds_rdma_path_mtu_test PRIVATE nds_rdma_path_mtu)
+target_compile_options(nds_rdma_path_mtu_test PRIVATE -Wall -Wextra -Wpedantic -Werror)
+add_test(NAME nds_rdma_path_mtu_test COMMAND nds_rdma_path_mtu_test)
+
+add_library(nds_fake_runtime SHARED tests/fake_runtime.c)
+target_compile_options(nds_fake_runtime PRIVATE -Wall -Wextra -Wpedantic -Werror)
+
+add_executable(nds_runtime_loader_test tests/runtime_loader_test.c)
+target_link_libraries(nds_runtime_loader_test PRIVATE nds_ra_loader)
+target_compile_options(nds_runtime_loader_test PRIVATE -Wall -Wextra -Wpedantic -Werror)
+add_test(NAME nds_runtime_loader_test COMMAND nds_runtime_loader_test $<TARGET_FILE:nds_fake_runtime>)
 
 add_executable(nds_ra_init_probe src/npu_client/probes/ra_init_probe.c)
 target_link_libraries(nds_ra_init_probe PRIVATE nds_ra_loader)
@@ -115,6 +132,10 @@ target_compile_options(nds_npu_ra_qp PRIVATE -Wall -Wextra -Wpedantic -Werror)
 add_executable(nds_npu_qp_client src/npu_client/npu_qp_client.cpp)
 target_link_libraries(nds_npu_qp_client PRIVATE nds_npu_ra_context nds_control_plane nds_npu_ra_qp)
 target_compile_options(nds_npu_qp_client PRIVATE -Wall -Wextra -Wpedantic -Werror)
+
+add_executable(nds_npu_ra_mr_probe src/npu_client/probes/npu_ra_mr_probe.cpp)
+target_link_libraries(nds_npu_ra_mr_probe PRIVATE nds_npu_ra_context nds_npu_ra_qp)
+target_compile_options(nds_npu_ra_mr_probe PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 add_executable(nds_npu_ra_qp_test tests/npu_ra_qp_test.cpp)
 target_link_libraries(nds_npu_ra_qp_test PRIVATE nds_npu_ra_qp)

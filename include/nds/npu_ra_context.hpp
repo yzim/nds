@@ -5,6 +5,7 @@
 #include "nds/ra_loader.h"
 #include "nds/runtime_loader.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 
@@ -37,6 +38,10 @@ public:
     void reset() noexcept;
 
     bool initialized() const noexcept;
+    bool allocate_device_memory(std::size_t size, void **device_ptr);
+    bool free_device_memory(void *device_ptr);
+    bool copy_host_to_device(void *device_ptr, const void *host_ptr, std::size_t size);
+    bool submit_rdma_doorbell(std::uint32_t db_index, std::uint64_t db_info);
     nds_ra_api &ra_api() noexcept;
     const std::string &error() const noexcept;
 

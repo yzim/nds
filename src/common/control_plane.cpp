@@ -65,6 +65,39 @@ TcpControlPlane &TcpControlPlane::operator=(TcpControlPlane &&other) noexcept
     return *this;
 }
 
+bool TcpControlPlane::send_memory_descriptor(const nds_memory_descriptor &descriptor, std::string *error) const
+{
+    nds_memory_descriptor_wire_v1 wire{};
+    char codec_error[NDS_WIRE_ERROR_CAPACITY]{};
+
+    if (fd_ < 0) {
+        if (error != nullptr) *error = "control plane is not connected";
+        return false;
+    }
+    if (nds_memory_descriptor_encode(&descriptor, &wire, codec_error) != 0) {
+        if (error != nullptr) *error = std::string("cannot encode memory descriptor: ") + codec_error;
+        return false;
+    }
+    return write_full(fd_, &wire, sizeof(wire), error);
+}
+
+bool TcpControlPlane::receive_memory_descriptor(nds_memory_descriptor &descriptor, std::string *error) const
+{
+    nds_memory_descriptor_wire_v1 wire{};
+    char codec_error[NDS_WIRE_ERROR_CAPACITY]{};
+
+    if (fd_ < 0) {
+        if (error != nullptr) *error = "control plane is not connected";
+        return false;
+    }
+    if (!read_full(fd_, &wire, sizeof(wire), error)) return false;
+    if (nds_memory_descriptor_decode(&wire, &descriptor, codec_error) != 0) {
+        if (error != nullptr) *error = std::string("cannot decode memory descriptor: ") + codec_error;
+        return false;
+    }
+    return true;
+}
+
 int TcpControlPlane::fd() const noexcept
 {
     return fd_;

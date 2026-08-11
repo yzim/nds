@@ -151,6 +151,182 @@ bool NpuRaQp::make_data_ready_endpoint(std::uint64_t address, std::uint32_t rkey
     return true;
 }
 
+bool NpuRaQp::register_memory(void *address, std::uint64_t size, int access, nds_ra_mr_info &info,
+                                void **mr_handle)
+{
+    int result;
+
+    if (!created() || address == nullptr || size == 0U || mr_handle == nullptr) {
+        set_error("RA memory registration requires a created QP, memory address, nonzero size, and output handle");
+        return false;
+    }
+    info = {};
+    info.address = address;
+    info.size = size;
+    info.access = access;
+    *mr_handle = nullptr;
+    result = api_->ra_register_mr(rdev_handle_, &info, mr_handle);
+    if (result != 0 || *mr_handle == nullptr || info.local_key == 0U || info.remote_key == 0U) {
+        set_error("RaRegisterMr failed or returned invalid keys: " + std::to_string(result));
+        return false;
+    }
+    error_.clear();
+    return true;
+}
+
+bool NpuRaQp::deregister_memory(void *mr_handle)
+{
+    int result;
+
+    if (!created() || mr_handle == nullptr) {
+        set_error("RA memory deregistration requires a created QP and MR handle");
+        return false;
+    }
+    result = api_->ra_deregister_mr(rdev_handle_, mr_handle);
+    if (result != 0) {
+        set_error("RaDeregisterMr failed: " + std::to_string(result));
+        return false;
+    }
+    error_.clear();
+    return true;
+}
+
+bool NpuRaQp::post_rdma_write(const nds_ra_sge &source, std::uint64_t remote_address,
+                              std::uint32_t remote_key, bool signaled, nds_ra_send_response &response)
+{
+    nds_ra_sge local = source;
+    nds_ra_send_wr wr{};
+    int result;
+
+    if (!connected_ || local.address == 0U || local.length == 0U || local.local_key == 0U ||
+        remote_address == 0U || remote_key == 0U) {
+        set_error("RDMA write requires a connected QP, one valid local SGE, and valid remote memory metadata");
+        return false;
+    }
+    wr.buffers = &local;
+    wr.buffer_count = 1U;
+    wr.remote_address = remote_address;
+    wr.remote_key = remote_key;
+    wr.opcode = NDS_RA_WR_RDMA_WRITE;
+    wr.send_flags = signaled ? NDS_RA_SEND_SIGNALED : 0;
+    response = {};
+    result = api_->ra_typical_send_wr(qp_handle_, &wr, &response);
+    if (result != 0) {
+        set_error("RaTypicalSendWr failed: " + std::to_string(result));
+        return false;
+    }
+    error_.clear();
+    return true;
+}
+
+bool NpuRaQp::query_cqe_errors(nds_ra_cqe_error *errors, std::uint32_t &count)
+{
+    unsigned int requested;
+    int result;
+
+    if (!created() || api_ == nullptr || api_->ra_rdev_get_cqe_error_list == nullptr || errors == nullptr ||
+        count == 0U) {
+        set_error("CQE-error query requires a created QP, RaRdevGetCqeErrInfoList, output storage, and capacity");
+        return false;
+    }
+    requested = count;
+    result = api_->ra_rdev_get_cqe_error_list(rdev_handle_, errors, &requested);
+    if (result != 0) {
+        set_error("RaRdevGetCqeErrInfoList failed: " + std::to_string(result));
+        return false;
+    }
+    if (requested > count) {
+        set_error("RaRdevGetCqeErrInfoList returned more entries than the supplied capacity");
+        return false;
+    }
+    count = requested;
+    error_.clear();
+    return true;
+}
+
+bool NpuRaQp::query_port_status(int &status)
+{
+    int result;
+
+    if (!created() || api_ == nullptr || api_->ra_rdev_get_port_status == nullptr) {
+        set_error("port-status query requires a created QP and RaRdevGetPortStatus");
+        return false;
+    }
+    status = -1;
+    result = api_->ra_rdev_get_port_status(rdev_handle_, &status);
+    if (result != 0) {
+        set_error("RaRdevGetPortStatus failed: " + std::to_string(result));
+        return false;
+    }
+    if (status < NDS_RA_PORT_STATUS_DOWN || status > NDS_RA_PORT_STATUS_ACTIVE) {
+        set_error("RaRdevGetPortStatus returned an unknown status: " + std::to_string(status));
+        return false;
+    }
+    error_.clear();
+    return true;
+}
+
+bool NpuRaQp::query_support_lite(int &support_lite)
+{
+    int result;
+
+    if (!created() || api_ == nullptr || api_->ra_rdev_get_support_lite == nullptr) {
+        set_error("RDMA-lite support query requires a created rdev and RaRdevGetSupportLite");
+        return false;
+    }
+    support_lite = -1;
+    result = api_->ra_rdev_get_support_lite(rdev_handle_, &support_lite);
+    if (result != 0) {
+        set_error("RaRdevGetSupportLite failed: " + std::to_string(result));
+        return false;
+    }
+    if (support_lite < NDS_RA_LITE_NOT_SUPPORTED || support_lite > NDS_RA_LITE_ALIGN_2M) {
+        set_error("RaRdevGetSupportLite returned an unknown value: " + std::to_string(support_lite));
+        return false;
+    }
+    error_.clear();
+    return true;
+}
+
+bool NpuRaQp::query_status(int &status)
+{
+    int result;
+
+    if (!created() || api_ == nullptr || api_->ra_get_qp_status == nullptr) {
+        set_error("QP-status query requires a created QP and RaGetQpStatus");
+        return false;
+    }
+    status = -1;
+    result = api_->ra_get_qp_status(qp_handle_, &status);
+    if (result != 0) {
+        set_error("RaGetQpStatus failed: " + std::to_string(result));
+        return false;
+    }
+    if (status < NDS_RA_QP_STATUS_NOT_CONNECTED || status > NDS_RA_QP_STATUS_CONNECTING) {
+        set_error("RaGetQpStatus returned an unknown status: " + std::to_string(status));
+        return false;
+    }
+    error_.clear();
+    return true;
+}
+
+int NpuRaQp::poll_send_completions(nds_ra_completion *completions, std::uint32_t max_entries)
+{
+    int result;
+
+    if (!created() || completions == nullptr || max_entries == 0U) {
+        set_error("send-CQ polling requires a created QP, output completion storage, and nonzero entry count");
+        return -1;
+    }
+    result = api_->ra_poll_cq(qp_handle_, true, max_entries, completions);
+    if (result < 0) {
+        set_error("RaPollCq(send) failed: " + std::to_string(result));
+        return -1;
+    }
+    error_.clear();
+    return result;
+}
+
 bool NpuRaQp::connect(const nds_rc_endpoint &peer)
 {
     nds_ra_typical_qp local_qp{};

@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <sys/time.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -21,6 +22,25 @@ enum {
     NDS_RA_PHY_ID_NPU0 = 0,
     NDS_RA_QP_FLAG_RC = 0,
     NDS_RA_QP_MODE_OPBASE = 2,
+    NDS_RA_ACCESS_LOCAL_WRITE = 1,
+    NDS_RA_ACCESS_REMOTE_WRITE = 1 << 1,
+    NDS_RA_ACCESS_REMOTE_READ = 1 << 2,
+    /* HCOMM v9.0.0 TransportDirectNpu::RegUserMem access policy. */
+    NDS_RA_ACCESS_DIRECT_NPU = NDS_RA_ACCESS_LOCAL_WRITE | NDS_RA_ACCESS_REMOTE_WRITE | NDS_RA_ACCESS_REMOTE_READ,
+    NDS_RA_WR_RDMA_WRITE = 0,
+    NDS_RA_SEND_SIGNALED = 1 << 1,
+    /* rdma_lite_wc_status values returned through RaPollCq for an OPBASE Lite QP. */
+    NDS_RA_WC_SUCCESS = 0,
+    NDS_RA_WC_RETRY_EXCEEDED = 12,
+    NDS_RA_QP_STATUS_NOT_CONNECTED = 0,
+    NDS_RA_QP_STATUS_CONNECTED = 1,
+    NDS_RA_QP_STATUS_TIMEOUT = 2,
+    NDS_RA_QP_STATUS_CONNECTING = 3,
+    NDS_RA_PORT_STATUS_DOWN = 0,
+    NDS_RA_PORT_STATUS_ACTIVE = 1,
+    NDS_RA_LITE_NOT_SUPPORTED = 0,
+    NDS_RA_LITE_ALIGN_4K = 1,
+    NDS_RA_LITE_ALIGN_2M = 2,
 };
 
 enum { NDS_RA_ERROR_CAPACITY = 512 };
@@ -50,6 +70,51 @@ typedef struct nds_ra_mr_info {
     unsigned int local_key;
     unsigned int remote_key;
 } nds_ra_mr_info;
+
+typedef struct nds_ra_sge {
+    uint64_t address;
+    uint32_t length;
+    uint32_t local_key;
+} nds_ra_sge;
+
+typedef struct nds_ra_send_wr {
+    nds_ra_sge *buffers;
+    uint16_t buffer_count;
+    uint64_t remote_address;
+    uint32_t remote_key;
+    uint32_t opcode;
+    int send_flags;
+} nds_ra_send_wr;
+
+typedef union nds_ra_send_response {
+    struct {
+        uint32_t sq_index;
+        uint32_t wqe_index;
+    } wqe;
+    struct {
+        uint32_t db_index;
+        unsigned long db_info;
+    } doorbell;
+} nds_ra_send_response;
+
+typedef struct nds_ra_cqe_error {
+    uint32_t status;
+    uint32_t qp_number;
+    struct timeval time;
+} nds_ra_cqe_error;
+
+typedef struct nds_ra_completion {
+    uint64_t wr_id;
+    int status;
+    int opcode;
+    uint32_t vendor_error;
+    uint32_t byte_length;
+    uint32_t qp_number;
+    uint32_t flags;
+    uint32_t immediate_data_or_invalidated_rkey;
+    uint16_t reserved[5];
+    uint32_t version;
+} nds_ra_completion;
 
 /*
  * Locally queried QP attributes. This independently transcribed ABI object is
@@ -90,6 +155,8 @@ typedef int (*nds_ra_init_fn)(nds_ra_init_config *config);
 typedef int (*nds_ra_deinit_fn)(nds_ra_init_config *config);
 typedef int (*nds_ra_rdev_init_fn)(int mode, unsigned int notify_type, nds_ra_rdev rdev, void **rdma_handle);
 typedef int (*nds_ra_rdev_deinit_fn)(void *rdma_handle, unsigned int notify_type);
+typedef int (*nds_ra_rdev_get_port_status_fn)(void *rdma_handle, int *status);
+typedef int (*nds_ra_rdev_get_support_lite_fn)(void *rdma_handle, int *support_lite);
 typedef int (*nds_ra_qp_create_fn)(void *rdma_handle, int flag, int qp_mode, void **qp_handle);
 typedef int (*nds_ra_qp_connect_async_fn)(void *qp_handle, const void *fd_handle);
 typedef int (*nds_ra_typical_qp_create_fn)(void *rdma_handle, int flag, int qp_mode,
@@ -98,8 +165,13 @@ typedef int (*nds_ra_typical_qp_modify_fn)(void *qp_handle, nds_ra_typical_qp *l
                                             nds_ra_typical_qp *remote_qp_info);
 typedef int (*nds_ra_qp_destroy_fn)(void *qp_handle);
 typedef int (*nds_ra_get_qp_attr_fn)(void *qp_handle, nds_ra_qp_attr *attributes);
+typedef int (*nds_ra_get_qp_status_fn)(void *qp_handle, int *status);
+typedef int (*nds_ra_rdev_get_cqe_error_list_fn)(void *rdma_handle, nds_ra_cqe_error *errors,
+                                                  unsigned int *count);
 typedef int (*nds_ra_register_mr_fn)(const void *rdma_handle, nds_ra_mr_info *info, void **mr_handle);
 typedef int (*nds_ra_deregister_mr_fn)(const void *rdma_handle, void *mr_handle);
+typedef int (*nds_ra_typical_send_wr_fn)(void *qp_handle, nds_ra_send_wr *wr, nds_ra_send_response *response);
+typedef int (*nds_ra_poll_cq_fn)(void *qp_handle, bool is_send_cq, unsigned int max_entries, void *completions);
 
 /*
  * Runtime-only loader for the HCCP/RA shared-library ABI.
@@ -114,14 +186,20 @@ typedef struct nds_ra_api {
     nds_ra_deinit_fn ra_deinit;
     nds_ra_rdev_init_fn ra_rdev_init;
     nds_ra_rdev_deinit_fn ra_rdev_deinit;
+    nds_ra_rdev_get_port_status_fn ra_rdev_get_port_status;
+    nds_ra_rdev_get_support_lite_fn ra_rdev_get_support_lite;
     nds_ra_qp_create_fn ra_qp_create;
     nds_ra_qp_connect_async_fn ra_qp_connect_async;
     nds_ra_typical_qp_create_fn ra_typical_qp_create;
     nds_ra_typical_qp_modify_fn ra_typical_qp_modify;
     nds_ra_qp_destroy_fn ra_qp_destroy;
     nds_ra_get_qp_attr_fn ra_get_qp_attr;
+    nds_ra_get_qp_status_fn ra_get_qp_status;
+    nds_ra_rdev_get_cqe_error_list_fn ra_rdev_get_cqe_error_list;
     nds_ra_register_mr_fn ra_register_mr;
     nds_ra_deregister_mr_fn ra_deregister_mr;
+    nds_ra_typical_send_wr_fn ra_typical_send_wr;
+    nds_ra_poll_cq_fn ra_poll_cq;
     char error[NDS_RA_ERROR_CAPACITY];
 } nds_ra_api;
 

@@ -24,6 +24,21 @@ static int nds_linked_acl_set_device(int32_t device_id)
 {
     return (int)aclrtSetDevice(device_id);
 }
+
+static int nds_linked_acl_malloc_device(void **device_ptr, size_t size, int policy)
+{
+    return (int)aclrtMalloc(device_ptr, size, (aclrtMemMallocPolicy)policy);
+}
+
+static int nds_linked_acl_free_device(void *device_ptr)
+{
+    return (int)aclrtFree(device_ptr);
+}
+
+static int nds_linked_acl_memcpy(void *dst, size_t dst_max, const void *src, size_t count, int kind)
+{
+    return (int)aclrtMemcpy(dst, dst_max, src, count, (aclrtMemcpyKind)kind);
+}
 #endif
 
 #ifndef NDS_LINK_PUBLIC_ACL
@@ -71,6 +86,9 @@ int nds_acl_open(nds_acl_api *api, const char *library_path)
     api->init = nds_linked_acl_init;
     api->finalize = nds_linked_acl_finalize;
     api->set_device = nds_linked_acl_set_device;
+    api->malloc_device = nds_linked_acl_malloc_device;
+    api->free_device = nds_linked_acl_free_device;
+    api->memcpy = nds_linked_acl_memcpy;
     api->error[0] = '\0';
     return 0;
 #else
@@ -101,6 +119,9 @@ int nds_acl_open(nds_acl_api *api, const char *library_path)
     NDS_ACL_RESOLVE(init, "aclInit");
     NDS_ACL_RESOLVE(finalize, "aclFinalize");
     NDS_ACL_RESOLVE(set_device, "aclrtSetDevice");
+    NDS_ACL_RESOLVE(malloc_device, "aclrtMalloc");
+    NDS_ACL_RESOLVE(free_device, "aclrtFree");
+    NDS_ACL_RESOLVE(memcpy, "aclrtMemcpy");
 
 #undef NDS_ACL_RESOLVE
     api->error[0] = '\0';

@@ -8,6 +8,11 @@
 _Static_assert(sizeof(nds_ra_init_config) == 16, "unexpected RaInitConfig ABI layout");
 _Static_assert(sizeof(nds_ra_rdev) == 24, "unexpected rdev ABI layout");
 _Static_assert(sizeof(nds_ra_mr_info) == 32, "unexpected MrInfoT ABI layout");
+_Static_assert(sizeof(nds_ra_sge) == 16, "unexpected SgList ABI layout");
+_Static_assert(sizeof(nds_ra_send_wr) == 40, "unexpected SendWr ABI layout");
+_Static_assert(sizeof(nds_ra_send_response) == 16, "unexpected SendWrRsp ABI layout");
+_Static_assert(sizeof(nds_ra_cqe_error) == 24, "unexpected CqeErrInfo ABI layout");
+_Static_assert(sizeof(nds_ra_completion) == 56, "unexpected rdma_lite_wc_v2 ABI layout");
 _Static_assert(sizeof(nds_ra_qp_attr) == 100, "unexpected QpAttr ABI layout");
 _Static_assert(sizeof(nds_ra_typical_qp) == 184, "unexpected TypicalQp ABI layout");
 
@@ -73,14 +78,20 @@ int nds_ra_open(nds_ra_api *api, const char *library_path)
     NDS_RESOLVE(ra_deinit, "RaDeinit");
     NDS_RESOLVE(ra_rdev_init, "RaRdevInit");
     NDS_RESOLVE(ra_rdev_deinit, "RaRdevDeinit");
+    NDS_RESOLVE(ra_rdev_get_port_status, "RaRdevGetPortStatus");
+    NDS_RESOLVE(ra_rdev_get_support_lite, "RaRdevGetSupportLite");
     NDS_RESOLVE(ra_qp_create, "RaQpCreate");
     NDS_RESOLVE(ra_qp_connect_async, "RaQpConnectAsync");
     NDS_RESOLVE(ra_typical_qp_create, "RaTypicalQpCreate");
     NDS_RESOLVE(ra_typical_qp_modify, "RaTypicalQpModify");
     NDS_RESOLVE(ra_qp_destroy, "RaQpDestroy");
     NDS_RESOLVE(ra_get_qp_attr, "RaGetQpAttr");
+    NDS_RESOLVE(ra_get_qp_status, "RaGetQpStatus");
+    NDS_RESOLVE(ra_rdev_get_cqe_error_list, "RaRdevGetCqeErrInfoList");
     NDS_RESOLVE(ra_register_mr, "RaRegisterMr");
     NDS_RESOLVE(ra_deregister_mr, "RaDeregisterMr");
+    NDS_RESOLVE(ra_typical_send_wr, "RaTypicalSendWr");
+    NDS_RESOLVE(ra_poll_cq, "RaPollCq");
 
 #undef NDS_RESOLVE
     api->error[0] = '\0';

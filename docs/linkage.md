@@ -11,8 +11,8 @@ The production interoperability path does **not** use HCOMM, HCCL, TSD, a rank t
 | POSIX / `libdl` / threads | sockets, control plane, dynamic loading | Link | Stable system ABI. |
 | `libibverbs.so` | CPU-side PD/CQ/QP operations | Link, CPU target only | The CPU endpoint remains CANN-free. |
 | `libascendcl.so` | `aclInit`, `aclFinalize`, `aclrtSetDevice` | Dynamic by default; optional version-pinned public-ACL link mode | Public lifecycle boundary; dynamic default preserves host build portability. |
-| `libruntime.so` | `rtOpenNetService`, `rtCloseNetService` | Runtime-load | Required by the direct NPU RA lifecycle and not exposed through a stable NDS-facing SDK contract. |
-| `libra.so` | `RaInit`, rdev/QP lifecycle, MR/data-plane APIs | Runtime-load | Required ABI is private/version-coupled; NDS transcribes only the interfaces it uses. |
+| `libruntime.so` | `rtOpenNetService`, `rtCloseNetService`, `rtRDMADBSend` | Runtime-load | Required by the direct NPU RA lifecycle and OPBASE Lite doorbell submission; not exposed through a stable NDS-facing SDK contract. |
+| `libra.so` | `RaInit`, rdev/QP lifecycle, MR registration, send/CQ APIs | Runtime-load | Required ABI is private/version-coupled; NDS transcribes only the interfaces it uses. |
 | `libhcomm.so`, HCCL, TSD | none in the direct path | Do not load for normal QP establishment | They are not required for the CPU-peer topology and add unwanted multi-rank/global lifecycle ownership. |
 
 ## Reference boundary
@@ -29,13 +29,16 @@ We thank the maintainers and contributors of the open-source [HCCL](https://gitc
 
 ## Validated RA subset
 
-The QP-only milestone dynamically uses AscendCL, CANN runtime, and `libra.so` for:
+The verified bounded NPU-device-memory RDMA Write dynamically uses AscendCL, CANN runtime, and `libra.so` for:
 
 ```text
 aclInit → aclrtSetDevice → rtOpenNetService → RaInit
-→ RaRdevInit → RaTypicalQpCreate → RaGetQpAttr
-→ RaTypicalQpModify → RaQpDestroy → RaRdevDeinit → RaDeinit
-→ rtCloseNetService → aclFinalize
+→ RaRdevInit → RaTypicalQpCreate → RaGetQpAttr → endpoint exchange
+→ RaTypicalQpModify → RaRegisterMr → RaTypicalSendWr
+→ rtRDMADBSend → RaPollCq → RaDeregisterMr
+→ RaQpDestroy → RaRdevDeinit → RaDeinit → rtCloseNetService → aclFinalize
 ```
 
-The matching HCCP reference source establishes that the offline HDC rdev path requires `NOTIFY` (`1`) for rdev creation and destruction. This milestone does not yet load or call any MR or send-work-request operation.
+The matching HCCP reference source establishes that the offline HDC rdev path requires `NOTIFY` (`1`) for rdev creation and destruction. For OPBASE Lite QPs, `RaTypicalSendWr` returns the runtime doorbell information but does not ring it; the HCOMM OPBASE transport then calls `hrtRDMADBSend`, which NDS maps to dynamically resolved `rtRDMADBSend` after re-selecting the logical device.
+
+The same source basis fixes the CPU-side path-MTU policy: HCOMM's `RsDrvQpStateModifytoRtr` selects `IBV_QP_PATH_MTU` from the local active port through `RsDrvSetMtu`; its `TypicalQp` ABI has no path-MTU field. NDS therefore treats the peer MTU record as diagnostic rather than constraining the CPU QP with it.

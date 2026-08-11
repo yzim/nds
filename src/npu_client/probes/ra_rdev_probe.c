@@ -65,6 +65,7 @@ int main(int argc, char **argv)
     int ra_initialized = 0;
     int service_open = 0;
     int result;
+    int port_status = -1;
     int index;
 
     if (argc < 5) {
@@ -143,6 +144,16 @@ int main(int argc, char **argv)
         goto fail;
     }
     (void)printf("RaRdevInit succeeded for the selected NPU RNIC.\n");
+    result = ra_api.ra_rdev_get_port_status(rdev_handle, &port_status);
+    if (result != 0) {
+        (void)fprintf(stderr, "RaRdevGetPortStatus failed: %d\n", result);
+        goto fail;
+    }
+    if (port_status != NDS_RA_PORT_STATUS_ACTIVE) {
+        (void)fprintf(stderr, "RaRdevGetPortStatus reported non-active status: %d\n", port_status);
+        goto fail;
+    }
+    (void)printf("RaRdevGetPortStatus reported active (%d).\n", port_status);
 
     result = ra_api.ra_typical_qp_create(rdev_handle, NDS_RA_QP_FLAG_RC, NDS_RA_QP_MODE_OPBASE, &qp_info,
                                           &qp_handle);

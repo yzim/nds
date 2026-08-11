@@ -10,8 +10,11 @@
 namespace nds {
 
 /*
- * NPU RoCE policy supplied by the deployment.  It deliberately contains only
- * transport values; CANN process/HCOMM bootstrap remains CannContext's job.
+ * NPU RoCE policy supplied by the deployment. It deliberately contains only
+ * public RA transport values; CANN process/HCOMM bootstrap remains
+ * NpuRaContext's job. `path_mtu` is sent in NDS's diagnostic endpoint record,
+ * but HCCP v9.0.0 TypicalQp has no MTU field, so it does not configure the
+ * NPU runtime's Lite-QP packet MTU.
  */
 struct NpuRaQpConfig {
     std::uint32_t physical_device_id{NDS_RA_PHY_ID_NPU0};
@@ -25,9 +28,8 @@ struct NpuRaQpConfig {
 };
 
 /*
- * Owns only RA resource-level state after HCOMM has initialized global CANN
- * communication state.  It never calls RaInit/RaDeinit and does not own the
- * dynamically loaded libra.so handle.
+ * Owns the RA rdev and QP below the direct NPU process context. It never
+ * calls RaInit/RaDeinit and does not own the dynamically loaded libra.so handle.
  */
 class NpuRaQp {
 public:
@@ -41,6 +43,15 @@ public:
     bool create(nds_ra_api &api, const NpuRaQpConfig &config);
     bool make_qp_only_endpoint(nds_rc_endpoint &endpoint);
     bool make_data_ready_endpoint(std::uint64_t address, std::uint32_t rkey, nds_rc_endpoint &endpoint);
+    bool register_memory(void *address, std::uint64_t size, int access, nds_ra_mr_info &info, void **mr_handle);
+    bool deregister_memory(void *mr_handle);
+    bool post_rdma_write(const nds_ra_sge &source, std::uint64_t remote_address, std::uint32_t remote_key,
+                         bool signaled, nds_ra_send_response &response);
+    int poll_send_completions(nds_ra_completion *completions, std::uint32_t max_entries);
+    bool query_port_status(int &status);
+    bool query_support_lite(int &support_lite);
+    bool query_status(int &status);
+    bool query_cqe_errors(nds_ra_cqe_error *errors, std::uint32_t &count);
     bool connect(const nds_rc_endpoint &peer);
     void reset() noexcept;
 

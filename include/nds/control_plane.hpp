@@ -42,6 +42,10 @@ public:
     /* Server ordering: receive the peer endpoint, then send the local endpoint. */
     ControlPlaneResult exchange_as_server(const nds_rc_endpoint &local) const;
 
+    /* These fixed-size records are exchanged after endpoint negotiation. */
+    bool send_memory_descriptor(const nds_memory_descriptor &descriptor, std::string *error) const;
+    bool receive_memory_descriptor(nds_memory_descriptor &descriptor, std::string *error) const;
+
     int fd() const noexcept;
     int release() noexcept;
 

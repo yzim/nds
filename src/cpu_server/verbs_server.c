@@ -1,5 +1,6 @@
 #define _POSIX_C_SOURCE 200809L
 
+#include "nds/rdma_path_mtu.h"
 #include "nds/rdma_wire_codec.h"
 
 #include <arpa/inet.h>
@@ -21,6 +22,11 @@
 #define NDS_DEFAULT_IB_PORT 1U
 #define NDS_UNSET_GID_INDEX UINT_MAX
 #define NDS_QP_DEPTH 16U
+#define NDS_DEFAULT_BYTES 4096U
+#define NDS_MAX_BYTES (64U * 1024U)
+#define NDS_GUARD_BYTES 64U
+#define NDS_GUARD_VALUE 0xa5U
+#define NDS_PAYLOAD_INITIAL_VALUE 0xccU
 
 struct nds_server_config {
     const char *device_name;
@@ -28,6 +34,9 @@ struct nds_server_config {
     unsigned int tcp_port;
     unsigned int ib_port;
     unsigned int gid_index;
+    unsigned int bytes;
+    unsigned int post_close_hold_ms;
+    bool qp_only;
 };
 
 struct nds_verbs_resources {
@@ -38,13 +47,16 @@ struct nds_verbs_resources {
     uint32_t psn;
     uint32_t path_mtu;
     union ibv_gid gid;
+    void *buffer;
+    size_t buffer_length;
+    struct ibv_mr *mr;
 };
 
 static void usage(const char *program)
 {
     (void)fprintf(stderr,
                   "usage: %s --device NAME --gid-index INDEX [--listen IPV4] [--tcp-port PORT] "
-                  "[--ib-port PORT] [--bytes BYTES]\n",
+                  "[--ib-port PORT] [--bytes BYTES] [--post-close-hold-ms MS] [--qp-only]\n",
                   program);
 }
 
@@ -72,39 +84,56 @@ static int parse_arguments(int argc, char **argv, struct nds_server_config *conf
         .tcp_port = NDS_DEFAULT_TCP_PORT,
         .ib_port = NDS_DEFAULT_IB_PORT,
         .gid_index = NDS_UNSET_GID_INDEX,
+        .bytes = NDS_DEFAULT_BYTES,
+        .post_close_hold_ms = 0U,
+        .qp_only = false,
     };
 
-    for (index = 1; index < argc; index += 2) {
-        if (index + 1 >= argc) {
+    for (index = 1; index < argc; ++index) {
+        const char *argument = argv[index];
+        const char *value;
+
+        if (strcmp(argument, "--qp-only") == 0) {
+            config->qp_only = true;
+            continue;
+        }
+        if (++index >= argc) {
             return -1;
         }
-        if (strcmp(argv[index], "--device") == 0) {
-            config->device_name = argv[index + 1];
-        } else if (strcmp(argv[index], "--listen") == 0) {
-            config->listen_address = argv[index + 1];
-        } else if (strcmp(argv[index], "--tcp-port") == 0) {
-            if (parse_unsigned(argv[index + 1], &config->tcp_port) != 0 ||
-                config->tcp_port == 0 || config->tcp_port > UINT16_MAX) {
+        value = argv[index];
+        if (strcmp(argument, "--device") == 0) {
+            config->device_name = value;
+        } else if (strcmp(argument, "--listen") == 0) {
+            config->listen_address = value;
+        } else if (strcmp(argument, "--tcp-port") == 0) {
+            if (parse_unsigned(value, &config->tcp_port) != 0 || config->tcp_port == 0 ||
+                config->tcp_port > UINT16_MAX) {
                 return -1;
             }
-        } else if (strcmp(argv[index], "--ib-port") == 0) {
-            if (parse_unsigned(argv[index + 1], &config->ib_port) != 0 ||
-                config->ib_port == 0 || config->ib_port > UINT8_MAX) {
+        } else if (strcmp(argument, "--ib-port") == 0) {
+            if (parse_unsigned(value, &config->ib_port) != 0 || config->ib_port == 0 ||
+                config->ib_port > UINT8_MAX) {
                 return -1;
             }
-        } else if (strcmp(argv[index], "--gid-index") == 0) {
-            if (parse_unsigned(argv[index + 1], &config->gid_index) != 0 ||
-                config->gid_index > INT32_MAX) {
+        } else if (strcmp(argument, "--gid-index") == 0) {
+            if (parse_unsigned(value, &config->gid_index) != 0 || config->gid_index > INT32_MAX) {
+                return -1;
+            }
+        } else if (strcmp(argument, "--bytes") == 0) {
+            if (parse_unsigned(value, &config->bytes) != 0 || config->bytes == 0U ||
+                config->bytes > NDS_MAX_BYTES) {
+                return -1;
+            }
+        } else if (strcmp(argument, "--post-close-hold-ms") == 0) {
+            if (parse_unsigned(value, &config->post_close_hold_ms) != 0 ||
+                config->post_close_hold_ms > 60000U) {
                 return -1;
             }
         } else {
             return -1;
         }
     }
-    if (config->device_name == NULL || config->gid_index == NDS_UNSET_GID_INDEX) {
-        return -1;
-    }
-    return 0;
+    return config->device_name == NULL || config->gid_index == NDS_UNSET_GID_INDEX ? -1 : 0;
 }
 
 static int read_full(int descriptor, void *buffer, size_t length)
@@ -217,6 +246,10 @@ static struct ibv_device *find_device(const char *name, struct ibv_device ***lis
 
 static void destroy_resources(struct nds_verbs_resources *resources)
 {
+    if (resources->mr != NULL) {
+        (void)ibv_dereg_mr(resources->mr);
+    }
+    free(resources->buffer);
     if (resources->qp != NULL) {
         (void)ibv_destroy_qp(resources->qp);
     }
@@ -292,6 +325,51 @@ static int create_resources(struct ibv_device *device, const struct nds_server_c
     return 0;
 }
 
+static int create_destination_memory(struct nds_verbs_resources *resources, unsigned int bytes)
+{
+    const size_t total = (size_t)bytes + (2U * NDS_GUARD_BYTES);
+    unsigned char *allocation = calloc(1U, total);
+
+    if (allocation == NULL) {
+        perror("calloc destination buffer");
+        return -1;
+    }
+    memset(allocation, NDS_GUARD_VALUE, NDS_GUARD_BYTES);
+    memset(allocation + NDS_GUARD_BYTES, NDS_PAYLOAD_INITIAL_VALUE, bytes);
+    memset(allocation + NDS_GUARD_BYTES + bytes, NDS_GUARD_VALUE, NDS_GUARD_BYTES);
+    resources->buffer = allocation;
+    resources->buffer_length = bytes;
+    resources->mr = ibv_reg_mr(resources->pd, allocation, total,
+                               IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
+    if (resources->mr == NULL) {
+        perror("ibv_reg_mr(destination)");
+        free(resources->buffer);
+        resources->buffer = NULL;
+        resources->buffer_length = 0U;
+        return -1;
+    }
+    return 0;
+}
+
+static bool destination_is_valid(const struct nds_verbs_resources *resources,
+                                 const unsigned char *expected)
+{
+    const unsigned char *allocation = resources->buffer;
+    const size_t bytes = resources->buffer_length;
+    size_t index;
+
+    if (allocation == NULL || expected == NULL || memcmp(allocation + NDS_GUARD_BYTES, expected, bytes) != 0) {
+        return false;
+    }
+    for (index = 0U; index < NDS_GUARD_BYTES; ++index) {
+        if (allocation[index] != NDS_GUARD_VALUE ||
+            allocation[NDS_GUARD_BYTES + bytes + index] != NDS_GUARD_VALUE) {
+            return false;
+        }
+    }
+    return true;
+}
+
 static int move_qp_to_init(const struct nds_verbs_resources *resources,
                            const struct nds_server_config *config)
 {
@@ -316,15 +394,27 @@ static int move_qp_to_rtr_rts(const struct nds_verbs_resources *resources,
     struct ibv_qp_attr attributes = {0};
     enum ibv_mtu path_mtu;
 
-    if (mtu_from_bytes(peer->path_mtu, &path_mtu) != 0) {
-        (void)fprintf(stderr, "peer advertised unsupported path MTU: %u\n", peer->path_mtu);
+    /*
+     * A verbs QP's RTR path MTU is selected from the local active port, not
+     * negotiated by the peer's NDS record. This mirrors HCOMM v9.0.0's
+     * RsDrvQpStateModifytoRtr(), which calls RsDrvSetMtu() (local
+     * ibv_query_port().active_mtu) and does not consume remote TypicalQp
+     * metadata for this setting. TypicalQp itself contains no MTU member.
+     *
+     * In the direct HCCP path, the NPU-side RA ABI exposes no corresponding
+     * MTU field. Treat the peer record as diagnostic only: clamping this CPU
+     * QP to an application-configured NPU value can create a QP/wire-MTU
+     * mismatch, as the NPU's actual outbound MTU remains runtime-owned.
+     */
+    const uint32_t local_path_mtu = nds_cpu_qp_path_mtu_select(resources->path_mtu, peer->path_mtu);
+
+    if (local_path_mtu == 0U || mtu_from_bytes(local_path_mtu, &path_mtu) != 0) {
+        (void)fprintf(stderr, "local port has unsupported path MTU: %u\n", resources->path_mtu);
         return -1;
     }
-    if (peer->path_mtu > resources->path_mtu) {
-        if (mtu_from_bytes(resources->path_mtu, &path_mtu) != 0) {
-            (void)fprintf(stderr, "local port has unsupported path MTU: %u\n", resources->path_mtu);
-            return -1;
-        }
+    if (peer->path_mtu != local_path_mtu) {
+        (void)printf("CPU uses local active path MTU %u; peer record reports %u (diagnostic only).\n",
+                     local_path_mtu, peer->path_mtu);
     }
 
     attributes.qp_state = IBV_QPS_RTR;
@@ -411,19 +501,45 @@ static int report_qp(const struct nds_verbs_resources *resources, const char *ph
 {
     struct ibv_qp_attr attributes = {0};
     struct ibv_qp_init_attr initial = {0};
-    const int mask = IBV_QP_STATE | IBV_QP_PATH_MTU | IBV_QP_DEST_QPN | IBV_QP_RQ_PSN | IBV_QP_SQ_PSN;
+    const int mask = IBV_QP_STATE | IBV_QP_ACCESS_FLAGS | IBV_QP_PKEY_INDEX | IBV_QP_PORT |
+                     IBV_QP_AV | IBV_QP_PATH_MTU | IBV_QP_DEST_QPN | IBV_QP_RQ_PSN |
+                     IBV_QP_SQ_PSN | IBV_QP_TIMEOUT | IBV_QP_RETRY_CNT | IBV_QP_RNR_RETRY |
+                     IBV_QP_MAX_QP_RD_ATOMIC | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER;
 
     if (ibv_query_qp(resources->qp, &attributes, mask, &initial) != 0) {
         perror("ibv_query_qp");
         return -1;
     }
-    (void)printf("CPU QP %s: qpn=%u state=%s cq_depth=%u max_send_wr=%u max_recv_wr=%u "
-                 "max_send_sge=%u max_recv_sge=%u path_mtu=%u dest_qpn=%u rq_psn=%u sq_psn=%u\n",
-                 phase, resources->qp->qp_num, qp_state_name(attributes.qp_state), NDS_QP_DEPTH * 2U,
+    (void)printf("CPU QP %s: qpn=%u state=%s port=%u pkey_index=%u access=0x%x "
+                 "path_mtu=%u dest_qpn=%u rq_psn=%u sq_psn=%u timeout=%u retry=%u rnr_retry=%u "
+                 "max_rd_atomic=%u max_dest_rd_atomic=%u min_rnr_timer=%u global=%u sgid_index=%u "
+                 "hop_limit=%u tc=%u sl=%u cq_depth=%u max_send_wr=%u max_recv_wr=%u "
+                 "max_send_sge=%u max_recv_sge=%u sq_sig_all=%u\n",
+                 phase, resources->qp->qp_num, qp_state_name(attributes.qp_state), attributes.port_num,
+                 attributes.pkey_index, attributes.qp_access_flags, mtu_to_bytes(attributes.path_mtu),
+                 attributes.dest_qp_num, attributes.rq_psn, attributes.sq_psn, attributes.timeout,
+                 attributes.retry_cnt, attributes.rnr_retry, attributes.max_rd_atomic,
+                 attributes.max_dest_rd_atomic, attributes.min_rnr_timer, attributes.ah_attr.is_global,
+                 attributes.ah_attr.grh.sgid_index, attributes.ah_attr.grh.hop_limit,
+                 attributes.ah_attr.grh.traffic_class, attributes.ah_attr.sl, NDS_QP_DEPTH * 2U,
                  initial.cap.max_send_wr, initial.cap.max_recv_wr, initial.cap.max_send_sge,
-                 initial.cap.max_recv_sge, mtu_to_bytes(attributes.path_mtu), attributes.dest_qp_num,
-                 attributes.rq_psn, attributes.sq_psn);
+                 initial.cap.max_recv_sge, initial.sq_sig_all);
     return 0;
+}
+
+static void hold_for_passive_diagnostics(unsigned int milliseconds)
+{
+    struct timespec remaining;
+
+    if (milliseconds == 0U) {
+        return;
+    }
+    remaining.tv_sec = (time_t)(milliseconds / 1000U);
+    remaining.tv_nsec = (long)(milliseconds % 1000U) * 1000000L;
+    (void)printf("Holding CPU QP and destination MR for %u ms for passive diagnostics; no additional work is posted.\n",
+                 milliseconds);
+    while (nanosleep(&remaining, &remaining) != 0 && errno == EINTR) {
+    }
 }
 
 static void report_endpoint(const char *label, const nds_rc_endpoint *endpoint)
@@ -507,6 +623,9 @@ int main(int argc, char **argv)
     nds_rc_endpoint_wire_v1 local_wire;
     nds_rc_endpoint peer;
     nds_rc_endpoint local;
+    nds_memory_descriptor_wire_v1 memory_wire;
+    nds_memory_descriptor memory;
+    unsigned char *expected = NULL;
     char wire_error[NDS_WIRE_ERROR_CAPACITY] = {0};
     int listener = -1;
     int connection = -1;
@@ -524,6 +643,19 @@ int main(int argc, char **argv)
     if (create_resources(device, &config, &resources) != 0 || move_qp_to_init(&resources, &config) != 0) {
         goto out;
     }
+    if (!config.qp_only) {
+        if (create_destination_memory(&resources, config.bytes) != 0) {
+            goto out;
+        }
+        expected = malloc(config.bytes);
+        if (expected == NULL) {
+            perror("malloc expected payload");
+            goto out;
+        }
+        for (unsigned int index = 0U; index < config.bytes; ++index) {
+            expected[index] = (unsigned char)(index ^ 0x5aU);
+        }
+    }
     if (make_endpoint(&resources, &config, &local_wire, wire_error) != 0 ||
         nds_rc_endpoint_decode(&local_wire, &local, wire_error) != 0) {
         (void)fprintf(stderr, "could not create local QP-only endpoint: %s\n", wire_error);
@@ -537,10 +669,15 @@ int main(int argc, char **argv)
         goto out;
     }
 
-    (void)printf("NDS QP-only verbs server ready: device=%s ib_port=%u gid_index=%u tcp=%s:%u\n",
-                 config.device_name, config.ib_port, config.gid_index, config.listen_address, config.tcp_port);
+    (void)printf("NDS verbs server ready: device=%s ib_port=%u gid_index=%u tcp=%s:%u mode=%s bytes=%u\n",
+                 config.device_name, config.ib_port, config.gid_index, config.listen_address, config.tcp_port,
+                 config.qp_only ? "qp-only" : "rdma-write", config.bytes);
     report_endpoint("CPU local", &local);
-    (void)puts("No memory region is registered and no work request will be posted in this QP-only milestone.");
+    if (!config.qp_only) {
+        (void)printf("CPU destination MR: addr=%p payload_bytes=%zu lkey=%u rkey=%u\n",
+                     (unsigned char *)resources.buffer + NDS_GUARD_BYTES, resources.buffer_length,
+                     resources.mr->lkey, resources.mr->rkey);
+    }
     (void)printf("Waiting for an 80-byte NDS v2 QP-only peer endpoint description.\n");
     connection = accept(listener, NULL, NULL);
     if (connection < 0) {
@@ -569,10 +706,42 @@ int main(int argc, char **argv)
         perror("write endpoint");
         goto out;
     }
-    (void)puts("CPU verbs QP reached RTS. Holding the QP until the NPU reports RaTypicalQpModify success and closes TCP.");
+    if (config.qp_only) {
+        (void)puts("CPU verbs QP reached RTS; QP-only mode will not advertise memory or expect a work request.");
+        if (wait_for_peer_close(connection) != 0) {
+            goto out;
+        }
+        (void)puts("QP-only validation passed; NPU closed the control connection without a work request.");
+        exit_code = EXIT_SUCCESS;
+        goto out;
+    }
+    memory = (nds_memory_descriptor){
+        .flags = 0U,
+        .transaction_id = ((uint64_t)resources.qp->qp_num << 32) | resources.psn,
+        .address = (uint64_t)(uintptr_t)((unsigned char *)resources.buffer + NDS_GUARD_BYTES),
+        .length = resources.buffer_length,
+        .rkey = resources.mr->rkey,
+        .access_flags = NDS_MEMORY_ACCESS_REMOTE_WRITE,
+    };
+    if (nds_memory_descriptor_encode(&memory, &memory_wire, wire_error) != 0 ||
+        write_full(connection, &memory_wire, sizeof(memory_wire)) != 0) {
+        (void)fprintf(stderr, "could not send CPU memory descriptor: %s\n", wire_error);
+        goto out;
+    }
+    (void)puts("CPU verbs QP reached RTS and destination MR was advertised; waiting for NPU completion and TCP close.");
     if (wait_for_peer_close(connection) != 0) {
         goto out;
     }
+    if (report_qp(&resources, "after peer control close") != 0) {
+        goto out;
+    }
+    hold_for_passive_diagnostics(config.post_close_hold_ms);
+    if (!destination_is_valid(&resources, expected)) {
+        (void)fprintf(stderr, "RDMA Write validation failed: payload or guard bytes differ.\n");
+        goto out;
+    }
+    (void)printf("RDMA Write validation passed: %u bytes matched and both %u-byte guards are intact.\n",
+                 config.bytes, NDS_GUARD_BYTES);
     exit_code = EXIT_SUCCESS;
 
 out:
@@ -582,6 +751,7 @@ out:
     if (listener >= 0) {
         (void)close(listener);
     }
+    free(expected);
     destroy_resources(&resources);
     if (device_list != NULL) {
         ibv_free_device_list(device_list);

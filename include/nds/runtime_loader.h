@@ -26,6 +26,8 @@ typedef struct nds_rt_net_service_open_args {
 typedef int (*nds_rt_set_device_fn)(int32_t logical_device_id);
 typedef int (*nds_rt_open_net_service_fn)(const nds_rt_net_service_open_args *args);
 typedef int (*nds_rt_close_net_service_fn)(void);
+/* rtRDMADBSend queues an OPBASE RA-posted WQE on the selected runtime stream. */
+typedef int (*nds_rt_rdma_db_send_fn)(uint32_t db_index, uint64_t db_info, void *stream);
 
 enum { NDS_RUNTIME_ERROR_CAPACITY = 512 };
 
@@ -34,6 +36,7 @@ typedef struct nds_runtime_api {
     nds_rt_set_device_fn set_device;
     nds_rt_open_net_service_fn open_net_service;
     nds_rt_close_net_service_fn close_net_service;
+    nds_rt_rdma_db_send_fn rdma_db_send;
     char error[NDS_RUNTIME_ERROR_CAPACITY];
 } nds_runtime_api;
 

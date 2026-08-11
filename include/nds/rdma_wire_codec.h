@@ -17,6 +17,7 @@ typedef struct nds_rc_endpoint {
     uint32_t rkey;
     uint16_t port_num;
     uint16_t gid_index;
+    /* Endpoint-reported MTU for diagnostics; not a cross-endpoint negotiation field. */
     uint32_t path_mtu;
     uint32_t access_flags;
     uint32_t traffic_class;
@@ -27,6 +28,15 @@ typedef struct nds_rc_endpoint {
     uint8_t gid[NDS_GID_BYTES];
 } nds_rc_endpoint;
 
+typedef struct nds_memory_descriptor {
+    uint16_t flags;
+    uint64_t transaction_id;
+    uint64_t address;
+    uint64_t length;
+    uint32_t rkey;
+    uint32_t access_flags;
+} nds_memory_descriptor;
+
 enum { NDS_WIRE_ERROR_CAPACITY = 256 };
 
 /* Encode/decode the fixed-size NDS wire record. All host fields remain host order. */
@@ -34,6 +44,12 @@ int nds_rc_endpoint_encode(const nds_rc_endpoint *endpoint, nds_rc_endpoint_wire
                            char error[NDS_WIRE_ERROR_CAPACITY]);
 int nds_rc_endpoint_decode(const nds_rc_endpoint_wire_v1 *wire, nds_rc_endpoint *endpoint,
                            char error[NDS_WIRE_ERROR_CAPACITY]);
+int nds_memory_descriptor_encode(const nds_memory_descriptor *descriptor,
+                                 nds_memory_descriptor_wire_v1 *wire,
+                                 char error[NDS_WIRE_ERROR_CAPACITY]);
+int nds_memory_descriptor_decode(const nds_memory_descriptor_wire_v1 *wire,
+                                 nds_memory_descriptor *descriptor,
+                                 char error[NDS_WIRE_ERROR_CAPACITY]);
 
 #ifdef __cplusplus
 }

@@ -161,3 +161,66 @@ int nds_rc_endpoint_decode(const nds_rc_endpoint_wire_v1 *wire, nds_rc_endpoint 
     }
     return 0;
 }
+
+
+static int nds_memory_descriptor_validate(const nds_memory_descriptor *descriptor,
+                                          char error[NDS_WIRE_ERROR_CAPACITY])
+{
+    if (descriptor == NULL) {
+        nds_wire_set_error(error, "memory descriptor is required");
+        return -1;
+    }
+    if (descriptor->transaction_id == 0U || descriptor->address == 0U || descriptor->length == 0U ||
+        descriptor->rkey == 0U ||
+        (descriptor->access_flags & NDS_MEMORY_ACCESS_REMOTE_WRITE) == 0U) {
+        nds_wire_set_error(error, "memory descriptor requires transaction ID, address, length, rkey, and remote-write access");
+        return -1;
+    }
+    return 0;
+}
+
+int nds_memory_descriptor_encode(const nds_memory_descriptor *descriptor,
+                                 nds_memory_descriptor_wire_v1 *wire,
+                                 char error[NDS_WIRE_ERROR_CAPACITY])
+{
+    if (wire == NULL) {
+        nds_wire_set_error(error, "memory descriptor wire record is required");
+        return -1;
+    }
+    if (nds_memory_descriptor_validate(descriptor, error) != 0) {
+        return -1;
+    }
+    *wire = (nds_memory_descriptor_wire_v1){0};
+    wire->magic = htonl(NDS_MEMORY_WIRE_MAGIC);
+    wire->version = htons(NDS_MEMORY_WIRE_VERSION);
+    wire->flags = htons(descriptor->flags);
+    wire->transaction_id = nds_host_to_be64(descriptor->transaction_id);
+    wire->address = nds_host_to_be64(descriptor->address);
+    wire->length = nds_host_to_be64(descriptor->length);
+    wire->rkey = htonl(descriptor->rkey);
+    wire->access_flags = htonl(descriptor->access_flags);
+    return 0;
+}
+
+int nds_memory_descriptor_decode(const nds_memory_descriptor_wire_v1 *wire,
+                                 nds_memory_descriptor *descriptor,
+                                 char error[NDS_WIRE_ERROR_CAPACITY])
+{
+    if (wire == NULL || descriptor == NULL) {
+        nds_wire_set_error(error, "memory descriptor wire record and output are required");
+        return -1;
+    }
+    if (ntohl(wire->magic) != NDS_MEMORY_WIRE_MAGIC || ntohs(wire->version) != NDS_MEMORY_WIRE_VERSION) {
+        nds_wire_set_error(error, "unsupported memory descriptor magic or version");
+        return -1;
+    }
+    *descriptor = (nds_memory_descriptor){
+        .flags = ntohs(wire->flags),
+        .transaction_id = nds_be64_to_host(wire->transaction_id),
+        .address = nds_be64_to_host(wire->address),
+        .length = nds_be64_to_host(wire->length),
+        .rkey = ntohl(wire->rkey),
+        .access_flags = ntohl(wire->access_flags),
+    };
+    return nds_memory_descriptor_validate(descriptor, error);
+}

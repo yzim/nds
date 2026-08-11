@@ -12,15 +12,15 @@ This is a one-NPU-to-one-CPU setup. It is not an HCCL job and does not need HCOM
 
 ## What works today
 
-The QP bring-up path has been tested on the target CANN release.
+The direct one-NPU/one-CPU data path has been verified on the target CANN release:
 
 1. The NPU creates its ACL/runtime/RA context and one RC QP.
-2. The CPU server creates one `libibverbs` RC QP and moves it through `INIT`, `RTR`, and `RTS`.
-3. The two programs exchange the QP details they need over TCP.
-4. The NPU passes the CPU endpoint information to `RaTypicalQpModify`.
-5. Both QPs are torn down cleanly.
+2. The CPU server creates one plain-`libibverbs` RC QP and moves it through `INIT`, `RTR`, and `RTS`.
+3. The two programs exchange NDS-owned QP metadata over TCP, then the CPU sends a fixed versioned destination-MR descriptor.
+4. The NPU calls `RaTypicalQpModify`, allocates device memory, registers the source MR through RA, posts one signaled 4096-byte RDMA Write, and submits the returned OPBASE runtime doorbell.
+5. The NPU receives a successful send completion. The CPU verifies the deterministic payload and both 64-byte guard regions before both endpoints clean up.
 
-This is only a connection test. There is no memory registration and no data transfer yet—no RDMA read, write, send, or receive work request is posted.
+The normal data path uses exactly one NPU and one CPU RNIC. The CPU remains CANN-free; it does not load HCCP, HCOMM, HCCL, or TSD.
 
 ## How it fits together
 
@@ -34,6 +34,10 @@ create RA rdev and RC QP                         create RC QP
        └──── project-owned TCP endpoint exchange ──────┘
                          │
               RaTypicalQpModify / RTR + RTS
+                         │
+     destination-MR descriptor → one RDMA Write + OPBASE doorbell
+                         │
+             send CQE + CPU payload/guard validation
 ```
 
 ## Open-source references
@@ -53,7 +57,8 @@ aclInit
 → RaTypicalQpCreate
 → endpoint exchange
 → RaTypicalQpModify
-→ RaQpDestroy
+→ RaRegisterMr → RaTypicalSendWr → rtRDMADBSend → RaPollCq
+→ RaDeregisterMr → RaQpDestroy
 → RaRdevDeinit(..., NOTIFY)
 → RaDeinit
 → rtCloseNetService
@@ -85,13 +90,14 @@ ctest --test-dir build --output-on-failure
 
 The CPU server is built only when `libibverbs` development files are available. The NPU client takes absolute library paths at runtime so it can use one selected CANN installation.
 
-## Run the QP test
+## Run the bounded data-path test
 
 Start the CPU server with its RDMA device and GID index:
 
 ```sh
 nds_verbs_server --device <rdma-device> --gid-index <index> \
-  [--listen <cpu-ipv4>] [--tcp-port <port>] [--ib-port <port>]
+  [--listen <cpu-ipv4>] [--tcp-port <port>] [--ib-port <port>] \
+  [--bytes <1..65536>] [--post-close-hold-ms <0..60000>]
 ```
 
 Then start the NPU client with one selected NPU and the matching CANN libraries:
@@ -106,8 +112,8 @@ nds_npu_qp_client \
   --cpu-ip <cpu-rnic-ipv4> --execute
 ```
 
-Use a whole-process timeout when running accelerator experiments. Keep this test to one NPU and one CPU RNIC. Put machine-specific commands and deployment values in ignored `.local/`, not in this README.
+Use a whole-process timeout when running accelerator experiments. The default server/client invocation runs one bounded data-path Write. Add `--qp-only` on both endpoints when validating only connection establishment; that mode registers no memory and posts no work request. Keep this test to one NPU and one CPU RNIC. Put machine-specific commands and deployment values in ignored `.local/`, not in this README.
 
-## Next step
+## Data-path interoperability note
 
-The next milestone is one small, bounded RDMA write from the NPU to the CPU: register memory on both sides, exchange only the public memory descriptor fields needed by the test, post one operation, and check the payload on the CPU. The CPU side will remain plain `libibverbs`.
+The CPU selects `IBV_QP_PATH_MTU` from its **local active RDMA port**. NDS records the peer-reported MTU for diagnostics only: the HCCP v9.0.0 `TypicalQp` ABI contains no MTU field, and the matching HCOMM `RsDrvQpStateModifytoRtr` reference uses local `ibv_query_port(...).active_mtu`. Do not clamp the CPU QP MTU to the NPU control-plane record unless a separately validated NPU-side ABI makes that value authoritative.
