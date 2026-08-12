@@ -44,18 +44,18 @@ happens inside CP1 when the kernel executes.
 ## NDS interfaces
 
 - Public request ABI:
-  `src/nic_client/modes/aicpu/include/nds/aicpu_roce_abi.h`.
+  `src/npu_client/modes/aicpu/include/nds/aicpu_roce_abi.h`.
 - Device-side ABI copy:
-  `src/nic_client/modes/aicpu/device/include/nds_aicpu_roce_abi.h`.
+  `src/npu_client/modes/aicpu/device/include/nds_aicpu_roce_abi.h`.
 - Provider ABI subset:
-  `src/nic_client/modes/aicpu/device/include/nds_aicpu_hns_abi.h`.
-- Kernel: `src/nic_client/modes/aicpu/device/nds_aicpu_rdma_post.aicpu`, entry point
+  `src/npu_client/modes/aicpu/device/include/nds_aicpu_hns_abi.h`.
+- Kernel: `src/npu_client/modes/aicpu/device/nds_aicpu_rdma_post.aicpu`, entry point
   `NdsAicpuRdmaPost`.
-- Host launcher: `src/nic_client/modes/aicpu/include/nds/aicpu_roce.hpp` and
-  `src/nic_client/modes/aicpu/launcher.cpp`.
+- Host launcher: `src/npu_client/modes/aicpu/include/nds/aicpu_roce.hpp` and
+  `src/npu_client/modes/aicpu/launcher.cpp`.
 - Standard package manifest:
-  `src/nic_client/modes/aicpu/device/package/nds_aicpu_standard.json.in`.
-- Mode build ownership: `src/nic_client/modes/aicpu/CMakeLists.txt` and its
+  `src/npu_client/modes/aicpu/device/package/nds_aicpu_standard.json.in`.
+- Mode build ownership: `src/npu_client/modes/aicpu/CMakeLists.txt` and its
   `device/CMakeLists.txt`.
 
 ABI v6 is fixed at 80 bytes and carries opcode, logical device ID, AI-QP

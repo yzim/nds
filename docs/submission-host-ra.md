@@ -39,7 +39,7 @@ The principal implementation surfaces are:
 - `NpuRaContext`: AscendCL/runtime/RA initialization and `rtRDMADBSend`.
 - `NpuRaQp`: rdev/QP lifecycle, MR registration, `RaTypicalSendWr`, and
   `RaPollCq`.
-- `src/nic_client/modes/host_ra`: mode-owned request and doorbell submission.
+- `src/npu_client/modes/host_ra`: mode-owned request and doorbell submission.
 - `TcpControlPlane`: endpoint, destination-MR, and transfer-status exchange.
 - `nds_npu_qp_client`: command-line orchestration.
 - `nds_verbs_server`: CPU RC QP and destination-MR owner.

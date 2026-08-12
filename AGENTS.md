@@ -115,14 +115,14 @@ setup is not yet an end-to-end feature.
 ### ABI and package
 
 - Public request declaration:
-  `src/nic_client/modes/aicpu/include/nds/aicpu_roce_abi.h`.
+  `src/npu_client/modes/aicpu/include/nds/aicpu_roce_abi.h`.
 - Device-kernel copy:
-  `src/nic_client/modes/aicpu/device/include/nds_aicpu_roce_abi.h`.
+  `src/npu_client/modes/aicpu/device/include/nds_aicpu_roce_abi.h`.
 - ABI version: `6`; `nds_aicpu_rdma_post_request_v2` is 80 bytes.
 - The request carries opcode, logical device ID, AI-QP address, local/remote
   keys and addresses, length, and WR id.
 - Kernel source/entry point:
-  `src/nic_client/modes/aicpu/device/nds_aicpu_rdma_post.aicpu`,
+  `src/npu_client/modes/aicpu/device/nds_aicpu_rdma_post.aicpu`,
   `NdsAicpuRdmaPost`.
 - The standard-CP1 package contains `libnds_aicpu_roce_standard.so`,
   `bin_hash.cfg`, and a CANN `opInfo` manifest. CANN 9.0.0 also requires an

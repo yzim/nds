@@ -73,11 +73,11 @@ For an offline HDC rdev, `NOTIFY` is `1`. `NO_USE` (`0`) does not work for this 
 
 ```text
 src/common/                     Shared control plane, wire format, and MTU policy
-src/nic_client/                 NPU RNIC client, RA lifecycle, loaders, and probes
+src/npu_client/                 NPU client, RA lifecycle, loaders, and probes
   modes/host_ra/                Host-submitted RA/doorbell mode
   modes/aiv/                    AIV launcher, ABI, kernel, and kernel build
   modes/aicpu/                  AICPU launcher, ABI, device kernel, and package build
-src/nic_server/                 CPU libibverbs server
+src/cpu_server/                 CPU libibverbs server
 tests/                          Unit tests and test-only runtime fixture
 ```
 
