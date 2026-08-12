@@ -61,9 +61,9 @@ typedef struct nds_ra_rdev {
 
 /*
  * HCCP v9.0.0 RdevInitInfo.  The legacy RaRdevInit() hard-codes
- * disabled_lite_thread=false, which starts HCOMM's background Lite-CQ
- * poller.  NDS uses the V2 form so the explicit RaPollCq host-submit path
- * has exactly one send-CQ consumer.
+ * disabled_lite_thread=false, which starts HCCP's agent-side Lite-QP poller.
+ * That poller is separate from the service-side verbs completion-channel path
+ * used by AI QPs.
  */
 typedef struct nds_ra_rdev_init_info {
     int mode;

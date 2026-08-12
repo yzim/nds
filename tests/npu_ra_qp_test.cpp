@@ -481,6 +481,9 @@ void test_send_wr_and_polling()
     assert(qp.poll_send_completions(&completion, 1U) == 0);
     fake.poll_result = 1;
     assert(qp.poll_send_completions(&completion, 1U) == 1);
+    fake.poll_result = 100007;
+    assert(qp.poll_send_completions(&completion, 1U) < 0);
+    assert(!qp.error().empty());
     fake.poll_result = -7;
     assert(qp.poll_send_completions(&completion, 1U) < 0);
     fake.cqe_error_count = 1U;

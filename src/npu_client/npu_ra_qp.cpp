@@ -375,8 +375,9 @@ int NpuRaQp::poll_send_completions(nds_ra_completion *completions, std::uint32_t
         return -1;
     }
     result = api_->ra_poll_cq(qp_handle_, true, max_entries, completions);
-    if (result < 0) {
-        set_error("RaPollCq(send) failed: " + std::to_string(result));
+    if (result < 0 || static_cast<std::uint32_t>(result) > max_entries) {
+        set_error("RaPollCq(send) returned an invalid result: " + std::to_string(result) +
+                  " for max_entries=" + std::to_string(max_entries));
         return -1;
     }
     error_.clear();
