@@ -3,19 +3,31 @@
 
 #include <stdint.h>
 
-#define NDS_AICPU_ROCE_ABI_VERSION UINT32_C(1)
+#define NDS_AICPU_ROCE_ABI_VERSION UINT32_C(2)
 #define NDS_AICPU_ROCE_MAX_BYTES UINT64_C(65536)
 
+enum nds_aicpu_rdma_opcode {
+    /* Values deliberately match the CANN-9.0.0 HNS/verbs send-WR ABI. */
+    NDS_AICPU_RDMA_WRITE = 0U,
+    NDS_AICPU_SEND = 2U,
+    NDS_AICPU_RDMA_READ = 4U,
+};
+
 /*
- * NDS-owned AICPU request ABI for one-way NPU-to-CPU RDMA Write.
- * All addresses and keys name already registered memory. `ai_qp_address` is
- * the opaque provider QP pointer returned by RaAiQpCreate. The kernel posts
- * exactly one signaled RDMA Write; it never waits for a peer flag or invokes
- * HCOMM/HCCL synchronization.
+ * NDS-owned ABI for exactly one AICPU-side provider post plus its RNIC
+ * doorbell submission. `ai_qp_address` and `db_index` are returned by
+ * RaAiQpCreate. The local buffer must already be registered.
+ *
+ * RDMA_WRITE and RDMA_READ require nonzero remote_address and remote_rkey.
+ * SEND uses only the local SGE; remote_address and remote_rkey must be zero.
+ * This is intentionally not an HCOMM protocol: it contains no flags, peer
+ * acknowledgement, batching, rank state, or completion-poller state.
  */
-typedef struct nds_aicpu_roce_write_request_v1 {
+typedef struct nds_aicpu_rdma_post_request_v2 {
     uint32_t abi_version;
     uint32_t size;
+    uint32_t opcode;
+    uint32_t db_index;
     uint64_t ai_qp_address;
     uint32_t local_lkey;
     uint32_t remote_rkey;
@@ -23,15 +35,15 @@ typedef struct nds_aicpu_roce_write_request_v1 {
     uint64_t remote_address;
     uint64_t length;
     uint64_t wr_id;
-    uint64_t reserved[1];
-} nds_aicpu_roce_write_request_v1;
+    uint64_t reserved[2];
+} nds_aicpu_rdma_post_request_v2;
 
 #if defined(__cplusplus)
-static_assert(sizeof(nds_aicpu_roce_write_request_v1) == 64,
-              "NDS AICPU RoCE write ABI v1 must remain 64 bytes");
+static_assert(sizeof(nds_aicpu_rdma_post_request_v2) == 80,
+              "NDS AICPU RDMA-post ABI v2 must remain 80 bytes");
 #else
-_Static_assert(sizeof(nds_aicpu_roce_write_request_v1) == 64,
-               "NDS AICPU RoCE write ABI v1 must remain 64 bytes");
+_Static_assert(sizeof(nds_aicpu_rdma_post_request_v2) == 80,
+               "NDS AICPU RDMA-post ABI v2 must remain 80 bytes");
 #endif
 
 #endif

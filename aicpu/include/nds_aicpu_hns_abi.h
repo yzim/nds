@@ -2,13 +2,10 @@
 #define NDS_AICPU_HNS_ABI_H
 
 /*
- * Minimal wire-layout declarations needed by CANN-9.0.0's HNS provider
- * extension.  The CANN AICPU sysroot does not ship libibverbs headers or an
- * AICPU-facing RNIC post API, so NDS deliberately declares only the prefix
- * consumed by one RDMA-Write work request.  This is a private, version-pinned
- * provider boundary, not a substitute for the libibverbs public API.
+ * Minimal layouts used by CANN-9.0.0's device HNS provider. The AICPU sysroot
+ * ships neither a public RNIC-post API nor libibverbs headers. This is a
+ * version-pinned provider boundary, not a replacement libibverbs interface.
  */
-
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -44,12 +41,17 @@ struct nds_hns_post_send_response {
 
 enum {
     NDS_HNS_WR_RDMA_WRITE = 0,
+    NDS_HNS_WR_SEND = 2,
+    NDS_HNS_WR_RDMA_READ = 4,
     NDS_HNS_SEND_SIGNALED = 1 << 1,
 };
 
 typedef int (*nds_hns_exp_post_send_fn)(
     void *qp, struct nds_hns_send_wr *wr, struct nds_hns_send_wr **bad_wr,
     struct nds_hns_post_send_response *response);
+
+/* AICPU-side wrapper exported by CANN's libaicpu_custom.so. */
+typedef int (*nds_aicpu_hrt_rdma_db_send_fn)(uint32_t db_index, uint64_t db_info, void *stream);
 
 #if defined(__cplusplus)
 static_assert(sizeof(nds_hns_sge) == 16, "HNS SGE ABI changed");

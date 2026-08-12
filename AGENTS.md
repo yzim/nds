@@ -96,3 +96,80 @@ Treat the interoperation boundary as an RDMA wire-compatibility exercise. Our co
 ## Validated QP-only milestone
 
 The direct one-NPU/one-CPU path has been validated through QP establishment only: the CPU QP reaches `RTS` and the NPU-side `RaTypicalQpModify` succeeds after exchange of QPN, PSN, GID, GID index, and transport parameters. This milestone registers no memory and posts no work request. `NETWORK_OFFLINE` rdev setup uses the source-verified HCCP `NOTIFY` value (`1`), not `NO_USE` (`0`).
+
+## AICPU generic RDMA-post work (developer reference)
+
+### Scope
+
+The AICPU route is an NDS-owned, minimal submission primitive for exactly one
+signaled WQE.  It accepts RDMA Write, RDMA Read, and Send, but intentionally
+does **not** import HCOMM/HCCL execution semantics: no rank/communicator state,
+flag or acknowledgement buffers, batching/splitting, retries, dispatcher/event
+poller, or peer synchronization.  The CPU endpoint remains ordinary
+`libibverbs`.
+
+The current CPU server exercises only RDMA Write.  The generic request ABI is
+also prepared for Read and Send; their required CPU-side receive/remote-memory
+setup is not yet an end-to-end feature.
+
+### ABI and package
+
+- Public request declaration: `include/nds/aicpu_roce_abi.h`.
+- Device-kernel copy: `aicpu/include/nds_aicpu_roce_abi.h`.
+- ABI version: `2`; `nds_aicpu_rdma_post_request_v2` is 80 bytes.
+- The request carries opcode, `db_index` returned by `RaAiQpCreate`, AI-QP
+  address, local/remote keys and addresses, length, and WR id.
+- Kernel source/entry point: `aicpu/src/nds_aicpu_rdma_post.aicpu`,
+  `NdsAicpuRdmaPost`.
+- The custom-AICPU manifest must use CANN's `opInfo` schema and maps that entry
+  point to the built NDS kernel shared object.
+
+### Device-side provider and doorbell path
+
+The host must **not** `dlopen` or link `libhns-rdmav25.so`: it is an NPU/AICPU
+provider dependency.  The custom kernel resolves it at device execution time,
+then resolves `ibv_exp_post_send`, constructs one SGE/WR, posts it, executes
+`dsb st`, and submits the returned doorbell information.  No host-side library
+search is evidence that the provider is or is not available inside the AICPU
+runtime.
+
+The current minimal doorbell experiment resolves AICPU custom-kernel wrapper
+`hrtRDMADBSend(unsigned int, unsigned long, void *)` from
+`libaicpu_custom.so`.  That wrapper is installed with CANN and dynamically
+resolves `rtRDMADBSend` from `libruntime.so`; it is not linked by the host
+application.  The custom kernel currently passes a null stream because the
+custom-kernel ABI exposes no public stream-handle argument.  This is an
+unvalidated hypothesis, not a supported/validated claim.
+
+### Reference basis and current evidence
+
+Use the CANN 9.0.0 source checkouts on the target only:
+
+- `~/src/hcomm/src/framework/device/utils/hccl_aicpu_utils.cc`
+- `~/src/hcomm/src/platform/resource/transport/device/transport_device_ibverbs.cc`
+- `~/src/hcomm/src/platform/common/dlhns_function.cc`
+- `~/src/hcomm/src/platform/common/hccl_dl.cc`
+
+The relevant HCOMM chain is `HcclAicpuUtils::PostSend` →
+`TransportDeviceIbverbs::HnsPostSend` → `HrtHnsIbvExpPostSend` → device
+provider dynamic loading → provider post → barrier → HCOMM dispatcher.  NDS
+ports only the single-WQE/provider-post/barrier idea, not HCOMM's dispatcher
+or synchronization machinery.
+
+Target-only build and unit tests passed (7/7) after the ABI generalization;
+the kernel export `NdsAicpuRdmaPost` was verified.  A single bounded NPU0
+RDMA-Write attempt reached custom-kernel execution but failed while stream
+synchronization reported `507018`, with CPU payload and guard bytes unchanged.
+This does not validate the generic AICPU data path.  Before another hardware
+run, establish whether custom AICPU supports the direct `hrtRDMADBSend` route,
+how a valid stream is obtained, and how custom-kernel failure status can be
+made observable.  Do not solve that by porting HCOMM KFC/SQE context,
+dispatcher, or synchronization flows.
+
+### Validation discipline
+
+Never build or test NDS on this Mac.  Synchronize the authoritative source
+(excluding `.git`, `.local`, and build output) to `node200:~/src/nds`; build,
+inspect CANN/HCOMM/HCCL sources, and run hardware validation only there.
+Use one NPU (NPU0), `sudo -n`, a whole-process timeout, and no blind retries.
+Keep target paths, logs, addresses, and operational details under `.local/`.

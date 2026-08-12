@@ -1,7 +1,7 @@
 {
-  "NdsAicpuRoceWrite": {
+  "NdsAicpuRdmaPost": {
     "opInfo": {
-      "functionName": "NdsAicpuRoceWrite",
+      "functionName": "NdsAicpuRdmaPost",
       "kernelSo": "@NDS_AICPU_KERNEL_SO@",
       "opKernelLib": "CUSTAICPUKernel"
     }

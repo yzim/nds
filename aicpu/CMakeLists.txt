@@ -8,8 +8,9 @@ endif()
 # CANN's custom AICPU-kernel template builds an ordinary ARM shared object.
 # `bisheng -x aicpu` produces a relocatable embedded-device object, which is
 # not the DYN ELF artifact that aclrtBinaryLoadFromFile loads for a custom
-# AICPU kernel package. Use CANN's matching aarch64 host compiler so the
-# library has the CANN toolchain ABI expected by the AICPU runtime.
+# AICPU kernel package. Use CANN's matching aarch64 host compiler. The
+# kernel's dlopen/dlsym calls execute only after ACL loads this library into
+# the AICPU device environment; the NPU host client does not perform them.
 set(NDS_AICPU_COMPILER "${NDS_CANN_ROOT}/tools/hcc/bin/aarch64-target-linux-gnu-g++")
 if(NOT EXISTS "${NDS_AICPU_COMPILER}")
     message(FATAL_ERROR "CANN AICPU shared-library compiler not found: ${NDS_AICPU_COMPILER}")
@@ -30,12 +31,12 @@ add_custom_command(
         -Wall -Wextra -Werror
         -I${CMAKE_CURRENT_SOURCE_DIR}/include
         -I${CMAKE_SOURCE_DIR}/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/nds_aicpu_roce_write.aicpu
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/nds_aicpu_rdma_post.aicpu
         -ldl
         -Wl,-z,relro,-z,now,-z,noexecstack
         -o ${NDS_AICPU_KERNEL}
     DEPENDS
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/nds_aicpu_roce_write.aicpu"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/nds_aicpu_rdma_post.aicpu"
         "${CMAKE_SOURCE_DIR}/include/nds/aicpu_roce_abi.h"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/nds_aicpu_hns_abi.h"
     VERBATIM)

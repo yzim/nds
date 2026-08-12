@@ -45,7 +45,7 @@ void usage(const char *program)
         << "Creates one NPU0 RA RC QP and exchanges QP metadata with one CPU verbs server. By default it"
         << " receives one bounded CPU destination-MR descriptor and submits exactly one RDMA Write;"
         << " host-ra uses RaTypicalSendWr/rtRDMADBSend/RaPollCq; aicpu launches NDS's own"
-        << " NdsAicpuRoceWrite package and posts one one-way RDMA Write. --qp-only validates QP establishment and posts no memory registration or work request;"
+        << " NdsAicpuRdmaPost package and posts one one-way RDMA Write. --qp-only validates QP establishment and posts no memory registration or work request;"
         << " --qp-only-hold-ms keeps that QP alive briefly for passive diagnostics."
         << " HCOMM/HCCL bootstrap and rank tables are intentionally not used.\n";
 }
@@ -282,7 +282,7 @@ int main(int argc, char **argv)
     ClientConfig config;
     nds::NpuRaContext context;
     nds::NpuRaQp qp;
-    nds::AicpuRoceWriteLauncher aicpu_launcher;
+    nds::AicpuRdmaPostLauncher aicpu_launcher;
     nds::TcpControlPlane control;
     nds_rc_endpoint local{};
     nds_memory_descriptor destination{};
@@ -359,17 +359,17 @@ int main(int argc, char **argv)
         if (!ok) print_failure_diagnostics(qp);
     } else {
         if (!qp.has_aicpu_qp_info() || !aicpu_launcher.load(context.acl_api(), config.aicpu_kernel_config)) {
-            std::cerr << "NDS AICPU RoCE Write setup failed: "
+            std::cerr << "NDS AICPU RDMA-post setup failed: "
                       << (aicpu_launcher.error().empty() ? (qp.error().empty() ? context.error() : qp.error()) : aicpu_launcher.error())
                       << '\n';
             goto out;
         }
         const nds_ra_ai_qp_info &ai_qp = qp.aicpu_qp_info();
-        const nds::AicpuRoceWriteRequest request{
-            ai_qp.ai_qp_address, source_mr.local_key, destination.rkey,
+        const nds::AicpuRdmaPostRequest request{
+            NDS_AICPU_RDMA_WRITE, ai_qp.db_index, ai_qp.ai_qp_address, source_mr.local_key, destination.rkey,
             reinterpret_cast<std::uint64_t>(device_buffer), destination.address, destination.length, 1U};
         ok = aicpu_launcher.launch_and_wait(request, static_cast<std::int32_t>(kCompletionTimeoutMs));
-        if (!ok) std::cerr << "NdsAicpuRoceWrite failed: " << aicpu_launcher.error() << '\n';
+        if (!ok) std::cerr << "NdsAicpuRdmaPost failed: " << aicpu_launcher.error() << '\n';
     }
 out:
     aicpu_launcher.reset();
