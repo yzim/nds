@@ -29,7 +29,7 @@ The implementation must be portable across compatible CANN installations: do **n
 - Make lifecycle ownership explicit: initialization, connection creation, memory registration, operation, deregistration, connection teardown, and library unload.
 - The normal interoperability path is **one NPU and one CPU RNIC**. It must not initialize HCOMM/HCCL, consume a rank table, or use a second NPU.
 - The direct NPU lifecycle is `aclInit` → `aclrtSetDevice` → `rtOpenNetService(--hdcType=18)` → `RaInit` → RA rdev/QP work → `RaDeinit` → runtime close → `aclFinalize`.
-- HCOMM and TSD loaders remain diagnostic/reference tools only. Do not introduce them into the direct CPU-peer path without a separately validated ownership model.
+- HCOMM is source-reference material only. NDS does not provide a `libhcomm.so` loader, communicator/rank-table bootstrap, or wrapper around HCOMM's bundled AICPU transport kernels. The standalone TSD capability probe is diagnostic only and must not enter the direct CPU-peer path.
 - Never put host-specific addresses, credentials, private keys, SSH configuration, or operational change records in tracked files.
 
 ## Proposed work sequence
@@ -114,12 +114,15 @@ setup is not yet an end-to-end feature.
 
 ### ABI and package
 
-- Public request declaration: `include/nds/aicpu_roce_abi.h`.
-- Device-kernel copy: `aicpu/include/nds_aicpu_roce_abi.h`.
+- Public request declaration:
+  `src/nic_client/modes/aicpu/include/nds/aicpu_roce_abi.h`.
+- Device-kernel copy:
+  `src/nic_client/modes/aicpu/device/include/nds_aicpu_roce_abi.h`.
 - ABI version: `6`; `nds_aicpu_rdma_post_request_v2` is 80 bytes.
 - The request carries opcode, logical device ID, AI-QP address, local/remote
   keys and addresses, length, and WR id.
-- Kernel source/entry point: `aicpu/src/nds_aicpu_rdma_post.aicpu`,
+- Kernel source/entry point:
+  `src/nic_client/modes/aicpu/device/nds_aicpu_rdma_post.aicpu`,
   `NdsAicpuRdmaPost`.
 - The standard-CP1 package contains `libnds_aicpu_roce_standard.so`,
   `bin_hash.cfg`, and a CANN `opInfo` manifest. CANN 9.0.0 also requires an

@@ -32,11 +32,12 @@ add_custom_command(
         -I${NDS_CANN_ROOT}/aarch64-linux/asc/impl/micro_api
         -I${NDS_CANN_ROOT}/aarch64-linux/ascendc/include
         -I${NDS_CANN_ROOT}/aarch64-linux/ascendc/include/highlevel_api
-        -I${CMAKE_SOURCE_DIR}/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/nds_aiv_roce.cpp
+        -I${CMAKE_CURRENT_SOURCE_DIR}/../include
+        ${CMAKE_CURRENT_SOURCE_DIR}/nds_aiv_roce.cpp
         -o ${NDS_AIV_RELOCATABLE}
     COMMAND "${NDS_AIV_LD}" -m aicorelinux -Ttext=0 "${NDS_AIV_RELOCATABLE}" -static -o "${NDS_AIV_OBJECT}"
-    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/nds_aiv_roce.cpp" "${CMAKE_SOURCE_DIR}/include/nds/aiv_roce_abi.h"
+    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/nds_aiv_roce.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../include/nds/aiv_roce_abi.h"
     VERBATIM)
 
 add_custom_target(nds_aiv_kernel ALL DEPENDS "${NDS_AIV_OBJECT}")

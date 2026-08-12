@@ -20,7 +20,7 @@ The direct one-NPU/one-CPU data path has been verified on the target CANN releas
 4. In the default `host-ra` submission mode, the NPU calls `RaTypicalQpModify`, allocates device memory, registers the source MR through RA, posts one signaled 4096-byte RDMA Write, and submits the returned OPBASE runtime doorbell.
 5. The NPU receives a successful send completion. The CPU verifies the deterministic payload and both 64-byte guard regions before both endpoints clean up.
 
-An explicit `aicpu` submission mode is also available for package/probe validation. It creates an RA AI QP and loads an **NDS-built** AICPU package. The target provider is loadable, but CANN 9.0.0 exposes no public custom-AICPU mapping/import contract for the provider-private AI-QP and queue addresses returned by `RaAiQpCreate`; NDS therefore rejects real AICPU RDMA submission before kernel launch rather than issuing an opaque AICPU exception.
+NDS also validates two device-submitted Write paths: an AIV kernel that writes the HNS SQ and doorbell directly, and a standard-CP1 AICPU kernel that calls the device-side HNS provider on an AI NORMAL QP. All three modes use the same plain CPU verbs peer and NDS control plane.
 
 The normal data path uses exactly one NPU and one CPU RNIC. The CPU remains CANN-free; it does not load HCCP, HCOMM, HCCL, or TSD.
 
@@ -48,14 +48,14 @@ Thanks to the contributors to [HCCL](https://gitcode.com/cann/hccl) and [HCOMM](
 
 At runtime, NDS uses the CANN libraries installed on the machine. Those installed libraries define the ABI that the NPU program actually calls.
 
-For the QP path, the NPU side follows this order:
+The default host-RA QP path follows this order:
 
 ```text
 aclInit
 → aclrtSetDevice
 → rtOpenNetService(--hdcType=18)
 → RaInit
-→ RaRdevInitV2(NETWORK_OFFLINE, NOTIFY, disabledLiteThread=true, ...)
+→ RaRdevInitV2(NETWORK_OFFLINE, NOTIFY, disabledLiteThread=false, ...)
 → RaTypicalQpCreate
 → endpoint exchange
 → RaTypicalQpModify
@@ -67,18 +67,23 @@ aclInit
 → aclFinalize
 ```
 
-For an offline HDC rdev, `NOTIFY` is `1`. `NO_USE` (`0`) does not work for this path. The host-submitted mode uses `RaRdevInitV2` with `disabledLiteThread=true`: NDS owns the send-CQ through `RaPollCq`, rather than racing HCOMM's legacy background Lite-CQ poller. The AICPU mode keeps that poller disabled too, but does **not** call `RaPollCq`: ACL stream synchronization is the sole owner for AICPU execution completion. A successful stream synchronization means the kernel posted the WQE; the CPU still establishes data visibility by validating its destination MR after the control connection closes.
+For an offline HDC rdev, `NOTIFY` is `1`. `NO_USE` (`0`) does not work for this path. NDS retains the RA Lite context with `disabledLiteThread=false`. Host submission explicitly consumes its signaled CQE through `RaPollCq`; AIV and AICPU use AI QPs whose CQs are owned by HCCP and instead keep resources alive until the CPU verifies and acknowledges the remote effect.
 
 ## Layout
 
 ```text
-src/common/             TCP control plane and endpoint wire format
-src/cpu_server/         CPU-side libibverbs server
-src/npu_client/         NPU-side CANN/RA client
-  loaders/              Dynamic CANN ABI loaders
-include/nds/            Project headers
-tests/                  Host-runnable protocol and wrapper tests
+src/common/                     Shared control plane, wire format, and MTU policy
+src/nic_client/                 NPU RNIC client, RA lifecycle, loaders, and probes
+  modes/host_ra/                Host-submitted RA/doorbell mode
+  modes/aiv/                    AIV launcher, ABI, kernel, and kernel build
+  modes/aicpu/                  AICPU launcher, ABI, device kernel, and package build
+src/nic_server/                 CPU libibverbs server
+tests/                          Unit tests and test-only runtime fixture
 ```
+
+Each component owns its headers and `CMakeLists.txt`. The root CMake file only
+defines project-wide language policy/options and dispatches to those
+components.
 
 ## Build
 
@@ -116,37 +121,11 @@ nds_npu_qp_client \
 
 Use a whole-process timeout when running accelerator experiments. The default server/client invocation runs one bounded data-path Write. Add `--qp-only` on both endpoints when validating only connection establishment; that mode registers no memory and posts no work request. Keep this test to one NPU and one CPU RNIC. Put machine-specific commands and deployment values in ignored `.local/`, not in this README.
 
-## AICPU RoCE Tx submission mode
+## RDMA submission modes
 
-`nds_npu_qp_client` defaults to `--submission-mode host-ra`, the bounded and hardware-verified RA/doorbell path. The optional AICPU path is **owned and built by NDS**; it never loads the packaged HCOMM transport kernel or its reciprocal flag protocol.
+`nds_npu_qp_client` supports three NDS-owned submission paths. Host RA is the default; AIV submits by writing the HNS SQ and doorbell from a vector-core kernel; AICPU submits one provider WR from a standard CP1 kernel. The CPU endpoint remains ordinary `libibverbs` in every mode.
 
-Build the package on the aarch64 machine with the selected CANN installation:
-
-```sh
-cmake -S . -B build-aicpu \
-  -DNDS_BUILD_AICPU_KERNEL=ON \
-  -DNDS_CANN_ROOT=/usr/local/Ascend/cann-9.0.0
-cmake --build build-aicpu --target nds_aicpu_kernel --parallel
-```
-
-This produces a normal aarch64 shared object, `build-aicpu/aicpu/libnds_aicpu_roce.so`, and its adjacent loader manifest, `build-aicpu/aicpu/libnds_aicpu_roce.json`. The manifest and `.so` must remain in that same directory when supplied to the launcher. Start the ordinary CPU verbs peer—there is no AICPU-specific CPU memory region or flag exchange:
-
-```sh
-nds_verbs_server --device <rdma-device> --gid-index <index>
-
-nds_npu_qp_client \
-  --ascendcl <path-to-libascendcl.so> \
-  --runtime <path-to-libruntime.so> \
-  --ra <path-to-libra.so> \
-  --npu-ip <npu-rnic-ipv4> --logical-device <id> --physical-device <id> \
-  --cpu-ip <cpu-rnic-ipv4> --execute \
-  --submission-mode aicpu \
-  --aicpu-kernel-config <absolute-path-to-libnds_aicpu_roce.json>
-```
-
-`NdsAicpuRdmaPost` has an NDS-owned, fixed 80-byte version-5 request ABI for one provider WQE. It performs no HCOMM/HCCL initialization, rank-table work, or wait for a CPU-written flag. The CPU remains a plain `libibverbs` endpoint.
-
-CANN 9.0.0 supplies a supported AICPU compiler/package loader but does not expose a public AICPU RNIC-post or AI-QP mapping/import API. The provider can load in an NDS custom AICPU package, but the `RaAiQpCreate` provider-QP and queue addresses are not readable by an independently launched custom AICPU kernel (`507018` on read-only target probes). NDS therefore rejects real AICPU RDMA submission on this release rather than issuing an opaque provider exception. Package, provider-resolution, and request-layout probes remain available; the host-RA path is the verified data path.
+See the [submission-mode comparison](docs/submission-modes.md) and the detailed [host RA](docs/submission-host-ra.md), [AIV](docs/submission-aiv.md), and [AICPU](docs/submission-aicpu.md) guides for data paths, interfaces, build and usage instructions, completion ownership, HCOMM references, and mode-specific decisions.
 
 ## Data-path interoperability note
 

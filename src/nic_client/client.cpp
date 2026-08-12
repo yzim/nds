@@ -1,6 +1,7 @@
 #include "nds/aicpu_roce.hpp"
 #include "nds/aiv_roce.hpp"
 #include "nds/control_plane.hpp"
+#include "nds/host_ra.hpp"
 #include "nds/npu_ra_context.hpp"
 #include "nds/npu_ra_qp.hpp"
 
@@ -341,7 +342,6 @@ int main(int argc, char **argv)
     nds_rc_endpoint local{};
     nds_memory_descriptor destination{};
     nds_ra_mr_info source_mr{};
-    nds_ra_send_response response{};
     void *device_buffer = nullptr;
     void *aiv_request_buffer = nullptr;
     void *mr_handle = nullptr;
@@ -400,18 +400,16 @@ int main(int argc, char **argv)
               << " lkey=" << source_mr.local_key << " rkey=" << source_mr.remote_key << '\n';
     if (!print_qp_status(qp, "before RDMA Write") || !print_port_status(qp, "before RDMA Write")) goto out;
     if (config.qp.submission_mode == nds::NpuRaSubmissionMode::HostRa) {
-        if (!qp.post_rdma_write({reinterpret_cast<std::uint64_t>(device_buffer), static_cast<std::uint32_t>(destination.length), source_mr.local_key},
-                                destination.address, destination.rkey, true, response)) {
-            std::cerr << "RaTypicalSendWr(RDMA Write) failed: " << qp.error() << '\n'; goto out;
-        }
-        std::cout << "Posted one signaled RDMA Write: doorbell_index=" << response.doorbell.db_index
-                  << " doorbell_info=0x" << std::hex << response.doorbell.db_info << std::dec << '\n';
-        if (!context.submit_rdma_doorbell(response.doorbell.db_index,
-                                          static_cast<std::uint64_t>(response.doorbell.db_info))) {
-            std::cerr << "rtRDMADBSend failed after RaTypicalSendWr: " << context.error() << '\n';
+        std::string submission_error;
+        const nds::HostRaWriteRequest request{
+            {reinterpret_cast<std::uint64_t>(device_buffer), static_cast<std::uint32_t>(destination.length),
+             source_mr.local_key},
+            destination.address,
+            destination.rkey};
+        if (!nds::submit_host_ra_write(context, qp, request, submission_error)) {
+            std::cerr << "host RA RDMA Write submission failed: " << submission_error << '\n';
             goto out;
         }
-        std::cout << "Submitted OPBASE RDMA doorbell on the runtime default stream.\n";
         ok = wait_for_send_completions(qp, 1U);
         if (!ok) print_failure_diagnostics(qp);
     } else if (config.qp.submission_mode == nds::NpuRaSubmissionMode::Aicpu) {
