@@ -9,12 +9,8 @@ constexpr uint32_t kSuccess = 0U;
 constexpr uint32_t kInvalidArgument = 1U;
 constexpr uint32_t kPostFailed = 2U;
 constexpr uint32_t kProviderUnavailable = 3U;
-constexpr uint32_t kDoorbellUnavailable = 4U;
-constexpr uint32_t kDoorbellFailed = 5U;
 constexpr char kHnsProviderLibrary[] = "libhns-rdmav25.so";
 constexpr char kHnsPostSymbol[] = "ibv_exp_post_send";
-constexpr char kAicpuCustomLibrary[] = "libaicpu_custom.so";
-constexpr char kAicpuRdmaDbSendSymbol[] = "_Z13hrtRDMADBSendjmPv";
 
 bool valid_opcode(uint32_t opcode)
 {
@@ -25,7 +21,7 @@ bool valid_request(const nds_aicpu_rdma_post_request_v2 &request)
 {
     if (request.abi_version != NDS_AICPU_ROCE_ABI_VERSION || request.size != sizeof(request) ||
         !valid_opcode(request.opcode) || request.ai_qp_address == 0U ||
-        request.local_lkey == 0U || request.local_address == 0U || request.runtime_stream == 0U || request.length == 0U ||
+        request.local_lkey == 0U || request.local_address == 0U || request.length == 0U ||
         request.length > NDS_AICPU_ROCE_MAX_BYTES) {
         return false;
     }
@@ -47,29 +43,70 @@ nds_hns_exp_post_send_fn hns_exp_post_send()
     return post;
 }
 
-/*
- * CANN's AICPU base library exposes hrtRDMADBSend. It resolves the installed
- * device runtime's rtRDMADBSend itself; do not link the host executable or
- * this package against libruntime. NDS receives the caller-created ACL/runtime
- * stream as opaque request metadata and passes it through to the wrapper.
- * Whether that ACL-to-runtime handle compatibility is accepted in this AICPU
- * execution context is target-hardware validation work, not an assumed public
- * contract. This is the isolated doorbell piece only, not
- * HCOMM's SQE dispatcher, event poller, or synchronization protocol.
- */
-nds_aicpu_hrt_rdma_db_send_fn aicpu_rdma_db_send()
-{
-    static nds_aicpu_hrt_rdma_db_send_fn send = nullptr;
-    static void *aicpu_custom = nullptr;
-    if (send != nullptr) return send;
-    send = reinterpret_cast<nds_aicpu_hrt_rdma_db_send_fn>(dlsym(RTLD_DEFAULT, kAicpuRdmaDbSendSymbol));
-    if (send != nullptr) return send;
-    aicpu_custom = dlopen(kAicpuCustomLibrary, RTLD_NOW);
-    if (aicpu_custom == nullptr) return nullptr;
-    send = reinterpret_cast<nds_aicpu_hrt_rdma_db_send_fn>(dlsym(aicpu_custom, kAicpuRdmaDbSendSymbol));
-    return send;
-}
 } // namespace
+
+extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuNoop(void *args)
+{
+    (void)args;
+    return kSuccess;
+}
+
+/* Isolates the device-side provider loader from WQE construction and posting. */
+extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuProviderProbe(void *args)
+{
+    (void)args;
+    return hns_exp_post_send() == nullptr ? kProviderUnavailable : kSuccess;
+}
+
+/* Confirms ACL's argument buffer is readable before attempting a provider post. */
+extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuRequestProbe(void *args)
+{
+    if (args == nullptr) return kInvalidArgument;
+    const auto &request = *static_cast<const nds_aicpu_rdma_post_request_v2 *>(args);
+    return valid_request(request) ? kSuccess : kInvalidArgument;
+}
+
+/*
+ * Executes the provider call but deliberately suppresses its return value.
+ * This separates a provider-returned post error from an exception within the
+ * provider without attempting to write AICPU status into ordinary device memory.
+ */
+extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuPostAttemptProbe(void *args)
+{
+    if (args == nullptr) return kInvalidArgument;
+    const auto &request = *static_cast<const nds_aicpu_rdma_post_request_v2 *>(args);
+    if (!valid_request(request)) return kInvalidArgument;
+
+    const nds_hns_exp_post_send_fn post_send = hns_exp_post_send();
+    if (post_send == nullptr) return kProviderUnavailable;
+
+    nds_hns_sge sge{};
+    sge.addr = request.local_address;
+    sge.length = static_cast<uint32_t>(request.length);
+    sge.lkey = request.local_lkey;
+
+    nds_hns_send_wr work_request{};
+    work_request.wr_id = request.wr_id;
+    work_request.sg_list = &sge;
+    work_request.num_sge = 1;
+    work_request.opcode = static_cast<int32_t>(request.opcode);
+    work_request.send_flags = NDS_HNS_SEND_SIGNALED;
+    if (request.opcode != NDS_AICPU_SEND) {
+        work_request.rdma.remote_addr = request.remote_address;
+        work_request.rdma.rkey = request.remote_rkey;
+    }
+
+    nds_hns_send_wr *bad_request = nullptr;
+    nds_hns_post_send_response response{};
+    (void)post_send(reinterpret_cast<void *>(request.ai_qp_address), &work_request, &bad_request, &response);
+
+#if defined(__aarch64__)
+    asm volatile("dsb st" ::: "memory");
+#else
+    asm volatile("" ::: "memory");
+#endif
+    return kSuccess;
+}
 
 extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuRdmaPost(void *args)
 {
@@ -83,11 +120,6 @@ extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuRdmaPost(void
     if (post_send == nullptr) {
         return kProviderUnavailable;
     }
-    const nds_aicpu_hrt_rdma_db_send_fn ring_doorbell = aicpu_rdma_db_send();
-    if (ring_doorbell == nullptr) {
-        return kDoorbellUnavailable;
-    }
-
     nds_hns_sge sge{};
     sge.addr = request.local_address;
     sge.length = static_cast<uint32_t>(request.length);
@@ -116,9 +148,5 @@ extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuRdmaPost(void
 #else
     asm volatile("" ::: "memory");
 #endif
-    if (ring_doorbell(request.db_index, response.db_info,
-                      reinterpret_cast<void *>(request.runtime_stream)) != 0) {
-        return kDoorbellFailed;
-    }
     return kSuccess;
 }

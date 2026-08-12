@@ -85,6 +85,10 @@ static int nds_linked_acl_create_stream(nds_acl_stream *stream)
 {
     return (int)aclrtCreateStream((aclrtStream *)stream);
 }
+static int nds_linked_acl_create_stream_with_config(nds_acl_stream *stream, uint32_t priority, uint32_t flags)
+{
+    return (int)aclrtCreateStreamWithConfig((aclrtStream *)stream, priority, flags);
+}
 static int nds_linked_acl_destroy_stream(nds_acl_stream stream)
 {
     return (int)aclrtDestroyStream((aclrtStream)stream);
@@ -152,6 +156,7 @@ int nds_acl_open(nds_acl_api *api, const char *library_path)
     api->kernel_args_finalize = nds_linked_acl_kernel_args_finalize;
     api->launch_kernel_with_config = nds_linked_acl_launch_kernel_with_config;
     api->create_stream = nds_linked_acl_create_stream;
+    api->create_stream_with_config = nds_linked_acl_create_stream_with_config;
     api->destroy_stream = nds_linked_acl_destroy_stream;
     api->synchronize_stream_with_timeout = nds_linked_acl_synchronize_stream_with_timeout;
     api->error[0] = '\0';
@@ -196,6 +201,7 @@ int nds_acl_open(nds_acl_api *api, const char *library_path)
     NDS_ACL_RESOLVE(kernel_args_finalize, "aclrtKernelArgsFinalize");
     NDS_ACL_RESOLVE(launch_kernel_with_config, "aclrtLaunchKernelWithConfig");
     NDS_ACL_RESOLVE(create_stream, "aclrtCreateStream");
+    NDS_ACL_RESOLVE(create_stream_with_config, "aclrtCreateStreamWithConfig");
     NDS_ACL_RESOLVE(destroy_stream, "aclrtDestroyStream");
     NDS_ACL_RESOLVE(synchronize_stream_with_timeout, "aclrtSynchronizeStreamWithTimeout");
 

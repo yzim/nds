@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#define NDS_AICPU_ROCE_ABI_VERSION UINT32_C(4)
+#define NDS_AICPU_ROCE_ABI_VERSION UINT32_C(5)
 #define NDS_AICPU_ROCE_MAX_BYTES UINT64_C(65536)
 
 enum nds_aicpu_rdma_opcode {
@@ -14,11 +14,9 @@ enum nds_aicpu_rdma_opcode {
 };
 
 /*
- * NDS-owned ABI for exactly one AICPU-side provider post plus its RNIC
- * doorbell submission. `ai_qp_address` and `db_index` are returned by
- * `RaAiQpCreate`. `runtime_stream` is the caller-owned ACL/runtime stream
- * handle used only by CANN's AICPU-side doorbell wrapper. The local buffer
- * must already be registered.
+ * NDS-owned ABI for exactly one AICPU-side provider post. `ai_qp_address` is
+ * returned by `RaAiQpCreate`; the local buffer must already be registered.
+ * For the normal AI QP used by NDS, the provider post owns WQE submission.
  *
  * RDMA_WRITE and RDMA_READ require nonzero remote_address and remote_rkey.
  * SEND uses only the local SGE; remote_address and remote_rkey must be zero.
@@ -29,7 +27,7 @@ typedef struct nds_aicpu_rdma_post_request_v2 {
     uint32_t abi_version;
     uint32_t size;
     uint32_t opcode;
-    uint32_t db_index;
+    uint32_t reserved_opcode;
     uint64_t ai_qp_address;
     uint32_t local_lkey;
     uint32_t remote_rkey;
@@ -37,16 +35,16 @@ typedef struct nds_aicpu_rdma_post_request_v2 {
     uint64_t remote_address;
     uint64_t length;
     uint64_t wr_id;
-    uint64_t runtime_stream;
+    uint64_t reserved_0;
     uint64_t reserved;
 } nds_aicpu_rdma_post_request_v2;
 
 #if defined(__cplusplus)
 static_assert(sizeof(nds_aicpu_rdma_post_request_v2) == 80,
-              "NDS AICPU RDMA-post ABI v4 must remain 80 bytes");
+              "NDS AICPU RDMA-post ABI v5 must remain 80 bytes");
 #else
 _Static_assert(sizeof(nds_aicpu_rdma_post_request_v2) == 80,
-               "NDS AICPU RDMA-post ABI v4 must remain 80 bytes");
+               "NDS AICPU RDMA-post ABI v5 must remain 80 bytes");
 #endif
 
 #endif

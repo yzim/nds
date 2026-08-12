@@ -308,7 +308,7 @@ void test_create_advertise_connect_and_reset()
     assert(fake.rdev_mode == NDS_RA_NETWORK_OFFLINE);
     assert(fake.notify_type == NDS_RA_NOTIFY);
     assert(!fake.rdev_init.enabled_910a_lite);
-    assert(fake.rdev_init.disabled_lite_thread);
+    assert(!fake.rdev_init.disabled_lite_thread);
     assert(!fake.rdev_init.enabled_2mb_lite);
     assert(fake.rdev.family == AF_INET);
     assert(fake.qp_create_calls == 1);
@@ -376,6 +376,7 @@ void test_aicpu_qp_creation_and_connection()
     config.local_ipv4 = "192.0.2.10";
     config.submission_mode = nds::NpuRaSubmissionMode::Aicpu;
     assert(qp.create(api, config));
+    assert(!fake.rdev_init.disabled_lite_thread);
     assert(fake.qp_create_calls == 0);
     assert(fake.ai_qp_create_calls == 1);
     assert(fake.ai_qp_attrs.qp_mode == NDS_RA_QP_MODE_OPBASE_EXT);

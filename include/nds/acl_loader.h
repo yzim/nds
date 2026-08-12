@@ -81,6 +81,7 @@ typedef int (*nds_acl_rt_launch_kernel_with_config_fn)(nds_acl_func_handle funct
                                                        nds_acl_launch_kernel_config *config,
                                                        nds_acl_args_handle args_handle, void *reserved);
 typedef int (*nds_acl_rt_create_stream_fn)(nds_acl_stream *stream);
+typedef int (*nds_acl_rt_create_stream_with_config_fn)(nds_acl_stream *stream, uint32_t priority, uint32_t flags);
 typedef int (*nds_acl_rt_destroy_stream_fn)(nds_acl_stream stream);
 typedef int (*nds_acl_rt_synchronize_stream_with_timeout_fn)(nds_acl_stream stream, int32_t timeout_ms);
 
@@ -91,6 +92,8 @@ enum {
     /* HCOMM v9.0.0 hrtMalloc policy for non-310P NPUs. */
     NDS_ACL_MEM_MALLOC_DIRECT_NPU = NDS_ACL_MEM_MALLOC_HUGE_FIRST | NDS_ACL_MEM_TYPE_HIGH_BANDWIDTH,
     NDS_ACL_MEMCPY_HOST_TO_DEVICE = 1,
+    NDS_ACL_STREAM_FAST_LAUNCH = 0x1,
+    NDS_ACL_STREAM_FAST_SYNC = 0x2,
 };
 
 enum { NDS_ACL_ERROR_CAPACITY = 512 };
@@ -112,6 +115,7 @@ typedef struct nds_acl_api {
     nds_acl_rt_kernel_args_finalize_fn kernel_args_finalize;
     nds_acl_rt_launch_kernel_with_config_fn launch_kernel_with_config;
     nds_acl_rt_create_stream_fn create_stream;
+    nds_acl_rt_create_stream_with_config_fn create_stream_with_config;
     nds_acl_rt_destroy_stream_fn destroy_stream;
     nds_acl_rt_synchronize_stream_with_timeout_fn synchronize_stream_with_timeout;
     char error[NDS_ACL_ERROR_CAPACITY];

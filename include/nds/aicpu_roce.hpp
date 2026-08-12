@@ -11,13 +11,12 @@ namespace nds {
 
 /*
  * Loader for NDS's own AICPU package.  The package contains only
- * NdsAicpuRdmaPost: one signaled RDMA WRITE, READ, or SEND post followed by
- * its RNIC doorbell. It deliberately has no HCOMM flag protocol, rank state,
+ * NdsAicpuRdmaPost: one signaled RDMA WRITE, READ, or SEND provider post.
+ * It deliberately has no HCOMM flag protocol, rank state,
  * or reciprocal peer dependency.
  */
 struct AicpuRdmaPostRequest {
     std::uint32_t opcode{NDS_AICPU_RDMA_WRITE};
-    std::uint32_t db_index{};
     std::uint64_t ai_qp_address{};
     std::uint32_t local_key{};
     std::uint32_t remote_key{};
@@ -36,12 +35,21 @@ public:
     AicpuRdmaPostLauncher &operator=(const AicpuRdmaPostLauncher &) = delete;
 
     bool load(nds_acl_api &acl, const std::string &kernel_config_path);
+    bool launch_noop_and_wait(std::int32_t completion_timeout_ms);
+    bool launch_provider_probe_and_wait(std::int32_t completion_timeout_ms);
+    bool launch_request_probe_and_wait(const AicpuRdmaPostRequest &request,
+                                       std::int32_t completion_timeout_ms);
+    bool launch_post_attempt_probe_and_wait(const AicpuRdmaPostRequest &request,
+                                            std::int32_t completion_timeout_ms);
     bool launch_and_wait(const AicpuRdmaPostRequest &request, std::int32_t completion_timeout_ms);
     void reset() noexcept;
     bool loaded() const noexcept;
     const std::string &error() const noexcept;
 
 private:
+    bool launch_inert_probe_and_wait(const char *function_name, std::int32_t completion_timeout_ms);
+    bool launch_request_and_wait(const char *function_name, const AicpuRdmaPostRequest &request,
+                                 std::int32_t completion_timeout_ms);
     void set_error(std::string message);
 
     nds_acl_api *acl_{};

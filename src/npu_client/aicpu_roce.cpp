@@ -7,6 +7,10 @@
 namespace nds {
 namespace {
 constexpr const char *kNdsAicpuRdmaPost = "NdsAicpuRdmaPost";
+constexpr const char *kNdsAicpuNoop = "NdsAicpuNoop";
+constexpr const char *kNdsAicpuProviderProbe = "NdsAicpuProviderProbe";
+constexpr const char *kNdsAicpuRequestProbe = "NdsAicpuRequestProbe";
+constexpr const char *kNdsAicpuPostAttemptProbe = "NdsAicpuPostAttemptProbe";
 }
 
 AicpuRdmaPostLauncher::~AicpuRdmaPostLauncher()
@@ -31,12 +35,12 @@ bool AicpuRdmaPostLauncher::load(nds_acl_api &acl, const std::string &kernel_con
         return false;
     }
     if (kernel_config_path.empty()) {
-        set_error("NDS AICPU RDMA post requires the NDS-built nds_aicpu_roce.json path");
+        set_error("NDS AICPU RDMA post requires the NDS-built libnds_aicpu_roce.json path");
         return false;
     }
     if (acl.binary_load_from_file == nullptr || acl.binary_unload == nullptr || acl.binary_get_function == nullptr ||
         acl.kernel_args_init == nullptr || acl.kernel_args_append == nullptr || acl.kernel_args_finalize == nullptr ||
-        acl.launch_kernel_with_config == nullptr || acl.create_stream == nullptr || acl.destroy_stream == nullptr ||
+        acl.launch_kernel_with_config == nullptr || acl.create_stream_with_config == nullptr || acl.destroy_stream == nullptr ||
         acl.synchronize_stream_with_timeout == nullptr) {
         set_error("AscendCL is missing a required AICPU binary, argument, launch, or stream symbol");
         return false;
@@ -44,7 +48,8 @@ bool AicpuRdmaPostLauncher::load(nds_acl_api &acl, const std::string &kernel_con
 
     acl_ = &acl;
     option.type = NDS_ACL_BINARY_LOAD_OPT_CPU_KERNEL_MODE;
-    option.value.cpu_kernel_mode = 0;
+    // Mode 1 loads a custom AICPU JSON/SO pair with matching lib-prefixed names.
+    option.value.cpu_kernel_mode = 1;
     options.options = &option;
     options.num_options = 1U;
     result = acl_->binary_load_from_file(kernel_config_path.c_str(), &options, &binary_);
@@ -59,9 +64,10 @@ bool AicpuRdmaPostLauncher::load(nds_acl_api &acl, const std::string &kernel_con
         reset();
         return false;
     }
-    result = acl_->create_stream(&stream_);
+    result = acl_->create_stream_with_config(&stream_, 0U,
+                                              NDS_ACL_STREAM_FAST_LAUNCH | NDS_ACL_STREAM_FAST_SYNC);
     if (result != 0 || stream_ == nullptr) {
-        set_error("aclrtCreateStream for NDS AICPU RDMA post failed: " + std::to_string(result));
+        set_error("aclrtCreateStreamWithConfig for NDS AICPU RDMA post failed: " + std::to_string(result));
         reset();
         return false;
     }
@@ -72,6 +78,25 @@ bool AicpuRdmaPostLauncher::load(nds_acl_api &acl, const std::string &kernel_con
 bool AicpuRdmaPostLauncher::launch_and_wait(const AicpuRdmaPostRequest &request,
                                               std::int32_t completion_timeout_ms)
 {
+    return launch_request_and_wait(kNdsAicpuRdmaPost, request, completion_timeout_ms);
+}
+
+bool AicpuRdmaPostLauncher::launch_request_probe_and_wait(const AicpuRdmaPostRequest &request,
+                                                            std::int32_t completion_timeout_ms)
+{
+    return launch_request_and_wait(kNdsAicpuRequestProbe, request, completion_timeout_ms);
+}
+
+bool AicpuRdmaPostLauncher::launch_post_attempt_probe_and_wait(const AicpuRdmaPostRequest &request,
+                                                                 std::int32_t completion_timeout_ms)
+{
+    return launch_request_and_wait(kNdsAicpuPostAttemptProbe, request, completion_timeout_ms);
+}
+
+bool AicpuRdmaPostLauncher::launch_request_and_wait(const char *function_name,
+                                                      const AicpuRdmaPostRequest &request,
+                                                      std::int32_t completion_timeout_ms)
+{
     nds_aicpu_rdma_post_request_v2 parameters{};
     nds_acl_func_handle function{};
     nds_acl_args_handle arguments{};
@@ -81,28 +106,28 @@ bool AicpuRdmaPostLauncher::launch_and_wait(const AicpuRdmaPostRequest &request,
     int result;
 
     if (!loaded()) {
-        set_error("NDS AICPU RDMA post launcher is not loaded");
+        set_error("NDS AICPU request launch requires a loaded launcher");
         return false;
     }
     const bool is_send = request.opcode == NDS_AICPU_SEND;
     const bool is_rdma = request.opcode == NDS_AICPU_RDMA_WRITE || request.opcode == NDS_AICPU_RDMA_READ;
     if (!is_rdma && !is_send) {
-        set_error("NDS AICPU RDMA post opcode is unsupported");
+        set_error("NDS AICPU request opcode is unsupported");
         return false;
     }
-    if (request.db_index == 0U || request.ai_qp_address == 0U || request.local_key == 0U ||
+    if (request.ai_qp_address == 0U || request.local_key == 0U ||
         request.local_address == 0U || request.data_size == 0U ||
         request.data_size > NDS_AICPU_ROCE_MAX_BYTES || completion_timeout_ms <= 0 ||
         (is_rdma && (request.remote_key == 0U || request.remote_address == 0U)) ||
         (is_send && (request.remote_key != 0U || request.remote_address != 0U))) {
-        set_error("NDS AICPU RDMA post has invalid QP, memory, operation, or timeout metadata");
+        set_error("NDS AICPU request has invalid QP, memory, operation, or timeout metadata");
         return false;
     }
 
     parameters.abi_version = NDS_AICPU_ROCE_ABI_VERSION;
     parameters.size = sizeof(parameters);
     parameters.opcode = request.opcode;
-    parameters.db_index = request.db_index;
+    parameters.reserved_opcode = 0U;
     parameters.ai_qp_address = request.ai_qp_address;
     parameters.local_lkey = request.local_key;
     parameters.remote_rkey = request.remote_key;
@@ -110,11 +135,11 @@ bool AicpuRdmaPostLauncher::launch_and_wait(const AicpuRdmaPostRequest &request,
     parameters.remote_address = request.remote_address;
     parameters.length = request.data_size;
     parameters.wr_id = request.wr_id;
-    parameters.runtime_stream = reinterpret_cast<std::uint64_t>(stream_);
+    parameters.reserved_0 = 0U;
 
-    result = acl_->binary_get_function(binary_, kNdsAicpuRdmaPost, &function);
+    result = acl_->binary_get_function(binary_, function_name, &function);
     if (result != 0 || function == nullptr) {
-        set_error("aclrtBinaryGetFunction(NdsAicpuRdmaPost) failed: " + std::to_string(result));
+        set_error("aclrtBinaryGetFunction(" + std::string(function_name) + ") failed: " + std::to_string(result));
         return false;
     }
     result = acl_->kernel_args_init(function, &arguments);
@@ -125,7 +150,7 @@ bool AicpuRdmaPostLauncher::launch_and_wait(const AicpuRdmaPostRequest &request,
     result = acl_->kernel_args_append(arguments, &parameters, sizeof(parameters), &parameter_handle);
     if (result != 0) {
         (void)acl_->kernel_args_finalize(arguments);
-        set_error("aclrtKernelArgsAppend(NDS AICPU RDMA post request) failed: " + std::to_string(result));
+        set_error("aclrtKernelArgsAppend(NDS AICPU request) failed: " + std::to_string(result));
         return false;
     }
     result = acl_->kernel_args_finalize(arguments);
@@ -140,12 +165,76 @@ bool AicpuRdmaPostLauncher::launch_and_wait(const AicpuRdmaPostRequest &request,
     config.attrs = &attribute;
     result = acl_->launch_kernel_with_config(function, 1U, stream_, &config, arguments, nullptr);
     if (result != 0) {
-        set_error("aclrtLaunchKernelWithConfig(NdsAicpuRdmaPost) failed: " + std::to_string(result));
+        set_error("aclrtLaunchKernelWithConfig(" + std::string(function_name) + ") failed: " + std::to_string(result));
         return false;
     }
     result = acl_->synchronize_stream_with_timeout(stream_, completion_timeout_ms);
     if (result != 0) {
-        set_error("aclrtSynchronizeStreamWithTimeout after NdsAicpuRdmaPost failed: " + std::to_string(result));
+        set_error("aclrtSynchronizeStreamWithTimeout after " + std::string(function_name) + " failed: " + std::to_string(result));
+        return false;
+    }
+    error_.clear();
+    return true;
+}
+
+bool AicpuRdmaPostLauncher::launch_noop_and_wait(std::int32_t completion_timeout_ms)
+{
+    return launch_inert_probe_and_wait(kNdsAicpuNoop, completion_timeout_ms);
+}
+
+bool AicpuRdmaPostLauncher::launch_provider_probe_and_wait(std::int32_t completion_timeout_ms)
+{
+    return launch_inert_probe_and_wait(kNdsAicpuProviderProbe, completion_timeout_ms);
+}
+
+bool AicpuRdmaPostLauncher::launch_inert_probe_and_wait(const char *function_name,
+                                                          std::int32_t completion_timeout_ms)
+{
+    nds_acl_func_handle function{};
+    nds_acl_args_handle arguments{};
+    nds_acl_param_handle parameter_handle{};
+    nds_acl_launch_kernel_attr attribute{};
+    nds_acl_launch_kernel_config config{};
+    std::uint64_t inert_argument{};
+    int result;
+
+    if (!loaded() || completion_timeout_ms <= 0) {
+        set_error("NDS AICPU probe requires a loaded launcher and positive timeout");
+        return false;
+    }
+    result = acl_->binary_get_function(binary_, function_name, &function);
+    if (result != 0 || function == nullptr) {
+        set_error("aclrtBinaryGetFunction(" + std::string(function_name) + ") failed: " + std::to_string(result));
+        return false;
+    }
+    result = acl_->kernel_args_init(function, &arguments);
+    if (result != 0 || arguments == nullptr) {
+        set_error("aclrtKernelArgsInit(" + std::string(function_name) + ") failed: " + std::to_string(result));
+        return false;
+    }
+    result = acl_->kernel_args_append(arguments, &inert_argument, sizeof(inert_argument), &parameter_handle);
+    if (result != 0) {
+        (void)acl_->kernel_args_finalize(arguments);
+        set_error("aclrtKernelArgsAppend(" + std::string(function_name) + ") failed: " + std::to_string(result));
+        return false;
+    }
+    result = acl_->kernel_args_finalize(arguments);
+    if (result != 0) {
+        set_error("aclrtKernelArgsFinalize(" + std::string(function_name) + ") failed: " + std::to_string(result));
+        return false;
+    }
+    attribute.id = NDS_ACL_LAUNCH_KERNEL_ATTR_TIMEOUT;
+    attribute.value.timeout_seconds = 5U;
+    config.num_attrs = 1U;
+    config.attrs = &attribute;
+    result = acl_->launch_kernel_with_config(function, 1U, stream_, &config, arguments, nullptr);
+    if (result != 0) {
+        set_error("aclrtLaunchKernelWithConfig(" + std::string(function_name) + ") failed: " + std::to_string(result));
+        return false;
+    }
+    result = acl_->synchronize_stream_with_timeout(stream_, completion_timeout_ms);
+    if (result != 0) {
+        set_error("aclrtSynchronizeStreamWithTimeout after " + std::string(function_name) + " failed: " + std::to_string(result));
         return false;
     }
     error_.clear();

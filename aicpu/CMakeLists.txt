@@ -19,7 +19,7 @@ endif()
 set(NDS_AICPU_KERNEL_SO "libnds_aicpu_roce.so")
 set(NDS_AICPU_OUTPUT_DIR "${CMAKE_BINARY_DIR}/aicpu")
 set(NDS_AICPU_KERNEL "${NDS_AICPU_OUTPUT_DIR}/${NDS_AICPU_KERNEL_SO}")
-set(NDS_AICPU_CONFIG "${NDS_AICPU_OUTPUT_DIR}/nds_aicpu_roce.json")
+set(NDS_AICPU_CONFIG "${NDS_AICPU_OUTPUT_DIR}/libnds_aicpu_roce.json")
 
 add_custom_command(
     OUTPUT "${NDS_AICPU_KERNEL}"

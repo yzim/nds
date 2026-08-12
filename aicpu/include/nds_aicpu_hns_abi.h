@@ -50,8 +50,6 @@ typedef int (*nds_hns_exp_post_send_fn)(
     void *qp, struct nds_hns_send_wr *wr, struct nds_hns_send_wr **bad_wr,
     struct nds_hns_post_send_response *response);
 
-/* AICPU-side wrapper exported by CANN's libaicpu_custom.so. */
-typedef int (*nds_aicpu_hrt_rdma_db_send_fn)(uint32_t db_index, uint64_t db_info, void *stream);
 
 #if defined(__cplusplus)
 static_assert(sizeof(nds_hns_sge) == 16, "HNS SGE ABI changed");

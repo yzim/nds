@@ -116,33 +116,25 @@ setup is not yet an end-to-end feature.
 
 - Public request declaration: `include/nds/aicpu_roce_abi.h`.
 - Device-kernel copy: `aicpu/include/nds_aicpu_roce_abi.h`.
-- ABI version: `4`; `nds_aicpu_rdma_post_request_v2` is 80 bytes.
-- The request carries opcode, `db_index` returned by `RaAiQpCreate`, AI-QP
-  address, local/remote keys and addresses, length, WR id, and the opaque
-  caller-created ACL/runtime stream handle required by the AICPU-side
-  `hrtRDMADBSend` wrapper.
+- ABI version: `5`; `nds_aicpu_rdma_post_request_v2` is 80 bytes.
+- The request carries opcode, AI-QP address, local/remote keys and addresses,
+  length, and WR id. Reserved fields preserve the fixed package ABI.
 - Kernel source/entry point: `aicpu/src/nds_aicpu_rdma_post.aicpu`,
   `NdsAicpuRdmaPost`.
 - The custom-AICPU manifest must use CANN's `opInfo` schema and maps that entry
   point to the built NDS kernel shared object.
 
-### Device-side provider and doorbell path
+### Device-side provider post path
 
 The host must **not** `dlopen` or link `libhns-rdmav25.so`: it is an NPU/AICPU
 provider dependency.  The custom kernel resolves it at device execution time,
-then resolves `ibv_exp_post_send`, constructs one SGE/WR, posts it, executes
-`dsb st`, and submits the returned doorbell information.  No host-side library
-search is evidence that the provider is or is not available inside the AICPU
-runtime.
+then resolves `ibv_exp_post_send`, constructs one SGE/WR, posts it, and
+executes `dsb st`. No host-side library search is evidence that the provider
+is or is not available inside the AICPU runtime.
 
-The current minimal doorbell experiment resolves AICPU custom-kernel wrapper
-`hrtRDMADBSend(unsigned int, unsigned long, void *)` from
-`libaicpu_custom.so`.  That wrapper is installed with CANN and dynamically
-resolves `rtRDMADBSend` from `libruntime.so`; it is not linked by the host
-application.  The kernel receives the caller-created ACL stream as opaque request metadata
-and passes it to the wrapper as a runtime stream. This ACL-to-runtime handle
-compatibility is an explicit target-hardware validation condition, not an
-assumed public contract.
+The matching HCOMM AICPU normal-QP path ends after provider post and barrier.
+It invokes dispatcher doorbell machinery only for non-normal QPs, so NDS does
+not call `hrtRDMADBSend`, load `libaicpu_custom.so`, or pass a runtime stream.
 
 ### Reference basis and current evidence
 
@@ -153,11 +145,11 @@ Use the CANN 9.0.0 source checkouts on the target only:
 - `~/src/hcomm/src/platform/common/dlhns_function.cc`
 - `~/src/hcomm/src/platform/common/hccl_dl.cc`
 
-The relevant HCOMM chain is `HcclAicpuUtils::PostSend` →
+The relevant normal-QP HCOMM chain is `HcclAicpuUtils::PostSend` →
 `TransportDeviceIbverbs::HnsPostSend` → `HrtHnsIbvExpPostSend` → device
-provider dynamic loading → provider post → barrier → HCOMM dispatcher.  NDS
-ports only the single-WQE/provider-post/barrier idea, not HCOMM's dispatcher
-or synchronization machinery.
+provider dynamic loading → provider post → barrier. Its separate non-normal
+QP branch uses HCOMM's dispatcher. NDS ports only the normal-QP
+single-WQE/provider-post/barrier path.
 
 Target-only build and unit tests passed (7/7) after the ABI generalization;
 the kernel export `NdsAicpuRdmaPost` was verified.  A single bounded NPU0
@@ -166,10 +158,36 @@ synchronization reported `507018`, with CPU payload and guard bytes unchanged.
 This does not validate the generic AICPU data path. An attempted device-memory
 checkpoint itself faulted before it could report status, so it was removed:
 AICPU must not directly dereference ordinary NPU device memory for diagnostics.
-The v4 request instead supplies the caller-created ACL/runtime stream to the
-doorbell wrapper. Before treating the path as supported, validate that direct
-`hrtRDMADBSend` route with that stream. Do not solve that by porting HCOMM
-KFC/SQE context, dispatcher, or synchronization flows.
+The subsequent v4 ACL-stream doorbell attempt produced the same error, which
+falsified that route. Version 5 follows HCOMM's provider post convention and
+does not add HCOMM KFC/SQE context, dispatcher, or synchronization flows.
+
+`507018` is CANN's `ACL_ERROR_RT_AICPU_EXCEPTION`, not a timeout. The current
+launcher therefore uses CANN's public AICPU stream configuration
+`ACL_STREAM_FAST_LAUNCH | ACL_STREAM_FAST_SYNC`, resolved through the existing
+ACL loader. This is isolated to the AICPU launcher; it does not alter the
+host-RA/default-stream path.
+
+An earlier `CPU_KERNEL_MODE=1` attempt used mismatched manifest and shared
+object names and was rejected at load with `107000`. With the required paired
+names `libnds_aicpu_roce.json` and `libnds_aicpu_roce.so`, the target-only
+no-op probe succeeds. A provider-resolution probe also succeeds, as does a
+request-read probe using the live 80-byte request, AI-QP address, MR keys, and
+addresses. The target's `ibv_send_wr` size and field offsets match NDS's
+128-byte transcription. One post attempt still returns AICPU task failure
+(`507018`, device message `aicpu execute failed`) without CPU data visibility.
+This confines the unresolved condition to `ibv_exp_post_send` execution or
+the AI-QP/provider state it consumes, rather than package loading, device
+provider resolution, ACL argument marshalling, or the hand-declared WR layout.
+
+`NdsAicpuPostAttemptProbe` repeats the same one-WQE provider invocation while
+deliberately suppressing its return value. It still raised `507018` on the
+target, proving that the failure is an exception inside the provider call (or
+its ABI/context), not a normal provider error return. The rdev now retains its
+RA lite context (`disabled_lite_thread = false`), matching HCOMM's
+`NetworkManager::InitRDMA` device-RoCE setup; one bounded Write with that
+change still raised the same exception. This does not justify importing a
+HCOMM dispatcher, completion poller, KFC/SQE context, or synchronization flow.
 
 ### Validation discipline
 

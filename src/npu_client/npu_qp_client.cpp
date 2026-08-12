@@ -31,6 +31,8 @@ struct ClientConfig {
     std::uint32_t tcp_timeout_ms{10000};
     bool execute{false};
     bool qp_only{false};
+    bool aicpu_request_probe{false};
+    bool aicpu_post_attempt_probe{false};
     std::uint32_t qp_only_hold_ms{0};
     std::string aicpu_kernel_config;
 };
@@ -41,11 +43,14 @@ void usage(const char *program)
         << "usage: " << program << " --ascendcl ABS_PATH --runtime ABS_PATH --ra ABS_PATH"
         << " --npu-ip IPV4 --logical-device ID --physical-device ID --cpu-ip IPV4 --execute"
         << " [--submission-mode host-ra|aicpu] [--aicpu-kernel-config ABS_PATH]"
+        << " [--aicpu-request-probe|--aicpu-post-attempt-probe]"
         << " [--qp-only] [--qp-only-hold-ms MS] [--port PORT] [--path-mtu BYTES] [--tcp-port PORT] [--tcp-timeout-ms MS]\n\n"
         << "Creates one NPU0 RA RC QP and exchanges QP metadata with one CPU verbs server. By default it"
         << " receives one bounded CPU destination-MR descriptor and submits exactly one RDMA Write;"
         << " host-ra uses RaTypicalSendWr/rtRDMADBSend/RaPollCq; aicpu launches NDS's own"
-        << " NdsAicpuRdmaPost package and posts one one-way RDMA Write. --qp-only validates QP establishment and posts no memory registration or work request;"
+        << " NdsAicpuRdmaPost package and posts one one-way RDMA Write. --aicpu-request-probe reads the prepared request in AICPU but does not post it;"
+        << " --aicpu-post-attempt-probe suppresses the provider post return value for diagnosis only;"
+        << " --qp-only validates QP establishment and posts no memory registration or work request;"
         << " --qp-only-hold-ms keeps that QP alive briefly for passive diagnostics."
         << " HCOMM/HCCL bootstrap and rank tables are intentionally not used.\n";
 }
@@ -70,6 +75,10 @@ bool parse_args(int argc, char **argv, ClientConfig *config)
         std::uint32_t parsed = 0;
         if (argument == "--execute") {
             config->execute = true;
+        } else if (argument == "--aicpu-request-probe") {
+            config->aicpu_request_probe = true;
+        } else if (argument == "--aicpu-post-attempt-probe") {
+            config->aicpu_post_attempt_probe = true;
         } else if (argument == "--qp-only") {
             config->qp_only = true;
         } else if (argument == "--qp-only-hold-ms") {
@@ -118,7 +127,10 @@ bool parse_args(int argc, char **argv, ClientConfig *config)
     return config->execute && (config->qp_only || config->qp_only_hold_ms == 0U) &&
            !config->context.ascendcl_library.empty() && !config->context.runtime_library.empty() &&
            !config->context.ra_library.empty() && !config->qp.local_ipv4.empty() && !config->cpu_ipv4.empty() &&
-           (config->qp.submission_mode != nds::NpuRaSubmissionMode::Aicpu || !config->aicpu_kernel_config.empty());
+           (config->qp.submission_mode != nds::NpuRaSubmissionMode::Aicpu || !config->aicpu_kernel_config.empty()) &&
+           (!config->aicpu_request_probe || config->qp.submission_mode == nds::NpuRaSubmissionMode::Aicpu) &&
+           (!config->aicpu_post_attempt_probe || config->qp.submission_mode == nds::NpuRaSubmissionMode::Aicpu) &&
+           !(config->aicpu_request_probe && config->aicpu_post_attempt_probe);
 }
 
 void format_gid(const std::uint8_t gid[NDS_GID_BYTES], char text[INET6_ADDRSTRLEN])
@@ -366,10 +378,20 @@ int main(int argc, char **argv)
         }
         const nds_ra_ai_qp_info &ai_qp = qp.aicpu_qp_info();
         const nds::AicpuRdmaPostRequest request{
-            NDS_AICPU_RDMA_WRITE, ai_qp.db_index, ai_qp.ai_qp_address, source_mr.local_key, destination.rkey,
+            NDS_AICPU_RDMA_WRITE, ai_qp.ai_qp_address, source_mr.local_key, destination.rkey,
             reinterpret_cast<std::uint64_t>(device_buffer), destination.address, destination.length, 1U};
-        ok = aicpu_launcher.launch_and_wait(request, static_cast<std::int32_t>(kCompletionTimeoutMs));
-        if (!ok) std::cerr << "NdsAicpuRdmaPost failed: " << aicpu_launcher.error() << '\n';
+        if (config.aicpu_request_probe) {
+            ok = aicpu_launcher.launch_request_probe_and_wait(request, static_cast<std::int32_t>(kCompletionTimeoutMs));
+            if (!ok) std::cerr << "NdsAicpuRequestProbe failed: " << aicpu_launcher.error() << '\n';
+            else std::cout << "NDS AICPU request probe completed; no RDMA WQE was posted.\n";
+        } else if (config.aicpu_post_attempt_probe) {
+            ok = aicpu_launcher.launch_post_attempt_probe_and_wait(request, static_cast<std::int32_t>(kCompletionTimeoutMs));
+            if (!ok) std::cerr << "NdsAicpuPostAttemptProbe failed: " << aicpu_launcher.error() << '\n';
+            else std::cout << "NDS AICPU post-attempt probe completed; the provider return value was suppressed.\n";
+        } else {
+            ok = aicpu_launcher.launch_and_wait(request, static_cast<std::int32_t>(kCompletionTimeoutMs));
+            if (!ok) std::cerr << "NdsAicpuRdmaPost failed: " << aicpu_launcher.error() << '\n';
+        }
     }
 out:
     aicpu_launcher.reset();

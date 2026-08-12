@@ -129,7 +129,7 @@ cmake -S . -B build-aicpu \
 cmake --build build-aicpu --target nds_aicpu_kernel --parallel
 ```
 
-This produces a normal aarch64 shared object, `build-aicpu/aicpu/libnds_aicpu_roce.so`, and its adjacent loader manifest, `build-aicpu/aicpu/nds_aicpu_roce.json`. The manifest and `.so` must remain in that same directory when supplied to the launcher. Start the ordinary CPU verbs peer—there is no AICPU-specific CPU memory region or flag exchange:
+This produces a normal aarch64 shared object, `build-aicpu/aicpu/libnds_aicpu_roce.so`, and its adjacent loader manifest, `build-aicpu/aicpu/libnds_aicpu_roce.json`. The manifest and `.so` must remain in that same directory when supplied to the launcher. Start the ordinary CPU verbs peer—there is no AICPU-specific CPU memory region or flag exchange:
 
 ```sh
 nds_verbs_server --device <rdma-device> --gid-index <index>
@@ -141,10 +141,10 @@ nds_npu_qp_client \
   --npu-ip <npu-rnic-ipv4> --logical-device <id> --physical-device <id> \
   --cpu-ip <cpu-rnic-ipv4> --execute \
   --submission-mode aicpu \
-  --aicpu-kernel-config <absolute-path-to-nds_aicpu_roce.json>
+  --aicpu-kernel-config <absolute-path-to-libnds_aicpu_roce.json>
 ```
 
-`NdsAicpuRoceWrite` has an NDS-owned, fixed 64-byte request ABI and posts exactly one signaled `IBV_WR_RDMA_WRITE` from the registered NPU buffer to the CPU's advertised destination MR. It performs no RDMA Read, no HCOMM/HCCL initialization, no rank-table work, and no wait for a CPU-written flag. The CPU remains a plain `libibverbs` endpoint and verifies its payload and guard bytes after TCP close.
+`NdsAicpuRdmaPost` has an NDS-owned, fixed 80-byte version-5 request ABI and posts exactly one signaled provider WQE for RDMA Write, RDMA Read, or Send. The current CLI exercises RDMA Write from the registered NPU buffer to the CPU's advertised destination MR. It performs no HCOMM/HCCL initialization, rank-table work, or wait for a CPU-written flag. The CPU remains a plain `libibverbs` endpoint and verifies its payload and guard bytes after TCP close.
 
 CANN 9.0.0 supplies a supported AICPU compiler/package loader but does not expose a public AICPU RNIC-post API. The kernel therefore isolates the only required provider extension, `ibv_exp_post_send`, behind a minimal ABI declaration. The package must be built and run against the same CANN/provider release; a missing or incompatible provider fails the ACL launch rather than falling back to HCOMM. This is an implementation/build milestone and has **not yet completed hardware payload/guard verification**.
 

@@ -95,7 +95,8 @@ bool NpuRaQp::create(nds_ra_api &api, const NpuRaQpConfig &config)
     rdev_init.mode = NDS_RA_NETWORK_OFFLINE;
     rdev_init.notify_type = NDS_RA_NOTIFY;
     rdev_init.enabled_910a_lite = false;
-    rdev_init.disabled_lite_thread = true;
+    /* HCOMM's device-RoCE rdev setup leaves the provider's lite context active. */
+    rdev_init.disabled_lite_thread = false;
     rdev_init.enabled_2mb_lite = false;
     result = api_->ra_rdev_init_v2(rdev_init, rdev, &rdev_handle_);
     if (result != 0 || rdev_handle_ == nullptr) {
