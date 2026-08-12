@@ -32,7 +32,7 @@ typedef struct nds_aiv_rdma_write_request_v1 {
     uint64_t local_address;
     uint64_t remote_address;
     uint32_t length;
-    uint32_t reserved;
+    uint32_t write_count;
 } nds_aiv_rdma_write_request_v1;
 
 #if defined(__cplusplus)

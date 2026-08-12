@@ -18,6 +18,7 @@ struct AivRdmaWriteRequest {
     std::uint64_t local_address{};
     std::uint64_t remote_address{};
     std::uint32_t data_size{};
+    std::uint32_t write_count{1U};
 };
 
 /* Loads NDS's AIV binary and launches an AIV entry with a device request pointer. */

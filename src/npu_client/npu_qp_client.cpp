@@ -23,6 +23,7 @@ constexpr std::uint64_t kMaxTransferBytes = 64U * 1024U;
 constexpr std::uint32_t kCompletionTimeoutMs = 5000U;
 constexpr std::uint32_t kCqeErrorCapacity = 128U;
 constexpr std::uint32_t kMaxQpOnlyHoldMs = 60000U;
+constexpr std::uint32_t kMaxAivWriteCount = 16U;
 
 struct ClientConfig {
     nds::NpuRaContextConfig context{};
@@ -37,6 +38,7 @@ struct ClientConfig {
     std::uint32_t qp_only_hold_ms{0};
     std::string aicpu_kernel_config;
     std::string aiv_kernel;
+    std::uint32_t aiv_write_count{1U};
 };
 
 void usage(const char *program)
@@ -45,6 +47,7 @@ void usage(const char *program)
         << "usage: " << program << " --ascendcl ABS_PATH --runtime ABS_PATH --ra ABS_PATH"
         << " --npu-ip IPV4 --logical-device ID --physical-device ID --cpu-ip IPV4 --execute"
         << " [--submission-mode host-ra|aicpu|aiv] [--aicpu-kernel-config ABS_PATH] [--aiv-kernel ABS_PATH]"
+        << " [--aiv-write-count COUNT]"
         << " [--aicpu-request-probe|--aicpu-post-attempt-probe]"
         << " [--qp-only] [--qp-only-hold-ms MS] [--port PORT] [--path-mtu BYTES] [--tcp-port PORT] [--tcp-timeout-ms MS]\n\n"
         << "Creates one NPU0 RA RC QP and exchanges QP metadata with one CPU verbs server. By default it"
@@ -107,6 +110,10 @@ bool parse_args(int argc, char **argv, ClientConfig *config)
         } else if (argument == "--aiv-kernel") {
             const char *text = value(); if (text == nullptr || text[0] == '\0') return false;
             config->aiv_kernel = text;
+        } else if (argument == "--aiv-write-count") {
+            const char *text = value();
+            if (text == nullptr || !parse_u32(text, &config->aiv_write_count) ||
+                config->aiv_write_count == 0U || config->aiv_write_count > kMaxAivWriteCount) return false;
         } else if (argument == "--npu-ip") {
             const char *text = value(); if (text == nullptr) return false; config->qp.local_ipv4 = text;
         } else if (argument == "--logical-device") {
@@ -136,6 +143,7 @@ bool parse_args(int argc, char **argv, ClientConfig *config)
            !config->context.ra_library.empty() && !config->qp.local_ipv4.empty() && !config->cpu_ipv4.empty() &&
            (config->qp.submission_mode != nds::NpuRaSubmissionMode::Aicpu || !config->aicpu_kernel_config.empty()) &&
            (config->qp.submission_mode != nds::NpuRaSubmissionMode::Aiv || !config->aiv_kernel.empty()) &&
+           (config->qp.submission_mode == nds::NpuRaSubmissionMode::Aiv || config->aiv_write_count == 1U) &&
            (!config->aicpu_request_probe || config->qp.submission_mode == nds::NpuRaSubmissionMode::Aicpu) &&
            (!config->aicpu_post_attempt_probe || config->qp.submission_mode == nds::NpuRaSubmissionMode::Aicpu) &&
            !(config->aicpu_request_probe && config->aicpu_post_attempt_probe);
@@ -272,10 +280,12 @@ void print_failure_diagnostics(nds::NpuRaQp &qp)
     }
 }
 
-bool wait_for_send_completion(nds::NpuRaQp &qp)
+bool wait_for_send_completions(nds::NpuRaQp &qp, std::uint32_t expected_count)
 {
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(kCompletionTimeoutMs);
     nds_ra_completion completion{};
+    std::uint32_t completed = 0U;
+    if (expected_count == 0U) return false;
     while (std::chrono::steady_clock::now() < deadline) {
         const int count = qp.poll_send_completions(&completion, 1U);
         if (count < 0) {
@@ -287,11 +297,14 @@ bool wait_for_send_completion(nds::NpuRaQp &qp)
                       << " (" << completion.status << ") opcode=" << completion.opcode
                       << " qpn=" << completion.qp_number << " bytes=" << completion.byte_length
                       << " vendor_error=" << completion.vendor_error << '\n';
-            return completion.status == NDS_RA_WC_SUCCESS;
+            if (completion.status != NDS_RA_WC_SUCCESS) return false;
+            ++completed;
+            if (completed == expected_count) return true;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
-    std::cerr << "timed out waiting " << kCompletionTimeoutMs << " ms for the signaled NPU RDMA Write completion\n";
+    std::cerr << "timed out waiting " << kCompletionTimeoutMs << " ms for " << expected_count
+              << " signaled NPU RDMA Write completions; received " << completed << '\n';
     return false;
 }
 
@@ -377,7 +390,7 @@ int main(int argc, char **argv)
             goto out;
         }
         std::cout << "Submitted OPBASE RDMA doorbell on the runtime default stream.\n";
-        ok = wait_for_send_completion(qp);
+        ok = wait_for_send_completions(qp, 1U);
         if (!ok) print_failure_diagnostics(qp);
     } else if (config.qp.submission_mode == nds::NpuRaSubmissionMode::Aicpu) {
         if (!qp.has_aicpu_qp_info() || !aicpu_launcher.load(context.acl_api(), config.aicpu_kernel_config)) {
@@ -409,7 +422,7 @@ int main(int argc, char **argv)
         const nds::AivRdmaWriteRequest request{
             data_plane->send_wq, config.qp.service_level, source_mr.local_key, destination.rkey,
             reinterpret_cast<std::uint64_t>(device_buffer), destination.address,
-            static_cast<std::uint32_t>(destination.length)};
+            static_cast<std::uint32_t>(destination.length), config.aiv_write_count};
         if (!qp.has_aicpu_qp_info()) {
             std::cerr << "NDS AIV resource setup failed: RaAiQpCreate returned no AI-QP metadata\n";
             goto out;
@@ -438,14 +451,15 @@ int main(int argc, char **argv)
             std::cerr << "NDS AIV request copy failed: " << context.error() << '\n';
             goto out;
         }
-        ok = aiv_launcher.launch_write_and_wait(reinterpret_cast<std::uint64_t>(aiv_request_buffer),
-                                                static_cast<std::int32_t>(kCompletionTimeoutMs));
-        if (!ok) std::cerr << "NdsAivRdmaWrite launch failed: " << aiv_launcher.error() << '\n';
-        else {
-            std::cout << "NDS AIV posted one signaled RDMA Write through the AI SQ hardware doorbell.\n";
-            ok = wait_for_send_completion(qp);
-            if (!ok) print_failure_diagnostics(qp);
+        if (!aiv_launcher.launch_write_and_wait(reinterpret_cast<std::uint64_t>(aiv_request_buffer),
+                                                static_cast<std::int32_t>(kCompletionTimeoutMs))) {
+            std::cerr << "NdsAivRdmaWrite launch failed: " << aiv_launcher.error() << '\n';
+            goto out;
         }
+        std::cout << "NDS AIV posted " << config.aiv_write_count
+                  << " signaled RDMA Writes through the AI SQ hardware doorbell.\n";
+        ok = wait_for_send_completions(qp, config.aiv_write_count);
+        if (!ok) print_failure_diagnostics(qp);
     }
 out:
     aicpu_launcher.reset();

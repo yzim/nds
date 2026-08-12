@@ -74,7 +74,7 @@ bool AivRdmaWriteLauncher::make_device_request(const AivRdmaWriteRequest &reques
         request.send_wq.wqebb_size == 0U || request.send_wq.depth < 2U || request.send_wq.head_address == 0U ||
         request.send_wq.tail_address == 0U || request.send_wq.doorbell_register_address == 0U ||
         request.local_key == 0U || request.remote_key == 0U || request.local_address == 0U ||
-        request.remote_address == 0U || request.data_size == 0U) {
+        request.remote_address == 0U || request.data_size == 0U || request.write_count == 0U) {
         set_error("NDS AIV request has invalid AI-SQ, memory, or RDMA Write metadata");
         return false;
     }
@@ -94,6 +94,7 @@ bool AivRdmaWriteLauncher::make_device_request(const AivRdmaWriteRequest &reques
     output->local_address = request.local_address;
     output->remote_address = request.remote_address;
     output->length = request.data_size;
+    output->write_count = request.write_count;
     error_.clear();
     return true;
 }
