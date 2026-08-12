@@ -208,6 +208,33 @@ typedef struct nds_ra_ai_qp_info {
     uint8_t data_plane_info[336];
 } nds_ra_ai_qp_info;
 
+/* HCCP v9.0.0 AiDataPlaneWq. This is copied into NDS's AIV-only descriptor. */
+typedef struct nds_ra_ai_data_plane_wq {
+    uint32_t wqn;
+    uint32_t compatibility_padding;
+    uint64_t buffer_address;
+    uint32_t wqebb_size;
+    uint32_t depth;
+    uint64_t head_address;
+    uint64_t tail_address;
+    uint64_t software_doorbell_address;
+    uint64_t doorbell_register_address;
+    uint32_t reserved[8];
+} nds_ra_ai_data_plane_wq;
+
+typedef struct nds_ra_ai_data_plane_info {
+    nds_ra_ai_data_plane_wq send_wq;
+    uint8_t remaining[248];
+} nds_ra_ai_data_plane_info;
+
+#if defined(__cplusplus)
+static_assert(sizeof(nds_ra_ai_data_plane_wq) == 88, "HCCP AiDataPlaneWq ABI must remain 88 bytes");
+static_assert(sizeof(nds_ra_ai_data_plane_info) == 336, "HCCP AiDataPlaneInfo ABI must remain 336 bytes");
+#else
+_Static_assert(sizeof(nds_ra_ai_data_plane_wq) == 88, "HCCP AiDataPlaneWq ABI must remain 88 bytes");
+_Static_assert(sizeof(nds_ra_ai_data_plane_info) == 336, "HCCP AiDataPlaneInfo ABI must remain 336 bytes");
+#endif
+
 typedef struct nds_ra_typical_qp {
     uint32_t qpn;
     uint32_t psn;

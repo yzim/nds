@@ -76,7 +76,7 @@ bool NpuRaQp::create(nds_ra_api &api, const NpuRaQpConfig &config)
     if (api.ra_rdev_init_v2 == nullptr || api.ra_rdev_deinit == nullptr || api.ra_qp_destroy == nullptr ||
         api.ra_get_qp_attr == nullptr || api.ra_typical_qp_modify == nullptr ||
         (config.submission_mode == NpuRaSubmissionMode::HostRa && api.ra_typical_qp_create == nullptr) ||
-        (config.submission_mode == NpuRaSubmissionMode::Aicpu &&
+        ((config.submission_mode == NpuRaSubmissionMode::Aicpu || config.submission_mode == NpuRaSubmissionMode::Aiv) &&
          (api.ra_ai_qp_create == nullptr || api.ra_set_qp_attr_qos == nullptr ||
           api.ra_set_qp_attr_timeout == nullptr || api.ra_set_qp_attr_retry_count == nullptr))) {
         set_error("RA API is missing a required rdev/QP/query operation for the selected submission mode");
@@ -462,7 +462,9 @@ const nds_ra_qp_attr &NpuRaQp::local_attributes() const noexcept
 
 bool NpuRaQp::has_aicpu_qp_info() const noexcept
 {
-    return config_.submission_mode == NpuRaSubmissionMode::Aicpu && aicpu_qp_info_.ai_qp_address != 0U;
+    return (config_.submission_mode == NpuRaSubmissionMode::Aicpu ||
+            config_.submission_mode == NpuRaSubmissionMode::Aiv) &&
+           aicpu_qp_info_.ai_qp_address != 0U;
 }
 
 const nds_ra_ai_qp_info &NpuRaQp::aicpu_qp_info() const noexcept

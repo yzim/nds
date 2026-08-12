@@ -28,10 +28,12 @@ typedef void *nds_acl_param_handle;
 typedef void *nds_acl_stream;
 
 typedef enum nds_acl_binary_load_option_type {
+    NDS_ACL_BINARY_LOAD_OPT_LAZY_LOAD = 1,
     NDS_ACL_BINARY_LOAD_OPT_CPU_KERNEL_MODE = 3,
 } nds_acl_binary_load_option_type;
 
 typedef union nds_acl_binary_load_option_value {
+    uint32_t lazy_load;
     int32_t cpu_kernel_mode;
     uint32_t reserved[4];
 } nds_acl_binary_load_option_value;
@@ -47,10 +49,19 @@ typedef struct nds_acl_binary_load_options {
 } nds_acl_binary_load_options;
 
 typedef enum nds_acl_launch_kernel_attr_id {
+    NDS_ACL_LAUNCH_KERNEL_ATTR_SCHEM_MODE = 1,
+    NDS_ACL_LAUNCH_KERNEL_ATTR_ENGINE_TYPE = 3,
     NDS_ACL_LAUNCH_KERNEL_ATTR_TIMEOUT = 7,
+    NDS_ACL_LAUNCH_KERNEL_ATTR_TIMEOUT_US = 8,
 } nds_acl_launch_kernel_attr_id;
 
 typedef union nds_acl_launch_kernel_attr_value {
+    uint8_t schem_mode;
+    int32_t engine_type;
+    struct {
+        uint32_t low;
+        uint32_t high;
+    } timeout_us;
     uint16_t timeout_seconds;
     uint32_t reserved[4];
 } nds_acl_launch_kernel_attr_value;
@@ -80,6 +91,11 @@ typedef int (*nds_acl_rt_launch_kernel_with_config_fn)(nds_acl_func_handle funct
                                                        uint32_t block_count, nds_acl_stream stream,
                                                        nds_acl_launch_kernel_config *config,
                                                        nds_acl_args_handle args_handle, void *reserved);
+typedef int (*nds_acl_rt_launch_kernel_with_host_args_fn)(nds_acl_func_handle function_handle,
+                                                          uint32_t block_count, nds_acl_stream stream,
+                                                          nds_acl_launch_kernel_config *config,
+                                                          void *host_args, size_t args_size,
+                                                          void *placeholder_array, size_t placeholder_count);
 typedef int (*nds_acl_rt_create_stream_fn)(nds_acl_stream *stream);
 typedef int (*nds_acl_rt_create_stream_with_config_fn)(nds_acl_stream *stream, uint32_t priority, uint32_t flags);
 typedef int (*nds_acl_rt_destroy_stream_fn)(nds_acl_stream stream);
@@ -94,6 +110,7 @@ enum {
     NDS_ACL_MEMCPY_HOST_TO_DEVICE = 1,
     NDS_ACL_STREAM_FAST_LAUNCH = 0x1,
     NDS_ACL_STREAM_FAST_SYNC = 0x2,
+    NDS_ACL_ENGINE_TYPE_AIV = 1,
 };
 
 enum { NDS_ACL_ERROR_CAPACITY = 512 };
@@ -114,6 +131,7 @@ typedef struct nds_acl_api {
     nds_acl_rt_kernel_args_append_fn kernel_args_append;
     nds_acl_rt_kernel_args_finalize_fn kernel_args_finalize;
     nds_acl_rt_launch_kernel_with_config_fn launch_kernel_with_config;
+    nds_acl_rt_launch_kernel_with_host_args_fn launch_kernel_with_host_args;
     nds_acl_rt_create_stream_fn create_stream;
     nds_acl_rt_create_stream_with_config_fn create_stream_with_config;
     nds_acl_rt_destroy_stream_fn destroy_stream;

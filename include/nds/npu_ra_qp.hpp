@@ -12,6 +12,7 @@ namespace nds {
 enum class NpuRaSubmissionMode {
     HostRa,
     Aicpu,
+    Aiv,
 };
 
 /*

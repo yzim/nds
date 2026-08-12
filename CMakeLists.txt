@@ -16,7 +16,8 @@ pkg_check_modules(IBVERBS QUIET IMPORTED_TARGET libibverbs)
 
 option(NDS_LINK_PUBLIC_ACL "Link the public AscendCL API instead of resolving it at runtime" OFF)
 option(NDS_BUILD_AICPU_KERNEL "Build the NDS-owned AICPU RoCE Write package (aarch64 CANN host only)" OFF)
-set(NDS_CANN_ROOT "" CACHE PATH "CANN installation root, required when NDS_LINK_PUBLIC_ACL or NDS_BUILD_AICPU_KERNEL is enabled")
+option(NDS_BUILD_AIV_KERNEL "Build the NDS-owned AIV RoCE Write binary (aarch64 CANN host only)" OFF)
+set(NDS_CANN_ROOT "" CACHE PATH "CANN installation root, required when NDS_LINK_PUBLIC_ACL, NDS_BUILD_AICPU_KERNEL, or NDS_BUILD_AIV_KERNEL is enabled")
 
 add_library(nds_wire STATIC src/common/rdma_wire.c)
 target_include_directories(nds_wire PUBLIC include)
@@ -134,13 +135,22 @@ if(NDS_BUILD_AICPU_KERNEL)
     add_subdirectory(aicpu)
 endif()
 
+if(NDS_BUILD_AIV_KERNEL)
+    add_subdirectory(aiv)
+endif()
+
 add_library(nds_aicpu_roce STATIC src/npu_client/aicpu_roce.cpp)
 target_include_directories(nds_aicpu_roce PUBLIC include)
 target_link_libraries(nds_aicpu_roce PUBLIC nds_ra_loader)
 target_compile_options(nds_aicpu_roce PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
+add_library(nds_aiv_roce STATIC src/npu_client/aiv_roce.cpp)
+target_include_directories(nds_aiv_roce PUBLIC include)
+target_link_libraries(nds_aiv_roce PUBLIC nds_ra_loader)
+target_compile_options(nds_aiv_roce PRIVATE -Wall -Wextra -Wpedantic -Werror)
+
 add_executable(nds_npu_qp_client src/npu_client/npu_qp_client.cpp)
-target_link_libraries(nds_npu_qp_client PRIVATE nds_npu_ra_context nds_control_plane nds_npu_ra_qp nds_aicpu_roce)
+target_link_libraries(nds_npu_qp_client PRIVATE nds_npu_ra_context nds_control_plane nds_npu_ra_qp nds_aicpu_roce nds_aiv_roce)
 target_compile_options(nds_npu_qp_client PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 add_executable(nds_npu_ra_mr_probe src/npu_client/probes/npu_ra_mr_probe.cpp)
