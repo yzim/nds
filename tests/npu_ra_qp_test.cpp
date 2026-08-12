@@ -10,6 +10,10 @@ struct FakeRaState {
     int rdev_init_calls{};
     int rdev_deinit_calls{};
     int qp_create_calls{};
+    int ai_qp_create_calls{};
+    int set_qos_calls{};
+    int set_timeout_calls{};
+    int set_retry_count_calls{};
     int qp_destroy_calls{};
     int get_attributes_calls{};
     int get_port_status_calls{};
@@ -39,6 +43,11 @@ struct FakeRaState {
     unsigned int notify_type{};
     nds_ra_typical_qp local{};
     nds_ra_typical_qp remote{};
+    nds_ra_qp_ext_attrs ai_qp_attrs{};
+    nds_ra_ai_qp_info ai_qp_info{};
+    nds_ra_qos_attr qos{};
+    uint32_t timeout{};
+    uint32_t retry_count{};
 };
 
 FakeRaState *state = nullptr;
@@ -82,6 +91,50 @@ int fake_qp_create(void *handle, int flag, int mode, nds_ra_typical_qp *initial,
     ++state->qp_create_calls;
     initial->qpn = 1;
     *qp = &fake_qp;
+    return 0;
+}
+
+int fake_ai_qp_create(void *handle, nds_ra_qp_ext_attrs *attrs, nds_ra_ai_qp_info *info, void **qp)
+{
+    assert(handle == &fake_rdev);
+    assert(attrs != nullptr);
+    assert(info != nullptr);
+    assert(qp != nullptr);
+    ++state->ai_qp_create_calls;
+    state->ai_qp_attrs = *attrs;
+    *info = {};
+    info->ai_qp_address = UINT64_C(0x123456789abcdef0);
+    info->sq_index = 17U;
+    info->db_index = 19U;
+    state->ai_qp_info = *info;
+    *qp = &fake_qp;
+    return 0;
+}
+
+int fake_set_qos(void *handle, nds_ra_qos_attr *qos)
+{
+    assert(handle == &fake_qp);
+    assert(qos != nullptr);
+    ++state->set_qos_calls;
+    state->qos = *qos;
+    return 0;
+}
+
+int fake_set_timeout(void *handle, uint32_t *timeout)
+{
+    assert(handle == &fake_qp);
+    assert(timeout != nullptr);
+    ++state->set_timeout_calls;
+    state->timeout = *timeout;
+    return 0;
+}
+
+int fake_set_retry_count(void *handle, uint32_t *retry_count)
+{
+    assert(handle == &fake_qp);
+    assert(retry_count != nullptr);
+    ++state->set_retry_count_calls;
+    state->retry_count = *retry_count;
     return 0;
 }
 
@@ -205,6 +258,10 @@ nds_ra_api make_fake_api()
     api.ra_rdev_init_v2 = fake_rdev_init_v2;
     api.ra_rdev_deinit = fake_rdev_deinit;
     api.ra_typical_qp_create = fake_qp_create;
+    api.ra_ai_qp_create = fake_ai_qp_create;
+    api.ra_set_qp_attr_qos = fake_set_qos;
+    api.ra_set_qp_attr_timeout = fake_set_timeout;
+    api.ra_set_qp_attr_retry_count = fake_set_retry_count;
     api.ra_qp_destroy = fake_qp_destroy;
     api.ra_get_qp_attr = fake_get_attributes;
     api.ra_rdev_get_port_status = fake_get_port_status;
@@ -302,6 +359,59 @@ void test_create_advertise_connect_and_reset()
     qp.reset();
     assert(!qp.created());
     assert(!qp.connected());
+    assert(fake.qp_destroy_calls == 1);
+    assert(fake.rdev_deinit_calls == 1);
+}
+
+void test_aicpu_qp_creation_and_connection()
+{
+    FakeRaState fake{};
+    state = &fake;
+    nds_ra_api api = make_fake_api();
+    nds::NpuRaQp qp;
+    nds::NpuRaQpConfig config{};
+    nds_rc_endpoint local{};
+    nds_rc_endpoint peer{};
+
+    config.local_ipv4 = "192.0.2.10";
+    config.submission_mode = nds::NpuRaSubmissionMode::Aicpu;
+    assert(qp.create(api, config));
+    assert(fake.qp_create_calls == 0);
+    assert(fake.ai_qp_create_calls == 1);
+    assert(fake.ai_qp_attrs.qp_mode == NDS_RA_QP_MODE_OPBASE_EXT);
+    assert(fake.ai_qp_attrs.cq_attr.send_cq_depth == 32768);
+    assert(fake.ai_qp_attrs.cq_attr.recv_cq_depth == 128);
+    assert(fake.ai_qp_attrs.qp_attr.cap.max_send_wr == 32768U);
+    assert(fake.ai_qp_attrs.qp_attr.cap.max_recv_wr == 128U);
+    assert(fake.ai_qp_attrs.qp_attr.cap.max_send_sge == 1U);
+    assert(fake.ai_qp_attrs.qp_attr.cap.max_recv_sge == 1U);
+    assert(fake.ai_qp_attrs.qp_attr.cap.max_inline_data == 32U);
+    assert(fake.ai_qp_attrs.qp_attr.qp_type == NDS_RA_QP_TYPE_RC);
+    assert(fake.ai_qp_attrs.version == NDS_RA_QP_CREATE_WITH_ATTR_VERSION);
+    assert(fake.set_qos_calls == 1);
+    assert(fake.qos.traffic_class == 0U);
+    assert(fake.qos.service_level == 0U);
+    assert(fake.set_timeout_calls == 1);
+    assert(fake.timeout == 14U);
+    assert(fake.set_retry_count_calls == 1);
+    assert(fake.retry_count == 7U);
+    assert(qp.has_aicpu_qp_info());
+    assert(qp.aicpu_qp_info().ai_qp_address == UINT64_C(0x123456789abcdef0));
+    assert(qp.aicpu_qp_info().sq_index == 17U);
+    assert(qp.aicpu_qp_info().db_index == 19U);
+
+    assert(qp.make_qp_only_endpoint(local));
+    peer.flags = NDS_ENDPOINT_FLAG_QP_ONLY;
+    peer.qp_num = 0x2000U;
+    peer.psn = 0x3000U;
+    peer.port_num = 1U;
+    peer.path_mtu = 1024U;
+    peer.gid_index = 3U;
+    peer.retry_count = 7U;
+    peer.retry_timeout = 14U;
+    assert(qp.connect(peer));
+    assert(fake.modify_calls == 1);
+    qp.reset();
     assert(fake.qp_destroy_calls == 1);
     assert(fake.rdev_deinit_calls == 1);
 }
@@ -438,6 +548,7 @@ void test_rejects_invalid_configuration_and_endpoint()
 int main()
 {
     test_create_advertise_connect_and_reset();
+    test_aicpu_qp_creation_and_connection();
     test_memory_registration_lifecycle();
     test_send_wr_and_polling();
     test_rejects_invalid_configuration_and_endpoint();

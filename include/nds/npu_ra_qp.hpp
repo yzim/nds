@@ -9,6 +9,11 @@
 
 namespace nds {
 
+enum class NpuRaSubmissionMode {
+    HostRa,
+    Aicpu,
+};
+
 /*
  * NPU RoCE policy supplied by the deployment. It deliberately contains only
  * public RA transport values; CANN process/HCOMM bootstrap remains
@@ -25,6 +30,7 @@ struct NpuRaQpConfig {
     std::uint32_t service_level{0};
     std::uint32_t retry_count{7};
     std::uint32_t retry_timeout{14};
+    NpuRaSubmissionMode submission_mode{NpuRaSubmissionMode::HostRa};
 };
 
 /*
@@ -58,6 +64,8 @@ public:
     bool created() const noexcept;
     bool connected() const noexcept;
     const nds_ra_qp_attr &local_attributes() const noexcept;
+    bool has_aicpu_qp_info() const noexcept;
+    const nds_ra_ai_qp_info &aicpu_qp_info() const noexcept;
     const NpuRaQpConfig &config() const noexcept;
     const std::string &error() const noexcept;
 
@@ -75,6 +83,7 @@ private:
     void *rdev_handle_{nullptr};
     void *qp_handle_{nullptr};
     nds_ra_qp_attr local_attributes_{};
+    nds_ra_ai_qp_info aicpu_qp_info_{};
     bool connected_{false};
     std::string error_;
 };

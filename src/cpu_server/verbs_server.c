@@ -37,6 +37,7 @@ struct nds_server_config {
     unsigned int bytes;
     unsigned int post_close_hold_ms;
     bool qp_only;
+    bool aicpu_sync;
 };
 
 struct nds_verbs_resources {
@@ -50,13 +51,15 @@ struct nds_verbs_resources {
     void *buffer;
     size_t buffer_length;
     struct ibv_mr *mr;
+    void *sync_buffer;
+    struct ibv_mr *sync_mr;
 };
 
 static void usage(const char *program)
 {
     (void)fprintf(stderr,
                   "usage: %s --device NAME --gid-index INDEX [--listen IPV4] [--tcp-port PORT] "
-                  "[--ib-port PORT] [--bytes BYTES] [--post-close-hold-ms MS] [--qp-only]\n",
+                  "[--ib-port PORT] [--bytes BYTES] [--post-close-hold-ms MS] [--qp-only] [--aicpu-sync]\n",
                   program);
 }
 
@@ -87,6 +90,7 @@ static int parse_arguments(int argc, char **argv, struct nds_server_config *conf
         .bytes = NDS_DEFAULT_BYTES,
         .post_close_hold_ms = 0U,
         .qp_only = false,
+        .aicpu_sync = false,
     };
 
     for (index = 1; index < argc; ++index) {
@@ -95,6 +99,10 @@ static int parse_arguments(int argc, char **argv, struct nds_server_config *conf
 
         if (strcmp(argument, "--qp-only") == 0) {
             config->qp_only = true;
+            continue;
+        }
+        if (strcmp(argument, "--aicpu-sync") == 0) {
+            config->aicpu_sync = true;
             continue;
         }
         if (++index >= argc) {
@@ -246,6 +254,10 @@ static struct ibv_device *find_device(const char *name, struct ibv_device ***lis
 
 static void destroy_resources(struct nds_verbs_resources *resources)
 {
+    if (resources->sync_mr != NULL) {
+        (void)ibv_dereg_mr(resources->sync_mr);
+    }
+    free(resources->sync_buffer);
     if (resources->mr != NULL) {
         (void)ibv_dereg_mr(resources->mr);
     }
@@ -346,6 +358,24 @@ static int create_destination_memory(struct nds_verbs_resources *resources, unsi
         free(resources->buffer);
         resources->buffer = NULL;
         resources->buffer_length = 0U;
+        return -1;
+    }
+    return 0;
+}
+
+static int create_aicpu_sync_memory(struct nds_verbs_resources *resources)
+{
+    resources->sync_buffer = calloc(1U, 24U);
+    if (resources->sync_buffer == NULL) {
+        perror("calloc AICPU sync buffer");
+        return -1;
+    }
+    resources->sync_mr = ibv_reg_mr(resources->pd, resources->sync_buffer, 24U,
+                                    IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
+    if (resources->sync_mr == NULL) {
+        perror("ibv_reg_mr(AICPU sync)");
+        free(resources->sync_buffer);
+        resources->sync_buffer = NULL;
         return -1;
     }
     return 0;
@@ -624,7 +654,9 @@ int main(int argc, char **argv)
     nds_rc_endpoint peer;
     nds_rc_endpoint local;
     nds_memory_descriptor_wire_v1 memory_wire;
+    nds_memory_descriptor_wire_v1 sync_wire;
     nds_memory_descriptor memory;
+    nds_memory_descriptor sync_memory;
     unsigned char *expected = NULL;
     char wire_error[NDS_WIRE_ERROR_CAPACITY] = {0};
     int listener = -1;
@@ -644,7 +676,8 @@ int main(int argc, char **argv)
         goto out;
     }
     if (!config.qp_only) {
-        if (create_destination_memory(&resources, config.bytes) != 0) {
+        if (create_destination_memory(&resources, config.bytes) != 0 ||
+            (config.aicpu_sync && create_aicpu_sync_memory(&resources) != 0)) {
             goto out;
         }
         expected = malloc(config.bytes);
@@ -727,6 +760,21 @@ int main(int argc, char **argv)
         write_full(connection, &memory_wire, sizeof(memory_wire)) != 0) {
         (void)fprintf(stderr, "could not send CPU memory descriptor: %s\n", wire_error);
         goto out;
+    }
+    if (config.aicpu_sync) {
+        sync_memory = (nds_memory_descriptor){
+            .flags = NDS_MEMORY_DESCRIPTOR_FLAG_AICPU_SYNC,
+            .transaction_id = UINT64_C(2),
+            .address = (uint64_t)(uintptr_t)resources.sync_buffer,
+            .length = 24U,
+            .rkey = resources.sync_mr->rkey,
+            .access_flags = NDS_MEMORY_ACCESS_REMOTE_WRITE,
+        };
+        if (nds_memory_descriptor_encode(&sync_memory, &sync_wire, wire_error) != 0 ||
+            write_full(connection, &sync_wire, sizeof(sync_wire)) != 0) {
+            (void)fprintf(stderr, "could not send CPU AICPU sync descriptor: %s\n", wire_error);
+            goto out;
+        }
     }
     (void)puts("CPU verbs QP reached RTS and destination MR was advertised; waiting for NPU completion and TCP close.");
     if (wait_for_peer_close(connection) != 0) {

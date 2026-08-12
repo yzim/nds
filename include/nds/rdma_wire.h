@@ -13,6 +13,7 @@ extern "C" {
 #define NDS_MEMORY_WIRE_MAGIC UINT32_C(0x4e44534d) /* "NDSM" */
 #define NDS_MEMORY_WIRE_VERSION UINT16_C(1)
 #define NDS_MEMORY_ACCESS_REMOTE_WRITE UINT32_C(0x00000002)
+#define NDS_MEMORY_DESCRIPTOR_FLAG_AICPU_SYNC UINT16_C(0x0001)
 
 /* Endpoint phase flags. Exactly one phase is required for wire v2. */
 #define NDS_ENDPOINT_FLAG_QP_ONLY UINT16_C(0x0001)

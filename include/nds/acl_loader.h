@@ -20,6 +20,69 @@ typedef int (*nds_acl_rt_set_device_fn)(int32_t device_id);
 typedef int (*nds_acl_rt_malloc_fn)(void **device_ptr, size_t size, int policy);
 typedef int (*nds_acl_rt_free_fn)(void *device_ptr);
 typedef int (*nds_acl_rt_memcpy_fn)(void *dst, size_t dst_max, const void *src, size_t count, int kind);
+typedef int (*nds_acl_rt_memset_fn)(void *device_ptr, size_t max_count, int32_t value, size_t count);
+typedef void *nds_acl_bin_handle;
+typedef void *nds_acl_func_handle;
+typedef void *nds_acl_args_handle;
+typedef void *nds_acl_param_handle;
+typedef void *nds_acl_stream;
+
+typedef enum nds_acl_binary_load_option_type {
+    NDS_ACL_BINARY_LOAD_OPT_CPU_KERNEL_MODE = 3,
+} nds_acl_binary_load_option_type;
+
+typedef union nds_acl_binary_load_option_value {
+    int32_t cpu_kernel_mode;
+    uint32_t reserved[4];
+} nds_acl_binary_load_option_value;
+
+typedef struct nds_acl_binary_load_option {
+    nds_acl_binary_load_option_type type;
+    nds_acl_binary_load_option_value value;
+} nds_acl_binary_load_option;
+
+typedef struct nds_acl_binary_load_options {
+    nds_acl_binary_load_option *options;
+    size_t num_options;
+} nds_acl_binary_load_options;
+
+typedef enum nds_acl_launch_kernel_attr_id {
+    NDS_ACL_LAUNCH_KERNEL_ATTR_TIMEOUT = 7,
+} nds_acl_launch_kernel_attr_id;
+
+typedef union nds_acl_launch_kernel_attr_value {
+    uint16_t timeout_seconds;
+    uint32_t reserved[4];
+} nds_acl_launch_kernel_attr_value;
+
+typedef struct nds_acl_launch_kernel_attr {
+    nds_acl_launch_kernel_attr_id id;
+    nds_acl_launch_kernel_attr_value value;
+} nds_acl_launch_kernel_attr;
+
+typedef struct nds_acl_launch_kernel_config {
+    nds_acl_launch_kernel_attr *attrs;
+    size_t num_attrs;
+} nds_acl_launch_kernel_config;
+
+typedef int (*nds_acl_rt_binary_load_from_file_fn)(const char *file_name,
+                                                    nds_acl_binary_load_options *options,
+                                                    nds_acl_bin_handle *bin_handle);
+typedef int (*nds_acl_rt_binary_unload_fn)(nds_acl_bin_handle bin_handle);
+typedef int (*nds_acl_rt_binary_get_function_fn)(nds_acl_bin_handle bin_handle, const char *name,
+                                                  nds_acl_func_handle *function_handle);
+typedef int (*nds_acl_rt_kernel_args_init_fn)(nds_acl_func_handle function_handle,
+                                              nds_acl_args_handle *args_handle);
+typedef int (*nds_acl_rt_kernel_args_append_fn)(nds_acl_args_handle args_handle, void *parameter,
+                                                size_t parameter_size, nds_acl_param_handle *parameter_handle);
+typedef int (*nds_acl_rt_kernel_args_finalize_fn)(nds_acl_args_handle args_handle);
+typedef int (*nds_acl_rt_launch_kernel_with_config_fn)(nds_acl_func_handle function_handle,
+                                                       uint32_t block_count, nds_acl_stream stream,
+                                                       nds_acl_launch_kernel_config *config,
+                                                       nds_acl_args_handle args_handle, void *reserved);
+typedef int (*nds_acl_rt_create_stream_fn)(nds_acl_stream *stream);
+typedef int (*nds_acl_rt_destroy_stream_fn)(nds_acl_stream stream);
+typedef int (*nds_acl_rt_synchronize_stream_with_timeout_fn)(nds_acl_stream stream, int32_t timeout_ms);
 
 enum {
     /* aclrtMemMallocPolicy values needed by the direct NPU data path. */
@@ -40,6 +103,17 @@ typedef struct nds_acl_api {
     nds_acl_rt_malloc_fn malloc_device;
     nds_acl_rt_free_fn free_device;
     nds_acl_rt_memcpy_fn memcpy;
+    nds_acl_rt_memset_fn memset_device;
+    nds_acl_rt_binary_load_from_file_fn binary_load_from_file;
+    nds_acl_rt_binary_unload_fn binary_unload;
+    nds_acl_rt_binary_get_function_fn binary_get_function;
+    nds_acl_rt_kernel_args_init_fn kernel_args_init;
+    nds_acl_rt_kernel_args_append_fn kernel_args_append;
+    nds_acl_rt_kernel_args_finalize_fn kernel_args_finalize;
+    nds_acl_rt_launch_kernel_with_config_fn launch_kernel_with_config;
+    nds_acl_rt_create_stream_fn create_stream;
+    nds_acl_rt_destroy_stream_fn destroy_stream;
+    nds_acl_rt_synchronize_stream_with_timeout_fn synchronize_stream_with_timeout;
     char error[NDS_ACL_ERROR_CAPACITY];
 } nds_acl_api;
 

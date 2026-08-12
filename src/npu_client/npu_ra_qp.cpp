@@ -62,6 +62,7 @@ bool NpuRaQp::create(nds_ra_api &api, const NpuRaQpConfig &config)
     nds_ra_rdev rdev{};
     nds_ra_rdev_init_info rdev_init{};
     nds_ra_typical_qp initial_qp{};
+    nds_ra_qp_ext_attrs aicpu_attrs{};
     int result;
 
     if (created()) {
@@ -72,9 +73,13 @@ bool NpuRaQp::create(nds_ra_api &api, const NpuRaQpConfig &config)
         set_error("NPU RA QP requires a local IPv4 address, nonzero port, and nonzero path MTU");
         return false;
     }
-    if (api.ra_rdev_init_v2 == nullptr || api.ra_rdev_deinit == nullptr || api.ra_typical_qp_create == nullptr ||
-        api.ra_qp_destroy == nullptr || api.ra_get_qp_attr == nullptr) {
-        set_error("RA API is missing a required rdev/QP/query operation");
+    if (api.ra_rdev_init_v2 == nullptr || api.ra_rdev_deinit == nullptr || api.ra_qp_destroy == nullptr ||
+        api.ra_get_qp_attr == nullptr || api.ra_typical_qp_modify == nullptr ||
+        (config.submission_mode == NpuRaSubmissionMode::HostRa && api.ra_typical_qp_create == nullptr) ||
+        (config.submission_mode == NpuRaSubmissionMode::Aicpu &&
+         (api.ra_ai_qp_create == nullptr || api.ra_set_qp_attr_qos == nullptr ||
+          api.ra_set_qp_attr_timeout == nullptr || api.ra_set_qp_attr_retry_count == nullptr))) {
+        set_error("RA API is missing a required rdev/QP/query operation for the selected submission mode");
         return false;
     }
 
@@ -98,12 +103,56 @@ bool NpuRaQp::create(nds_ra_api &api, const NpuRaQpConfig &config)
         reset();
         return false;
     }
-    result = api_->ra_typical_qp_create(rdev_handle_, NDS_RA_QP_FLAG_RC, NDS_RA_QP_MODE_OPBASE, &initial_qp,
-                                         &qp_handle_);
-    if (result != 0 || qp_handle_ == nullptr) {
-        set_error("RaTypicalQpCreate failed: " + std::to_string(result));
-        reset();
-        return false;
+    if (config_.submission_mode == NpuRaSubmissionMode::HostRa) {
+        result = api_->ra_typical_qp_create(rdev_handle_, NDS_RA_QP_FLAG_RC, NDS_RA_QP_MODE_OPBASE, &initial_qp,
+                                             &qp_handle_);
+        if (result != 0 || qp_handle_ == nullptr) {
+            set_error("RaTypicalQpCreate failed: " + std::to_string(result));
+            reset();
+            return false;
+        }
+    } else {
+        /* Matches HCOMM v9.0.0 ConstructQpAttrs for a 910B OPBASE_EXT AI QP. */
+        aicpu_attrs.qp_mode = NDS_RA_QP_MODE_OPBASE_EXT;
+        aicpu_attrs.cq_attr.send_cq_depth = 32768;
+        aicpu_attrs.cq_attr.recv_cq_depth = 128;
+        aicpu_attrs.qp_attr.cap.max_send_wr = 32768;
+        aicpu_attrs.qp_attr.cap.max_recv_wr = 128;
+        aicpu_attrs.qp_attr.cap.max_send_sge = 1;
+        aicpu_attrs.qp_attr.cap.max_recv_sge = 1;
+        aicpu_attrs.qp_attr.cap.max_inline_data = 32;
+        aicpu_attrs.qp_attr.qp_type = NDS_RA_QP_TYPE_RC;
+        aicpu_attrs.version = NDS_RA_QP_CREATE_WITH_ATTR_VERSION;
+        result = api_->ra_ai_qp_create(rdev_handle_, &aicpu_attrs, &aicpu_qp_info_, &qp_handle_);
+        if (result != 0 || qp_handle_ == nullptr || aicpu_qp_info_.ai_qp_address == 0U) {
+            set_error("RaAiQpCreate(OPBASE_EXT) failed: " + std::to_string(result));
+            reset();
+            return false;
+        }
+        /* HCOMM's CreateAiQp applies these local AI-QP attributes after creation. */
+        nds_ra_qos_attr qos{};
+        uint32_t timeout = config_.retry_timeout;
+        uint32_t retry_count = config_.retry_count;
+        qos.traffic_class = static_cast<uint8_t>(config_.traffic_class);
+        qos.service_level = static_cast<uint8_t>(config_.service_level);
+        result = api_->ra_set_qp_attr_qos(qp_handle_, &qos);
+        if (result != 0) {
+            set_error("RaSetQpAttrQos(AI QP) failed: " + std::to_string(result));
+            reset();
+            return false;
+        }
+        result = api_->ra_set_qp_attr_timeout(qp_handle_, &timeout);
+        if (result != 0) {
+            set_error("RaSetQpAttrTimeout(AI QP) failed: " + std::to_string(result));
+            reset();
+            return false;
+        }
+        result = api_->ra_set_qp_attr_retry_count(qp_handle_, &retry_count);
+        if (result != 0) {
+            set_error("RaSetQpAttrRetryCnt(AI QP) failed: " + std::to_string(result));
+            reset();
+            return false;
+        }
     }
     result = api_->ra_get_qp_attr(qp_handle_, &local_attributes_);
     if (result != 0 || !is_valid_qp_number(local_attributes_.qpn) || !is_valid_psn(local_attributes_.psn)) {
@@ -408,6 +457,16 @@ bool NpuRaQp::connected() const noexcept
 const nds_ra_qp_attr &NpuRaQp::local_attributes() const noexcept
 {
     return local_attributes_;
+}
+
+bool NpuRaQp::has_aicpu_qp_info() const noexcept
+{
+    return config_.submission_mode == NpuRaSubmissionMode::Aicpu && aicpu_qp_info_.ai_qp_address != 0U;
+}
+
+const nds_ra_ai_qp_info &NpuRaQp::aicpu_qp_info() const noexcept
+{
+    return aicpu_qp_info_;
 }
 
 const NpuRaQpConfig &NpuRaQp::config() const noexcept

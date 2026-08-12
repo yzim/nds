@@ -129,8 +129,13 @@ target_include_directories(nds_npu_ra_qp PUBLIC include)
 target_link_libraries(nds_npu_ra_qp PUBLIC nds_ra_loader nds_wire)
 target_compile_options(nds_npu_ra_qp PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
+add_library(nds_aicpu_roce STATIC src/npu_client/aicpu_roce.cpp)
+target_include_directories(nds_aicpu_roce PUBLIC include)
+target_link_libraries(nds_aicpu_roce PUBLIC nds_ra_loader)
+target_compile_options(nds_aicpu_roce PRIVATE -Wall -Wextra -Wpedantic -Werror)
+
 add_executable(nds_npu_qp_client src/npu_client/npu_qp_client.cpp)
-target_link_libraries(nds_npu_qp_client PRIVATE nds_npu_ra_context nds_control_plane nds_npu_ra_qp)
+target_link_libraries(nds_npu_qp_client PRIVATE nds_npu_ra_context nds_control_plane nds_npu_ra_qp nds_aicpu_roce)
 target_compile_options(nds_npu_qp_client PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 add_executable(nds_npu_ra_mr_probe src/npu_client/probes/npu_ra_mr_probe.cpp)

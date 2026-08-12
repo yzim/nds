@@ -22,6 +22,9 @@ enum {
     NDS_RA_PHY_ID_NPU0 = 0,
     NDS_RA_QP_FLAG_RC = 0,
     NDS_RA_QP_MODE_OPBASE = 2,
+    NDS_RA_QP_MODE_OPBASE_EXT = 4,
+    NDS_RA_QP_CREATE_WITH_ATTR_VERSION = 1,
+    NDS_RA_QP_TYPE_RC = 2,
     NDS_RA_ACCESS_LOCAL_WRITE = 1,
     NDS_RA_ACCESS_REMOTE_WRITE = 1 << 1,
     NDS_RA_ACCESS_REMOTE_READ = 1 << 2,
@@ -150,6 +153,61 @@ typedef struct nds_ra_qp_attr {
  * NDS converts its project-owned wire record to and from this object rather
  * than sending this structure over the network.
  */
+/* CANN 9.0.0 HCCP QpExtAttrs: project-owned transcription with the
+ * embedded ibv_qp_init_attr represented as its verified 64-byte ABI image.
+ * The AICPU path needs only the initialized fields below. */
+typedef struct nds_ra_qp_cap {
+    uint32_t max_send_wr;
+    uint32_t max_recv_wr;
+    uint32_t max_send_sge;
+    uint32_t max_recv_sge;
+    uint32_t max_inline_data;
+} nds_ra_qp_cap;
+
+typedef struct nds_ra_qp_init_attr {
+    void *qp_context;
+    void *send_cq;
+    void *recv_cq;
+    void *srq;
+    nds_ra_qp_cap cap;
+    int qp_type;
+    int sq_sig_all;
+    uint8_t reserved[4];
+} nds_ra_qp_init_attr;
+
+typedef struct nds_ra_cq_ext_attr {
+    int send_cq_depth;
+    int recv_cq_depth;
+    int send_cq_comp_vector;
+    int recv_cq_comp_vector;
+} nds_ra_cq_ext_attr;
+
+typedef struct nds_ra_qos_attr {
+    uint8_t traffic_class;
+    uint8_t service_level;
+    uint8_t reserved[6];
+} nds_ra_qos_attr;
+
+typedef struct nds_ra_qp_ext_attrs {
+    int qp_mode;
+    nds_ra_cq_ext_attr cq_attr;
+    nds_ra_qp_init_attr qp_attr;
+    int version;
+    int mem_align;
+    uint32_t udp_sport;
+    uint32_t data_plane_flag;
+    uint32_t reserved[29];
+} nds_ra_qp_ext_attrs;
+
+typedef struct nds_ra_ai_qp_info {
+    uint64_t ai_qp_address;
+    uint32_t sq_index;
+    uint32_t db_index;
+    uint64_t ai_scq_address;
+    uint64_t ai_rcq_address;
+    uint8_t data_plane_info[336];
+} nds_ra_ai_qp_info;
+
 typedef struct nds_ra_typical_qp {
     uint32_t qpn;
     uint32_t psn;
@@ -176,6 +234,11 @@ typedef int (*nds_ra_qp_create_fn)(void *rdma_handle, int flag, int qp_mode, voi
 typedef int (*nds_ra_qp_connect_async_fn)(void *qp_handle, const void *fd_handle);
 typedef int (*nds_ra_typical_qp_create_fn)(void *rdma_handle, int flag, int qp_mode,
                                             nds_ra_typical_qp *typical_qp_info, void **qp_handle);
+typedef int (*nds_ra_ai_qp_create_fn)(void *rdma_handle, nds_ra_qp_ext_attrs *attrs,
+                                      nds_ra_ai_qp_info *info, void **qp_handle);
+typedef int (*nds_ra_set_qp_attr_qos_fn)(void *qp_handle, nds_ra_qos_attr *attr);
+typedef int (*nds_ra_set_qp_attr_timeout_fn)(void *qp_handle, uint32_t *timeout);
+typedef int (*nds_ra_set_qp_attr_retry_count_fn)(void *qp_handle, uint32_t *retry_count);
 typedef int (*nds_ra_typical_qp_modify_fn)(void *qp_handle, nds_ra_typical_qp *local_qp_info,
                                             nds_ra_typical_qp *remote_qp_info);
 typedef int (*nds_ra_qp_destroy_fn)(void *qp_handle);
@@ -207,6 +270,10 @@ typedef struct nds_ra_api {
     nds_ra_qp_create_fn ra_qp_create;
     nds_ra_qp_connect_async_fn ra_qp_connect_async;
     nds_ra_typical_qp_create_fn ra_typical_qp_create;
+    nds_ra_ai_qp_create_fn ra_ai_qp_create;
+    nds_ra_set_qp_attr_qos_fn ra_set_qp_attr_qos;
+    nds_ra_set_qp_attr_timeout_fn ra_set_qp_attr_timeout;
+    nds_ra_set_qp_attr_retry_count_fn ra_set_qp_attr_retry_count;
     nds_ra_typical_qp_modify_fn ra_typical_qp_modify;
     nds_ra_qp_destroy_fn ra_qp_destroy;
     nds_ra_get_qp_attr_fn ra_get_qp_attr;

@@ -166,6 +166,19 @@ bool NpuRaContext::copy_host_to_device(void *device_ptr, const void *host_ptr, s
     return true;
 }
 
+bool NpuRaContext::zero_device_memory(void *device_ptr, std::size_t size)
+{
+    const int result = (!initialized_ || device_ptr == nullptr || size == 0U || acl_.memset_device == nullptr)
+                           ? -1
+                           : acl_.memset_device(device_ptr, size, 0, size);
+    if (result != 0) {
+        set_error("aclrtMemset(device) failed: " + std::to_string(result));
+        return false;
+    }
+    error_.clear();
+    return true;
+}
+
 bool NpuRaContext::submit_rdma_doorbell(std::uint32_t db_index, std::uint64_t db_info)
 {
     int result;
@@ -193,6 +206,11 @@ bool NpuRaContext::submit_rdma_doorbell(std::uint32_t db_index, std::uint64_t db
 nds_ra_api &NpuRaContext::ra_api() noexcept
 {
     return ra_;
+}
+
+nds_acl_api &NpuRaContext::acl_api() noexcept
+{
+    return acl_;
 }
 
 const std::string &NpuRaContext::error() const noexcept

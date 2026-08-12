@@ -16,6 +16,9 @@ _Static_assert(sizeof(nds_ra_cqe_error) == 24, "unexpected CqeErrInfo ABI layout
 _Static_assert(sizeof(nds_ra_completion) == 56, "unexpected rdma_lite_wc_v2 ABI layout");
 _Static_assert(sizeof(nds_ra_qp_attr) == 100, "unexpected QpAttr ABI layout");
 _Static_assert(sizeof(nds_ra_typical_qp) == 184, "unexpected TypicalQp ABI layout");
+_Static_assert(sizeof(nds_ra_qp_init_attr) == 64, "unexpected ibv_qp_init_attr ABI layout");
+_Static_assert(sizeof(nds_ra_qp_ext_attrs) == 224, "unexpected QpExtAttrs ABI layout");
+_Static_assert(sizeof(nds_ra_ai_qp_info) == 368, "unexpected AiQpInfo ABI layout");
 
 static void nds_ra_set_error(nds_ra_api *api, const char *format, ...)
 {
@@ -45,6 +48,22 @@ static int nds_ra_resolve(nds_ra_api *api, const char *name, void *slot, size_t 
     }
     memcpy(slot, &symbol, slot_size);
     return 0;
+}
+
+static void nds_ra_resolve_optional(nds_ra_api *api, const char *name, void *slot, size_t slot_size)
+{
+    const char *loader_error;
+    void *symbol;
+
+    if (slot_size != sizeof(symbol)) {
+        return;
+    }
+    (void)dlerror();
+    symbol = dlsym(api->library, name);
+    loader_error = dlerror();
+    if (loader_error == NULL && symbol != NULL) {
+        memcpy(slot, &symbol, slot_size);
+    }
 }
 
 int nds_ra_open(nds_ra_api *api, const char *library_path)
@@ -85,6 +104,12 @@ int nds_ra_open(nds_ra_api *api, const char *library_path)
     NDS_RESOLVE(ra_qp_create, "RaQpCreate");
     NDS_RESOLVE(ra_qp_connect_async, "RaQpConnectAsync");
     NDS_RESOLVE(ra_typical_qp_create, "RaTypicalQpCreate");
+    nds_ra_resolve_optional(api, "RaAiQpCreate", &api->ra_ai_qp_create, sizeof(api->ra_ai_qp_create));
+    nds_ra_resolve_optional(api, "RaSetQpAttrQos", &api->ra_set_qp_attr_qos, sizeof(api->ra_set_qp_attr_qos));
+    nds_ra_resolve_optional(api, "RaSetQpAttrTimeout", &api->ra_set_qp_attr_timeout,
+                            sizeof(api->ra_set_qp_attr_timeout));
+    nds_ra_resolve_optional(api, "RaSetQpAttrRetryCnt", &api->ra_set_qp_attr_retry_count,
+                            sizeof(api->ra_set_qp_attr_retry_count));
     NDS_RESOLVE(ra_typical_qp_modify, "RaTypicalQpModify");
     NDS_RESOLVE(ra_qp_destroy, "RaQpDestroy");
     NDS_RESOLVE(ra_get_qp_attr, "RaGetQpAttr");
