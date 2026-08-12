@@ -41,6 +41,23 @@ create rdev, RC QP, and source MR               create RC QP and destination MR
 
 The CPU is CANN-free. It never loads HCCP, HCOMM, HCCL, or TSD.
 
+## HCCP resources
+
+The NPU client creates one HCCP rdev and one RC QP. Host RA uses
+`RaTypicalQpCreate`; AIV and AICPU use `RaAiQpCreate` with different QP modes
+because their doorbell ownership differs. `RaGetQpAttr` supplies the QPN, PSN,
+GID, and GID index that NDS exchanges with the CPU over TCP. The CPU uses that
+record to configure its own verbs QP, and the NPU applies the CPU record with
+`RaTypicalQpModify`.
+
+For a Write, the CPU registers its destination buffer with `ibv_reg_mr` and
+sends its address, length, and rkey. The NPU allocates device memory, registers
+it through `RaRegisterMr`, and uses the returned lkey as the local SGE key. NDS
+does not send QP handles, MR handles, AI-QP descriptors, or provider-private
+addresses over TCP. It keeps both endpoints' QPs and MRs alive until the CPU
+verifies the remote write. [Submission modes](docs/modes.md#qp-setup-through-hccp)
+has the complete setup, key, and teardown sequence.
+
 ## Repository layout
 
 ```text

@@ -44,10 +44,14 @@ belong in `docs/`: [mode overview](docs/modes.md), [host RA](docs/host-ra.md),
 - Keep runtime loading, library names, symbol resolution, and ABI checks in the
   loader modules. Missing required symbols must fail closed with a useful error.
 - Keep the TCP control plane independent of RA/HCCP private objects. Exchange
-  only NDS-owned versioned wire records with the CPU endpoint.
+  only NDS-owned versioned wire records with the CPU endpoint. Exchange QPN,
+  PSN, GID, transport settings, and memory address/length/rkey; never exchange
+  HCCP QP or MR handles, AI-QP descriptors, queue addresses, or provider
+  objects.
 - Preserve explicit ownership order: initialize context, create rdev/QP,
   register memory, submit, verify, deregister, destroy QP/rdev, then close the
-  runtime.
+  runtime. Keep QPs, MRs, and NPU allocations alive until host CQ completion
+  plus CPU verification for host RA, or CPU verification for AI-QP modes.
 - NDS is C++20. Use native C++ ownership and `nullptr` in compiled C++ code.
   Keep ABI and wire headers C-compatible only where a runtime or device boundary
   needs it.
