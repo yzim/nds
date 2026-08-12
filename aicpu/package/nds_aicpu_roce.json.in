@@ -1,0 +1,9 @@
+{
+  "NdsAicpuRoceWrite": {
+    "opInfo": {
+      "functionName": "NdsAicpuRoceWrite",
+      "kernelSo": "@NDS_AICPU_KERNEL_SO@",
+      "opKernelLib": "CUSTAICPUKernel"
+    }
+  }
+}

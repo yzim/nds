@@ -15,7 +15,8 @@ find_package(Threads REQUIRED)
 pkg_check_modules(IBVERBS QUIET IMPORTED_TARGET libibverbs)
 
 option(NDS_LINK_PUBLIC_ACL "Link the public AscendCL API instead of resolving it at runtime" OFF)
-set(NDS_CANN_ROOT "" CACHE PATH "CANN installation root, required when NDS_LINK_PUBLIC_ACL is enabled")
+option(NDS_BUILD_AICPU_KERNEL "Build the NDS-owned AICPU RoCE Write package (aarch64 CANN host only)" OFF)
+set(NDS_CANN_ROOT "" CACHE PATH "CANN installation root, required when NDS_LINK_PUBLIC_ACL or NDS_BUILD_AICPU_KERNEL is enabled")
 
 add_library(nds_wire STATIC src/common/rdma_wire.c)
 target_include_directories(nds_wire PUBLIC include)
@@ -129,9 +130,13 @@ target_include_directories(nds_npu_ra_qp PUBLIC include)
 target_link_libraries(nds_npu_ra_qp PUBLIC nds_ra_loader nds_wire)
 target_compile_options(nds_npu_ra_qp PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
+if(NDS_BUILD_AICPU_KERNEL)
+    add_subdirectory(aicpu)
+endif()
+
 add_library(nds_aicpu_roce STATIC src/npu_client/aicpu_roce.cpp)
 target_include_directories(nds_aicpu_roce PUBLIC include)
-target_link_libraries(nds_aicpu_roce PUBLIC nds_ra_loader)
+target_link_libraries(nds_aicpu_roce PUBLIC nds_ra_loader ${CMAKE_DL_LIBS})
 target_compile_options(nds_aicpu_roce PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 add_executable(nds_npu_qp_client src/npu_client/npu_qp_client.cpp)
@@ -151,3 +156,8 @@ add_executable(nds_cann_context_test tests/cann_context_test.cpp)
 target_link_libraries(nds_cann_context_test PRIVATE nds_cann_context)
 target_compile_options(nds_cann_context_test PRIVATE -Wall -Wextra -Wpedantic -Werror)
 add_test(NAME nds_cann_context_test COMMAND nds_cann_context_test)
+
+add_executable(nds_aicpu_roce_abi_test tests/aicpu_roce_abi_test.cpp)
+target_include_directories(nds_aicpu_roce_abi_test PRIVATE include)
+target_compile_options(nds_aicpu_roce_abi_test PRIVATE -Wall -Wextra -Wpedantic -Werror)
+add_test(NAME nds_aicpu_roce_abi_test COMMAND nds_aicpu_roce_abi_test)

@@ -44,8 +44,8 @@ void usage(const char *program)
         << " [--qp-only] [--qp-only-hold-ms MS] [--port PORT] [--path-mtu BYTES] [--tcp-port PORT] [--tcp-timeout-ms MS]\n\n"
         << "Creates one NPU0 RA RC QP and exchanges QP metadata with one CPU verbs server. By default it"
         << " receives one bounded CPU destination-MR descriptor and submits exactly one RDMA Write;"
-        << " host-ra uses RaTypicalSendWr/rtRDMADBSend/RaPollCq; aicpu uses CANN 9.0.0 RunTransportRoceTx"
-        << " and requires a CPU --aicpu-sync peer plus explicit ccl_kernel.json. --qp-only validates QP establishment and posts no memory registration or work request;"
+        << " host-ra uses RaTypicalSendWr/rtRDMADBSend/RaPollCq; aicpu launches NDS's own"
+        << " NdsAicpuRoceWrite package and posts one one-way RDMA Write. --qp-only validates QP establishment and posts no memory registration or work request;"
         << " --qp-only-hold-ms keeps that QP alive briefly for passive diagnostics."
         << " HCOMM/HCCL bootstrap and rank tables are intentionally not used.\n";
 }
@@ -282,18 +282,14 @@ int main(int argc, char **argv)
     ClientConfig config;
     nds::NpuRaContext context;
     nds::NpuRaQp qp;
-    nds::AicpuRoceTxLauncher aicpu_launcher;
+    nds::AicpuRoceWriteLauncher aicpu_launcher;
     nds::TcpControlPlane control;
     nds_rc_endpoint local{};
     nds_memory_descriptor destination{};
-    nds_memory_descriptor aicpu_sync{};
     nds_ra_mr_info source_mr{};
-    nds_ra_mr_info local_sync_mr{};
     nds_ra_send_response response{};
     void *device_buffer = nullptr;
-    void *local_sync_buffer = nullptr;
     void *mr_handle = nullptr;
-    void *local_sync_mr_handle = nullptr;
     bool ok = false;
     std::string control_error;
 
@@ -335,14 +331,6 @@ int main(int argc, char **argv)
     }
     std::cout << "CPU destination MR: transaction=" << destination.transaction_id << " addr=0x" << std::hex
               << destination.address << std::dec << " bytes=" << destination.length << " rkey=" << destination.rkey << '\n';
-    if (config.qp.submission_mode == nds::NpuRaSubmissionMode::Aicpu) {
-        if (!control.receive_memory_descriptor(aicpu_sync, &control_error) ||
-            aicpu_sync.flags != NDS_MEMORY_DESCRIPTOR_FLAG_AICPU_SYNC || aicpu_sync.length < 24U ||
-            (aicpu_sync.access_flags & NDS_MEMORY_ACCESS_REMOTE_WRITE) == 0U || aicpu_sync.rkey == 0U) {
-            std::cerr << "CPU AICPU sync-MR exchange failed or is incompatible: " << control_error << '\n';
-            return EXIT_FAILURE;
-        }
-    }
     std::vector<unsigned char> payload(static_cast<std::size_t>(destination.length));
     for (std::size_t index = 0; index < payload.size(); ++index) payload[index] = static_cast<unsigned char>(index ^ 0x5aU);
     if (!context.allocate_device_memory(payload.size(), &device_buffer) ||
@@ -370,32 +358,21 @@ int main(int argc, char **argv)
         ok = wait_for_send_completion(qp);
         if (!ok) print_failure_diagnostics(qp);
     } else {
-        if (!qp.has_aicpu_qp_info() || !context.allocate_device_memory(24U, &local_sync_buffer) ||
-            !context.zero_device_memory(local_sync_buffer, 24U) ||
-            !qp.register_memory(local_sync_buffer, 24U, NDS_RA_ACCESS_DIRECT_NPU, local_sync_mr, &local_sync_mr_handle) ||
-            !aicpu_launcher.load(context.acl_api(), config.aicpu_kernel_config)) {
-            std::cerr << "AICPU RoCE Tx setup failed: "
+        if (!qp.has_aicpu_qp_info() || !aicpu_launcher.load(context.acl_api(), config.aicpu_kernel_config)) {
+            std::cerr << "NDS AICPU RoCE Write setup failed: "
                       << (aicpu_launcher.error().empty() ? (qp.error().empty() ? context.error() : qp.error()) : aicpu_launcher.error())
                       << '\n';
             goto out;
         }
         const nds_ra_ai_qp_info &ai_qp = qp.aicpu_qp_info();
-        const nds::AicpuRoceTxRequest request{
-            source_mr.local_key, destination.rkey,
-            {ai_qp.ai_qp_address, ai_qp.sq_index, ai_qp.db_index, static_cast<std::uint16_t>(config.qp.retry_count),
-             static_cast<std::uint16_t>(config.qp.retry_timeout)},
-            destination.address, reinterpret_cast<std::uint64_t>(device_buffer), destination.length,
-            reinterpret_cast<std::uint64_t>(local_sync_buffer), aicpu_sync.address, local_sync_mr.local_key,
-            aicpu_sync.rkey};
+        const nds::AicpuRoceWriteRequest request{
+            ai_qp.ai_qp_address, source_mr.local_key, destination.rkey,
+            reinterpret_cast<std::uint64_t>(device_buffer), destination.address, destination.length, 1U};
         ok = aicpu_launcher.launch_and_wait(request, static_cast<std::int32_t>(kCompletionTimeoutMs));
-        if (!ok) std::cerr << "RunTransportRoceTx failed: " << aicpu_launcher.error() << '\n';
+        if (!ok) std::cerr << "NdsAicpuRoceWrite failed: " << aicpu_launcher.error() << '\n';
     }
 out:
     aicpu_launcher.reset();
-    if (local_sync_mr_handle != nullptr && !qp.deregister_memory(local_sync_mr_handle))
-        std::cerr << "RaDeregisterMr(AICPU sync) cleanup failed: " << qp.error() << '\n';
-    if (local_sync_buffer != nullptr && !context.free_device_memory(local_sync_buffer))
-        std::cerr << "aclrtFree(AICPU sync) cleanup failed: " << context.error() << '\n';
     if (mr_handle != nullptr && !qp.deregister_memory(mr_handle)) std::cerr << "RaDeregisterMr cleanup failed: " << qp.error() << '\n';
     if (device_buffer != nullptr && !context.free_device_memory(device_buffer)) std::cerr << "aclrtFree cleanup failed: " << context.error() << '\n';
     return ok ? EXIT_SUCCESS : EXIT_FAILURE;
