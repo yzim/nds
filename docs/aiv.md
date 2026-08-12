@@ -10,6 +10,12 @@ AIV submission moves WQE construction and SQ doorbell access into an Ascend
 vector-core kernel. The host still creates and connects the HCCP AI QP and
 registers memory, but it does not submit the RDMA request.
 
+NDS creates this QP with `RaAiQpCreate(..., OPBASE_EXT)`. HCCP returns the
+AI send-WQ descriptor that the AIV execution environment can use directly;
+NDS still obtains the source-MR local key through `RaRegisterMr`. See the
+shared [QP and MR lifecycle](modes.md#qp-setup-through-hccp) for the full
+connection and ownership sequence.
+
 Select it with:
 
 ```text

@@ -10,6 +10,11 @@ prepare one signaled RDMA Write, submits the returned doorbell through the CANN
 runtime, and explicitly polls the send CQ. The payload starts in registered NPU
 device memory and lands in a CPU `libibverbs` MR.
 
+It creates the NPU QP with `RaTypicalQpCreate(..., RC, OPBASE)`. The common
+[QP and MR lifecycle](modes.md#qp-setup-through-hccp) explains how NDS connects
+that QP to the CPU verbs QP and registers the NPU device allocation through
+`RaRegisterMr`.
+
 Select it with:
 
 ```text

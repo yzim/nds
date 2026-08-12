@@ -10,6 +10,12 @@ signaled verbs WR and calls the CANN-matched HNS provider's
 `ibv_exp_post_send`. The provider writes the WQE and rings the doorbell of an AI
 NORMAL QP.
 
+NDS creates this QP with `RaAiQpCreate(..., NORMAL)` and registers the NPU
+device source allocation with `RaRegisterMr` before launching CP1. The request
+contains the resulting source-MR local key and the CPU's advertised rkey. See
+the shared [QP and MR lifecycle](modes.md#qp-setup-through-hccp) for the exact
+resource exchange and teardown order.
+
 Select the real data path with:
 
 ```text
