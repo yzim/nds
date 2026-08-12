@@ -39,6 +39,7 @@ struct ClientConfig {
     std::string aicpu_kernel_config;
     std::string aiv_kernel;
     std::uint32_t aiv_write_count{1U};
+    std::uint32_t aiv_launch_count{1U};
 };
 
 void usage(const char *program)
@@ -47,7 +48,7 @@ void usage(const char *program)
         << "usage: " << program << " --ascendcl ABS_PATH --runtime ABS_PATH --ra ABS_PATH"
         << " --npu-ip IPV4 --logical-device ID --physical-device ID --cpu-ip IPV4 --execute"
         << " [--submission-mode host-ra|aicpu|aiv] [--aicpu-kernel-config ABS_PATH] [--aiv-kernel ABS_PATH]"
-        << " [--aiv-write-count COUNT]"
+        << " [--aiv-write-count COUNT] [--aiv-launch-count COUNT]"
         << " [--aicpu-request-probe|--aicpu-post-attempt-probe]"
         << " [--qp-only] [--qp-only-hold-ms MS] [--port PORT] [--path-mtu BYTES] [--tcp-port PORT] [--tcp-timeout-ms MS]\n\n"
         << "Creates one NPU0 RA RC QP and exchanges QP metadata with one CPU verbs server. By default it"
@@ -114,6 +115,10 @@ bool parse_args(int argc, char **argv, ClientConfig *config)
             const char *text = value();
             if (text == nullptr || !parse_u32(text, &config->aiv_write_count) ||
                 config->aiv_write_count == 0U || config->aiv_write_count > kMaxAivWriteCount) return false;
+        } else if (argument == "--aiv-launch-count") {
+            const char *text = value();
+            if (text == nullptr || !parse_u32(text, &config->aiv_launch_count) ||
+                config->aiv_launch_count == 0U || config->aiv_launch_count > kMaxAivWriteCount) return false;
         } else if (argument == "--npu-ip") {
             const char *text = value(); if (text == nullptr) return false; config->qp.local_ipv4 = text;
         } else if (argument == "--logical-device") {
@@ -144,6 +149,9 @@ bool parse_args(int argc, char **argv, ClientConfig *config)
            (config->qp.submission_mode != nds::NpuRaSubmissionMode::Aicpu || !config->aicpu_kernel_config.empty()) &&
            (config->qp.submission_mode != nds::NpuRaSubmissionMode::Aiv || !config->aiv_kernel.empty()) &&
            (config->qp.submission_mode == nds::NpuRaSubmissionMode::Aiv || config->aiv_write_count == 1U) &&
+           (config->qp.submission_mode == nds::NpuRaSubmissionMode::Aiv || config->aiv_launch_count == 1U) &&
+           (config->qp.submission_mode != nds::NpuRaSubmissionMode::Aiv ||
+            config->aiv_write_count <= kMaxAivWriteCount / config->aiv_launch_count) &&
            (!config->aicpu_request_probe || config->qp.submission_mode == nds::NpuRaSubmissionMode::Aicpu) &&
            (!config->aicpu_post_attempt_probe || config->qp.submission_mode == nds::NpuRaSubmissionMode::Aicpu) &&
            !(config->aicpu_request_probe && config->aicpu_post_attempt_probe);
@@ -451,12 +459,16 @@ int main(int argc, char **argv)
             std::cerr << "NDS AIV request copy failed: " << context.error() << '\n';
             goto out;
         }
-        if (!aiv_launcher.launch_write_and_wait(reinterpret_cast<std::uint64_t>(aiv_request_buffer),
-                                                static_cast<std::int32_t>(kCompletionTimeoutMs))) {
-            std::cerr << "NdsAivRdmaWrite launch failed: " << aiv_launcher.error() << '\n';
-            goto out;
+        for (std::uint32_t launch = 0U; launch < config.aiv_launch_count; ++launch) {
+            if (!aiv_launcher.launch_write_and_wait(reinterpret_cast<std::uint64_t>(aiv_request_buffer),
+                                                    static_cast<std::int32_t>(kCompletionTimeoutMs))) {
+                std::cerr << "NdsAivRdmaWrite launch " << (launch + 1U) << "/" << config.aiv_launch_count
+                          << " failed: " << aiv_launcher.error() << '\n';
+                goto out;
+            }
         }
-        std::cout << "NDS AIV posted " << config.aiv_write_count
+        std::cout << "NDS AIV completed " << config.aiv_launch_count << " kernel launches and posted "
+                  << (config.aiv_launch_count * config.aiv_write_count)
                   << " signaled RDMA Writes through the AI SQ hardware doorbell.\n";
         std::cout << "HCCP owns this AI QP's CQ and processes its completion channel asynchronously.\n";
         ok = true;
