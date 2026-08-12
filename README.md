@@ -20,7 +20,7 @@ The direct one-NPU/one-CPU data path has been verified on the target CANN releas
 4. In the default `host-ra` submission mode, the NPU calls `RaTypicalQpModify`, allocates device memory, registers the source MR through RA, posts one signaled 4096-byte RDMA Write, and submits the returned OPBASE runtime doorbell.
 5. The NPU receives a successful send completion. The CPU verifies the deterministic payload and both 64-byte guard regions before both endpoints clean up.
 
-An explicit `aicpu` submission mode is also available for NPU-to-CPU Tx. It creates an RA AI QP and loads an **NDS-built** AICPU package containing one one-way RDMA Write post. This mode remains hardware-validation pending: the tested CANN 9.0.0 host has no loadable `libhns-rdmav25.so` provider, so NDS now rejects the mode before kernel launch rather than issuing an opaque AICPU exception.
+An explicit `aicpu` submission mode is also available for package/probe validation. It creates an RA AI QP and loads an **NDS-built** AICPU package. The target provider is loadable, but CANN 9.0.0 exposes no public custom-AICPU mapping/import contract for the provider-private AI-QP and queue addresses returned by `RaAiQpCreate`; NDS therefore rejects real AICPU RDMA submission before kernel launch rather than issuing an opaque AICPU exception.
 
 The normal data path uses exactly one NPU and one CPU RNIC. The CPU remains CANN-free; it does not load HCCP, HCOMM, HCCL, or TSD.
 
@@ -144,9 +144,9 @@ nds_npu_qp_client \
   --aicpu-kernel-config <absolute-path-to-libnds_aicpu_roce.json>
 ```
 
-`NdsAicpuRdmaPost` has an NDS-owned, fixed 80-byte version-5 request ABI and posts exactly one signaled provider WQE for RDMA Write, RDMA Read, or Send. The current CLI exercises RDMA Write from the registered NPU buffer to the CPU's advertised destination MR. It performs no HCOMM/HCCL initialization, rank-table work, or wait for a CPU-written flag. The CPU remains a plain `libibverbs` endpoint and verifies its payload and guard bytes after TCP close.
+`NdsAicpuRdmaPost` has an NDS-owned, fixed 80-byte version-5 request ABI for one provider WQE. It performs no HCOMM/HCCL initialization, rank-table work, or wait for a CPU-written flag. The CPU remains a plain `libibverbs` endpoint.
 
-CANN 9.0.0 supplies a supported AICPU compiler/package loader but does not expose a public AICPU RNIC-post API. The kernel therefore isolates the only required provider extension, `ibv_exp_post_send`, behind a minimal ABI declaration. The package must be built and run against the same CANN/provider release; a missing or incompatible provider fails the ACL launch rather than falling back to HCOMM. This is an implementation/build milestone and has **not yet completed hardware payload/guard verification**.
+CANN 9.0.0 supplies a supported AICPU compiler/package loader but does not expose a public AICPU RNIC-post or AI-QP mapping/import API. The provider can load in an NDS custom AICPU package, but the `RaAiQpCreate` provider-QP and queue addresses are not readable by an independently launched custom AICPU kernel (`507018` on read-only target probes). NDS therefore rejects real AICPU RDMA submission on this release rather than issuing an opaque provider exception. Package, provider-resolution, and request-layout probes remain available; the host-RA path is the verified data path.
 
 ## Data-path interoperability note
 

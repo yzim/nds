@@ -78,7 +78,11 @@ bool AicpuRdmaPostLauncher::load(nds_acl_api &acl, const std::string &kernel_con
 bool AicpuRdmaPostLauncher::launch_and_wait(const AicpuRdmaPostRequest &request,
                                               std::int32_t completion_timeout_ms)
 {
-    return launch_request_and_wait(kNdsAicpuRdmaPost, request, completion_timeout_ms);
+    (void)request;
+    (void)completion_timeout_ms;
+    set_error("NDS AICPU RDMA submission is unsupported on CANN 9.0.0: RaAiQpCreate returns provider-private AI-QP "
+              "addresses with no public custom-AICPU mapping/import contract");
+    return false;
 }
 
 bool AicpuRdmaPostLauncher::launch_request_probe_and_wait(const AicpuRdmaPostRequest &request,

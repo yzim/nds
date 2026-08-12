@@ -27,9 +27,9 @@ We thank the maintainers and contributors of the open-source [HCCL](https://gitc
 3. Do not assume an open-source HCOMM checkout has exactly the same symbols as the installed CANN package.
 4. Keep ABI-facing structs internal to the loader boundary and exchange only NDS wire records with the CPU process.
 5. The CPU verbs executable must never link or load CANN.
-6. `--submission-mode aicpu` loads the caller-selected **NDS-built** `libnds_aicpu_roce.json`, requires `NdsAicpuRdmaPost`, and fails before posting data if any ACL or RA AI-QP capability is absent.
+6. `--submission-mode aicpu` loads the caller-selected **NDS-built** `libnds_aicpu_roce.json` for package/probe validation. Direct AICPU RDMA submission fails closed on CANN 9.0.0 because `RaAiQpCreate` returns provider-private AI-QP addresses without a public custom-AICPU mapping/import contract.
 7. CANN 9.0.0 provides an AICPU loader but no public device-side RNIC post API. The NDS-owned custom AICPU package is a normal aarch64 DYN shared object (built by the same shared-library model as CANN's custom-kernel template), not a `bisheng -x aicpu` relocatable object. It confines the version-coupled HNS provider ABI to `aicpu/include/nds_aicpu_hns_abi.h` and dynamically resolves `libhns-rdmav25.so:ibv_exp_post_send` through `dlopen` / `dlsym` from inside the AICPU/NPU execution environment. This matches HCOMM's device-side `DlHnsFunction` path (`HcclDlopen` is a wrapper around `dlopen`) beneath `TransportDeviceIbverbs::HnsPostSend`. The host launcher does not link, load, probe, or make availability claims about that device-side provider; it only loads NDS's kernel package through ACL.
-8. Completion ownership is mode-specific: default host submission uses explicit `RaPollCq`; AICPU submission uses ACL stream synchronization and never consumes that CQ through host `RaPollCq`. Stream completion confirms local AICPU execution/WQE post, while CPU payload visibility is verified by the CPU endpoint after control-plane close.
+8. Completion ownership is mode-specific: default host submission uses explicit `RaPollCq`; AICPU package probes use ACL stream synchronization and never consume that CQ through host `RaPollCq`. The current CANN 9.0.0 AICPU route does not claim WQE-post completion or CPU payload visibility.
 
 ## Validated RA subset
 
@@ -45,12 +45,12 @@ aclInit → aclrtSetDevice → rtOpenNetService → RaInit
 
 The matching HCCP reference source establishes that the offline HDC rdev path requires `NOTIFY` (`1`) for rdev creation and destruction. NDS uses the CANN 9.0.0 `RaRdevInitV2` entry point with `disabledLiteThread=true`. The legacy `RaRdevInit` hard-codes that field false and starts HCOMM's background Lite-CQ polling thread; because NDS calls `RaPollCq` after its signaled write, allowing both consumers would make completion ownership racy. For OPBASE Lite QPs, `RaTypicalSendWr` returns the runtime doorbell information but does not ring it; the HCOMM OPBASE transport then calls `hrtRDMADBSend`, which NDS maps to dynamically resolved `rtRDMADBSend` after re-selecting the logical device.
 
-This host-CQ policy applies only to the host-RA submission mode. The experimental AICPU mode builds and dynamically loads NDS's own package, validates the `NdsAicpuRdmaPost` entry point and NDS request ABI, and uses its dedicated ACL stream as sole local completion owner. It does not enable the Lite-CQ poller or call `RaPollCq`. Its provider resolution occurs only inside the AICPU/NPU execution environment; host `ldconfig`, host filesystem searches, and host-process `dlopen` are not valid tests of that provider. Hardware data-path acceptance remains pending.
+This host-CQ policy applies only to the host-RA submission mode. The experimental AICPU mode builds and dynamically loads NDS's own package, validates the `NdsAicpuRdmaPost` entry point and NDS request ABI, and uses its dedicated ACL stream as sole local completion owner. It does not enable the Lite-CQ poller or call `RaPollCq`. Its provider resolution occurs only inside the AICPU/NPU execution environment; host `ldconfig`, host filesystem searches, and host-process `dlopen` are not valid tests of that provider. CANN 9.0.0 does not expose the AI-QP mapping/import contract required for an independently launched custom AICPU kernel, so data-path submission is deliberately unsupported.
 
 The same source basis fixes the CPU-side path-MTU policy: HCOMM's `RsDrvQpStateModifytoRtr` selects `IBV_QP_PATH_MTU` from the local active port through `RsDrvSetMtu`; its `TypicalQp` ABI has no path-MTU field. NDS therefore treats the peer MTU record as diagnostic rather than constraining the CPU QP with it.
 
 
-## Experimental AICPU Tx subset
+## Experimental AICPU Package Subset
 
 The NDS-owned optional AICPU Tx path has a deliberately narrow lifecycle:
 
@@ -59,8 +59,8 @@ aclInit → aclrtSetDevice → rtOpenNetService → RaInit
 → RaRdevInitV2(disabledLiteThread=true) → RaAiQpCreate(OPBASE_EXT)
 → endpoint exchange → RaTypicalQpModify → register source MR
 → aclrtBinaryLoadFromFile(libnds_aicpu_roce.json)
-→ NdsAicpuRdmaPost → aclrtSynchronizeStreamWithTimeout
+→ package/probe entry point → aclrtSynchronizeStreamWithTimeout
 → unload package/destroy stream → deregister MR → teardown
 ```
 
-The device entry point contains no copied HCOMM implementation. It validates NDS's 80-byte v5 request, dynamically opens the CANN-9.0.0 HNS provider through its device-side `dlopen`/`dlsym` loader, resolves `ibv_exp_post_send`, constructs exactly one signaled RDMA Write, RDMA Read, or Send WQE, and issues the required store barrier. The matching HCOMM AICPU normal-QP path ends at that provider post; its dispatcher doorbell is only for non-normal QPs, so NDS does not invoke `hrtRDMADBSend` or pass a runtime stream. This is only the minimal provider-post sequence; it does not adopt HCOMM's KFC dispatcher, flag buffers, peer waits, batch/split flows, rank state, retry protocol, or background event poller. The current CPU peer exports only an ordinary remote-write destination MR, so the launcher currently exercises Write. Generic hardware acceptance remains pending.
+The device entry point contains no copied HCOMM implementation. It validates NDS's 80-byte v5 request, dynamically opens the CANN-9.0.0 HNS provider through its device-side `dlopen`/`dlsym` loader, and resolves `ibv_exp_post_send`. The matching HCOMM AICPU normal-QP path uses that provider, but its `RaAiQpCreate` object and queue allocation is backed by private HNS HAL mappings. A read-only custom-AICPU dereference of the returned provider-QP address and exported SQ addresses faults with `507018`; CANN publishes no custom-AICPU import/mapping API for those addresses. Therefore NDS keeps package/provider/request probes but rejects a real AICPU post before launch. It does not adopt HCOMM's KFC dispatcher, flag buffers, peer waits, batch/split flows, rank state, retry protocol, or background event poller.

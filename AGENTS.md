@@ -189,6 +189,17 @@ RA lite context (`disabled_lite_thread = false`), matching HCOMM's
 change still raised the same exception. This does not justify importing a
 HCOMM dispatcher, completion poller, KFC/SQE context, or synchronization flow.
 
+HCOMM AIV is not a portable custom-AICPU substitute. AIV runs as
+`__aicore__`/`__gm__` and directly accesses queue and doorbell addresses under
+its own device mapping contract. A target-only read-only custom-AICPU probe of
+the `RaAiQpCreate` provider-QP address, and an earlier probe of the exported SQ
+head/tail addresses, both raised `507018`. HCCP creates the `aiOpSupport=1`
+objects through the HNS provider's private `libhns-rdma-hal.so` allocation
+contract. CANN 9.0.0 publishes no custom-AICPU mapping/import API for that
+memory. NDS therefore rejects a real AICPU RDMA post before launch on this
+release; retain only package/provider/request probes until a supported mapping
+contract is available.
+
 ### Validation discipline
 
 Never build or test NDS on this Mac.  Synchronize the authoritative source
