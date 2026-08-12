@@ -17,7 +17,7 @@ Start with [README.md](README.md) for the runnable baseline. Technical choices
 belong in `docs/`: [HCCP QP and MR lifecycle](docs/hccp-resources.md),
 [mode overview](docs/modes.md), [host RA](docs/host-ra.md), [AIV](docs/aiv.md),
 [AICPU](docs/aicpu.md), and
-[linkage policy](docs/linkage.md).
+[linkage policy](docs/linkage.md), and [testing](docs/testing.md).
 
 ## Non-negotiable rules
 
@@ -29,6 +29,8 @@ belong in `docs/`: [HCCP QP and MR lifecycle](docs/hccp-resources.md),
 - Use one NPU, `sudo -n`, a whole-process timeout, and no blind retry for a
   hardware experiment. Record a failed experiment before changing the next
   variable.
+- Keep real-NPU end-to-end tests opt-in. GitHub Actions must run only unit and
+  non-hardware integration tests.
 - Do not commit addresses, credentials, private keys, SSH configuration, or
   operational logs.
 - Do not link, vendor, or copy private CANN, HCCP, HCOMM, HCCL, or HNS provider

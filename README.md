@@ -79,3 +79,4 @@ guides. Keep target paths, addresses, logs, and operational commands in ignored
 - [AIV](docs/aiv.md)
 - [AICPU](docs/aicpu.md)
 - [Linkage and runtime ABI](docs/linkage.md)
+- [Testing](docs/testing.md)
