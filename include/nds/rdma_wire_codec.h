@@ -37,6 +37,17 @@ typedef struct nds_memory_descriptor {
     uint32_t access_flags;
 } nds_memory_descriptor;
 
+enum nds_transfer_status_code {
+    NDS_TRANSFER_SUBMITTED = 1,
+    NDS_TRANSFER_VERIFIED = 2,
+    NDS_TRANSFER_FAILED = 3,
+};
+
+typedef struct nds_transfer_status {
+    uint16_t status;
+    uint64_t transaction_id;
+} nds_transfer_status;
+
 enum { NDS_WIRE_ERROR_CAPACITY = 256 };
 
 /* Encode/decode the fixed-size NDS wire record. All host fields remain host order. */
@@ -50,6 +61,12 @@ int nds_memory_descriptor_encode(const nds_memory_descriptor *descriptor,
 int nds_memory_descriptor_decode(const nds_memory_descriptor_wire_v1 *wire,
                                  nds_memory_descriptor *descriptor,
                                  char error[NDS_WIRE_ERROR_CAPACITY]);
+int nds_transfer_status_encode(const nds_transfer_status *status,
+                               nds_transfer_status_wire_v1 *wire,
+                               char error[NDS_WIRE_ERROR_CAPACITY]);
+int nds_transfer_status_decode(const nds_transfer_status_wire_v1 *wire,
+                               nds_transfer_status *status,
+                               char error[NDS_WIRE_ERROR_CAPACITY]);
 
 #ifdef __cplusplus
 }

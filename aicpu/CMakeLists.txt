@@ -17,9 +17,14 @@ if(NOT EXISTS "${NDS_AICPU_COMPILER}")
 endif()
 
 set(NDS_AICPU_KERNEL_SO "libnds_aicpu_roce.so")
+set(NDS_AICPU_STANDARD_KERNEL_SO "libnds_aicpu_roce_standard.so")
 set(NDS_AICPU_OUTPUT_DIR "${CMAKE_BINARY_DIR}/aicpu")
 set(NDS_AICPU_KERNEL "${NDS_AICPU_OUTPUT_DIR}/${NDS_AICPU_KERNEL_SO}")
+set(NDS_AICPU_STANDARD_KERNEL "${NDS_AICPU_OUTPUT_DIR}/${NDS_AICPU_STANDARD_KERNEL_SO}")
 set(NDS_AICPU_CONFIG "${NDS_AICPU_OUTPUT_DIR}/libnds_aicpu_roce.json")
+set(NDS_AICPU_STANDARD_CONFIG "${NDS_AICPU_OUTPUT_DIR}/nds_aicpu_standard.json")
+set(NDS_AICPU_STANDARD_STAGE "${NDS_AICPU_OUTPUT_DIR}/standard_package/aicpu_kernels_device")
+set(NDS_AICPU_STANDARD_PACKAGE "${NDS_AICPU_OUTPUT_DIR}/aicpu_nds.tar.gz")
 
 add_custom_command(
     OUTPUT "${NDS_AICPU_KERNEL}"
@@ -42,4 +47,39 @@ add_custom_command(
     VERBATIM)
 
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/package/nds_aicpu_roce.json.in" "${NDS_AICPU_CONFIG}" @ONLY)
-add_custom_target(nds_aicpu_kernel ALL DEPENDS "${NDS_AICPU_KERNEL}" "${NDS_AICPU_CONFIG}")
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/package/nds_aicpu_standard.json.in" "${NDS_AICPU_STANDARD_CONFIG}" @ONLY)
+
+add_custom_command(
+    OUTPUT "${NDS_AICPU_STANDARD_KERNEL}"
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "${NDS_AICPU_OUTPUT_DIR}"
+    COMMAND "${NDS_AICPU_COMPILER}"
+        -x c++ -shared -fPIC -O2 -std=c++17
+        -DNDS_AICPU_STANDARD_CP1=1
+        -D_GLIBCXX_USE_CXX11_ABI=1 -D_FORTIFY_SOURCE=2 -D_GNU_SOURCE
+        -fvisibility=hidden -fstack-protector-strong -fno-common -fno-strict-aliasing
+        -Wall -Wextra -Werror
+        -I${CMAKE_CURRENT_SOURCE_DIR}/include
+        -I${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/nds_aicpu_rdma_post.aicpu
+        -ldl
+        -Wl,-z,relro,-z,now,-z,noexecstack
+        -o ${NDS_AICPU_STANDARD_KERNEL}
+    DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/nds_aicpu_rdma_post.aicpu"
+        "${CMAKE_SOURCE_DIR}/include/nds/aicpu_roce_abi.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/nds_aicpu_hns_abi.h"
+    VERBATIM)
+
+add_custom_command(
+    OUTPUT "${NDS_AICPU_STANDARD_PACKAGE}"
+    COMMAND "${CMAKE_COMMAND}"
+        -DINPUT_SO=${NDS_AICPU_STANDARD_KERNEL}
+        -DSTAGE_ROOT=${NDS_AICPU_OUTPUT_DIR}/standard_package
+        -DOUTPUT_PACKAGE=${NDS_AICPU_STANDARD_PACKAGE}
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/package/build_standard_package.cmake
+    DEPENDS "${NDS_AICPU_STANDARD_KERNEL}"
+    VERBATIM)
+
+add_custom_target(nds_aicpu_kernel ALL DEPENDS
+    "${NDS_AICPU_KERNEL}" "${NDS_AICPU_STANDARD_KERNEL}" "${NDS_AICPU_CONFIG}"
+    "${NDS_AICPU_STANDARD_CONFIG}" "${NDS_AICPU_STANDARD_PACKAGE}")

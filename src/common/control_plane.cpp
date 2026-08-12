@@ -98,6 +98,37 @@ bool TcpControlPlane::receive_memory_descriptor(nds_memory_descriptor &descripto
     return true;
 }
 
+bool TcpControlPlane::send_transfer_status(const nds_transfer_status &status, std::string *error) const
+{
+    nds_transfer_status_wire_v1 wire{};
+    char codec_error[NDS_WIRE_ERROR_CAPACITY]{};
+    if (fd_ < 0) {
+        if (error != nullptr) *error = "control plane is not connected";
+        return false;
+    }
+    if (nds_transfer_status_encode(&status, &wire, codec_error) != 0) {
+        if (error != nullptr) *error = std::string("cannot encode transfer status: ") + codec_error;
+        return false;
+    }
+    return write_full(fd_, &wire, sizeof(wire), error);
+}
+
+bool TcpControlPlane::receive_transfer_status(nds_transfer_status &status, std::string *error) const
+{
+    nds_transfer_status_wire_v1 wire{};
+    char codec_error[NDS_WIRE_ERROR_CAPACITY]{};
+    if (fd_ < 0) {
+        if (error != nullptr) *error = "control plane is not connected";
+        return false;
+    }
+    if (!read_full(fd_, &wire, sizeof(wire), error)) return false;
+    if (nds_transfer_status_decode(&wire, &status, codec_error) != 0) {
+        if (error != nullptr) *error = std::string("cannot decode transfer status: ") + codec_error;
+        return false;
+    }
+    return true;
+}
+
 int TcpControlPlane::fd() const noexcept
 {
     return fd_;

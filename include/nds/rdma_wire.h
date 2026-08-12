@@ -12,6 +12,8 @@ extern "C" {
 #define NDS_GID_BYTES 16U
 #define NDS_MEMORY_WIRE_MAGIC UINT32_C(0x4e44534d) /* "NDSM" */
 #define NDS_MEMORY_WIRE_VERSION UINT16_C(1)
+#define NDS_TRANSFER_STATUS_WIRE_MAGIC UINT32_C(0x4e445341) /* "NDSA" */
+#define NDS_TRANSFER_STATUS_WIRE_VERSION UINT16_C(1)
 #define NDS_MEMORY_ACCESS_REMOTE_WRITE UINT32_C(0x00000002)
 #define NDS_MEMORY_DESCRIPTOR_FLAG_AICPU_SYNC UINT16_C(0x0001)
 
@@ -64,12 +66,28 @@ typedef struct __attribute__((packed)) nds_memory_descriptor_wire_v1 {
     uint8_t reserved[8];
 } nds_memory_descriptor_wire_v1;
 
+typedef struct __attribute__((packed)) nds_transfer_status_wire_v1 {
+    uint32_t magic;
+    uint16_t version;
+    uint16_t status;
+    uint64_t transaction_id;
+    uint8_t reserved[8];
+} nds_transfer_status_wire_v1;
+
 #ifdef __cplusplus
 static_assert(sizeof(nds_memory_descriptor_wire_v1) == 48,
               "NDS memory descriptor v1 must remain a fixed 48-byte message");
 #else
 _Static_assert(sizeof(nds_memory_descriptor_wire_v1) == 48,
                "NDS memory descriptor v1 must remain a fixed 48-byte message");
+#endif
+
+#ifdef __cplusplus
+static_assert(sizeof(nds_transfer_status_wire_v1) == 24,
+              "NDS transfer status v1 must remain a fixed 24-byte message");
+#else
+_Static_assert(sizeof(nds_transfer_status_wire_v1) == 24,
+               "NDS transfer status v1 must remain a fixed 24-byte message");
 #endif
 
 #ifdef __cplusplus

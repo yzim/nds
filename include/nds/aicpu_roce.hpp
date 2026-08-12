@@ -9,12 +9,7 @@
 
 namespace nds {
 
-/*
- * Loader for NDS's own AICPU package.  The package contains only
- * NdsAicpuRdmaPost: one signaled RDMA WRITE, READ, or SEND provider post.
- * It deliberately has no HCOMM flag protocol, rank state,
- * or reciprocal peer dependency.
- */
+/* Loads either NDS's mode-1 diagnostics or its standard-CP1 post primitive. */
 struct AicpuRdmaPostRequest {
     std::uint32_t opcode{NDS_AICPU_RDMA_WRITE};
     std::uint64_t ai_qp_address{};
@@ -24,6 +19,7 @@ struct AicpuRdmaPostRequest {
     std::uint64_t remote_address{};
     std::uint64_t data_size{};
     std::uint64_t wr_id{};
+    std::uint32_t logical_device_id{};
     std::uint16_t launch_timeout_seconds{5U};
 };
 
@@ -34,10 +30,13 @@ public:
     AicpuRdmaPostLauncher(const AicpuRdmaPostLauncher &) = delete;
     AicpuRdmaPostLauncher &operator=(const AicpuRdmaPostLauncher &) = delete;
 
-    bool load(nds_acl_api &acl, const std::string &kernel_config_path);
+    bool load(nds_acl_api &acl, const std::string &kernel_config_path,
+              std::int32_t cpu_kernel_mode = 1);
     bool launch_noop_and_wait(std::int32_t completion_timeout_ms);
     bool launch_provider_probe_and_wait(std::int32_t completion_timeout_ms);
     bool launch_request_probe_and_wait(const AicpuRdmaPostRequest &request,
+                                       std::int32_t completion_timeout_ms);
+    bool launch_binding_probe_and_wait(const AicpuRdmaPostRequest &request,
                                        std::int32_t completion_timeout_ms);
     bool launch_post_attempt_probe_and_wait(const AicpuRdmaPostRequest &request,
                                             std::int32_t completion_timeout_ms);
@@ -55,6 +54,7 @@ private:
     nds_acl_api *acl_{};
     nds_acl_bin_handle binary_{};
     nds_acl_stream stream_{};
+    std::int32_t cpu_kernel_mode_{-1};
     std::string error_;
 };
 

@@ -20,6 +20,13 @@
       "opKernelLib": "CUSTAICPUKernel"
     }
   },
+  "NdsAicpuBindingProbe": {
+    "opInfo": {
+      "functionName": "NdsAicpuBindingProbe",
+      "kernelSo": "@NDS_AICPU_KERNEL_SO@",
+      "opKernelLib": "CUSTAICPUKernel"
+    }
+  },
   "NdsAicpuPostAttemptProbe": {
     "opInfo": {
       "functionName": "NdsAicpuPostAttemptProbe",

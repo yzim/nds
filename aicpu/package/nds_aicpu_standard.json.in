@@ -1,0 +1,37 @@
+{
+  "NdsAicpuNoop": {
+    "opInfo": {
+      "functionName": "NdsAicpuNoop",
+      "kernelSo": "@NDS_AICPU_STANDARD_KERNEL_SO@",
+      "opKernelLib": "AICPUKernel"
+    }
+  },
+  "NdsAicpuProviderProbe": {
+    "opInfo": {
+      "functionName": "NdsAicpuProviderProbe",
+      "kernelSo": "@NDS_AICPU_STANDARD_KERNEL_SO@",
+      "opKernelLib": "AICPUKernel"
+    }
+  },
+  "NdsAicpuRequestProbe": {
+    "opInfo": {
+      "functionName": "NdsAicpuRequestProbe",
+      "kernelSo": "@NDS_AICPU_STANDARD_KERNEL_SO@",
+      "opKernelLib": "AICPUKernel"
+    }
+  },
+  "NdsAicpuPostAttemptProbe": {
+    "opInfo": {
+      "functionName": "NdsAicpuPostAttemptProbe",
+      "kernelSo": "@NDS_AICPU_STANDARD_KERNEL_SO@",
+      "opKernelLib": "AICPUKernel"
+    }
+  },
+  "NdsAicpuRdmaPost": {
+    "opInfo": {
+      "functionName": "NdsAicpuRdmaPost",
+      "kernelSo": "@NDS_AICPU_STANDARD_KERNEL_SO@",
+      "opKernelLib": "AICPUKernel"
+    }
+  }
+}

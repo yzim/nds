@@ -27,6 +27,7 @@
 #define NDS_GUARD_BYTES 64U
 #define NDS_GUARD_VALUE 0xa5U
 #define NDS_PAYLOAD_INITIAL_VALUE 0xccU
+#define NDS_TRANSFER_WAIT_MS 5000U
 
 struct nds_server_config {
     const char *device_name;
@@ -370,6 +371,21 @@ static bool destination_is_valid(const struct nds_verbs_resources *resources,
     return true;
 }
 
+static bool wait_for_destination(const struct nds_verbs_resources *resources,
+                                 const unsigned char *expected)
+{
+    const struct timespec delay = {.tv_sec = 0, .tv_nsec = 1000000L};
+    unsigned int elapsed;
+
+    for (elapsed = 0U; elapsed < NDS_TRANSFER_WAIT_MS; ++elapsed) {
+        if (destination_is_valid(resources, expected)) {
+            return true;
+        }
+        (void)nanosleep(&delay, NULL);
+    }
+    return destination_is_valid(resources, expected);
+}
+
 static int move_qp_to_init(const struct nds_verbs_resources *resources,
                            const struct nds_server_config *config)
 {
@@ -625,6 +641,8 @@ int main(int argc, char **argv)
     nds_rc_endpoint local;
     nds_memory_descriptor_wire_v1 memory_wire;
     nds_memory_descriptor memory;
+    nds_transfer_status_wire_v1 status_wire;
+    nds_transfer_status status;
     unsigned char *expected = NULL;
     char wire_error[NDS_WIRE_ERROR_CAPACITY] = {0};
     int listener = -1;
@@ -728,14 +746,21 @@ int main(int argc, char **argv)
         (void)fprintf(stderr, "could not send CPU memory descriptor: %s\n", wire_error);
         goto out;
     }
-    if (wait_for_peer_close(connection) != 0) {
+    if (read_full(connection, &status_wire, sizeof(status_wire)) != 0 ||
+        nds_transfer_status_decode(&status_wire, &status, wire_error) != 0 ||
+        status.status != NDS_TRANSFER_SUBMITTED || status.transaction_id != memory.transaction_id) {
+        (void)fprintf(stderr, "invalid or incomplete NDS transfer submission: %s\n", wire_error);
         goto out;
     }
-    if (report_qp(&resources, "after peer control close") != 0) {
+    status.status = wait_for_destination(&resources, expected) ? NDS_TRANSFER_VERIFIED : NDS_TRANSFER_FAILED;
+    if (nds_transfer_status_encode(&status, &status_wire, wire_error) != 0 ||
+        write_full(connection, &status_wire, sizeof(status_wire)) != 0) {
+        (void)fprintf(stderr, "could not send NDS transfer acknowledgment: %s\n", wire_error);
         goto out;
     }
+    if (report_qp(&resources, "after transfer acknowledgment") != 0) goto out;
     hold_for_passive_diagnostics(config.post_close_hold_ms);
-    if (!destination_is_valid(&resources, expected)) {
+    if (status.status != NDS_TRANSFER_VERIFIED) {
         (void)fprintf(stderr, "RDMA Write validation failed: payload or guard bytes differ.\n");
         goto out;
     }

@@ -45,6 +45,8 @@ public:
     /* These fixed-size records are exchanged after endpoint negotiation. */
     bool send_memory_descriptor(const nds_memory_descriptor &descriptor, std::string *error) const;
     bool receive_memory_descriptor(nds_memory_descriptor &descriptor, std::string *error) const;
+    bool send_transfer_status(const nds_transfer_status &status, std::string *error) const;
+    bool receive_transfer_status(nds_transfer_status &status, std::string *error) const;
 
     int fd() const noexcept;
     int release() noexcept;

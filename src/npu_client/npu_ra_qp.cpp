@@ -113,8 +113,10 @@ bool NpuRaQp::create(nds_ra_api &api, const NpuRaQpConfig &config)
             return false;
         }
     } else {
-        /* Matches HCOMM v9.0.0 ConstructQpAttrs for a 910B OPBASE_EXT AI QP. */
-        aicpu_attrs.qp_mode = NDS_RA_QP_MODE_OPBASE_EXT;
+        /* Normal AI mode lets CP1's provider post ring sq.db_reg directly. AIV needs OPBASE_EXT metadata. */
+        aicpu_attrs.qp_mode = config_.submission_mode == NpuRaSubmissionMode::Aicpu
+                                  ? NDS_RA_QP_MODE_NORMAL
+                                  : NDS_RA_QP_MODE_OPBASE_EXT;
         aicpu_attrs.cq_attr.send_cq_depth = 32768;
         aicpu_attrs.cq_attr.recv_cq_depth = 128;
         aicpu_attrs.qp_attr.cap.max_send_wr = 32768;
@@ -126,7 +128,7 @@ bool NpuRaQp::create(nds_ra_api &api, const NpuRaQpConfig &config)
         aicpu_attrs.version = NDS_RA_QP_CREATE_WITH_ATTR_VERSION;
         result = api_->ra_ai_qp_create(rdev_handle_, &aicpu_attrs, &aicpu_qp_info_, &qp_handle_);
         if (result != 0 || qp_handle_ == nullptr || aicpu_qp_info_.ai_qp_address == 0U) {
-            set_error("RaAiQpCreate(OPBASE_EXT) failed: " + std::to_string(result));
+            set_error("RaAiQpCreate(AI submission mode) failed: " + std::to_string(result));
             reset();
             return false;
         }

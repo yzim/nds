@@ -379,7 +379,7 @@ void test_aicpu_qp_creation_and_connection()
     assert(!fake.rdev_init.disabled_lite_thread);
     assert(fake.qp_create_calls == 0);
     assert(fake.ai_qp_create_calls == 1);
-    assert(fake.ai_qp_attrs.qp_mode == NDS_RA_QP_MODE_OPBASE_EXT);
+    assert(fake.ai_qp_attrs.qp_mode == NDS_RA_QP_MODE_NORMAL);
     assert(fake.ai_qp_attrs.cq_attr.send_cq_depth == 32768);
     assert(fake.ai_qp_attrs.cq_attr.recv_cq_depth == 128);
     assert(fake.ai_qp_attrs.qp_attr.cap.max_send_wr == 32768U);
@@ -415,6 +415,22 @@ void test_aicpu_qp_creation_and_connection()
     qp.reset();
     assert(fake.qp_destroy_calls == 1);
     assert(fake.rdev_deinit_calls == 1);
+}
+
+void test_aiv_uses_opbase_ext_qp()
+{
+    FakeRaState fake{};
+    state = &fake;
+    nds_ra_api api = make_fake_api();
+    nds::NpuRaQp qp;
+    nds::NpuRaQpConfig config{};
+
+    config.local_ipv4 = "192.0.2.10";
+    config.submission_mode = nds::NpuRaSubmissionMode::Aiv;
+    assert(qp.create(api, config));
+    assert(fake.ai_qp_create_calls == 1);
+    assert(fake.ai_qp_attrs.qp_mode == NDS_RA_QP_MODE_OPBASE_EXT);
+    qp.reset();
 }
 
 void test_memory_registration_lifecycle()
@@ -553,6 +569,7 @@ int main()
 {
     test_create_advertise_connect_and_reset();
     test_aicpu_qp_creation_and_connection();
+    test_aiv_uses_opbase_ext_qp();
     test_memory_registration_lifecycle();
     test_send_wr_and_polling();
     test_rejects_invalid_configuration_and_endpoint();

@@ -50,7 +50,6 @@ typedef int (*nds_hns_exp_post_send_fn)(
     void *qp, struct nds_hns_send_wr *wr, struct nds_hns_send_wr **bad_wr,
     struct nds_hns_post_send_response *response);
 
-
 #if defined(__cplusplus)
 static_assert(sizeof(nds_hns_sge) == 16, "HNS SGE ABI changed");
 static_assert(sizeof(nds_hns_send_wr) == 128, "HNS send-WR ABI changed");

@@ -224,3 +224,50 @@ int nds_memory_descriptor_decode(const nds_memory_descriptor_wire_v1 *wire,
     };
     return nds_memory_descriptor_validate(descriptor, error);
 }
+
+static int nds_transfer_status_validate(const nds_transfer_status *status,
+                                        char error[NDS_WIRE_ERROR_CAPACITY])
+{
+    if (status == NULL || status->transaction_id == 0U ||
+        (status->status != NDS_TRANSFER_SUBMITTED && status->status != NDS_TRANSFER_VERIFIED &&
+         status->status != NDS_TRANSFER_FAILED)) {
+        nds_wire_set_error(error, "invalid transfer status");
+        return -1;
+    }
+    return 0;
+}
+
+int nds_transfer_status_encode(const nds_transfer_status *status,
+                               nds_transfer_status_wire_v1 *wire,
+                               char error[NDS_WIRE_ERROR_CAPACITY])
+{
+    if (wire == NULL || nds_transfer_status_validate(status, error) != 0) return -1;
+    *wire = (nds_transfer_status_wire_v1){0};
+    wire->magic = htonl(NDS_TRANSFER_STATUS_WIRE_MAGIC);
+    wire->version = htons(NDS_TRANSFER_STATUS_WIRE_VERSION);
+    wire->status = htons(status->status);
+    wire->transaction_id = nds_host_to_be64(status->transaction_id);
+    return 0;
+}
+
+int nds_transfer_status_decode(const nds_transfer_status_wire_v1 *wire,
+                               nds_transfer_status *status,
+                               char error[NDS_WIRE_ERROR_CAPACITY])
+{
+    static const uint8_t zero_reserved[8] = {0};
+    if (wire == NULL || status == NULL) {
+        nds_wire_set_error(error, "transfer status wire record and output are required");
+        return -1;
+    }
+    if (ntohl(wire->magic) != NDS_TRANSFER_STATUS_WIRE_MAGIC ||
+        ntohs(wire->version) != NDS_TRANSFER_STATUS_WIRE_VERSION ||
+        memcmp(wire->reserved, zero_reserved, sizeof(wire->reserved)) != 0) {
+        nds_wire_set_error(error, "invalid transfer status header");
+        return -1;
+    }
+    *status = (nds_transfer_status){
+        .status = ntohs(wire->status),
+        .transaction_id = nds_be64_to_host(wire->transaction_id),
+    };
+    return nds_transfer_status_validate(status, error);
+}

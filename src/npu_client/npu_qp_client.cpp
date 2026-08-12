@@ -34,9 +34,11 @@ struct ClientConfig {
     bool execute{false};
     bool qp_only{false};
     bool aicpu_request_probe{false};
+    bool aicpu_binding_probe{false};
     bool aicpu_post_attempt_probe{false};
     std::uint32_t qp_only_hold_ms{0};
     std::string aicpu_kernel_config;
+    std::int32_t aicpu_cpu_kernel_mode{1};
     std::string aiv_kernel;
     std::uint32_t aiv_write_count{1U};
     std::uint32_t aiv_launch_count{1U};
@@ -47,15 +49,16 @@ void usage(const char *program)
     std::cerr
         << "usage: " << program << " --ascendcl ABS_PATH --runtime ABS_PATH --ra ABS_PATH"
         << " --npu-ip IPV4 --logical-device ID --physical-device ID --cpu-ip IPV4 --execute"
-        << " [--submission-mode host-ra|aicpu|aiv] [--aicpu-kernel-config ABS_PATH] [--aiv-kernel ABS_PATH]"
+        << " [--submission-mode host-ra|aicpu|aiv] [--aicpu-kernel-config ABS_PATH] [--aicpu-cpu-kernel-mode 0|1] [--aiv-kernel ABS_PATH]"
         << " [--aiv-write-count COUNT] [--aiv-launch-count COUNT]"
-        << " [--aicpu-request-probe|--aicpu-post-attempt-probe]"
+        << " [--aicpu-request-probe|--aicpu-binding-probe|--aicpu-post-attempt-probe]"
         << " [--qp-only] [--qp-only-hold-ms MS] [--port PORT] [--path-mtu BYTES] [--tcp-port PORT] [--tcp-timeout-ms MS]\n\n"
         << "Creates one NPU0 RA RC QP and exchanges QP metadata with one CPU verbs server. By default it"
         << " receives one bounded CPU destination-MR descriptor and submits exactly one RDMA Write;"
-        << " host-ra uses RaTypicalSendWr/rtRDMADBSend/RaPollCq; aicpu launches NDS's own"
-        << " NdsAicpuRdmaPost package and posts one one-way RDMA Write. aiv launches NDS's AIV binary with a copied AI-SQ descriptor,"
+        << " host-ra uses RaTypicalSendWr/rtRDMADBSend/RaPollCq; aicpu mode 0 launches NDS's standard-CP1 post primitive,"
+        << " while mode 1 remains diagnostic-only. aiv launches NDS's AIV binary with a copied AI-SQ descriptor,"
         << " posts one signaled Write WQE, and rings its hardware doorbell. --aicpu-request-probe reads the prepared request in AICPU but does not post it;"
+        << " --aicpu-binding-probe joins the custom process to HCCP's CP1 shared-pool group without posting;"
         << " --aicpu-post-attempt-probe suppresses the provider post return value for diagnosis only;"
         << " --qp-only validates QP establishment and posts no memory registration or work request;"
         << " --qp-only-hold-ms keeps that QP alive briefly for passive diagnostics."
@@ -84,6 +87,8 @@ bool parse_args(int argc, char **argv, ClientConfig *config)
             config->execute = true;
         } else if (argument == "--aicpu-request-probe") {
             config->aicpu_request_probe = true;
+        } else if (argument == "--aicpu-binding-probe") {
+            config->aicpu_binding_probe = true;
         } else if (argument == "--aicpu-post-attempt-probe") {
             config->aicpu_post_attempt_probe = true;
         } else if (argument == "--qp-only") {
@@ -108,6 +113,10 @@ bool parse_args(int argc, char **argv, ClientConfig *config)
         } else if (argument == "--aicpu-kernel-config") {
             const char *text = value(); if (text == nullptr || text[0] == '\0') return false;
             config->aicpu_kernel_config = text;
+        } else if (argument == "--aicpu-cpu-kernel-mode") {
+            const char *text = value();
+            if (text == nullptr || !parse_u32(text, &parsed) || parsed > 1U) return false;
+            config->aicpu_cpu_kernel_mode = static_cast<std::int32_t>(parsed);
         } else if (argument == "--aiv-kernel") {
             const char *text = value(); if (text == nullptr || text[0] == '\0') return false;
             config->aiv_kernel = text;
@@ -153,8 +162,11 @@ bool parse_args(int argc, char **argv, ClientConfig *config)
            (config->qp.submission_mode != nds::NpuRaSubmissionMode::Aiv ||
             config->aiv_write_count <= kMaxAivWriteCount / config->aiv_launch_count) &&
            (!config->aicpu_request_probe || config->qp.submission_mode == nds::NpuRaSubmissionMode::Aicpu) &&
+           (!config->aicpu_binding_probe || config->qp.submission_mode == nds::NpuRaSubmissionMode::Aicpu) &&
            (!config->aicpu_post_attempt_probe || config->qp.submission_mode == nds::NpuRaSubmissionMode::Aicpu) &&
-           !(config->aicpu_request_probe && config->aicpu_post_attempt_probe);
+           (static_cast<unsigned int>(config->aicpu_request_probe) +
+            static_cast<unsigned int>(config->aicpu_binding_probe) +
+            static_cast<unsigned int>(config->aicpu_post_attempt_probe) <= 1U);
 }
 
 void format_gid(const std::uint8_t gid[NDS_GID_BYTES], char text[INET6_ADDRSTRLEN])
@@ -337,6 +349,8 @@ int main(int argc, char **argv)
     std::string control_error;
 
     if (!parse_args(argc, argv, &config)) { usage(argv[0]); return EXIT_FAILURE; }
+    const bool data_submission = !config.aicpu_request_probe && !config.aicpu_binding_probe &&
+                                 !config.aicpu_post_attempt_probe;
     if (!context.initialize(config.context)) { std::cerr << "direct NPU RA context initialization failed: " << context.error() << '\n'; return EXIT_FAILURE; }
     std::cout << "Direct NPU RA context initialized: logical_device=" << config.context.logical_device_id
               << " physical_device=" << config.context.physical_device_id << '\n';
@@ -401,7 +415,8 @@ int main(int argc, char **argv)
         ok = wait_for_send_completions(qp, 1U);
         if (!ok) print_failure_diagnostics(qp);
     } else if (config.qp.submission_mode == nds::NpuRaSubmissionMode::Aicpu) {
-        if (!qp.has_aicpu_qp_info() || !aicpu_launcher.load(context.acl_api(), config.aicpu_kernel_config)) {
+        if (!qp.has_aicpu_qp_info() || !aicpu_launcher.load(context.acl_api(), config.aicpu_kernel_config,
+                                                             config.aicpu_cpu_kernel_mode)) {
             std::cerr << "NDS AICPU RDMA-post setup failed: "
                       << (aicpu_launcher.error().empty() ? (qp.error().empty() ? context.error() : qp.error()) : aicpu_launcher.error())
                       << '\n';
@@ -410,11 +425,16 @@ int main(int argc, char **argv)
         const nds_ra_ai_qp_info &ai_qp = qp.aicpu_qp_info();
         const nds::AicpuRdmaPostRequest request{
             NDS_AICPU_RDMA_WRITE, ai_qp.ai_qp_address, source_mr.local_key, destination.rkey,
-            reinterpret_cast<std::uint64_t>(device_buffer), destination.address, destination.length, 1U};
+            reinterpret_cast<std::uint64_t>(device_buffer), destination.address, destination.length, 1U,
+            static_cast<std::uint32_t>(config.context.logical_device_id)};
         if (config.aicpu_request_probe) {
             ok = aicpu_launcher.launch_request_probe_and_wait(request, static_cast<std::int32_t>(kCompletionTimeoutMs));
             if (!ok) std::cerr << "NdsAicpuRequestProbe failed: " << aicpu_launcher.error() << '\n';
             else std::cout << "NDS AICPU request probe completed; no RDMA WQE was posted.\n";
+        } else if (config.aicpu_binding_probe) {
+            ok = aicpu_launcher.launch_binding_probe_and_wait(request, static_cast<std::int32_t>(kCompletionTimeoutMs));
+            if (!ok) std::cerr << "NdsAicpuBindingProbe failed: " << aicpu_launcher.error() << '\n';
+            else std::cout << "NDS AICPU shared-pool binding probe completed; no RDMA WQE was posted.\n";
         } else if (config.aicpu_post_attempt_probe) {
             ok = aicpu_launcher.launch_post_attempt_probe_and_wait(request, static_cast<std::int32_t>(kCompletionTimeoutMs));
             if (!ok) std::cerr << "NdsAicpuPostAttemptProbe failed: " << aicpu_launcher.error() << '\n';
@@ -472,6 +492,21 @@ int main(int argc, char **argv)
                   << " signaled RDMA Writes through the AI SQ hardware doorbell.\n";
         std::cout << "HCCP owns this AI QP's CQ and processes its completion channel asynchronously.\n";
         ok = true;
+    }
+    if (ok && data_submission) {
+        const nds_transfer_status submitted{NDS_TRANSFER_SUBMITTED, destination.transaction_id};
+        nds_transfer_status verified{};
+        if (!control.send_transfer_status(submitted, &control_error) ||
+            !control.receive_transfer_status(verified, &control_error)) {
+            std::cerr << "CPU transfer acknowledgment failed: " << control_error << '\n';
+            ok = false;
+        } else if (verified.transaction_id != destination.transaction_id ||
+                   verified.status != NDS_TRANSFER_VERIFIED) {
+            std::cerr << "CPU rejected RDMA transfer validation\n";
+            ok = false;
+        } else {
+            std::cout << "CPU verified the RDMA transfer; NPU resources may now be released.\n";
+        }
     }
 out:
     aicpu_launcher.reset();

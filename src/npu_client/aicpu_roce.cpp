@@ -10,6 +10,7 @@ constexpr const char *kNdsAicpuRdmaPost = "NdsAicpuRdmaPost";
 constexpr const char *kNdsAicpuNoop = "NdsAicpuNoop";
 constexpr const char *kNdsAicpuProviderProbe = "NdsAicpuProviderProbe";
 constexpr const char *kNdsAicpuRequestProbe = "NdsAicpuRequestProbe";
+constexpr const char *kNdsAicpuBindingProbe = "NdsAicpuBindingProbe";
 constexpr const char *kNdsAicpuPostAttemptProbe = "NdsAicpuPostAttemptProbe";
 }
 
@@ -23,7 +24,8 @@ void AicpuRdmaPostLauncher::set_error(std::string message)
     error_ = std::move(message);
 }
 
-bool AicpuRdmaPostLauncher::load(nds_acl_api &acl, const std::string &kernel_config_path)
+bool AicpuRdmaPostLauncher::load(nds_acl_api &acl, const std::string &kernel_config_path,
+                                std::int32_t cpu_kernel_mode)
 {
     nds_acl_binary_load_option option{};
     nds_acl_binary_load_options options{};
@@ -38,6 +40,10 @@ bool AicpuRdmaPostLauncher::load(nds_acl_api &acl, const std::string &kernel_con
         set_error("NDS AICPU RDMA post requires the NDS-built libnds_aicpu_roce.json path");
         return false;
     }
+    if (cpu_kernel_mode != 0 && cpu_kernel_mode != 1) {
+        set_error("NDS AICPU loader supports only standard mode 0 or custom-process mode 1");
+        return false;
+    }
     if (acl.binary_load_from_file == nullptr || acl.binary_unload == nullptr || acl.binary_get_function == nullptr ||
         acl.kernel_args_init == nullptr || acl.kernel_args_append == nullptr || acl.kernel_args_finalize == nullptr ||
         acl.launch_kernel_with_config == nullptr || acl.create_stream_with_config == nullptr || acl.destroy_stream == nullptr ||
@@ -48,8 +54,8 @@ bool AicpuRdmaPostLauncher::load(nds_acl_api &acl, const std::string &kernel_con
 
     acl_ = &acl;
     option.type = NDS_ACL_BINARY_LOAD_OPT_CPU_KERNEL_MODE;
-    // Mode 1 loads a custom AICPU JSON/SO pair with matching lib-prefixed names.
-    option.value.cpu_kernel_mode = 1;
+    // Mode 0 resolves code from the standard AICPU package; mode 1 loads the JSON/SO pair.
+    option.value.cpu_kernel_mode = cpu_kernel_mode;
     options.options = &option;
     options.num_options = 1U;
     result = acl_->binary_load_from_file(kernel_config_path.c_str(), &options, &binary_);
@@ -58,11 +64,13 @@ bool AicpuRdmaPostLauncher::load(nds_acl_api &acl, const std::string &kernel_con
         reset();
         return false;
     }
-    result = acl_->binary_get_function(binary_, kNdsAicpuRdmaPost, &function);
-    if (result != 0 || function == nullptr) {
-        set_error("NDS AICPU package does not expose NdsAicpuRdmaPost: " + std::to_string(result));
-        reset();
-        return false;
+    if (cpu_kernel_mode == 1) {
+        result = acl_->binary_get_function(binary_, kNdsAicpuRdmaPost, &function);
+        if (result != 0 || function == nullptr) {
+            set_error("NDS AICPU package does not expose NdsAicpuRdmaPost: " + std::to_string(result));
+            reset();
+            return false;
+        }
     }
     result = acl_->create_stream_with_config(&stream_, 0U,
                                               NDS_ACL_STREAM_FAST_LAUNCH | NDS_ACL_STREAM_FAST_SYNC);
@@ -71,6 +79,7 @@ bool AicpuRdmaPostLauncher::load(nds_acl_api &acl, const std::string &kernel_con
         reset();
         return false;
     }
+    cpu_kernel_mode_ = cpu_kernel_mode;
     error_.clear();
     return true;
 }
@@ -78,11 +87,12 @@ bool AicpuRdmaPostLauncher::load(nds_acl_api &acl, const std::string &kernel_con
 bool AicpuRdmaPostLauncher::launch_and_wait(const AicpuRdmaPostRequest &request,
                                               std::int32_t completion_timeout_ms)
 {
-    (void)request;
-    (void)completion_timeout_ms;
-    set_error("NDS AICPU RDMA submission is unsupported on CANN 9.0.0: RaAiQpCreate returns provider-private AI-QP "
-              "addresses with no public custom-AICPU mapping/import contract");
-    return false;
+    if (cpu_kernel_mode_ != 0) {
+        set_error("NDS AICPU RDMA submission requires standard CP1 mode 0; mode 1 is diagnostic-only because its "
+                  "custom process has no RNIC doorbell mapping");
+        return false;
+    }
+    return launch_request_and_wait(kNdsAicpuRdmaPost, request, completion_timeout_ms);
 }
 
 bool AicpuRdmaPostLauncher::launch_request_probe_and_wait(const AicpuRdmaPostRequest &request,
@@ -95,6 +105,12 @@ bool AicpuRdmaPostLauncher::launch_post_attempt_probe_and_wait(const AicpuRdmaPo
                                                                  std::int32_t completion_timeout_ms)
 {
     return launch_request_and_wait(kNdsAicpuPostAttemptProbe, request, completion_timeout_ms);
+}
+
+bool AicpuRdmaPostLauncher::launch_binding_probe_and_wait(const AicpuRdmaPostRequest &request,
+                                                            std::int32_t completion_timeout_ms)
+{
+    return launch_request_and_wait(kNdsAicpuBindingProbe, request, completion_timeout_ms);
 }
 
 bool AicpuRdmaPostLauncher::launch_request_and_wait(const char *function_name,
@@ -131,7 +147,7 @@ bool AicpuRdmaPostLauncher::launch_request_and_wait(const char *function_name,
     parameters.abi_version = NDS_AICPU_ROCE_ABI_VERSION;
     parameters.size = sizeof(parameters);
     parameters.opcode = request.opcode;
-    parameters.reserved_opcode = 0U;
+    parameters.logical_device_id = request.logical_device_id;
     parameters.ai_qp_address = request.ai_qp_address;
     parameters.local_lkey = request.local_key;
     parameters.remote_rkey = request.remote_key;
@@ -140,6 +156,7 @@ bool AicpuRdmaPostLauncher::launch_request_and_wait(const char *function_name,
     parameters.length = request.data_size;
     parameters.wr_id = request.wr_id;
     parameters.reserved_0 = 0U;
+    parameters.reserved = 0U;
 
     result = acl_->binary_get_function(binary_, function_name, &function);
     if (result != 0 || function == nullptr) {
@@ -256,6 +273,7 @@ void AicpuRdmaPostLauncher::reset() noexcept
     }
     binary_ = nullptr;
     acl_ = nullptr;
+    cpu_kernel_mode_ = -1;
 }
 
 bool AicpuRdmaPostLauncher::loaded() const noexcept

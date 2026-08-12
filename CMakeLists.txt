@@ -158,7 +158,7 @@ target_link_libraries(nds_npu_ra_mr_probe PRIVATE nds_npu_ra_context nds_npu_ra_
 target_compile_options(nds_npu_ra_mr_probe PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 add_executable(nds_aicpu_noop_probe src/npu_client/probes/aicpu_noop_probe.cpp)
-target_link_libraries(nds_aicpu_noop_probe PRIVATE nds_aicpu_roce nds_ra_loader)
+target_link_libraries(nds_aicpu_noop_probe PRIVATE nds_aicpu_roce nds_npu_ra_context nds_ra_loader)
 target_compile_options(nds_aicpu_noop_probe PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 add_executable(nds_npu_ra_qp_test tests/npu_ra_qp_test.cpp)

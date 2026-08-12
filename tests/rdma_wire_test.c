@@ -90,6 +90,23 @@ int main(void)
         }
     }
 
+    {
+        const nds_transfer_status status_source = {
+            .status = NDS_TRANSFER_VERIFIED,
+            .transaction_id = UINT64_C(0x1020304050607080),
+        };
+        nds_transfer_status status_decoded = {0};
+        nds_transfer_status_wire_v1 status_wire = {0};
+        if (nds_transfer_status_encode(&status_source, &status_wire, error) != 0 ||
+            nds_transfer_status_decode(&status_wire, &status_decoded, error) != 0 ||
+            expect(status_decoded.status == status_source.status &&
+                       status_decoded.transaction_id == status_source.transaction_id,
+                   "transfer status round trip") != 0) {
+            (void)fprintf(stderr, "transfer status codec error: %s\n", error);
+            return 1;
+        }
+    }
+
     wire.magic = 0;
     if (expect(nds_rc_endpoint_decode(&wire, &decoded, error) != 0, "bad magic rejected") != 0) {
         return 1;
