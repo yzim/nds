@@ -116,9 +116,12 @@ setup is not yet an end-to-end feature.
 
 - Public request declaration: `include/nds/aicpu_roce_abi.h`.
 - Device-kernel copy: `aicpu/include/nds_aicpu_roce_abi.h`.
-- ABI version: `2`; `nds_aicpu_rdma_post_request_v2` is 80 bytes.
+- ABI version: `3`; `nds_aicpu_rdma_post_request_v2` is 80 bytes.
 - The request carries opcode, `db_index` returned by `RaAiQpCreate`, AI-QP
-  address, local/remote keys and addresses, length, and WR id.
+  address, local/remote keys and addresses, length, WR id, and an optional
+  NPU-memory checkpoint address. The checkpoint records entry, provider-load,
+  provider-post, doorbell, and success states for diagnosis only; it is not an
+  HCOMM-style peer synchronization protocol.
 - Kernel source/entry point: `aicpu/src/nds_aicpu_rdma_post.aicpu`,
   `NdsAicpuRdmaPost`.
 - The custom-AICPU manifest must use CANN's `opInfo` schema and maps that entry
@@ -160,11 +163,12 @@ Target-only build and unit tests passed (7/7) after the ABI generalization;
 the kernel export `NdsAicpuRdmaPost` was verified.  A single bounded NPU0
 RDMA-Write attempt reached custom-kernel execution but failed while stream
 synchronization reported `507018`, with CPU payload and guard bytes unchanged.
-This does not validate the generic AICPU data path.  Before another hardware
-run, establish whether custom AICPU supports the direct `hrtRDMADBSend` route,
-how a valid stream is obtained, and how custom-kernel failure status can be
-made observable.  Do not solve that by porting HCOMM KFC/SQE context,
-dispatcher, or synchronization flows.
+This does not validate the generic AICPU data path. The v3 request carries an
+NDS-owned device-status checkpoint so a bounded follow-up run can distinguish
+kernel entry, provider load/post, and doorbell failure. Before treating the
+path as supported, establish whether custom AICPU supports the direct
+`hrtRDMADBSend` route and how a valid stream is obtained. Do not solve that by
+porting HCOMM KFC/SQE context, dispatcher, or synchronization flows.
 
 ### Validation discipline
 

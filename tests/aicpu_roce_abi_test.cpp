@@ -18,6 +18,7 @@ int main()
     request.remote_address = UINT64_C(0x876543210000);
     request.length = 4096U;
     request.wr_id = UINT64_C(0xabc);
+    request.status_device_address = UINT64_C(0x123456789000);
 
     if (sizeof(request) != 80U || offsetof(nds_aicpu_rdma_post_request_v2, opcode) != 8U ||
         offsetof(nds_aicpu_rdma_post_request_v2, db_index) != 12U ||
@@ -28,9 +29,10 @@ int main()
         offsetof(nds_aicpu_rdma_post_request_v2, remote_address) != 40U ||
         offsetof(nds_aicpu_rdma_post_request_v2, length) != 48U ||
         offsetof(nds_aicpu_rdma_post_request_v2, wr_id) != 56U ||
-        request.abi_version != 2U || request.size != sizeof(request) ||
+        offsetof(nds_aicpu_rdma_post_request_v2, status_device_address) != 64U ||
+        request.abi_version != 3U || request.size != sizeof(request) ||
         request.opcode != NDS_AICPU_RDMA_WRITE || request.length > NDS_AICPU_ROCE_MAX_BYTES) {
-        (void)std::fputs("NDS AICPU RDMA-post ABI v2 layout check failed\n", stderr);
+        (void)std::fputs("NDS AICPU RDMA-post ABI v3 layout check failed\n", stderr);
         return 1;
     }
     return 0;

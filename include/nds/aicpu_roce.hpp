@@ -40,6 +40,7 @@ public:
     void reset() noexcept;
     bool loaded() const noexcept;
     const std::string &error() const noexcept;
+    std::uint32_t last_device_status() const noexcept;
 
 private:
     void set_error(std::string message);
@@ -47,6 +48,8 @@ private:
     nds_acl_api *acl_{};
     nds_acl_bin_handle binary_{};
     nds_acl_stream stream_{};
+    void *status_device_buffer_{};
+    std::uint32_t last_device_status_{};
     std::string error_;
 };
 
