@@ -1,13 +1,15 @@
 # NDS
 
-NDS is an integration project for direct RoCE communication between one Ascend
-NPU RNIC and one CPU-side RNIC. It owns the NPU client, CPU server, TCP control
-plane, wire format, and three NPU submission implementations.
+NDS connects two RoCE endpoints directly:
 
-The NPU client creates its rdev, RC QP, and source memory registration through
-the CANN HCCP/RA interface. The CPU server creates its own RC QP and destination
-memory registration through `libibverbs`. NDS exchanges only the peer metadata
-and memory descriptors needed to connect those independently owned resources.
+- **NPU client:** creates an HCCP rdev and RC QP, registers NPU source memory,
+  and submits RDMA requests through host RA, AIV, or AICPU.
+- **CPU server:** creates an RC QP and destination MR with `libibverbs`.
+
+The endpoints exchange QPN, PSN, GID, port, and retry metadata to connect the
+two RC QPs. For the current NPU-to-CPU Write path, the CPU sends its destination
+address, length, and rkey; the NPU uses its HCCP MR lkey as the local SGE key.
+No HCCP or verbs handles cross the control-plane boundary.
 
 This is a one-NPU/one-CPU path. It is not an HCCL job: it does not initialize
 HCOMM or HCCL, consume a rank table, or require a second NPU. The CPU endpoint
@@ -53,9 +55,6 @@ src/cpu_server/   CPU `libibverbs` endpoint
 tests/            Unit tests and a test-only runtime fixture
 docs/             Resource lifecycle, modes, linkage, and implementation guides
 ```
-
-NDS is C++20. ABI and wire headers remain C-compatible where they cross a
-runtime or device boundary.
 
 ## Build
 
