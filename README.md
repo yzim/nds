@@ -15,13 +15,17 @@ The target CANN 9.0.0 environment has validated a bounded 4096-byte RDMA Write
 for all three submission modes. The CPU verifies every payload byte and both
 64-byte guard regions before it acknowledges the transfer.
 
-| Mode | Where the request is submitted | NPU completion evidence | Guide |
+| Mode | Submission / post path | NPU send-CQ consumer | Guide |
 |---|---|---|---|
-| `host-ra` | NPU host process through RA and runtime doorbell APIs | `RaPollCq`, then CPU verification | [Host RA](docs/host-ra.md) |
-| `aiv` | NDS AIV kernel writes the HNS SQ and doorbell | CPU verification; HCCP owns the AI CQ | [AIV](docs/aiv.md) |
-| `aicpu` | NDS standard-CP1 kernel calls the HNS provider | CPU verification; HCCP owns the AI CQ | [AICPU](docs/aicpu.md) |
+| `host-ra` | NPU-side host CPU calls `RaTypicalSendWr`, then `rtRDMADBSend` | NPU-side host CPU: NDS calls `RaPollCq` | [Host RA](docs/host-ra.md) |
+| `aiv` | NDS AIV kernel writes the HNS send queue and rings its doorbell | HCCP internally handles the AI-QP CQ on the NPU; NDS does not call `RaPollCq` | [AIV](docs/aiv.md) |
+| `aicpu` | Standard CP1 AICPU calls provider `ibv_exp_post_send` | HCCP internally handles the AI-QP CQ on the NPU; NDS does not call `RaPollCq` | [AICPU](docs/aicpu.md) |
 
 `host-ra` is the default and the first mode to use on a new target.
+
+The CPU peer's payload and guard check is separate from NPU send-CQ handling.
+For AIV and AICPU, it is NDS's application-level proof that the remote Write
+arrived, while HCCP retains ownership of the AI-QP completion channel.
 
 ## Architecture
 

@@ -6,15 +6,19 @@ lifecycle, QP connection, NPU memory registration, CPU destination-memory
 registration, and teardown. They differ in who constructs the WQE, who rings
 the SQ doorbell, and how completion is observed.
 
-| Mode | Submitter | RA QP creation mode | WQE and doorbell owner | Completion evidence |
-|---|---|---|---|---|
-| `host-ra` | Host CPU | OPBASE (`2`) through `RaTypicalQpCreate` | HCCP builds the WQE; host calls `rtRDMADBSend` | Host polls with `RaPollCq`, then CPU peer verifies data |
-| `aiv` | Ascend vector core | OPBASE_EXT (`4`), normalized by HCCP to provider OP (`2`) | NDS AIV code writes the SQ and hardware doorbell directly | HCCP owns the AI CQ; CPU peer verification is the application completion boundary |
-| `aicpu` | Standard CP1 AICPU | NORMAL (`0`) through `RaAiQpCreate` | NDS AICPU kernel calls the HNS provider, which writes the normal-QP doorbell | HCCP owns the AI CQ; CPU peer verification is the application completion boundary |
+| Mode | Submission / post path | RA QP creation mode | NPU send-CQ consumer |
+|---|---|---|---|
+| `host-ra` | NPU-side host CPU calls `RaTypicalSendWr`, then `rtRDMADBSend` | OPBASE (`2`) through `RaTypicalQpCreate` | NPU-side host CPU calls `RaPollCq` |
+| `aiv` | NDS AIV code writes the SQ and hardware doorbell directly | OPBASE_EXT (`4`), normalized by HCCP to provider OP (`2`) | HCCP internally handles the AI-QP CQ on the NPU; NDS does not call `RaPollCq` |
+| `aicpu` | Standard CP1 AICPU calls HNS provider `ibv_exp_post_send`, which rings the normal-QP doorbell | NORMAL (`0`) through `RaAiQpCreate` | HCCP internally handles the AI-QP CQ on the NPU; NDS does not call `RaPollCq` |
 
 The modes are selected with `nds_npu_qp_client --submission-mode`. The CPU
 endpoint is always `nds_verbs_server` using ordinary `libibverbs`; it does not
 load CANN, HCCP, HCOMM, or HCCL.
+
+The CPU peer's payload and guard verification is not an NPU CQ poll. It is the
+application-level remote-effect check NDS uses before releasing resources. This
+is essential for AIV and AICPU because NDS does not own their AI-QP CQs.
 
 Detailed guides:
 
