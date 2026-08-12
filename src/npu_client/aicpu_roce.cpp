@@ -7,29 +7,6 @@
 namespace nds {
 namespace {
 constexpr const char *kNdsAicpuRdmaPost = "NdsAicpuRdmaPost";
-constexpr std::uint32_t kDeviceStatusHostUninitialized = NDS_AICPU_RDMA_POST_STATUS_NONE;
-
-const char *device_status_name(std::uint32_t status)
-{
-    switch (status) {
-    case kDeviceStatusHostUninitialized: return "not written (kernel did not reach its status checkpoint)";
-    case NDS_AICPU_RDMA_POST_STATUS_ENTERED: return "entered kernel";
-    case NDS_AICPU_RDMA_POST_STATUS_INVALID_ARGUMENT: return "kernel rejected request";
-    case NDS_AICPU_RDMA_POST_STATUS_PROVIDER_UNAVAILABLE: return "HNS provider/symbol unavailable";
-    case NDS_AICPU_RDMA_POST_STATUS_DOORBELL_UNAVAILABLE: return "AICPU doorbell wrapper/symbol unavailable";
-    case NDS_AICPU_RDMA_POST_STATUS_POST_FAILED: return "ibv_exp_post_send failed";
-    case NDS_AICPU_RDMA_POST_STATUS_POSTED: return "provider post completed; doorbell pending";
-    case NDS_AICPU_RDMA_POST_STATUS_DOORBELL_FAILED: return "hrtRDMADBSend failed";
-    case NDS_AICPU_RDMA_POST_STATUS_SUCCESS: return "post and doorbell completed";
-    default: return "unknown checkpoint";
-    }
-}
-
-std::string describe_device_status(std::uint32_t status)
-{
-    return "AICPU checkpoint=" + std::to_string(status) + " (" + device_status_name(status) + ")";
-}
-
 }
 
 AicpuRdmaPostLauncher::~AicpuRdmaPostLauncher()
@@ -60,8 +37,7 @@ bool AicpuRdmaPostLauncher::load(nds_acl_api &acl, const std::string &kernel_con
     if (acl.binary_load_from_file == nullptr || acl.binary_unload == nullptr || acl.binary_get_function == nullptr ||
         acl.kernel_args_init == nullptr || acl.kernel_args_append == nullptr || acl.kernel_args_finalize == nullptr ||
         acl.launch_kernel_with_config == nullptr || acl.create_stream == nullptr || acl.destroy_stream == nullptr ||
-        acl.synchronize_stream_with_timeout == nullptr || acl.malloc_device == nullptr ||
-        acl.free_device == nullptr || acl.memcpy == nullptr || acl.memset_device == nullptr) {
+        acl.synchronize_stream_with_timeout == nullptr) {
         set_error("AscendCL is missing a required AICPU binary, argument, launch, or stream symbol");
         return false;
     }
@@ -80,12 +56,6 @@ bool AicpuRdmaPostLauncher::load(nds_acl_api &acl, const std::string &kernel_con
     result = acl_->binary_get_function(binary_, kNdsAicpuRdmaPost, &function);
     if (result != 0 || function == nullptr) {
         set_error("NDS AICPU package does not expose NdsAicpuRdmaPost: " + std::to_string(result));
-        reset();
-        return false;
-    }
-    result = acl_->malloc_device(&status_device_buffer_, sizeof(std::uint32_t), NDS_ACL_MEM_MALLOC_DIRECT_NPU);
-    if (result != 0 || status_device_buffer_ == nullptr) {
-        set_error("aclrtMalloc(AICPU status buffer) failed: " + std::to_string(result));
         reset();
         return false;
     }
@@ -108,7 +78,6 @@ bool AicpuRdmaPostLauncher::launch_and_wait(const AicpuRdmaPostRequest &request,
     nds_acl_param_handle parameter_handle{};
     nds_acl_launch_kernel_attr attribute{};
     nds_acl_launch_kernel_config config{};
-    std::uint32_t device_status = kDeviceStatusHostUninitialized;
     int result;
 
     if (!loaded()) {
@@ -141,14 +110,7 @@ bool AicpuRdmaPostLauncher::launch_and_wait(const AicpuRdmaPostRequest &request,
     parameters.remote_address = request.remote_address;
     parameters.length = request.data_size;
     parameters.wr_id = request.wr_id;
-    parameters.status_device_address = reinterpret_cast<std::uint64_t>(status_device_buffer_);
-
-    result = acl_->memset_device(status_device_buffer_, sizeof(device_status), 0, sizeof(device_status));
-    if (result != 0) {
-        set_error("aclrtMemset(AICPU status buffer) failed: " + std::to_string(result));
-        return false;
-    }
-    last_device_status_ = kDeviceStatusHostUninitialized;
+    parameters.runtime_stream = reinterpret_cast<std::uint64_t>(stream_);
 
     result = acl_->binary_get_function(binary_, kNdsAicpuRdmaPost, &function);
     if (result != 0 || function == nullptr) {
@@ -183,23 +145,7 @@ bool AicpuRdmaPostLauncher::launch_and_wait(const AicpuRdmaPostRequest &request,
     }
     result = acl_->synchronize_stream_with_timeout(stream_, completion_timeout_ms);
     if (result != 0) {
-        const int copy_result = acl_->memcpy(&device_status, sizeof(device_status), status_device_buffer_,
-                                             sizeof(device_status), NDS_ACL_MEMCPY_DEVICE_TO_HOST);
-        if (copy_result == 0) last_device_status_ = device_status;
-        set_error("aclrtSynchronizeStreamWithTimeout after NdsAicpuRdmaPost failed: " + std::to_string(result) +
-                  "; " + (copy_result == 0 ? describe_device_status(last_device_status_)
-                                            : "aclrtMemcpy(AICPU status buffer) failed: " + std::to_string(copy_result)));
-        return false;
-    }
-    result = acl_->memcpy(&device_status, sizeof(device_status), status_device_buffer_, sizeof(device_status),
-                          NDS_ACL_MEMCPY_DEVICE_TO_HOST);
-    if (result != 0) {
-        set_error("aclrtMemcpy(AICPU status buffer) failed: " + std::to_string(result));
-        return false;
-    }
-    last_device_status_ = device_status;
-    if (last_device_status_ != NDS_AICPU_RDMA_POST_STATUS_SUCCESS) {
-        set_error("NdsAicpuRdmaPost completed without success checkpoint; " + describe_device_status(last_device_status_));
+        set_error("aclrtSynchronizeStreamWithTimeout after NdsAicpuRdmaPost failed: " + std::to_string(result));
         return false;
     }
     error_.clear();
@@ -212,11 +158,6 @@ void AicpuRdmaPostLauncher::reset() noexcept
         (void)acl_->destroy_stream(stream_);
     }
     stream_ = nullptr;
-    if (acl_ != nullptr && status_device_buffer_ != nullptr && acl_->free_device != nullptr) {
-        (void)acl_->free_device(status_device_buffer_);
-    }
-    status_device_buffer_ = nullptr;
-    last_device_status_ = kDeviceStatusHostUninitialized;
     if (acl_ != nullptr && binary_ != nullptr && acl_->binary_unload != nullptr) {
         (void)acl_->binary_unload(binary_);
     }
@@ -232,11 +173,6 @@ bool AicpuRdmaPostLauncher::loaded() const noexcept
 const std::string &AicpuRdmaPostLauncher::error() const noexcept
 {
     return error_;
-}
-
-std::uint32_t AicpuRdmaPostLauncher::last_device_status() const noexcept
-{
-    return last_device_status_;
 }
 
 } // namespace nds

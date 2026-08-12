@@ -116,12 +116,11 @@ setup is not yet an end-to-end feature.
 
 - Public request declaration: `include/nds/aicpu_roce_abi.h`.
 - Device-kernel copy: `aicpu/include/nds_aicpu_roce_abi.h`.
-- ABI version: `3`; `nds_aicpu_rdma_post_request_v2` is 80 bytes.
+- ABI version: `4`; `nds_aicpu_rdma_post_request_v2` is 80 bytes.
 - The request carries opcode, `db_index` returned by `RaAiQpCreate`, AI-QP
-  address, local/remote keys and addresses, length, WR id, and an optional
-  NPU-memory checkpoint address. The checkpoint records entry, provider-load,
-  provider-post, doorbell, and success states for diagnosis only; it is not an
-  HCOMM-style peer synchronization protocol.
+  address, local/remote keys and addresses, length, WR id, and the opaque
+  caller-created ACL/runtime stream handle required by the AICPU-side
+  `hrtRDMADBSend` wrapper.
 - Kernel source/entry point: `aicpu/src/nds_aicpu_rdma_post.aicpu`,
   `NdsAicpuRdmaPost`.
 - The custom-AICPU manifest must use CANN's `opInfo` schema and maps that entry
@@ -140,9 +139,10 @@ The current minimal doorbell experiment resolves AICPU custom-kernel wrapper
 `hrtRDMADBSend(unsigned int, unsigned long, void *)` from
 `libaicpu_custom.so`.  That wrapper is installed with CANN and dynamically
 resolves `rtRDMADBSend` from `libruntime.so`; it is not linked by the host
-application.  The custom kernel currently passes a null stream because the
-custom-kernel ABI exposes no public stream-handle argument.  This is an
-unvalidated hypothesis, not a supported/validated claim.
+application.  The kernel receives the caller-created ACL stream as opaque request metadata
+and passes it to the wrapper as a runtime stream. This ACL-to-runtime handle
+compatibility is an explicit target-hardware validation condition, not an
+assumed public contract.
 
 ### Reference basis and current evidence
 
@@ -163,12 +163,13 @@ Target-only build and unit tests passed (7/7) after the ABI generalization;
 the kernel export `NdsAicpuRdmaPost` was verified.  A single bounded NPU0
 RDMA-Write attempt reached custom-kernel execution but failed while stream
 synchronization reported `507018`, with CPU payload and guard bytes unchanged.
-This does not validate the generic AICPU data path. The v3 request carries an
-NDS-owned device-status checkpoint so a bounded follow-up run can distinguish
-kernel entry, provider load/post, and doorbell failure. Before treating the
-path as supported, establish whether custom AICPU supports the direct
-`hrtRDMADBSend` route and how a valid stream is obtained. Do not solve that by
-porting HCOMM KFC/SQE context, dispatcher, or synchronization flows.
+This does not validate the generic AICPU data path. An attempted device-memory
+checkpoint itself faulted before it could report status, so it was removed:
+AICPU must not directly dereference ordinary NPU device memory for diagnostics.
+The v4 request instead supplies the caller-created ACL/runtime stream to the
+doorbell wrapper. Before treating the path as supported, validate that direct
+`hrtRDMADBSend` route with that stream. Do not solve that by porting HCOMM
+KFC/SQE context, dispatcher, or synchronization flows.
 
 ### Validation discipline
 

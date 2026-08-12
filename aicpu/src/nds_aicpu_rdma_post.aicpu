@@ -25,7 +25,7 @@ bool valid_request(const nds_aicpu_rdma_post_request_v2 &request)
 {
     if (request.abi_version != NDS_AICPU_ROCE_ABI_VERSION || request.size != sizeof(request) ||
         !valid_opcode(request.opcode) || request.ai_qp_address == 0U ||
-        request.local_lkey == 0U || request.local_address == 0U || request.length == 0U ||
+        request.local_lkey == 0U || request.local_address == 0U || request.runtime_stream == 0U || request.length == 0U ||
         request.length > NDS_AICPU_ROCE_MAX_BYTES) {
         return false;
     }
@@ -33,13 +33,6 @@ bool valid_request(const nds_aicpu_rdma_post_request_v2 &request)
         return request.remote_address == 0U && request.remote_rkey == 0U;
     }
     return request.remote_address != 0U && request.remote_rkey != 0U;
-}
-
-void report_status(const nds_aicpu_rdma_post_request_v2 &request, uint32_t status)
-{
-    if (request.status_device_address != 0U) {
-        *reinterpret_cast<volatile uint32_t *>(request.status_device_address) = status;
-    }
 }
 
 /* HCOMM's device DlHnsFunction ultimately uses dlopen/dlsym in its AICPU image. */
@@ -57,10 +50,11 @@ nds_hns_exp_post_send_fn hns_exp_post_send()
 /*
  * CANN's AICPU base library exposes hrtRDMADBSend. It resolves the installed
  * device runtime's rtRDMADBSend itself; do not link the host executable or
- * this package against libruntime. NDS passes null because the custom-kernel
- * ABI provides no ACL stream handle. Whether the device wrapper accepts that
- * AICPU execution context is a target-hardware compatibility condition, not
- * an assumed public contract. This is the isolated doorbell piece only, not
+ * this package against libruntime. NDS receives the caller-created ACL/runtime
+ * stream as opaque request metadata and passes it through to the wrapper.
+ * Whether that ACL-to-runtime handle compatibility is accepted in this AICPU
+ * execution context is target-hardware validation work, not an assumed public
+ * contract. This is the isolated doorbell piece only, not
  * HCOMM's SQE dispatcher, event poller, or synchronization protocol.
  */
 nds_aicpu_hrt_rdma_db_send_fn aicpu_rdma_db_send()
@@ -81,20 +75,16 @@ extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuRdmaPost(void
 {
     if (args == nullptr) return kInvalidArgument;
     const auto &request = *static_cast<const nds_aicpu_rdma_post_request_v2 *>(args);
-    report_status(request, NDS_AICPU_RDMA_POST_STATUS_ENTERED);
     if (!valid_request(request)) {
-        report_status(request, NDS_AICPU_RDMA_POST_STATUS_INVALID_ARGUMENT);
         return kInvalidArgument;
     }
 
     const nds_hns_exp_post_send_fn post_send = hns_exp_post_send();
     if (post_send == nullptr) {
-        report_status(request, NDS_AICPU_RDMA_POST_STATUS_PROVIDER_UNAVAILABLE);
         return kProviderUnavailable;
     }
     const nds_aicpu_hrt_rdma_db_send_fn ring_doorbell = aicpu_rdma_db_send();
     if (ring_doorbell == nullptr) {
-        report_status(request, NDS_AICPU_RDMA_POST_STATUS_DOORBELL_UNAVAILABLE);
         return kDoorbellUnavailable;
     }
 
@@ -118,7 +108,6 @@ extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuRdmaPost(void
     nds_hns_post_send_response response{};
     const int post_result = post_send(reinterpret_cast<void *>(request.ai_qp_address), &work_request, &bad_request, &response);
     if (post_result != 0) {
-        report_status(request, NDS_AICPU_RDMA_POST_STATUS_POST_FAILED);
         return kPostFailed;
     }
 
@@ -127,11 +116,9 @@ extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuRdmaPost(void
 #else
     asm volatile("" ::: "memory");
 #endif
-    report_status(request, NDS_AICPU_RDMA_POST_STATUS_POSTED);
-    if (ring_doorbell(request.db_index, response.db_info, nullptr) != 0) {
-        report_status(request, NDS_AICPU_RDMA_POST_STATUS_DOORBELL_FAILED);
+    if (ring_doorbell(request.db_index, response.db_info,
+                      reinterpret_cast<void *>(request.runtime_stream)) != 0) {
         return kDoorbellFailed;
     }
-    report_status(request, NDS_AICPU_RDMA_POST_STATUS_SUCCESS);
     return kSuccess;
 }
