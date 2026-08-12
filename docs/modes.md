@@ -1,4 +1,4 @@
-# NDS RDMA submission modes
+# Submission Modes
 
 NDS provides three ways to submit an RDMA Write from one Ascend NPU RNIC to a
 plain CPU `libibverbs` RC QP. They share control-plane exchange, RA rdev
@@ -18,9 +18,9 @@ load CANN, HCCP, HCOMM, or HCCL.
 
 Detailed guides:
 
-- [Host RA submission](submission-host-ra.md)
-- [AIV submission](submission-aiv.md)
-- [AICPU submission](submission-aicpu.md)
+- [Host RA](host-ra.md)
+- [AIV](aiv.md)
+- [AICPU](aicpu.md)
 
 ## Common lifecycle
 
@@ -46,17 +46,15 @@ ACL kernel synchronization is not RNIC completion and HCCP owns their CQs.
 
 ## Choosing a mode
 
-Use `host-ra` for the smallest diagnostic baseline and explicit local CQE
-visibility. It has the least device-side code and is the first mode to use when
-validating a new machine or connection.
+Use `host-ra` first. It has the smallest hardware-specific surface and gives
+the NPU process an explicit send CQE through `RaPollCq`.
 
 Use `aiv` when the request must be submitted by an Ascend vector core and the
-application is prepared to own HNS WQE and doorbell layout. It is the most
-hardware-coupled mode.
+application accepts ownership of the CANN-matched HNS WQE and doorbell layout.
 
-Use `aicpu` when submission must occur on AICPU but should remain a generic
-one-WR provider operation. It avoids manual WQE encoding, but requires a
-standard CP1 customer-kernel installation and the CANN-matched HNS provider.
+Use `aicpu` when submission must occur on AICPU but should remain a one-WR
+provider operation. It avoids manual WQE encoding, but requires a standard CP1
+customer-kernel installation and the CANN-matched HNS provider.
 
 These are implementation choices, not performance rankings. NDS has validated
 correctness and bounded repeated AIV submission; it has not published a

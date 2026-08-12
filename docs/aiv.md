@@ -1,4 +1,8 @@
-# AIV submission
+# AIV RDMA Write
+
+This guide covers the NDS-owned vector-core path. Read
+[submission modes](modes.md) before using it; AIV has a different QP mode and
+completion boundary from host RA and AICPU.
 
 ## Basic function
 

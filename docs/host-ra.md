@@ -1,4 +1,7 @@
-# Host RA submission
+# Host RA RDMA Write
+
+This is the default and recommended first validation path. Read
+[submission modes](modes.md) for the common lifecycle and completion model.
 
 ## Basic function
 

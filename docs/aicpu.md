@@ -1,4 +1,7 @@
-# AICPU submission
+# AICPU RDMA Post
+
+This guide covers the real standard-CP1 path and the mode-1 diagnostic limit.
+Read [submission modes](modes.md) for the shared lifecycle and mode comparison.
 
 ## Basic function
 

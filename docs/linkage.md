@@ -1,6 +1,8 @@
-# NDS linkage policy
+# Linkage and Runtime ABI
 
-NDS makes a per-library ABI decision. Stable platform and CPU verbs APIs are linked normally; version-coupled CANN surfaces are isolated behind narrow runtime loaders unless a separately configured, version-pinned public API build is selected.
+NDS makes one explicit decision per library. Stable platform and CPU verbs APIs
+are linked normally. Version-coupled CANN interfaces stay behind narrow runtime
+loaders, except for the optional version-pinned public AscendCL build.
 
 ## Direct one-NPU / one-CPU path
 
@@ -69,4 +71,4 @@ aclInit → aclrtSetDevice → rtOpenNetService → RaInit
 
 The device entry point contains no copied HCOMM implementation. It validates NDS's 80-byte v6 request, dynamically opens the CANN-9.0.0 HNS provider through device-side `dlopen`/`dlsym`, and resolves `ibv_exp_post_send`. NDS creates an AI NORMAL QP because the provider rings `sq.db_reg` itself only in that mode. OPBASE_EXT is normalized to provider OP mode and would require separate dispatcher submission of the returned `db_info`. The successful standard-CP1 Write advanced CPU receive PSN by one and passed payload and guard verification. NDS does not adopt HCOMM's KFC dispatcher, flag buffers, peer waits, batch/split flows, rank state, retry protocol, or background event poller.
 
-See [NDS RDMA submission modes](submission-modes.md) for the mode comparison and detailed guides.
+See [submission modes](modes.md) for the mode comparison and detailed guides.
