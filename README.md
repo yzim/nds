@@ -1,68 +1,48 @@
 # NDS
 
-NDS validates direct RoCE interoperability between one Ascend NPU RNIC and one
-CPU-side RNIC. The NPU endpoint uses CANN RA APIs; the CPU endpoint uses plain
-`libibverbs`. NDS owns the TCP control plane, wire format, build, and device
-submission code.
+NDS is an integration project for direct RoCE communication between one Ascend
+NPU RNIC and one CPU-side RNIC. It owns the NPU client, CPU server, TCP control
+plane, wire format, and three NPU submission implementations.
 
-This is not an HCCL job. The normal path uses one NPU and one CPU RNIC, does
-not initialize HCOMM or HCCL, does not use a rank table, and does not require a
-second NPU.
+The NPU client creates its rdev, RC QP, and source memory registration through
+the CANN HCCP/RA interface. The CPU server creates its own RC QP and destination
+memory registration through `libibverbs`. NDS exchanges only the peer metadata
+and memory descriptors needed to connect those independently owned resources.
 
-## Current status
+This is a one-NPU/one-CPU path. It is not an HCCL job: it does not initialize
+HCOMM or HCCL, consume a rank table, or require a second NPU. The CPU endpoint
+is CANN-free.
 
-The target CANN 9.0.0 environment has validated a bounded 4096-byte RDMA Write
-for all three submission modes. The current CPU server verifies every payload
-byte and both 64-byte guard regions as an internal integration-test checkpoint.
+## Submission modes
 
-| Mode | Submission / post path | Current NPU send-CQ handling | Guide |
+NDS supports three ways to submit an NPU RDMA request. The table identifies
+only the request submitter and the current owner of the NPU send CQ.
+
+| Mode | Submission | NPU send-CQ handling | Guide |
 |---|---|---|---|
-| `host-ra` | NPU-side host CPU calls `RaTypicalSendWr`, then `rtRDMADBSend` | NPU-side host CPU: NDS calls `RaPollCq` | [Host RA](docs/host-ra.md) |
-| `aiv` | NDS AIV kernel writes the HNS send queue and rings its doorbell | HCCP internally handles the AI-QP CQ on the NPU; NDS does not call `RaPollCq` | [AIV](docs/aiv.md) |
-| `aicpu` | Standard CP1 AICPU calls provider `ibv_exp_post_send` | HCCP internally handles the AI-QP CQ on the NPU; NDS does not call `RaPollCq` | [AICPU](docs/aicpu.md) |
+| `host-ra` | NPU-side host CPU | NPU-side host CPU polls the CQ | [Host RA](docs/host-ra.md) |
+| `aiv` | NDS AIV kernel | HCCP handles the AI-QP CQ internally on the NPU | [AIV](docs/aiv.md) |
+| `aicpu` | NDS standard-CP1 AICPU kernel | HCCP handles the AI-QP CQ internally on the NPU | [AICPU](docs/aicpu.md) |
 
-`host-ra` is the default and the first mode to use on a new target.
-
-The CPU payload and guard check is separate from NPU send-CQ handling. It is a
-test-only state in the current CPU server, used to hold resources while NDS
-validates the Write. It is not NDS's final completion API. HCCP retains the
-AI-QP completion channel for AIV and AICPU; defining the project-facing
-completion contract for those modes remains open work.
+The submission implementations share the same HCCP rdev/QP connection and
+memory-registration lifecycle. Their QP types, post paths, CQ ownership, and
+current limitations differ; see [HCCP QP and MR lifecycle](docs/hccp-resources.md)
+and [submission modes](docs/modes.md).
 
 ## Architecture
 
 ```text
 NPU client                                      CPU server
 ----------                                      ----------
-AscendCL -> CANN runtime -> RA (`libra.so`)     `libibverbs`
+CANN RA / HCCP                                  libibverbs
+  create rdev, QP, and source MR                  create QP and destination MR
        |                                                |
-create rdev, RC QP, and source MR               create RC QP and destination MR
-       |                                                |
-       +------ NDS TCP endpoint and MR exchange -------+
+       +------ NDS TCP peer and memory exchange -------+
                               |
-                     mode-specific RDMA Write
+                     selected NPU submission mode
                               |
-              current test-server payload and guard check
+                    direct RoCE data transfer
 ```
-
-The CPU is CANN-free. It never loads HCCP, HCOMM, HCCL, or TSD.
-
-## HCCP resources
-
-The NPU client creates one HCCP rdev and one RC QP. Host RA uses
-`RaTypicalQpCreate`; AIV and AICPU use `RaAiQpCreate` with different QP modes
-because their doorbell ownership differs. `RaGetQpAttr` supplies the QPN, PSN,
-GID, and GID index that NDS exchanges with the CPU over TCP. The CPU uses that
-record to configure its own verbs QP, and the NPU applies the CPU record with
-`RaTypicalQpModify`.
-
-For a Write, the CPU registers its destination buffer with `ibv_reg_mr` and
-sends its address, length, and rkey. The NPU allocates device memory, registers
-it through `RaRegisterMr`, and uses the returned lkey as the local SGE key. NDS
-does not send QP handles, MR handles, AI-QP descriptors, or provider-private
-addresses over TCP. It keeps both endpoints' QPs and MRs alive until the CPU
-verifies the remote write. [Submission modes](docs/modes.md#qp-setup-through-hccp)
-has the complete setup, key, and teardown sequence.
 
 ## Repository layout
 
@@ -71,7 +51,7 @@ src/common/       TCP control plane, NDS wire format, and MTU policy
 src/npu_client/   NPU RA lifecycle, runtime loaders, submission modes, and probes
 src/cpu_server/   CPU `libibverbs` endpoint
 tests/            Unit tests and a test-only runtime fixture
-docs/             Mode guides, linkage policy, and integration decisions
+docs/             Resource lifecycle, modes, linkage, and implementation guides
 ```
 
 NDS is C++20. ABI and wire headers remain C-compatible where they cross a
@@ -88,57 +68,15 @@ cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 ```
 
-To build the optional device artifacts, add both options and select the target
-CANN installation:
+Device-kernel builds and mode-specific invocation are documented in the mode
+guides. Keep target paths, addresses, logs, and operational commands in ignored
+`.local/` files.
 
-```sh
-cmake -S . -B build-device -DCMAKE_BUILD_TYPE=Release \
-  -DNDS_BUILD_AIV_KERNEL=ON \
-  -DNDS_BUILD_AICPU_KERNEL=ON \
-  -DNDS_CANN_ROOT=<cann-root>
-cmake --build build-device --parallel
-ctest --test-dir build-device --output-on-failure
-```
+## Documentation
 
-## Run the baseline
-
-Start the CPU endpoint first:
-
-```sh
-build/nds_verbs_server \
-  --device <cpu-rdma-device> \
-  --gid-index <cpu-gid-index> \
-  --listen <cpu-roce-ip> \
-  --tcp-port <control-port> \
-  --bytes 4096
-```
-
-Then start the NPU endpoint:
-
-```sh
-build/nds_npu_qp_client \
-  --ascendcl <cann-root>/aarch64-linux/lib64/libascendcl.so \
-  --runtime <cann-root>/aarch64-linux/lib64/libruntime.so \
-  --ra <cann-root>/aarch64-linux/lib64/libra.so \
-  --npu-ip <npu-roce-ip> \
-  --logical-device 0 --physical-device 0 \
-  --cpu-ip <cpu-roce-ip> --tcp-port <control-port> \
-  --submission-mode host-ra --execute
-```
-
-Use a whole-process timeout for hardware runs. Add `--qp-only` to both
-endpoints to validate connection setup without registering memory or posting a
-work request. Keep addresses, target paths, logs, and operational commands in
-ignored `.local/` files.
-
-## Guides
-
-- [Submission modes and common lifecycle](docs/modes.md)
-- [Host RA submission](docs/host-ra.md)
-- [AIV submission](docs/aiv.md)
-- [AICPU submission](docs/aicpu.md)
-- [Linkage and runtime ABI policy](docs/linkage.md)
-
-The CPU QP selects path MTU from its local active port. The peer MTU carried in
-the NDS endpoint record is diagnostic only because the CANN 9.0.0 `TypicalQp`
-ABI does not provide an NPU-side path-MTU setting.
+- [HCCP QP and MR lifecycle](docs/hccp-resources.md)
+- [Submission modes](docs/modes.md)
+- [Host RA](docs/host-ra.md)
+- [AIV](docs/aiv.md)
+- [AICPU](docs/aicpu.md)
+- [Linkage and runtime ABI](docs/linkage.md)

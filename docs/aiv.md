@@ -13,7 +13,7 @@ registers memory, but it does not submit the RDMA request.
 NDS creates this QP with `RaAiQpCreate(..., OPBASE_EXT)`. HCCP returns the
 AI send-WQ descriptor that the AIV execution environment can use directly;
 NDS still obtains the source-MR local key through `RaRegisterMr`. See the
-shared [QP and MR lifecycle](modes.md#qp-setup-through-hccp) for the full
+shared [QP and MR lifecycle](hccp-resources.md) for the full
 connection and ownership sequence.
 
 Select it with:

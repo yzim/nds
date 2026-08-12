@@ -14,8 +14,9 @@ The endpoint roles are fixed:
   second NPU.
 
 Start with [README.md](README.md) for the runnable baseline. Technical choices
-belong in `docs/`: [mode overview](docs/modes.md), [host RA](docs/host-ra.md),
-[AIV](docs/aiv.md), [AICPU](docs/aicpu.md), and
+belong in `docs/`: [HCCP QP and MR lifecycle](docs/hccp-resources.md),
+[mode overview](docs/modes.md), [host RA](docs/host-ra.md), [AIV](docs/aiv.md),
+[AICPU](docs/aicpu.md), and
 [linkage policy](docs/linkage.md).
 
 ## Non-negotiable rules
