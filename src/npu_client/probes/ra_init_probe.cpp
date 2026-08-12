@@ -15,7 +15,7 @@ static void usage(const char *program)
 
 static int parse_uint(const char *text, unsigned int *value)
 {
-    char *end = NULL;
+    char *end = nullptr;
     const unsigned long parsed = strtoul(text, &end, 10);
 
     if (end == text || *end != '\0' || parsed > UINT32_MAX) {
@@ -35,7 +35,7 @@ int main(int argc, char **argv)
         .hdc_type = NDS_RA_HDC_SERVICE_TYPE_RDMA,
         .enable_hdc_async = false,
     };
-    const char *runtime_library_path = NULL;
+    const char *runtime_library_path = nullptr;
     unsigned int logical_device_id = NDS_RA_PHY_ID_NPU0;
     int runtime_service_open = 0;
     int result;
@@ -58,7 +58,7 @@ int main(int argc, char **argv)
             continue;
         }
         if (strcmp(argv[index], "--bootstrap-net-service") == 0) {
-            if (++index >= argc || runtime_library_path != NULL) {
+            if (++index >= argc || runtime_library_path != nullptr) {
                 usage(argv[0]);
                 return EXIT_FAILURE;
             }
@@ -79,7 +79,7 @@ int main(int argc, char **argv)
         config.phy_id = value;
     }
 
-    if (runtime_library_path != NULL) {
+    if (runtime_library_path != nullptr) {
         const char hdc_type_arg[] = "--hdcType=18";
         nds_rt_proc_ext_param parameter = {
             .param_info = hdc_type_arg,

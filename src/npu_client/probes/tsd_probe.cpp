@@ -15,7 +15,7 @@ static void usage(const char *program)
 
 static int parse_uint(const char *text, unsigned int *value)
 {
-    char *end = NULL;
+    char *end = nullptr;
     const unsigned long parsed = strtoul(text, &end, 10);
 
     if (end == text || *end != '\0' || parsed > UINT32_MAX) {
@@ -63,9 +63,9 @@ int main(int argc, char **argv)
         (void)fprintf(stderr, "AscendCL loader failed: %s\n", nds_acl_error(&acl_api));
         goto fail;
     }
-    result = acl_api.init(NULL);
+    result = acl_api.init(nullptr);
     if (result != 0) {
-        (void)fprintf(stderr, "aclInit(NULL) failed: %d\n", result);
+        (void)fprintf(stderr, "aclInit(nullptr) failed: %d\n", result);
         goto fail;
     }
     acl_initialized = 1;

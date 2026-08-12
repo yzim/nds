@@ -15,7 +15,7 @@ int main(int argc, char **argv)
         return 1;
     }
     if (nds_runtime_open(&api, "") == 0 ||
-        strstr(nds_runtime_error(&api), "non-empty library path") == NULL) {
+        strstr(nds_runtime_error(&api), "non-empty library path") == nullptr) {
         (void)fprintf(stderr, "runtime loader did not reject an empty path: %s\n", nds_runtime_error(&api));
         return 1;
     }
@@ -23,25 +23,25 @@ int main(int argc, char **argv)
         (void)fprintf(stderr, "runtime loader could not open fake runtime: %s\n", nds_runtime_error(&api));
         return 1;
     }
-    if (api.rdma_db_send == NULL || api.set_device == NULL || api.open_net_service == NULL ||
-        api.close_net_service == NULL) {
+    if (api.rdma_db_send == nullptr || api.set_device == nullptr || api.open_net_service == nullptr ||
+        api.close_net_service == nullptr) {
         (void)fprintf(stderr, "runtime loader returned an incomplete ABI\n");
         nds_runtime_close(&api);
         return 1;
     }
     if (api.set_device(0) != 0 || api.open_net_service(&args) != 0 ||
-        api.rdma_db_send(0x1234U, UINT64_C(0x10000006a), NULL) != 0 || api.close_net_service() != 0) {
+        api.rdma_db_send(0x1234U, UINT64_C(0x10000006a), nullptr) != 0 || api.close_net_service() != 0) {
         (void)fprintf(stderr, "runtime loader did not dispatch successful fake-runtime calls\n");
         nds_runtime_close(&api);
         return 1;
     }
-    if (api.rdma_db_send(0x1234U, UINT64_C(0xdead), NULL) != -77) {
+    if (api.rdma_db_send(0x1234U, UINT64_C(0xdead), nullptr) != -77) {
         (void)fprintf(stderr, "runtime loader did not expose rtRDMADBSend failure\n");
         nds_runtime_close(&api);
         return 1;
     }
     nds_runtime_close(&api);
-    if (api.library != NULL || api.rdma_db_send != NULL) {
+    if (api.library != nullptr || api.rdma_db_send != nullptr) {
         (void)fprintf(stderr, "runtime loader close did not clear state\n");
         return 1;
     }

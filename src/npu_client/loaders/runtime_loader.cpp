@@ -29,9 +29,9 @@ static int nds_runtime_resolve(nds_runtime_api *api, const char *name, void *slo
     (void)dlerror();
     symbol = dlsym(api->library, name);
     loader_error = dlerror();
-    if (loader_error != NULL || symbol == NULL) {
+    if (loader_error != nullptr || symbol == nullptr) {
         nds_runtime_set_error(api, "required symbol %s is unavailable: %s", name,
-                              loader_error == NULL ? "returned null" : loader_error);
+                              loader_error == nullptr ? "returned null" : loader_error);
         return -1;
     }
     memcpy(slot, &symbol, slot_size);
@@ -42,8 +42,8 @@ int nds_runtime_open(nds_runtime_api *api, const char *library_path)
 {
     const char *loader_error;
 
-    if (api == NULL || library_path == NULL || library_path[0] == '\0') {
-        if (api != NULL) {
+    if (api == nullptr || library_path == nullptr || library_path[0] == '\0') {
+        if (api != nullptr) {
             nds_runtime_set_error(api, "an nds_runtime_api and a non-empty library path are required");
         }
         return -1;
@@ -51,10 +51,10 @@ int nds_runtime_open(nds_runtime_api *api, const char *library_path)
 
     nds_runtime_close(api);
     api->library = dlopen(library_path, RTLD_NOW | RTLD_LOCAL);
-    if (api->library == NULL) {
+    if (api->library == nullptr) {
         loader_error = dlerror();
         nds_runtime_set_error(api, "unable to load %s: %s", library_path,
-                              loader_error == NULL ? "unknown dynamic-loader error" : loader_error);
+                              loader_error == nullptr ? "unknown dynamic-loader error" : loader_error);
         return -1;
     }
 
@@ -78,16 +78,16 @@ int nds_runtime_open(nds_runtime_api *api, const char *library_path)
 
 void nds_runtime_close(nds_runtime_api *api)
 {
-    if (api == NULL) {
+    if (api == nullptr) {
         return;
     }
-    if (api->library != NULL) {
+    if (api->library != nullptr) {
         (void)dlclose(api->library);
     }
-    memset(api, 0, sizeof(*api));
+    *api = {};
 }
 
 const char *nds_runtime_error(const nds_runtime_api *api)
 {
-    return api == NULL ? "no loader state" : api->error;
+    return api == nullptr ? "no loader state" : api->error;
 }

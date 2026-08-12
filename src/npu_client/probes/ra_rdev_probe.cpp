@@ -17,7 +17,7 @@ static void usage(const char *program)
 
 static int parse_uint(const char *text, unsigned int *value)
 {
-    char *end = NULL;
+    char *end = nullptr;
     const unsigned long parsed = strtoul(text, &end, 10);
 
     if (end == text || *end != '\0' || parsed > UINT32_MAX) {
@@ -59,8 +59,8 @@ int main(int argc, char **argv)
     nds_ra_rdev rdev = {};
     nds_ra_typical_qp qp_info = {};
     unsigned int logical_device_id = NDS_RA_PHY_ID_NPU0;
-    void *rdev_handle = NULL;
-    void *qp_handle = NULL;
+    void *rdev_handle = nullptr;
+    void *qp_handle = nullptr;
     int acl_initialized = 0;
     int ra_initialized = 0;
     int service_open = 0;
@@ -105,9 +105,9 @@ int main(int argc, char **argv)
         (void)fprintf(stderr, "AscendCL loader failed: %s\n", nds_acl_error(&acl_api));
         goto fail;
     }
-    result = acl_api.init(NULL);
+    result = acl_api.init(nullptr);
     if (result != 0) {
-        (void)fprintf(stderr, "aclInit(NULL) failed: %d\n", result);
+        (void)fprintf(stderr, "aclInit(nullptr) failed: %d\n", result);
         goto fail;
     }
     acl_initialized = 1;
@@ -139,7 +139,7 @@ int main(int argc, char **argv)
     ra_initialized = 1;
 
     result = ra_api.ra_rdev_init(NDS_RA_NETWORK_OFFLINE, NDS_RA_NOTIFY, rdev, &rdev_handle);
-    if (result != 0 || rdev_handle == NULL) {
+    if (result != 0 || rdev_handle == nullptr) {
         (void)fprintf(stderr, "RaRdevInit failed: %d\n", result);
         goto fail;
     }
@@ -157,7 +157,7 @@ int main(int argc, char **argv)
 
     result = ra_api.ra_typical_qp_create(rdev_handle, NDS_RA_QP_FLAG_RC, NDS_RA_QP_MODE_OPBASE, &qp_info,
                                           &qp_handle);
-    if (result != 0 || qp_handle == NULL) {
+    if (result != 0 || qp_handle == nullptr) {
         (void)fprintf(stderr, "RaTypicalQpCreate failed: %d\n", result);
         goto fail;
     }
@@ -169,19 +169,19 @@ int main(int argc, char **argv)
     result = ra_api.ra_qp_destroy(qp_handle);
     if (result != 0) {
         (void)fprintf(stderr, "RaQpDestroy failed: %d\n", result);
-        qp_handle = NULL;
+        qp_handle = nullptr;
         goto fail;
     }
-    qp_handle = NULL;
+    qp_handle = nullptr;
     (void)printf("RaQpDestroy succeeded.\n");
 
     result = ra_api.ra_rdev_deinit(rdev_handle, NDS_RA_NOTIFY);
     if (result != 0) {
         (void)fprintf(stderr, "RaRdevDeinit failed: %d\n", result);
-        rdev_handle = NULL;
+        rdev_handle = nullptr;
         goto fail;
     }
-    rdev_handle = NULL;
+    rdev_handle = nullptr;
     (void)printf("RaRdevDeinit succeeded.\n");
 
     result = ra_api.ra_deinit(&init_config);
@@ -213,10 +213,10 @@ int main(int argc, char **argv)
     return EXIT_SUCCESS;
 
 fail:
-    if (qp_handle != NULL) {
+    if (qp_handle != nullptr) {
         (void)ra_api.ra_qp_destroy(qp_handle);
     }
-    if (rdev_handle != NULL) {
+    if (rdev_handle != nullptr) {
         (void)ra_api.ra_rdev_deinit(rdev_handle, NDS_RA_NOTIFY);
     }
     if (ra_initialized != 0) {

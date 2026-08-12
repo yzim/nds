@@ -10,11 +10,15 @@
 #include <netinet/in.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <time.h>
 #include <unistd.h>
+
+#include <algorithm>
+#include <charconv>
+#include <system_error>
+#include <vector>
 
 #define NDS_DEFAULT_LISTEN "0.0.0.0"
 #define NDS_DEFAULT_TCP_PORT 18515U
@@ -40,16 +44,62 @@ struct nds_server_config {
 };
 
 struct nds_verbs_resources {
-    struct ibv_context *context;
-    struct ibv_pd *pd;
-    struct ibv_cq *cq;
-    struct ibv_qp *qp;
-    uint32_t psn;
-    uint32_t path_mtu;
-    union ibv_gid gid;
-    void *buffer;
-    size_t buffer_length;
-    struct ibv_mr *mr;
+    ibv_context *context = nullptr;
+    ibv_pd *pd = nullptr;
+    ibv_cq *cq = nullptr;
+    ibv_qp *qp = nullptr;
+    uint32_t psn = 0U;
+    uint32_t path_mtu = 0U;
+    ibv_gid gid = {};
+    std::vector<unsigned char> buffer;
+    size_t buffer_length = 0U;
+    ibv_mr *mr = nullptr;
+
+    nds_verbs_resources() = default;
+    nds_verbs_resources(const nds_verbs_resources &) = delete;
+    nds_verbs_resources &operator=(const nds_verbs_resources &) = delete;
+
+    ~nds_verbs_resources()
+    {
+        if (mr != nullptr) (void)ibv_dereg_mr(mr);
+        if (qp != nullptr) (void)ibv_destroy_qp(qp);
+        if (cq != nullptr) (void)ibv_destroy_cq(cq);
+        if (pd != nullptr) (void)ibv_dealloc_pd(pd);
+        if (context != nullptr) (void)ibv_close_device(context);
+    }
+};
+
+class nds_file_descriptor {
+public:
+    explicit nds_file_descriptor(int descriptor = -1) : descriptor_(descriptor) {}
+    nds_file_descriptor(const nds_file_descriptor &) = delete;
+    nds_file_descriptor &operator=(const nds_file_descriptor &) = delete;
+    ~nds_file_descriptor()
+    {
+        if (descriptor_ >= 0) (void)close(descriptor_);
+    }
+
+    int get() const { return descriptor_; }
+    void reset(int descriptor = -1)
+    {
+        if (descriptor_ >= 0) (void)close(descriptor_);
+        descriptor_ = descriptor;
+    }
+
+private:
+    int descriptor_;
+};
+
+class nds_device_list {
+public:
+    ibv_device **devices = nullptr;
+    nds_device_list(const nds_device_list &) = delete;
+    nds_device_list &operator=(const nds_device_list &) = delete;
+    nds_device_list() = default;
+    ~nds_device_list()
+    {
+        if (devices != nullptr) ibv_free_device_list(devices);
+    }
 };
 
 static void usage(const char *program)
@@ -62,15 +112,14 @@ static void usage(const char *program)
 
 static int parse_unsigned(const char *text, unsigned int *value)
 {
-    char *end = NULL;
-    unsigned long parsed;
+    unsigned int parsed = 0U;
+    const char *const end = text + strlen(text);
+    const auto [cursor, error] = std::from_chars(text, end, parsed);
 
-    errno = 0;
-    parsed = strtoul(text, &end, 10);
-    if (errno != 0 || end == text || *end != '\0' || parsed > UINT32_MAX) {
+    if (error != std::errc{} || cursor != end) {
         return -1;
     }
-    *value = (unsigned int)parsed;
+    *value = parsed;
     return 0;
 }
 
@@ -132,7 +181,7 @@ static int parse_arguments(int argc, char **argv, struct nds_server_config *conf
             return -1;
         }
     }
-    return config->device_name == NULL || config->gid_index == NDS_UNSET_GID_INDEX ? -1 : 0;
+    return config->device_name == nullptr || config->gid_index == NDS_UNSET_GID_INDEX ? -1 : 0;
 }
 
 static int read_full(int descriptor, void *buffer, size_t length)
@@ -202,7 +251,7 @@ static uint32_t mtu_to_bytes(enum ibv_mtu mtu)
 
 static int mtu_from_bytes(uint32_t bytes, enum ibv_mtu *mtu)
 {
-    if (mtu == NULL) {
+    if (mtu == nullptr) {
         return -1;
     }
     switch (bytes) {
@@ -226,42 +275,21 @@ static int mtu_from_bytes(uint32_t bytes, enum ibv_mtu *mtu)
     }
 }
 
-static struct ibv_device *find_device(const char *name, struct ibv_device ***list)
+static ibv_device *find_device(const char *name, nds_device_list *list)
 {
     int count = 0;
     int index;
 
-    *list = ibv_get_device_list(&count);
-    if (*list == NULL) {
-        return NULL;
+    list->devices = ibv_get_device_list(&count);
+    if (list->devices == nullptr) {
+        return nullptr;
     }
     for (index = 0; index < count; ++index) {
-        if (strcmp(ibv_get_device_name((*list)[index]), name) == 0) {
-            return (*list)[index];
+        if (strcmp(ibv_get_device_name(list->devices[index]), name) == 0) {
+            return list->devices[index];
         }
     }
-    return NULL;
-}
-
-static void destroy_resources(struct nds_verbs_resources *resources)
-{
-    if (resources->mr != NULL) {
-        (void)ibv_dereg_mr(resources->mr);
-    }
-    free(resources->buffer);
-    if (resources->qp != NULL) {
-        (void)ibv_destroy_qp(resources->qp);
-    }
-    if (resources->cq != NULL) {
-        (void)ibv_destroy_cq(resources->cq);
-    }
-    if (resources->pd != NULL) {
-        (void)ibv_dealloc_pd(resources->pd);
-    }
-    if (resources->context != NULL) {
-        (void)ibv_close_device(resources->context);
-    }
-    *resources = {};
+    return nullptr;
 }
 
 static int create_resources(struct ibv_device *device, const struct nds_server_config *config,
@@ -269,17 +297,17 @@ static int create_resources(struct ibv_device *device, const struct nds_server_c
 {
     struct ibv_qp_init_attr qp_init = {};
     resources->context = ibv_open_device(device);
-    if (resources->context == NULL) {
+    if (resources->context == nullptr) {
         perror("ibv_open_device");
         return -1;
     }
     resources->pd = ibv_alloc_pd(resources->context);
-    if (resources->pd == NULL) {
+    if (resources->pd == nullptr) {
         perror("ibv_alloc_pd");
         return -1;
     }
-    resources->cq = ibv_create_cq(resources->context, (int)(NDS_QP_DEPTH * 2U), NULL, NULL, 0);
-    if (resources->cq == NULL) {
+    resources->cq = ibv_create_cq(resources->context, (int)(NDS_QP_DEPTH * 2U), nullptr, nullptr, 0);
+    if (resources->cq == nullptr) {
         perror("ibv_create_cq");
         return -1;
     }
@@ -292,7 +320,7 @@ static int create_resources(struct ibv_device *device, const struct nds_server_c
     qp_init.cap.max_send_sge = 1;
     qp_init.cap.max_recv_sge = 1;
     resources->qp = ibv_create_qp(resources->pd, &qp_init);
-    if (resources->qp == NULL) {
+    if (resources->qp == nullptr) {
         perror("ibv_create_qp");
         return -1;
     }
@@ -327,23 +355,17 @@ static int create_resources(struct ibv_device *device, const struct nds_server_c
 static int create_destination_memory(struct nds_verbs_resources *resources, unsigned int bytes)
 {
     const size_t total = (size_t)bytes + (2U * NDS_GUARD_BYTES);
-    unsigned char *allocation = static_cast<unsigned char *>(calloc(1U, total));
 
-    if (allocation == NULL) {
-        perror("calloc destination buffer");
-        return -1;
-    }
-    memset(allocation, NDS_GUARD_VALUE, NDS_GUARD_BYTES);
-    memset(allocation + NDS_GUARD_BYTES, NDS_PAYLOAD_INITIAL_VALUE, bytes);
-    memset(allocation + NDS_GUARD_BYTES + bytes, NDS_GUARD_VALUE, NDS_GUARD_BYTES);
-    resources->buffer = allocation;
+    resources->buffer.resize(total);
+    std::fill_n(resources->buffer.begin(), NDS_GUARD_BYTES, NDS_GUARD_VALUE);
+    std::fill_n(resources->buffer.begin() + NDS_GUARD_BYTES, bytes, NDS_PAYLOAD_INITIAL_VALUE);
+    std::fill_n(resources->buffer.begin() + NDS_GUARD_BYTES + bytes, NDS_GUARD_BYTES, NDS_GUARD_VALUE);
     resources->buffer_length = bytes;
-    resources->mr = ibv_reg_mr(resources->pd, allocation, total,
+    resources->mr = ibv_reg_mr(resources->pd, resources->buffer.data(), total,
                                IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
-    if (resources->mr == NULL) {
+    if (resources->mr == nullptr) {
         perror("ibv_reg_mr(destination)");
-        free(resources->buffer);
-        resources->buffer = NULL;
+        resources->buffer.clear();
         resources->buffer_length = 0U;
         return -1;
     }
@@ -353,11 +375,11 @@ static int create_destination_memory(struct nds_verbs_resources *resources, unsi
 static bool destination_is_valid(const struct nds_verbs_resources *resources,
                                  const unsigned char *expected)
 {
-    const unsigned char *allocation = static_cast<const unsigned char *>(resources->buffer);
+    const unsigned char *allocation = resources->buffer.data();
     const size_t bytes = resources->buffer_length;
     size_t index;
 
-    if (allocation == NULL || expected == NULL || memcmp(allocation + NDS_GUARD_BYTES, expected, bytes) != 0) {
+    if (resources->buffer.empty() || expected == nullptr || memcmp(allocation + NDS_GUARD_BYTES, expected, bytes) != 0) {
         return false;
     }
     for (index = 0U; index < NDS_GUARD_BYTES; ++index) {
@@ -379,7 +401,7 @@ static bool wait_for_destination(const struct nds_verbs_resources *resources,
         if (destination_is_valid(resources, expected)) {
             return true;
         }
-        (void)nanosleep(&delay, NULL);
+        (void)nanosleep(&delay, nullptr);
     }
     return destination_is_valid(resources, expected);
 }
@@ -502,7 +524,7 @@ static const char *qp_state_name(enum ibv_qp_state state)
 
 static void format_gid(const uint8_t gid[NDS_GID_BYTES], char text[INET6_ADDRSTRLEN])
 {
-    if (inet_ntop(AF_INET6, gid, text, INET6_ADDRSTRLEN) == NULL) {
+    if (inet_ntop(AF_INET6, gid, text, INET6_ADDRSTRLEN) == nullptr) {
         (void)snprintf(text, INET6_ADDRSTRLEN, "<invalid>");
     }
 }
@@ -623,12 +645,12 @@ static int open_listener(const struct nds_server_config *config)
     return descriptor;
 }
 
-int main(int argc, char **argv)
+static int run_server(int argc, char **argv)
 {
     struct nds_server_config config;
-    struct nds_verbs_resources resources = {};
-    struct ibv_device **device_list = NULL;
-    struct ibv_device *device;
+    struct nds_verbs_resources resources;
+    nds_device_list device_list;
+    ibv_device *device;
     nds_rc_endpoint_wire_v1 peer_wire;
     nds_rc_endpoint_wire_v1 local_wire;
     nds_rc_endpoint peer;
@@ -637,33 +659,27 @@ int main(int argc, char **argv)
     nds_memory_descriptor memory;
     nds_transfer_status_wire_v1 status_wire;
     nds_transfer_status status;
-    unsigned char *expected = NULL;
+    std::vector<unsigned char> expected;
     char wire_error[NDS_WIRE_ERROR_CAPACITY] = {};
-    int listener = -1;
-    int connection = -1;
-    int exit_code = EXIT_FAILURE;
-
+    nds_file_descriptor listener;
+    nds_file_descriptor connection;
     if (parse_arguments(argc, argv, &config) != 0) {
         usage(argv[0]);
         return EXIT_FAILURE;
     }
     device = find_device(config.device_name, &device_list);
-    if (device == NULL) {
+    if (device == nullptr) {
         (void)fprintf(stderr, "RDMA device not found: %s\n", config.device_name);
-        goto out;
+        return EXIT_FAILURE;
     }
     if (create_resources(device, &config, &resources) != 0 || move_qp_to_init(&resources, &config) != 0) {
-        goto out;
+        return EXIT_FAILURE;
     }
     if (!config.qp_only) {
         if (create_destination_memory(&resources, config.bytes) != 0) {
-            goto out;
+            return EXIT_FAILURE;
         }
-        expected = static_cast<unsigned char *>(malloc(config.bytes));
-        if (expected == NULL) {
-            perror("malloc expected payload");
-            goto out;
-        }
+        expected.resize(config.bytes);
         for (unsigned int index = 0U; index < config.bytes; ++index) {
             expected[index] = (unsigned char)(index ^ 0x5aU);
         }
@@ -671,14 +687,14 @@ int main(int argc, char **argv)
     if (make_endpoint(&resources, &config, &local_wire, wire_error) != 0 ||
         nds_rc_endpoint_decode(&local_wire, &local, wire_error) != 0) {
         (void)fprintf(stderr, "could not create local QP-only endpoint: %s\n", wire_error);
-        goto out;
+        return EXIT_FAILURE;
     }
     if (report_qp(&resources, "after INIT") != 0) {
-        goto out;
+        return EXIT_FAILURE;
     }
-    listener = open_listener(&config);
-    if (listener < 0) {
-        goto out;
+    listener.reset(open_listener(&config));
+    if (listener.get() < 0) {
+        return EXIT_FAILURE;
     }
 
     (void)printf("NDS verbs server ready: device=%s ib_port=%u gid_index=%u tcp=%s:%u mode=%s bytes=%u\n",
@@ -687,23 +703,23 @@ int main(int argc, char **argv)
     report_endpoint("CPU local", &local);
     if (!config.qp_only) {
         (void)printf("CPU destination MR: addr=%p payload_bytes=%zu lkey=%u rkey=%u\n",
-                     (unsigned char *)resources.buffer + NDS_GUARD_BYTES, resources.buffer_length,
+                     resources.buffer.data() + NDS_GUARD_BYTES, resources.buffer_length,
                      resources.mr->lkey, resources.mr->rkey);
     }
     (void)printf("Waiting for an 80-byte NDS v2 QP-only peer endpoint description.\n");
-    connection = accept(listener, NULL, NULL);
-    if (connection < 0) {
+    connection.reset(accept(listener.get(), nullptr, nullptr));
+    if (connection.get() < 0) {
         perror("accept");
-        goto out;
+        return EXIT_FAILURE;
     }
-    if (read_full(connection, &peer_wire, sizeof(peer_wire)) != 0 ||
+    if (read_full(connection.get(), &peer_wire, sizeof(peer_wire)) != 0 ||
         nds_rc_endpoint_decode(&peer_wire, &peer, wire_error) != 0) {
         (void)fprintf(stderr, "invalid or incomplete NDS peer endpoint description: %s\n", wire_error);
-        goto out;
+        return EXIT_FAILURE;
     }
     if ((peer.flags & NDS_ENDPOINT_FLAG_QP_ONLY) == 0U) {
         (void)fprintf(stderr, "CPU QP-only server rejects a data-ready peer endpoint\n");
-        goto out;
+        return EXIT_FAILURE;
     }
     report_endpoint("NPU remote", &peer);
     /*
@@ -712,66 +728,56 @@ int main(int argc, char **argv)
      * first would create a needless connection race.
      */
     if (move_qp_to_rtr_rts(&resources, &config, &peer) != 0 || report_qp(&resources, "after RTR/RTS") != 0) {
-        goto out;
+        return EXIT_FAILURE;
     }
-    if (write_full(connection, &local_wire, sizeof(local_wire)) != 0) {
+    if (write_full(connection.get(), &local_wire, sizeof(local_wire)) != 0) {
         perror("write endpoint");
-        goto out;
+        return EXIT_FAILURE;
     }
     if (config.qp_only) {
         (void)puts("CPU verbs QP reached RTS; QP-only mode will not advertise memory or expect a work request.");
-        if (wait_for_peer_close(connection) != 0) {
-            goto out;
+        if (wait_for_peer_close(connection.get()) != 0) {
+            return EXIT_FAILURE;
         }
         (void)puts("QP-only validation passed; NPU closed the control connection without a work request.");
-        exit_code = EXIT_SUCCESS;
-        goto out;
+        return EXIT_SUCCESS;
     }
     memory = {};
     memory.flags = 0U;
     memory.transaction_id = ((uint64_t)resources.qp->qp_num << 32) | resources.psn;
-    memory.address = (uint64_t)(uintptr_t)((unsigned char *)resources.buffer + NDS_GUARD_BYTES);
+    memory.address = (uint64_t)(uintptr_t)(resources.buffer.data() + NDS_GUARD_BYTES);
     memory.length = resources.buffer_length;
     memory.rkey = resources.mr->rkey;
     memory.access_flags = NDS_MEMORY_ACCESS_REMOTE_WRITE;
     if (nds_memory_descriptor_encode(&memory, &memory_wire, wire_error) != 0 ||
-        write_full(connection, &memory_wire, sizeof(memory_wire)) != 0) {
+        write_full(connection.get(), &memory_wire, sizeof(memory_wire)) != 0) {
         (void)fprintf(stderr, "could not send CPU memory descriptor: %s\n", wire_error);
-        goto out;
+        return EXIT_FAILURE;
     }
-    if (read_full(connection, &status_wire, sizeof(status_wire)) != 0 ||
+    if (read_full(connection.get(), &status_wire, sizeof(status_wire)) != 0 ||
         nds_transfer_status_decode(&status_wire, &status, wire_error) != 0 ||
         status.status != NDS_TRANSFER_SUBMITTED || status.transaction_id != memory.transaction_id) {
         (void)fprintf(stderr, "invalid or incomplete NDS transfer submission: %s\n", wire_error);
-        goto out;
+        return EXIT_FAILURE;
     }
-    status.status = wait_for_destination(&resources, expected) ? NDS_TRANSFER_VERIFIED : NDS_TRANSFER_FAILED;
+    status.status = wait_for_destination(&resources, expected.data()) ? NDS_TRANSFER_VERIFIED : NDS_TRANSFER_FAILED;
     if (nds_transfer_status_encode(&status, &status_wire, wire_error) != 0 ||
-        write_full(connection, &status_wire, sizeof(status_wire)) != 0) {
+        write_full(connection.get(), &status_wire, sizeof(status_wire)) != 0) {
         (void)fprintf(stderr, "could not send NDS transfer acknowledgment: %s\n", wire_error);
-        goto out;
+        return EXIT_FAILURE;
     }
-    if (report_qp(&resources, "after transfer acknowledgment") != 0) goto out;
+    if (report_qp(&resources, "after transfer acknowledgment") != 0) return EXIT_FAILURE;
     hold_for_passive_diagnostics(config.post_close_hold_ms);
     if (status.status != NDS_TRANSFER_VERIFIED) {
         (void)fprintf(stderr, "RDMA Write validation failed: payload or guard bytes differ.\n");
-        goto out;
+        return EXIT_FAILURE;
     }
     (void)printf("RDMA Write validation passed: %u bytes matched and both %u-byte guards are intact.\n",
                  config.bytes, NDS_GUARD_BYTES);
-    exit_code = EXIT_SUCCESS;
+    return EXIT_SUCCESS;
+}
 
-out:
-    if (connection >= 0) {
-        (void)close(connection);
-    }
-    if (listener >= 0) {
-        (void)close(listener);
-    }
-    free(expected);
-    destroy_resources(&resources);
-    if (device_list != NULL) {
-        ibv_free_device_list(device_list);
-    }
-    return exit_code;
+int main(int argc, char **argv)
+{
+    return run_server(argc, argv);
 }

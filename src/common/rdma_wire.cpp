@@ -23,7 +23,7 @@ static void nds_wire_set_error(char error[NDS_WIRE_ERROR_CAPACITY], const char *
 {
     va_list arguments;
 
-    if (error == NULL) {
+    if (error == nullptr) {
         return;
     }
     va_start(arguments, format);
@@ -34,7 +34,7 @@ static void nds_wire_set_error(char error[NDS_WIRE_ERROR_CAPACITY], const char *
 static int nds_rc_endpoint_validate(const nds_rc_endpoint *endpoint,
                                     char error[NDS_WIRE_ERROR_CAPACITY])
 {
-    if (endpoint == NULL) {
+    if (endpoint == nullptr) {
         nds_wire_set_error(error, "endpoint is required");
         return -1;
     }
@@ -87,7 +87,7 @@ static int nds_rc_endpoint_validate(const nds_rc_endpoint *endpoint,
 int nds_rc_endpoint_encode(const nds_rc_endpoint *endpoint, nds_rc_endpoint_wire_v1 *wire,
                            char error[NDS_WIRE_ERROR_CAPACITY])
 {
-    if (wire == NULL) {
+    if (wire == nullptr) {
         nds_wire_set_error(error, "wire record is required");
         return -1;
     }
@@ -112,7 +112,7 @@ int nds_rc_endpoint_encode(const nds_rc_endpoint *endpoint, nds_rc_endpoint_wire
     wire->retry_timeout = htonl(endpoint->retry_timeout);
     wire->address = nds_host_to_be64(endpoint->address);
     memcpy(wire->gid, endpoint->gid, sizeof(wire->gid));
-    if (error != NULL) {
+    if (error != nullptr) {
         error[0] = '\0';
     }
     return 0;
@@ -123,7 +123,7 @@ int nds_rc_endpoint_decode(const nds_rc_endpoint_wire_v1 *wire, nds_rc_endpoint 
 {
     nds_rc_endpoint decoded;
 
-    if (wire == NULL || endpoint == NULL) {
+    if (wire == nullptr || endpoint == nullptr) {
         nds_wire_set_error(error, "wire record and endpoint output are required");
         return -1;
     }
@@ -155,7 +155,7 @@ int nds_rc_endpoint_decode(const nds_rc_endpoint_wire_v1 *wire, nds_rc_endpoint 
         return -1;
     }
     *endpoint = decoded;
-    if (error != NULL) {
+    if (error != nullptr) {
         error[0] = '\0';
     }
     return 0;
@@ -165,7 +165,7 @@ int nds_rc_endpoint_decode(const nds_rc_endpoint_wire_v1 *wire, nds_rc_endpoint 
 static int nds_memory_descriptor_validate(const nds_memory_descriptor *descriptor,
                                           char error[NDS_WIRE_ERROR_CAPACITY])
 {
-    if (descriptor == NULL) {
+    if (descriptor == nullptr) {
         nds_wire_set_error(error, "memory descriptor is required");
         return -1;
     }
@@ -182,7 +182,7 @@ int nds_memory_descriptor_encode(const nds_memory_descriptor *descriptor,
                                  nds_memory_descriptor_wire_v1 *wire,
                                  char error[NDS_WIRE_ERROR_CAPACITY])
 {
-    if (wire == NULL) {
+    if (wire == nullptr) {
         nds_wire_set_error(error, "memory descriptor wire record is required");
         return -1;
     }
@@ -205,7 +205,7 @@ int nds_memory_descriptor_decode(const nds_memory_descriptor_wire_v1 *wire,
                                  nds_memory_descriptor *descriptor,
                                  char error[NDS_WIRE_ERROR_CAPACITY])
 {
-    if (wire == NULL || descriptor == NULL) {
+    if (wire == nullptr || descriptor == nullptr) {
         nds_wire_set_error(error, "memory descriptor wire record and output are required");
         return -1;
     }
@@ -226,7 +226,7 @@ int nds_memory_descriptor_decode(const nds_memory_descriptor_wire_v1 *wire,
 static int nds_transfer_status_validate(const nds_transfer_status *status,
                                         char error[NDS_WIRE_ERROR_CAPACITY])
 {
-    if (status == NULL || status->transaction_id == 0U ||
+    if (status == nullptr || status->transaction_id == 0U ||
         (status->status != NDS_TRANSFER_SUBMITTED && status->status != NDS_TRANSFER_VERIFIED &&
          status->status != NDS_TRANSFER_FAILED)) {
         nds_wire_set_error(error, "invalid transfer status");
@@ -239,7 +239,7 @@ int nds_transfer_status_encode(const nds_transfer_status *status,
                                nds_transfer_status_wire_v1 *wire,
                                char error[NDS_WIRE_ERROR_CAPACITY])
 {
-    if (wire == NULL || nds_transfer_status_validate(status, error) != 0) return -1;
+    if (wire == nullptr || nds_transfer_status_validate(status, error) != 0) return -1;
     *wire = {};
     wire->magic = htonl(NDS_TRANSFER_STATUS_WIRE_MAGIC);
     wire->version = htons(NDS_TRANSFER_STATUS_WIRE_VERSION);
@@ -253,7 +253,7 @@ int nds_transfer_status_decode(const nds_transfer_status_wire_v1 *wire,
                                char error[NDS_WIRE_ERROR_CAPACITY])
 {
     static const uint8_t zero_reserved[8] = {0};
-    if (wire == NULL || status == NULL) {
+    if (wire == nullptr || status == nullptr) {
         nds_wire_set_error(error, "transfer status wire record and output are required");
         return -1;
     }
