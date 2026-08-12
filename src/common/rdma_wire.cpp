@@ -95,7 +95,7 @@ int nds_rc_endpoint_encode(const nds_rc_endpoint *endpoint, nds_rc_endpoint_wire
         return -1;
     }
 
-    *wire = (nds_rc_endpoint_wire_v1){0};
+    *wire = {};
     wire->magic = htonl(NDS_RC_WIRE_MAGIC);
     wire->version = htons(NDS_RC_WIRE_VERSION);
     wire->flags = htons(endpoint->flags);
@@ -136,21 +136,20 @@ int nds_rc_endpoint_decode(const nds_rc_endpoint_wire_v1 *wire, nds_rc_endpoint 
         return -1;
     }
 
-    decoded = (nds_rc_endpoint){
-        .flags = ntohs(wire->flags),
-        .qp_num = ntohl(wire->qp_num),
-        .psn = ntohl(wire->psn),
-        .rkey = ntohl(wire->rkey),
-        .port_num = ntohs(wire->port_num),
-        .gid_index = ntohs(wire->gid_index),
-        .path_mtu = ntohl(wire->path_mtu),
-        .access_flags = ntohl(wire->access_flags),
-        .traffic_class = ntohl(wire->traffic_class),
-        .service_level = ntohl(wire->service_level),
-        .retry_count = ntohl(wire->retry_count),
-        .retry_timeout = ntohl(wire->retry_timeout),
-        .address = nds_be64_to_host(wire->address),
-    };
+    decoded = {};
+    decoded.flags = ntohs(wire->flags);
+    decoded.qp_num = ntohl(wire->qp_num);
+    decoded.psn = ntohl(wire->psn);
+    decoded.rkey = ntohl(wire->rkey);
+    decoded.port_num = ntohs(wire->port_num);
+    decoded.gid_index = ntohs(wire->gid_index);
+    decoded.path_mtu = ntohl(wire->path_mtu);
+    decoded.access_flags = ntohl(wire->access_flags);
+    decoded.traffic_class = ntohl(wire->traffic_class);
+    decoded.service_level = ntohl(wire->service_level);
+    decoded.retry_count = ntohl(wire->retry_count);
+    decoded.retry_timeout = ntohl(wire->retry_timeout);
+    decoded.address = nds_be64_to_host(wire->address);
     memcpy(decoded.gid, wire->gid, sizeof(decoded.gid));
     if (nds_rc_endpoint_validate(&decoded, error) != 0) {
         return -1;
@@ -190,7 +189,7 @@ int nds_memory_descriptor_encode(const nds_memory_descriptor *descriptor,
     if (nds_memory_descriptor_validate(descriptor, error) != 0) {
         return -1;
     }
-    *wire = (nds_memory_descriptor_wire_v1){0};
+    *wire = {};
     wire->magic = htonl(NDS_MEMORY_WIRE_MAGIC);
     wire->version = htons(NDS_MEMORY_WIRE_VERSION);
     wire->flags = htons(descriptor->flags);
@@ -214,14 +213,13 @@ int nds_memory_descriptor_decode(const nds_memory_descriptor_wire_v1 *wire,
         nds_wire_set_error(error, "unsupported memory descriptor magic or version");
         return -1;
     }
-    *descriptor = (nds_memory_descriptor){
-        .flags = ntohs(wire->flags),
-        .transaction_id = nds_be64_to_host(wire->transaction_id),
-        .address = nds_be64_to_host(wire->address),
-        .length = nds_be64_to_host(wire->length),
-        .rkey = ntohl(wire->rkey),
-        .access_flags = ntohl(wire->access_flags),
-    };
+    *descriptor = {};
+    descriptor->flags = ntohs(wire->flags);
+    descriptor->transaction_id = nds_be64_to_host(wire->transaction_id);
+    descriptor->address = nds_be64_to_host(wire->address);
+    descriptor->length = nds_be64_to_host(wire->length);
+    descriptor->rkey = ntohl(wire->rkey);
+    descriptor->access_flags = ntohl(wire->access_flags);
     return nds_memory_descriptor_validate(descriptor, error);
 }
 
@@ -242,7 +240,7 @@ int nds_transfer_status_encode(const nds_transfer_status *status,
                                char error[NDS_WIRE_ERROR_CAPACITY])
 {
     if (wire == NULL || nds_transfer_status_validate(status, error) != 0) return -1;
-    *wire = (nds_transfer_status_wire_v1){0};
+    *wire = {};
     wire->magic = htonl(NDS_TRANSFER_STATUS_WIRE_MAGIC);
     wire->version = htons(NDS_TRANSFER_STATUS_WIRE_VERSION);
     wire->status = htons(status->status);
@@ -265,9 +263,8 @@ int nds_transfer_status_decode(const nds_transfer_status_wire_v1 *wire,
         nds_wire_set_error(error, "invalid transfer status header");
         return -1;
     }
-    *status = (nds_transfer_status){
-        .status = ntohs(wire->status),
-        .transaction_id = nds_be64_to_host(wire->transaction_id),
-    };
+    *status = {};
+    status->status = ntohs(wire->status);
+    status->transaction_id = nds_be64_to_host(wire->transaction_id);
     return nds_transfer_status_validate(status, error);
 }

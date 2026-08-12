@@ -1,5 +1,7 @@
 #include <stdint.h>
 
+extern "C" {
+
 int rtSetDevice(int32_t logical_device_id)
 {
     return logical_device_id == 0 ? 0 : -33;
@@ -21,4 +23,6 @@ int rtRDMADBSend(uint32_t db_index, uint64_t db_info, void *stream)
         return -35;
     }
     return db_info == UINT64_C(0xdead) ? -77 : 0;
+}
+
 }

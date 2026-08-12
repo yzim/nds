@@ -2,7 +2,7 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(IBVERBS QUIET IMPORTED_TARGET libibverbs)
 
 if(IBVERBS_FOUND)
-    add_executable(nds_verbs_server server.c)
+    add_executable(nds_verbs_server server.cpp)
     target_link_libraries(nds_verbs_server PRIVATE nds_wire nds_rdma_path_mtu PkgConfig::IBVERBS)
     target_compile_options(nds_verbs_server PRIVATE -Wall -Wextra -Wpedantic -Werror)
 else()

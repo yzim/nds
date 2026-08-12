@@ -5,8 +5,8 @@
 #include <stdio.h>
 #include <string.h>
 
-_Static_assert(sizeof(nds_rt_proc_ext_param) == 16, "unexpected rtProcExtParam ABI layout");
-_Static_assert(sizeof(nds_rt_net_service_open_args) == 16, "unexpected rtNetServiceOpenArgs ABI layout");
+static_assert(sizeof(nds_rt_proc_ext_param) == 16, "unexpected rtProcExtParam ABI layout");
+static_assert(sizeof(nds_rt_net_service_open_args) == 16, "unexpected rtNetServiceOpenArgs ABI layout");
 
 static void nds_runtime_set_error(nds_runtime_api *api, const char *format, ...)
 {

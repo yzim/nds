@@ -38,9 +38,9 @@ static void print_gid(const uint8_t gid[16])
 
 int main(int argc, char **argv)
 {
-    nds_acl_api acl_api = {0};
-    nds_ra_api ra_api = {0};
-    nds_runtime_api runtime_api = {0};
+    nds_acl_api acl_api = {};
+    nds_ra_api ra_api = {};
+    nds_runtime_api runtime_api = {};
     nds_ra_init_config init_config = {
         .phy_id = NDS_RA_PHY_ID_NPU0,
         .nic_position = NDS_RA_NETWORK_OFFLINE,
@@ -56,8 +56,8 @@ int main(int argc, char **argv)
         .ext_param_list = &parameter,
         .ext_param_count = 1U,
     };
-    nds_ra_rdev rdev = {0};
-    nds_ra_typical_qp qp_info = {0};
+    nds_ra_rdev rdev = {};
+    nds_ra_typical_qp qp_info = {};
     unsigned int logical_device_id = NDS_RA_PHY_ID_NPU0;
     void *rdev_handle = NULL;
     void *qp_handle = NULL;

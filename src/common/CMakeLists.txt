@@ -1,10 +1,10 @@
 find_package(Threads REQUIRED)
 
-add_library(nds_wire STATIC rdma_wire.c)
+add_library(nds_wire STATIC rdma_wire.cpp)
 target_include_directories(nds_wire PUBLIC include)
 target_compile_options(nds_wire PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
-add_library(nds_rdma_path_mtu STATIC rdma_path_mtu.c)
+add_library(nds_rdma_path_mtu STATIC rdma_path_mtu.cpp)
 target_include_directories(nds_rdma_path_mtu PUBLIC include)
 target_compile_options(nds_rdma_path_mtu PRIVATE -Wall -Wextra -Wpedantic -Werror)
 

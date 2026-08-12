@@ -1,17 +1,17 @@
-add_executable(nds_rdma_wire_test rdma_wire_test.c)
+add_executable(nds_rdma_wire_test rdma_wire_test.cpp)
 target_link_libraries(nds_rdma_wire_test PRIVATE nds_wire)
 target_compile_options(nds_rdma_wire_test PRIVATE -Wall -Wextra -Wpedantic -Werror)
 add_test(NAME nds_rdma_wire_test COMMAND nds_rdma_wire_test)
 
-add_executable(nds_rdma_path_mtu_test rdma_path_mtu_test.c)
+add_executable(nds_rdma_path_mtu_test rdma_path_mtu_test.cpp)
 target_link_libraries(nds_rdma_path_mtu_test PRIVATE nds_rdma_path_mtu)
 target_compile_options(nds_rdma_path_mtu_test PRIVATE -Wall -Wextra -Wpedantic -Werror)
 add_test(NAME nds_rdma_path_mtu_test COMMAND nds_rdma_path_mtu_test)
 
-add_library(nds_fake_runtime SHARED fake_runtime.c)
+add_library(nds_fake_runtime SHARED fake_runtime.cpp)
 target_compile_options(nds_fake_runtime PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
-add_executable(nds_runtime_loader_test runtime_loader_test.c)
+add_executable(nds_runtime_loader_test runtime_loader_test.cpp)
 target_link_libraries(nds_runtime_loader_test PRIVATE nds_ra_loader)
 target_compile_options(nds_runtime_loader_test PRIVATE -Wall -Wextra -Wpedantic -Werror)
 add_test(NAME nds_runtime_loader_test COMMAND nds_runtime_loader_test $<TARGET_FILE:nds_fake_runtime>)

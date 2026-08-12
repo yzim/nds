@@ -5,20 +5,20 @@
 #include <stdio.h>
 #include <string.h>
 
-_Static_assert(sizeof(nds_ra_init_config) == 16, "unexpected RaInitConfig ABI layout");
-_Static_assert(sizeof(nds_ra_rdev) == 24, "unexpected rdev ABI layout");
-_Static_assert(sizeof(nds_ra_rdev_init_info) == 12, "unexpected RdevInitInfo ABI layout");
-_Static_assert(sizeof(nds_ra_mr_info) == 32, "unexpected MrInfoT ABI layout");
-_Static_assert(sizeof(nds_ra_sge) == 16, "unexpected SgList ABI layout");
-_Static_assert(sizeof(nds_ra_send_wr) == 40, "unexpected SendWr ABI layout");
-_Static_assert(sizeof(nds_ra_send_response) == 16, "unexpected SendWrRsp ABI layout");
-_Static_assert(sizeof(nds_ra_cqe_error) == 24, "unexpected CqeErrInfo ABI layout");
-_Static_assert(sizeof(nds_ra_completion) == 56, "unexpected rdma_lite_wc_v2 ABI layout");
-_Static_assert(sizeof(nds_ra_qp_attr) == 100, "unexpected QpAttr ABI layout");
-_Static_assert(sizeof(nds_ra_typical_qp) == 184, "unexpected TypicalQp ABI layout");
-_Static_assert(sizeof(nds_ra_qp_init_attr) == 64, "unexpected ibv_qp_init_attr ABI layout");
-_Static_assert(sizeof(nds_ra_qp_ext_attrs) == 224, "unexpected QpExtAttrs ABI layout");
-_Static_assert(sizeof(nds_ra_ai_qp_info) == 368, "unexpected AiQpInfo ABI layout");
+static_assert(sizeof(nds_ra_init_config) == 16, "unexpected RaInitConfig ABI layout");
+static_assert(sizeof(nds_ra_rdev) == 24, "unexpected rdev ABI layout");
+static_assert(sizeof(nds_ra_rdev_init_info) == 12, "unexpected RdevInitInfo ABI layout");
+static_assert(sizeof(nds_ra_mr_info) == 32, "unexpected MrInfoT ABI layout");
+static_assert(sizeof(nds_ra_sge) == 16, "unexpected SgList ABI layout");
+static_assert(sizeof(nds_ra_send_wr) == 40, "unexpected SendWr ABI layout");
+static_assert(sizeof(nds_ra_send_response) == 16, "unexpected SendWrRsp ABI layout");
+static_assert(sizeof(nds_ra_cqe_error) == 24, "unexpected CqeErrInfo ABI layout");
+static_assert(sizeof(nds_ra_completion) == 56, "unexpected rdma_lite_wc_v2 ABI layout");
+static_assert(sizeof(nds_ra_qp_attr) == 100, "unexpected QpAttr ABI layout");
+static_assert(sizeof(nds_ra_typical_qp) == 184, "unexpected TypicalQp ABI layout");
+static_assert(sizeof(nds_ra_qp_init_attr) == 64, "unexpected ibv_qp_init_attr ABI layout");
+static_assert(sizeof(nds_ra_qp_ext_attrs) == 224, "unexpected QpExtAttrs ABI layout");
+static_assert(sizeof(nds_ra_ai_qp_info) == 368, "unexpected AiQpInfo ABI layout");
 
 static void nds_ra_set_error(nds_ra_api *api, const char *format, ...)
 {

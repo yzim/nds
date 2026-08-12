@@ -10,7 +10,7 @@ static void usage(const char *program)
 
 int main(int argc, char **argv)
 {
-    nds_ra_api api = {0};
+    nds_ra_api api = {};
 
     if (argc != 2) {
         usage(argv[0]);

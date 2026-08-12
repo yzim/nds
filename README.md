@@ -81,9 +81,10 @@ src/cpu_server/                 CPU libibverbs server
 tests/                          Unit tests and test-only runtime fixture
 ```
 
-Each component owns its headers and `CMakeLists.txt`. The root CMake file only
-defines project-wide language policy/options and dispatches to those
-components.
+Each component owns its headers and `CMakeLists.txt`. NDS is implemented in
+C++20; ABI and wire headers retain C-compatible declarations where needed. The
+root CMake file only defines project-wide language policy/options and dispatches
+to those components.
 
 ## Build
 

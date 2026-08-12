@@ -6,7 +6,7 @@
 
 int main(int argc, char **argv)
 {
-    nds_runtime_api api = {0};
+    nds_runtime_api api = {};
     nds_rt_proc_ext_param parameter = {"--hdcType=18", 12U};
     nds_rt_net_service_open_args args = {&parameter, 1U};
 

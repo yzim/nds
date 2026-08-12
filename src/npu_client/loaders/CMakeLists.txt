@@ -1,8 +1,8 @@
 add_library(nds_ra_loader STATIC
-    ra_loader.c
-    runtime_loader.c
-    acl_loader.c
-    tsd_loader.c)
+    ra_loader.cpp
+    runtime_loader.cpp
+    acl_loader.cpp
+    tsd_loader.cpp)
 target_include_directories(nds_ra_loader PUBLIC ../include)
 target_compile_options(nds_ra_loader PRIVATE -Wall -Wextra -Wpedantic -Werror)
 target_link_libraries(nds_ra_loader PUBLIC ${CMAKE_DL_LIBS})

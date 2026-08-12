@@ -27,8 +27,8 @@ static int parse_uint(const char *text, unsigned int *value)
 
 int main(int argc, char **argv)
 {
-    nds_ra_api api = {0};
-    nds_runtime_api runtime_api = {0};
+    nds_ra_api api = {};
+    nds_runtime_api runtime_api = {};
     nds_ra_init_config config = {
         .phy_id = NDS_RA_PHY_ID_NPU0,
         .nic_position = NDS_RA_NETWORK_OFFLINE,

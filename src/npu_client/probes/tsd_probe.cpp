@@ -27,8 +27,8 @@ static int parse_uint(const char *text, unsigned int *value)
 
 int main(int argc, char **argv)
 {
-    nds_acl_api acl_api = {0};
-    nds_tsd_api tsd_api = {0};
+    nds_acl_api acl_api = {};
+    nds_tsd_api tsd_api = {};
     unsigned int logical_device_id;
     unsigned int rank_size = 2;
     int acl_initialized = 0;

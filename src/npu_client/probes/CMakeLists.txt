@@ -1,16 +1,16 @@
-add_executable(nds_ra_probe ra_probe.c)
+add_executable(nds_ra_probe ra_probe.cpp)
 target_link_libraries(nds_ra_probe PRIVATE nds_ra_loader)
 target_compile_options(nds_ra_probe PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
-add_executable(nds_ra_init_probe ra_init_probe.c)
+add_executable(nds_ra_init_probe ra_init_probe.cpp)
 target_link_libraries(nds_ra_init_probe PRIVATE nds_ra_loader)
 target_compile_options(nds_ra_init_probe PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
-add_executable(nds_ra_rdev_probe ra_rdev_probe.c)
+add_executable(nds_ra_rdev_probe ra_rdev_probe.cpp)
 target_link_libraries(nds_ra_rdev_probe PRIVATE nds_ra_loader)
 target_compile_options(nds_ra_rdev_probe PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
-add_executable(nds_tsd_probe tsd_probe.c)
+add_executable(nds_tsd_probe tsd_probe.cpp)
 target_link_libraries(nds_tsd_probe PRIVATE nds_ra_loader)
 target_compile_options(nds_tsd_probe PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
