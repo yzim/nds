@@ -51,7 +51,8 @@ belong in `docs/`: [mode overview](docs/modes.md), [host RA](docs/host-ra.md),
 - Preserve explicit ownership order: initialize context, create rdev/QP,
   register memory, submit, verify, deregister, destroy QP/rdev, then close the
   runtime. Keep QPs, MRs, and NPU allocations alive until host CQ completion
-  plus CPU verification for host RA, or CPU verification for AI-QP modes.
+  plus the current CPU test-harness check for host RA, or until that check for
+  AI-QP modes. Do not describe the CPU check as a general completion API.
 - NDS is C++20. Use native C++ ownership and `nullptr` in compiled C++ code.
   Keep ABI and wire headers C-compatible only where a runtime or device boundary
   needs it.
@@ -68,4 +69,6 @@ The validated data path is one bounded NPU-to-CPU RDMA Write. The CPU server
 currently does not provide the receive or remote-memory setup required to claim
 end-to-end RDMA Read or Send support. Do not represent a package build, stream
 synchronization, or provider resolution as an RNIC completion. Completion
-ownership is mode-specific and documented in `docs/modes.md`.
+ownership is mode-specific and documented in `docs/modes.md`. A project-facing
+completion contract for AIV and AICPU remains unfinished; HCCP's internal
+AI-QP CQ handling is not that contract.

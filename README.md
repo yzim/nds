@@ -12,10 +12,10 @@ second NPU.
 ## Current status
 
 The target CANN 9.0.0 environment has validated a bounded 4096-byte RDMA Write
-for all three submission modes. The CPU verifies every payload byte and both
-64-byte guard regions before it acknowledges the transfer.
+for all three submission modes. The current CPU server verifies every payload
+byte and both 64-byte guard regions as an internal integration-test checkpoint.
 
-| Mode | Submission / post path | NPU send-CQ consumer | Guide |
+| Mode | Submission / post path | Current NPU send-CQ handling | Guide |
 |---|---|---|---|
 | `host-ra` | NPU-side host CPU calls `RaTypicalSendWr`, then `rtRDMADBSend` | NPU-side host CPU: NDS calls `RaPollCq` | [Host RA](docs/host-ra.md) |
 | `aiv` | NDS AIV kernel writes the HNS send queue and rings its doorbell | HCCP internally handles the AI-QP CQ on the NPU; NDS does not call `RaPollCq` | [AIV](docs/aiv.md) |
@@ -23,9 +23,11 @@ for all three submission modes. The CPU verifies every payload byte and both
 
 `host-ra` is the default and the first mode to use on a new target.
 
-The CPU peer's payload and guard check is separate from NPU send-CQ handling.
-For AIV and AICPU, it is NDS's application-level proof that the remote Write
-arrived, while HCCP retains ownership of the AI-QP completion channel.
+The CPU payload and guard check is separate from NPU send-CQ handling. It is a
+test-only state in the current CPU server, used to hold resources while NDS
+validates the Write. It is not NDS's final completion API. HCCP retains the
+AI-QP completion channel for AIV and AICPU; defining the project-facing
+completion contract for those modes remains open work.
 
 ## Architecture
 
@@ -40,7 +42,7 @@ create rdev, RC QP, and source MR               create RC QP and destination MR
                               |
                      mode-specific RDMA Write
                               |
-                  CPU payload and guard verification
+              current test-server payload and guard check
 ```
 
 The CPU is CANN-free. It never loads HCCP, HCOMM, HCCL, or TSD.

@@ -16,9 +16,12 @@ The modes are selected with `nds_npu_qp_client --submission-mode`. The CPU
 endpoint is always `nds_verbs_server` using ordinary `libibverbs`; it does not
 load CANN, HCCP, HCOMM, or HCCL.
 
-The CPU peer's payload and guard verification is not an NPU CQ poll. It is the
-application-level remote-effect check NDS uses before releasing resources. This
-is essential for AIV and AICPU because NDS does not own their AI-QP CQs.
+The CPU peer's payload and guard verification is not an NPU CQ poll. It is an
+internal state of the current integration-test server: it holds resources while
+the bounded Write harness checks the result. It is not the project-facing
+completion interface. AIV and AICPU currently rely on HCCP's internal AI-QP CQ
+handling, and defining how NDS exposes or integrates their completion remains
+unfinished work.
 
 Detailed guides:
 
@@ -105,9 +108,10 @@ memory, destroy the QP, deinitialize the rdev with `NOTIFY`, and tear down RA.
 The CPU deregisters its verbs MR as its server resources leave scope.
 
 The NDS TCP control plane is not an HCOMM synchronization protocol. Its final
-transaction acknowledgment keeps the QP and MRs alive until the CPU has
-observed and verified the remote effect. This is required for AI QPs because
-ACL kernel synchronization is not RNIC completion and HCCP owns their CQs.
+transaction acknowledgment is an internal test-harness state that keeps the QP
+and MRs alive until the CPU has checked the bounded Write. This is not a
+substitute for an NPU completion API. ACL kernel synchronization is not RNIC
+completion, and HCCP owns the AI-QP CQs.
 
 ## Choosing a mode
 
@@ -128,6 +132,11 @@ comparative throughput or latency benchmark.
 ## Current feature boundary
 
 - End-to-end CPU-peer validation currently exercises RDMA Write.
+- The CPU payload/guard acknowledgment exists only for the bounded integration
+  test. It is not the final completion interface.
+- Host RA exposes an NDS-owned send-CQ poll. AIV and AICPU need a defined
+  project-facing completion contract above or alongside HCCP's internal AI-CQ
+  handling.
 - AIV currently implements Write only.
 - The AICPU request ABI represents Write, Read, and Send, and its kernel builds
   all three WR forms. Read and Send still need matching CPU-side memory/receive

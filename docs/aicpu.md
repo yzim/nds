@@ -44,7 +44,7 @@ Standard CP1 kernel:
   -> dsb st
 
 RNIC -> CPU destination MR
-CPU verifies payload and guards -> transaction acknowledgment
+Current test server checks payload and guards -> test-harness acknowledgment
 ```
 
 The host application never links or loads `libhns-rdmav25.so`. Resolution
@@ -215,6 +215,7 @@ for upgrades and uninstall.
 
 `aclrtSynchronizeStreamWithTimeout` means the CP1 function returned; it does
 not mean the RNIC produced a CQE. HCCP owns this AI QP's CQ, so NDS does not
-call `RaPollCq`. The client reports `SUBMITTED` over the NDS control plane and
-keeps the QP/MR alive until the CPU verifies the transfer and returns
-`VERIFIED` or `FAILED` for the same transaction ID.
+call `RaPollCq`. The client reports `SUBMITTED` and the current CPU server
+returns `VERIFIED` or `FAILED` after its bounded payload/guard check. That
+exchange is an integration-test harness, not a project-facing AICPU completion
+interface. Defining the latter remains unfinished work.

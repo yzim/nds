@@ -2,7 +2,7 @@
 
 This guide covers the NDS-owned vector-core path. Read
 [submission modes](modes.md) before using it; AIV has a different QP mode and
-completion boundary from host RA and AICPU.
+completion model from host RA and AICPU.
 
 ## Basic function
 
@@ -41,7 +41,7 @@ AIV kernel:
   -> publish the new SQ head
 
 RNIC -> CPU destination MR
-CPU verifies payload and guards -> transaction acknowledgment
+Current test server checks payload and guards -> test-harness acknowledgment
 ```
 
 The kernel may issue up to 16 Writes in one launch, or the host may perform up
@@ -151,9 +151,10 @@ supported mapping strategy.
 
 HCCP owns the AI QP's CQ. `RaPollCq` is not valid for this handle and must not
 be used. ACL stream synchronization proves that the AIV kernel finished
-publishing requests, not that the RNIC completed them. NDS keeps QP and MR
-resources alive until the CPU observes the expected payload and acknowledges
-the transaction.
+publishing requests, not that the RNIC completed them. The CPU payload/guard
+acknowledgment is only the current integration-test harness; it keeps QP and
+MR resources alive while the Write is checked. NDS does not yet expose a
+project-facing AIV completion interface.
 
 ### Hardware coupling
 
