@@ -7,33 +7,30 @@ namespace {
 constexpr const char *kNdsAivRdmaPost = "NdsAivRdmaPost";
 }
 
-AivRdmaPostLauncher::~AivRdmaPostLauncher()
-{
+AivRdmaPostLauncher::~AivRdmaPostLauncher() {
     reset();
 }
 
-void AivRdmaPostLauncher::set_error(std::string message)
-{
+void AivRdmaPostLauncher::set_error(std::string message) {
     error_ = std::move(message);
 }
 
-bool AivRdmaPostLauncher::load(nds_acl_api &acl, const std::string &kernel_path)
-{
+bool AivRdmaPostLauncher::load(nds_acl_api *acl, const std::string &kernel_path) {
     nds_acl_binary_load_option option{};
     nds_acl_binary_load_options options{};
     int result;
 
-    if (loaded() || kernel_path.empty()) {
+    if (acl == nullptr || loaded() || kernel_path.empty()) {
         set_error(loaded() ? "NDS AIV launcher is already loaded" : "NDS AIV requires an NDS-built kernel binary path");
         return false;
     }
-    if (acl.binary_load_from_file == nullptr || acl.binary_unload == nullptr || acl.binary_get_function == nullptr ||
-        acl.launch_kernel_with_host_args == nullptr || acl.create_stream == nullptr || acl.destroy_stream == nullptr ||
-        acl.synchronize_stream_with_timeout == nullptr) {
+    if (acl->binary_load_from_file == nullptr || acl->binary_unload == nullptr || acl->binary_get_function == nullptr ||
+        acl->launch_kernel_with_host_args == nullptr || acl->create_stream == nullptr ||
+        acl->destroy_stream == nullptr || acl->synchronize_stream_with_timeout == nullptr) {
         set_error("AscendCL is missing a required AIV binary, host-argument launch, or stream symbol");
         return false;
     }
-    acl_ = &acl;
+    acl_ = acl;
     option.type = NDS_ACL_BINARY_LOAD_OPT_LAZY_LOAD;
     option.value.lazy_load = 1U;
     options.options = &option;
@@ -60,13 +57,11 @@ bool AivRdmaPostLauncher::load(nds_acl_api &acl, const std::string &kernel_path)
     return true;
 }
 
-bool AivRdmaPostLauncher::make_device_request(const AivRdmaPostRequest &request,
-                                               nds_aiv_rdma_post_request *output)
-{
-    if (output == nullptr || request.send_wq.buffer_address == 0U ||
-        request.send_wq.wqebb_size == 0U || request.send_wq.depth < 2U || request.send_wq.head_address == 0U ||
-        request.send_wq.tail_address == 0U || request.send_wq.doorbell_register_address == 0U ||
-        request.local_key == 0U || request.local_address == 0U || request.data_size == 0U || request.post_count == 0U ||
+bool AivRdmaPostLauncher::make_device_request(const AivRdmaPostRequest &request, nds_aiv_rdma_post_request *output) {
+    if (output == nullptr || request.send_wq.buffer_address == 0U || request.send_wq.wqebb_size == 0U ||
+        request.send_wq.depth < 2U || request.send_wq.head_address == 0U || request.send_wq.tail_address == 0U ||
+        request.send_wq.doorbell_register_address == 0U || request.local_key == 0U || request.local_address == 0U ||
+        request.data_size == 0U || request.post_count == 0U ||
         (request.opcode != NDS_AIV_SEND && request.opcode != NDS_AIV_RDMA_WRITE) ||
         (request.opcode == NDS_AIV_SEND && (request.remote_key != 0U || request.remote_address != 0U)) ||
         (request.opcode == NDS_AIV_RDMA_WRITE && (request.remote_key == 0U || request.remote_address == 0U))) {
@@ -96,14 +91,11 @@ bool AivRdmaPostLauncher::make_device_request(const AivRdmaPostRequest &request,
 }
 
 bool AivRdmaPostLauncher::launch_post_and_wait(std::uint64_t device_request_address,
-                                                  std::int32_t completion_timeout_ms)
-{
+                                               std::int32_t completion_timeout_ms) {
     return launch_and_wait(device_request_address, completion_timeout_ms);
 }
 
-bool AivRdmaPostLauncher::launch_and_wait(std::uint64_t device_request_address,
-                                           std::int32_t completion_timeout_ms)
-{
+bool AivRdmaPostLauncher::launch_and_wait(std::uint64_t device_request_address, std::int32_t completion_timeout_ms) {
     nds_acl_launch_kernel_attr attributes[2]{};
     nds_acl_launch_kernel_config config{};
     int result;
@@ -133,20 +125,22 @@ bool AivRdmaPostLauncher::launch_and_wait(std::uint64_t device_request_address,
     return true;
 }
 
-void AivRdmaPostLauncher::reset() noexcept
-{
-    if (acl_ != nullptr && stream_ != nullptr && acl_->destroy_stream != nullptr) (void)acl_->destroy_stream(stream_);
+void AivRdmaPostLauncher::reset() noexcept {
+    if (acl_ != nullptr && stream_ != nullptr && acl_->destroy_stream != nullptr)
+        (void)acl_->destroy_stream(stream_);
     stream_ = nullptr;
     post_function_ = nullptr;
-    if (acl_ != nullptr && binary_ != nullptr && acl_->binary_unload != nullptr) (void)acl_->binary_unload(binary_);
+    if (acl_ != nullptr && binary_ != nullptr && acl_->binary_unload != nullptr)
+        (void)acl_->binary_unload(binary_);
     binary_ = nullptr;
     acl_ = nullptr;
 }
 
-bool AivRdmaPostLauncher::loaded() const noexcept
-{
+bool AivRdmaPostLauncher::loaded() const noexcept {
     return acl_ != nullptr && binary_ != nullptr && post_function_ != nullptr && stream_ != nullptr;
 }
-const std::string &AivRdmaPostLauncher::error() const noexcept { return error_; }
+const std::string &AivRdmaPostLauncher::error() const noexcept {
+    return error_;
+}
 
-} // namespace nds
+}  // namespace nds

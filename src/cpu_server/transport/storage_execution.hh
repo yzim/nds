@@ -19,15 +19,12 @@ struct CpuStorageTransport {
     ibv_mr *completion_mr{};
 };
 
-bool poll_cpu_completion(ibv_cq *cq, ibv_wc_opcode expected_opcode,
-                         std::uint32_t timeout_ms, const char *component);
+bool poll_cpu_completion(ibv_cq *cq, ibv_wc_opcode expected_opcode, std::uint32_t timeout_ms, const char *component);
 
 /* Execute one decoded storage command and publish its terminal completion. */
-bool execute_storage_command(CpuStorageTransport &transport,
-                             const nds_storage_command &command,
-                             const nds_storage_bootstrap &bootstrap,
-                             std::uint32_t timeout_ms, const char *component);
+bool execute_storage_command(CpuStorageTransport *transport, const nds_storage_command &command,
+                             const nds_storage_bootstrap &bootstrap, std::uint32_t timeout_ms, const char *component);
 
-} // namespace nds
+}  // namespace nds
 
 #endif

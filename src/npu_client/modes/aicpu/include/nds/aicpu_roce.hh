@@ -29,7 +29,7 @@ public:
     AicpuRdmaPostLauncher(const AicpuRdmaPostLauncher &) = delete;
     AicpuRdmaPostLauncher &operator=(const AicpuRdmaPostLauncher &) = delete;
 
-    bool load(nds_acl_api &acl, const std::string &kernel_config_path);
+    bool load(nds_acl_api *acl, const std::string &kernel_config_path);
     bool launch_and_wait(const AicpuRdmaPostRequest &request, std::int32_t completion_timeout_ms);
     void reset() noexcept;
     bool loaded() const noexcept;
@@ -45,6 +45,6 @@ private:
     std::string error_;
 };
 
-} // namespace nds
+}  // namespace nds
 
 #endif

@@ -64,15 +64,21 @@ struct nds_verbs_resources {
     nds_verbs_resources(const nds_verbs_resources &) = delete;
     nds_verbs_resources &operator=(const nds_verbs_resources &) = delete;
 
-    ~nds_verbs_resources()
-    {
-        if (namespace_mr != nullptr) (void)ibv_dereg_mr(namespace_mr);
-        if (completion_mr != nullptr) (void)ibv_dereg_mr(completion_mr);
-        if (command_mr != nullptr) (void)ibv_dereg_mr(command_mr);
-        if (qp != nullptr) (void)ibv_destroy_qp(qp);
-        if (cq != nullptr) (void)ibv_destroy_cq(cq);
-        if (pd != nullptr) (void)ibv_dealloc_pd(pd);
-        if (context != nullptr) (void)ibv_close_device(context);
+    ~nds_verbs_resources() {
+        if (namespace_mr != nullptr)
+            (void)ibv_dereg_mr(namespace_mr);
+        if (completion_mr != nullptr)
+            (void)ibv_dereg_mr(completion_mr);
+        if (command_mr != nullptr)
+            (void)ibv_dereg_mr(command_mr);
+        if (qp != nullptr)
+            (void)ibv_destroy_qp(qp);
+        if (cq != nullptr)
+            (void)ibv_destroy_cq(cq);
+        if (pd != nullptr)
+            (void)ibv_dealloc_pd(pd);
+        if (context != nullptr)
+            (void)ibv_close_device(context);
     }
 };
 
@@ -81,21 +87,22 @@ public:
     explicit nds_file_descriptor(int descriptor = -1) : descriptor_(descriptor) {}
     nds_file_descriptor(const nds_file_descriptor &) = delete;
     nds_file_descriptor &operator=(const nds_file_descriptor &) = delete;
-    ~nds_file_descriptor()
-    {
-        if (descriptor_ >= 0) (void)close(descriptor_);
+    ~nds_file_descriptor() {
+        if (descriptor_ >= 0)
+            (void)close(descriptor_);
     }
 
-    int get() const { return descriptor_; }
-    int release()
-    {
+    int get() const {
+        return descriptor_;
+    }
+    int release() {
         const int released = descriptor_;
         descriptor_ = -1;
         return released;
     }
-    void reset(int descriptor = -1)
-    {
-        if (descriptor_ >= 0) (void)close(descriptor_);
+    void reset(int descriptor = -1) {
+        if (descriptor_ >= 0)
+            (void)close(descriptor_);
         descriptor_ = descriptor;
     }
 
@@ -109,14 +116,15 @@ public:
     nds_device_list(const nds_device_list &) = delete;
     nds_device_list &operator=(const nds_device_list &) = delete;
     nds_device_list() = default;
-    ~nds_device_list()
-    {
-        if (devices != nullptr) ibv_free_device_list(devices);
+    ~nds_device_list() {
+        if (devices != nullptr)
+            ibv_free_device_list(devices);
     }
 };
 
-static int parse_arguments(int argc, char **argv, struct nds_server_config *config, bool &exit_requested)
-{
+static int parse_arguments(int argc, char **argv, struct nds_server_config *config, bool *exit_requested) {
+    if (config == nullptr || exit_requested == nullptr)
+        return -1;
     *config = {};
     config->tcp_port = NDS_DEFAULT_TCP_PORT;
     config->ib_port = NDS_DEFAULT_IB_PORT;
@@ -125,21 +133,27 @@ static int parse_arguments(int argc, char **argv, struct nds_server_config *conf
     config->post_close_hold_ms = 0U;
     CLI::App app{"Serve one-command NDS memory-backed storage requests."};
     app.add_option("--device", config->device_name, "RDMA device name")->required();
-    app.add_option("--gid-index", config->gid_index, "RoCE GID index")->required()->check(CLI::Range(0U, static_cast<unsigned int>(INT32_MAX)));
+    app.add_option("--gid-index", config->gid_index, "RoCE GID index")
+        ->required()
+        ->check(CLI::Range(0U, static_cast<unsigned int>(INT32_MAX)));
     app.add_option("--listen", config->listen_address, "TCP listen IPv4 address");
-    app.add_option("--tcp-port", config->tcp_port, "TCP peer-exchange port")->check(CLI::Range(1U, static_cast<unsigned int>(UINT16_MAX)));
-    app.add_option("--ib-port", config->ib_port, "RDMA port")->check(CLI::Range(1U, static_cast<unsigned int>(UINT8_MAX)));
+    app.add_option("--tcp-port", config->tcp_port, "TCP peer-exchange port")
+        ->check(CLI::Range(1U, static_cast<unsigned int>(UINT16_MAX)));
+    app.add_option("--ib-port", config->ib_port, "RDMA port")
+        ->check(CLI::Range(1U, static_cast<unsigned int>(UINT8_MAX)));
     app.add_option("--namespace-bytes", config->namespace_bytes, "Memory-backed namespace capacity")
         ->check(CLI::Range(1U, 64U * 1024U * 1024U));
-    app.add_option("--post-close-hold-ms", config->post_close_hold_ms, "Passive diagnostic hold time")->check(CLI::Range(0U, 60000U));
+    app.add_option("--post-close-hold-ms", config->post_close_hold_ms, "Passive diagnostic hold time")
+        ->check(CLI::Range(0U, 60000U));
     app.add_flag("--qp-only", config->qp_only, "Validate QP establishment only");
-    app.add_option("--log-sink", config->log_sink, "Log sink")->check(CLI::IsMember({"stderr", "stdout", "syslog", "none"}));
+    app.add_option("--log-sink", config->log_sink, "Log sink")
+        ->check(CLI::IsMember({"stderr", "stdout", "syslog", "none"}));
     app.add_option("--log-level", config->log_level, "Log level")
         ->check(CLI::IsMember({"trace", "debug", "info", "warn", "error", "critical", "off"}));
     try {
         app.parse(argc, argv);
     } catch (const CLI::CallForHelp &help) {
-        exit_requested = true;
+        *exit_requested = true;
         return app.exit(help);
     } catch (const CLI::ParseError &parse_error) {
         return app.exit(parse_error);
@@ -147,8 +161,7 @@ static int parse_arguments(int argc, char **argv, struct nds_server_config *conf
     return 0;
 }
 
-static int read_full(int descriptor, void *buffer, size_t length)
-{
+static int read_full(int descriptor, void *buffer, size_t length) {
     unsigned char *cursor = static_cast<unsigned char *>(buffer);
 
     while (length != 0) {
@@ -168,8 +181,7 @@ static int read_full(int descriptor, void *buffer, size_t length)
     return 0;
 }
 
-static int write_full(int descriptor, const void *buffer, size_t length)
-{
+static int write_full(int descriptor, const void *buffer, size_t length) {
     const unsigned char *cursor = static_cast<const unsigned char *>(buffer);
 
     while (length != 0) {
@@ -186,16 +198,14 @@ static int write_full(int descriptor, const void *buffer, size_t length)
     return 0;
 }
 
-static uint32_t make_psn(void)
-{
+static uint32_t make_psn(void) {
     struct timespec now;
 
     (void)clock_gettime(CLOCK_MONOTONIC, &now);
     return ((uint32_t)now.tv_nsec ^ (uint32_t)getpid()) & UINT32_C(0x00ffffff);
 }
 
-static uint32_t mtu_to_bytes(enum ibv_mtu mtu)
-{
+static uint32_t mtu_to_bytes(enum ibv_mtu mtu) {
     switch (mtu) {
         case IBV_MTU_256:
             return 256U;
@@ -212,8 +222,7 @@ static uint32_t mtu_to_bytes(enum ibv_mtu mtu)
     }
 }
 
-static int mtu_from_bytes(uint32_t bytes, enum ibv_mtu *mtu)
-{
+static int mtu_from_bytes(uint32_t bytes, enum ibv_mtu *mtu) {
     if (mtu == nullptr) {
         return -1;
     }
@@ -238,8 +247,7 @@ static int mtu_from_bytes(uint32_t bytes, enum ibv_mtu *mtu)
     }
 }
 
-static ibv_device *find_device(const char *name, nds_device_list *list)
-{
+static ibv_device *find_device(const char *name, nds_device_list *list) {
     int count = 0;
     int index;
 
@@ -256,8 +264,7 @@ static ibv_device *find_device(const char *name, nds_device_list *list)
 }
 
 static int create_resources(struct ibv_device *device, const struct nds_server_config *config,
-                            struct nds_verbs_resources *resources)
-{
+                            struct nds_verbs_resources *resources) {
     struct ibv_qp_init_attr qp_init = {};
     resources->context = ibv_open_device(device);
     if (resources->context == nullptr) {
@@ -288,8 +295,7 @@ static int create_resources(struct ibv_device *device, const struct nds_server_c
         return -1;
     }
 
-    if (ibv_query_gid(resources->context, (uint8_t)config->ib_port, (int)config->gid_index,
-                      &resources->gid) != 0) {
+    if (ibv_query_gid(resources->context, (uint8_t)config->ib_port, (int)config->gid_index, &resources->gid) != 0) {
         NDS_LOG_ERROR("cpu-server", "{}: {}", "ibv_query_gid", strerror(errno));
         return -1;
     }
@@ -315,18 +321,16 @@ static int create_resources(struct ibv_device *device, const struct nds_server_c
     return 0;
 }
 
-static int create_storage_memory(struct nds_verbs_resources *resources, unsigned int bytes)
-{
+static int create_storage_memory(struct nds_verbs_resources *resources, unsigned int bytes) {
     resources->namespace_buffer.resize(bytes, 0U);
-    resources->namespace_mr = ibv_reg_mr(resources->pd, resources->namespace_buffer.data(), bytes,
-                                         IBV_ACCESS_LOCAL_WRITE);
+    resources->namespace_mr =
+        ibv_reg_mr(resources->pd, resources->namespace_buffer.data(), bytes, IBV_ACCESS_LOCAL_WRITE);
     if (resources->namespace_mr == nullptr) {
         NDS_LOG_ERROR("cpu-server", "{}: {}", "ibv_reg_mr(namespace)", strerror(errno));
         resources->namespace_buffer.clear();
         return -1;
     }
-    resources->completion_mr = ibv_reg_mr(resources->pd, &resources->completion,
-                                          sizeof(resources->completion), 0);
+    resources->completion_mr = ibv_reg_mr(resources->pd, &resources->completion, sizeof(resources->completion), 0);
     if (resources->completion_mr == nullptr) {
         NDS_LOG_ERROR("cpu-server", "{}: {}", "ibv_reg_mr(completion)", strerror(errno));
         return -1;
@@ -334,13 +338,12 @@ static int create_storage_memory(struct nds_verbs_resources *resources, unsigned
     return 0;
 }
 
-static int post_command_receive(struct nds_verbs_resources *resources)
-{
+static int post_command_receive(struct nds_verbs_resources *resources) {
     ibv_sge sge{};
     ibv_recv_wr receive{};
     ibv_recv_wr *bad = nullptr;
-    resources->command_mr = ibv_reg_mr(resources->pd, &resources->command, sizeof(resources->command),
-                                        IBV_ACCESS_LOCAL_WRITE);
+    resources->command_mr =
+        ibv_reg_mr(resources->pd, &resources->command, sizeof(resources->command), IBV_ACCESS_LOCAL_WRITE);
     if (resources->command_mr == nullptr) {
         NDS_LOG_ERROR("cpu-server", "{}: {}", "ibv_reg_mr(command)", strerror(errno));
         return -1;
@@ -358,9 +361,7 @@ static int post_command_receive(struct nds_verbs_resources *resources)
     return 0;
 }
 
-static int move_qp_to_init(const struct nds_verbs_resources *resources,
-                           const struct nds_server_config *config)
-{
+static int move_qp_to_init(const struct nds_verbs_resources *resources, const struct nds_server_config *config) {
     struct ibv_qp_attr attributes = {};
 
     attributes.qp_state = IBV_QPS_INIT;
@@ -375,10 +376,8 @@ static int move_qp_to_init(const struct nds_verbs_resources *resources,
     return 0;
 }
 
-static int move_qp_to_rtr_rts(const struct nds_verbs_resources *resources,
-                              const struct nds_server_config *config,
-                              const nds_rc_endpoint *peer)
-{
+static int move_qp_to_rtr_rts(const struct nds_verbs_resources *resources, const struct nds_server_config *config,
+                              const nds_rc_endpoint *peer) {
     struct ibv_qp_attr attributes = {};
     enum ibv_mtu path_mtu;
 
@@ -441,11 +440,8 @@ static int move_qp_to_rtr_rts(const struct nds_verbs_resources *resources,
     return 0;
 }
 
-static int make_endpoint(const struct nds_verbs_resources *resources,
-                         const struct nds_server_config *config,
-                         nds_rc_endpoint_wire *wire,
-                         char error[NDS_WIRE_ERROR_CAPACITY])
-{
+static int make_endpoint(const struct nds_verbs_resources *resources, const struct nds_server_config *config,
+                         nds_rc_endpoint_wire *wire, char error[NDS_WIRE_ERROR_CAPACITY]) {
     nds_rc_endpoint endpoint = {};
     endpoint.flags = NDS_ENDPOINT_FLAG_QP_ONLY;
     endpoint.qp_num = resources->qp->qp_num;
@@ -460,59 +456,63 @@ static int make_endpoint(const struct nds_verbs_resources *resources,
     memcpy(mutable_endpoint.gid, &resources->gid, NDS_GID_BYTES);
     return nds_rc_endpoint_encode(&mutable_endpoint, wire, error);
 }
-static const char *qp_state_name(enum ibv_qp_state state)
-{
+static const char *qp_state_name(enum ibv_qp_state state) {
     switch (state) {
-        case IBV_QPS_RESET: return "RESET";
-        case IBV_QPS_INIT: return "INIT";
-        case IBV_QPS_RTR: return "RTR";
-        case IBV_QPS_RTS: return "RTS";
-        case IBV_QPS_SQD: return "SQD";
-        case IBV_QPS_SQE: return "SQE";
-        case IBV_QPS_ERR: return "ERR";
-        default: return "UNKNOWN";
+        case IBV_QPS_RESET:
+            return "RESET";
+        case IBV_QPS_INIT:
+            return "INIT";
+        case IBV_QPS_RTR:
+            return "RTR";
+        case IBV_QPS_RTS:
+            return "RTS";
+        case IBV_QPS_SQD:
+            return "SQD";
+        case IBV_QPS_SQE:
+            return "SQE";
+        case IBV_QPS_ERR:
+            return "ERR";
+        default:
+            return "UNKNOWN";
     }
 }
 
-static void format_gid(const uint8_t gid[NDS_GID_BYTES], char text[INET6_ADDRSTRLEN])
-{
+static void format_gid(const uint8_t gid[NDS_GID_BYTES], char text[INET6_ADDRSTRLEN]) {
     if (inet_ntop(AF_INET6, gid, text, INET6_ADDRSTRLEN) == nullptr) {
         (void)snprintf(text, INET6_ADDRSTRLEN, "<invalid>");
     }
 }
 
-static int report_qp(const struct nds_verbs_resources *resources, const char *phase)
-{
+static int report_qp(const struct nds_verbs_resources *resources, const char *phase) {
     struct ibv_qp_attr attributes = {};
     struct ibv_qp_init_attr initial = {};
-    const int mask = IBV_QP_STATE | IBV_QP_ACCESS_FLAGS | IBV_QP_PKEY_INDEX | IBV_QP_PORT |
-                     IBV_QP_AV | IBV_QP_PATH_MTU | IBV_QP_DEST_QPN | IBV_QP_RQ_PSN |
-                     IBV_QP_SQ_PSN | IBV_QP_TIMEOUT | IBV_QP_RETRY_CNT | IBV_QP_RNR_RETRY |
-                     IBV_QP_MAX_QP_RD_ATOMIC | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER;
+    const int mask = IBV_QP_STATE | IBV_QP_ACCESS_FLAGS | IBV_QP_PKEY_INDEX | IBV_QP_PORT | IBV_QP_AV |
+                     IBV_QP_PATH_MTU | IBV_QP_DEST_QPN | IBV_QP_RQ_PSN | IBV_QP_SQ_PSN | IBV_QP_TIMEOUT |
+                     IBV_QP_RETRY_CNT | IBV_QP_RNR_RETRY | IBV_QP_MAX_QP_RD_ATOMIC | IBV_QP_MAX_DEST_RD_ATOMIC |
+                     IBV_QP_MIN_RNR_TIMER;
 
     if (ibv_query_qp(resources->qp, &attributes, mask, &initial) != 0) {
         NDS_LOG_ERROR("cpu-server", "{}: {}", "ibv_query_qp", strerror(errno));
         return -1;
     }
-    NDS_LOG_INFO("cpu-server", "CPU QP {}: qpn={} state={} port={} pkey_index={} access=0x{:x} "
+    NDS_LOG_INFO("cpu-server",
+                 "CPU QP {}: qpn={} state={} port={} pkey_index={} access=0x{:x} "
                  "path_mtu={} dest_qpn={} rq_psn={} sq_psn={} timeout={} retry={} rnr_retry={} "
                  "max_rd_atomic={} max_dest_rd_atomic={} min_rnr_timer={} global={} sgid_index={} "
                  "hop_limit={} tc={} sl={} cq_depth={} max_send_wr={} max_recv_wr={} "
                  "max_send_sge={} max_recv_sge={} sq_sig_all={}",
                  phase, resources->qp->qp_num, qp_state_name(attributes.qp_state), attributes.port_num,
                  attributes.pkey_index, attributes.qp_access_flags, mtu_to_bytes(attributes.path_mtu),
-                 attributes.dest_qp_num, attributes.rq_psn, attributes.sq_psn, attributes.timeout,
-                 attributes.retry_cnt, attributes.rnr_retry, attributes.max_rd_atomic,
-                 attributes.max_dest_rd_atomic, attributes.min_rnr_timer, attributes.ah_attr.is_global,
-                 attributes.ah_attr.grh.sgid_index, attributes.ah_attr.grh.hop_limit,
-                 attributes.ah_attr.grh.traffic_class, attributes.ah_attr.sl, NDS_QP_DEPTH * 2U,
-                 initial.cap.max_send_wr, initial.cap.max_recv_wr, initial.cap.max_send_sge,
+                 attributes.dest_qp_num, attributes.rq_psn, attributes.sq_psn, attributes.timeout, attributes.retry_cnt,
+                 attributes.rnr_retry, attributes.max_rd_atomic, attributes.max_dest_rd_atomic,
+                 attributes.min_rnr_timer, attributes.ah_attr.is_global, attributes.ah_attr.grh.sgid_index,
+                 attributes.ah_attr.grh.hop_limit, attributes.ah_attr.grh.traffic_class, attributes.ah_attr.sl,
+                 NDS_QP_DEPTH * 2U, initial.cap.max_send_wr, initial.cap.max_recv_wr, initial.cap.max_send_sge,
                  initial.cap.max_recv_sge, initial.sq_sig_all);
     return 0;
 }
 
-static void hold_for_passive_diagnostics(unsigned int milliseconds)
-{
+static void hold_for_passive_diagnostics(unsigned int milliseconds) {
     struct timespec remaining;
 
     if (milliseconds == 0U) {
@@ -520,27 +520,26 @@ static void hold_for_passive_diagnostics(unsigned int milliseconds)
     }
     remaining.tv_sec = (time_t)(milliseconds / 1000U);
     remaining.tv_nsec = (long)(milliseconds % 1000U) * 1000000L;
-    NDS_LOG_INFO("cpu-server", "Holding CPU QP and storage MRs for {} ms for passive diagnostics; no additional work is posted.",
+    NDS_LOG_INFO("cpu-server",
+                 "Holding CPU QP and storage MRs for {} ms for passive diagnostics; no additional work is posted.",
                  milliseconds);
     while (nanosleep(&remaining, &remaining) != 0 && errno == EINTR) {
     }
 }
 
-static void report_endpoint(const char *label, const nds_rc_endpoint *endpoint)
-{
+static void report_endpoint(const char *label, const nds_rc_endpoint *endpoint) {
     char gid[INET6_ADDRSTRLEN];
 
     format_gid(endpoint->gid, gid);
-    NDS_LOG_INFO("cpu-server", "{} endpoint: phase={} qpn={} psn={} port={} gid_index={} gid={} path_mtu={} "
+    NDS_LOG_INFO("cpu-server",
+                 "{} endpoint: phase={} qpn={} psn={} port={} gid_index={} gid={} path_mtu={} "
                  "tc={} sl={} retry_count={} retry_timeout={}",
                  label, (endpoint->flags & NDS_ENDPOINT_FLAG_QP_ONLY) != 0U ? "QP-only" : "data-ready",
-                 endpoint->qp_num, endpoint->psn, endpoint->port_num, endpoint->gid_index, gid,
-                 endpoint->path_mtu, endpoint->traffic_class, endpoint->service_level,
-                 endpoint->retry_count, endpoint->retry_timeout);
+                 endpoint->qp_num, endpoint->psn, endpoint->port_num, endpoint->gid_index, gid, endpoint->path_mtu,
+                 endpoint->traffic_class, endpoint->service_level, endpoint->retry_count, endpoint->retry_timeout);
 }
 
-static int wait_for_peer_close(int descriptor)
-{
+static int wait_for_peer_close(int descriptor) {
     unsigned char unexpected_byte;
 
     for (;;) {
@@ -561,8 +560,7 @@ static int wait_for_peer_close(int descriptor)
     }
 }
 
-static int open_listener(const struct nds_server_config *config)
-{
+static int open_listener(const struct nds_server_config *config) {
     struct sockaddr_in address = {};
     int descriptor;
     int enabled = 1;
@@ -597,8 +595,7 @@ static int open_listener(const struct nds_server_config *config)
     return descriptor;
 }
 
-static int run_server(int argc, char **argv)
-{
+static int run_server(int argc, char **argv) {
     struct nds_server_config config;
     struct nds_verbs_resources resources;
     nds_device_list device_list;
@@ -614,13 +611,13 @@ static int run_server(int argc, char **argv)
     nds_file_descriptor listener;
     nds_file_descriptor connection;
     std::string log_error;
-    (void)nds::log::configure("cpu-server", "stderr", "info", log_error);
+    (void)nds::log::configure("cpu-server", "stderr", "info", &log_error);
     bool exit_requested = false;
-    const int parse_result = parse_arguments(argc, argv, &config, exit_requested);
+    const int parse_result = parse_arguments(argc, argv, &config, &exit_requested);
     if (exit_requested || parse_result != 0) {
         return parse_result;
     }
-    if (!nds::log::configure("cpu-server", config.log_sink, config.log_level, log_error)) {
+    if (!nds::log::configure("cpu-server", config.log_sink, config.log_level, &log_error)) {
         NDS_LOG_ERROR("cpu-server", "invalid logger configuration: {}", log_error);
         return EXIT_FAILURE;
     }
@@ -632,7 +629,8 @@ static int run_server(int argc, char **argv)
     if (create_resources(device, &config, &resources) != 0 || move_qp_to_init(&resources, &config) != 0) {
         return EXIT_FAILURE;
     }
-    if (!config.qp_only && create_storage_memory(&resources, config.namespace_bytes) != 0) return EXIT_FAILURE;
+    if (!config.qp_only && create_storage_memory(&resources, config.namespace_bytes) != 0)
+        return EXIT_FAILURE;
     if (make_endpoint(&resources, &config, &local_wire, wire_error) != 0 ||
         nds_rc_endpoint_decode(&local_wire, &local, wire_error) != 0) {
         NDS_LOG_ERROR("cpu-server", "could not create local QP-only endpoint: {}", wire_error);
@@ -646,7 +644,8 @@ static int run_server(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
-    NDS_LOG_INFO("cpu-server", "NDS verbs server ready: device={} ib_port={} gid_index={} tcp={}:{} mode={} namespace_bytes={}",
+    NDS_LOG_INFO("cpu-server",
+                 "NDS verbs server ready: device={} ib_port={} gid_index={} tcp={}:{} mode={} namespace_bytes={}",
                  config.device_name, config.ib_port, config.gid_index, config.listen_address, config.tcp_port,
                  config.qp_only ? "qp-only" : "storage", config.namespace_bytes);
     report_endpoint("CPU local", &local);
@@ -678,22 +677,25 @@ static int run_server(int argc, char **argv)
     if (move_qp_to_rtr_rts(&resources, &config, &peer) != 0 || report_qp(&resources, "after RTR/RTS") != 0) {
         return EXIT_FAILURE;
     }
-    if (!config.qp_only && post_command_receive(&resources) != 0) return EXIT_FAILURE;
+    if (!config.qp_only && post_command_receive(&resources) != 0)
+        return EXIT_FAILURE;
     if (write_full(connection.get(), &local_wire, sizeof(local_wire)) != 0) {
         NDS_LOG_ERROR("cpu-server", "{}: {}", "write endpoint", strerror(errno));
         return EXIT_FAILURE;
     }
     if (config.qp_only) {
-        NDS_LOG_INFO("cpu-server", "CPU verbs QP reached RTS; QP-only mode will not advertise memory or expect a work request.");
+        NDS_LOG_INFO("cpu-server",
+                     "CPU verbs QP reached RTS; QP-only mode will not advertise memory or expect a work request.");
         if (wait_for_peer_close(connection.get()) != 0) {
             return EXIT_FAILURE;
         }
-        NDS_LOG_INFO("cpu-server", "QP-only validation passed; NPU closed the control connection without a work request.");
+        NDS_LOG_INFO("cpu-server",
+                     "QP-only validation passed; NPU closed the control connection without a work request.");
         return EXIT_SUCCESS;
     }
     nds::TcpPeerExchange exchange(connection.release());
     std::string exchange_error;
-    if (!exchange.receive_storage_bootstrap(bootstrap, &exchange_error)) {
+    if (!exchange.receive_storage_bootstrap(&bootstrap, &exchange_error)) {
         NDS_LOG_ERROR("cpu-server", "NPU storage bootstrap failed: {}", exchange_error);
         return EXIT_FAILURE;
     }
@@ -707,17 +709,19 @@ static int run_server(int argc, char **argv)
         NDS_LOG_ERROR("cpu-server", "invalid NDS storage command: {}", wire_error);
         return EXIT_FAILURE;
     }
-    nds::CpuStorageTransport storage_transport{resources.qp, resources.cq, &resources.namespace_buffer,
-                                                resources.namespace_mr, &resources.completion, resources.completion_mr};
-    if (!nds::execute_storage_command(storage_transport, command, bootstrap, NDS_TRANSFER_WAIT_MS, "cpu-server")) return EXIT_FAILURE;
-    if (report_qp(&resources, "after storage completion") != 0) return EXIT_FAILURE;
+    nds::CpuStorageTransport storage_transport{
+        resources.qp,           resources.cq,          &resources.namespace_buffer,
+        resources.namespace_mr, &resources.completion, resources.completion_mr};
+    if (!nds::execute_storage_command(&storage_transport, command, bootstrap, NDS_TRANSFER_WAIT_MS, "cpu-server"))
+        return EXIT_FAILURE;
+    if (report_qp(&resources, "after storage completion") != 0)
+        return EXIT_FAILURE;
     hold_for_passive_diagnostics(config.post_close_hold_ms);
-    NDS_LOG_INFO("cpu-server", "completed NDS storage command request_id={} operation={} bytes={}",
-                 command.request_id, command.operation, command.length);
+    NDS_LOG_INFO("cpu-server", "completed NDS storage command request_id={} operation={} bytes={}", command.request_id,
+                 command.operation, command.length);
     return EXIT_SUCCESS;
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     return run_server(argc, argv);
 }

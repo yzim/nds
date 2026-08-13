@@ -7,8 +7,7 @@
 
 #include <spdlog/sinks/ostream_sink.h>
 
-int main()
-{
+int main() {
     std::ostringstream output;
     auto sink = std::make_shared<spdlog::sinks::ostream_sink_mt>(output);
     auto external = std::make_shared<spdlog::logger>("test", sink);
@@ -23,9 +22,9 @@ int main()
     assert(output.str() == "message 7\nfailure 8\nformatted message\n");
 
     std::string error;
-    assert(!nds::log::configure("test", "invalid", "info", error));
+    assert(!nds::log::configure("test", "invalid", "info", &error));
     assert(error == "unsupported log sink: invalid");
-    assert(!nds::log::configure("test", "none", "invalid", error));
+    assert(!nds::log::configure("test", "none", "invalid", &error));
     assert(error == "unsupported log level: invalid");
     return 0;
 }

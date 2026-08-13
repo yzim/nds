@@ -30,7 +30,7 @@ public:
     AivRdmaPostLauncher(const AivRdmaPostLauncher &) = delete;
     AivRdmaPostLauncher &operator=(const AivRdmaPostLauncher &) = delete;
 
-    bool load(nds_acl_api &acl, const std::string &kernel_path);
+    bool load(nds_acl_api *acl, const std::string &kernel_path);
     bool make_device_request(const AivRdmaPostRequest &request, nds_aiv_rdma_post_request *output);
     bool launch_post_and_wait(std::uint64_t device_request_address, std::int32_t completion_timeout_ms);
     void reset() noexcept;
@@ -48,6 +48,6 @@ private:
     std::string error_;
 };
 
-} // namespace nds
+}  // namespace nds
 
 #endif

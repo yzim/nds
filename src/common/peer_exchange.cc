@@ -14,13 +14,11 @@
 namespace nds {
 namespace {
 
-std::string system_error(const char *operation)
-{
+std::string system_error(const char *operation) {
     return std::string(operation) + ": " + std::strerror(errno);
 }
 
-bool wait_for_fd(int fd, short events, std::uint32_t timeout_ms, std::string *error)
-{
+bool wait_for_fd(int fd, short events, std::uint32_t timeout_ms, std::string *error) {
     pollfd descriptor{};
     descriptor.fd = fd;
     descriptor.events = events;
@@ -41,90 +39,73 @@ bool wait_for_fd(int fd, short events, std::uint32_t timeout_ms, std::string *er
     return true;
 }
 
-} // namespace
+}  // namespace
 
 TcpPeerExchange::TcpPeerExchange(int fd) noexcept : fd_(fd) {}
 
-TcpPeerExchange::~TcpPeerExchange()
-{
+TcpPeerExchange::~TcpPeerExchange() {
     if (fd_ >= 0) {
         (void)close(fd_);
     }
 }
 
-TcpPeerExchange::TcpPeerExchange(TcpPeerExchange &&other) noexcept : fd_(other.release()) {}
-
-TcpPeerExchange &TcpPeerExchange::operator=(TcpPeerExchange &&other) noexcept
-{
-    if (this != &other) {
-        if (fd_ >= 0) {
-            (void)close(fd_);
-        }
-        fd_ = other.release();
-    }
-    return *this;
-}
-
-bool TcpPeerExchange::send_storage_bootstrap(const nds_storage_bootstrap &bootstrap, std::string *error) const
-{
+bool TcpPeerExchange::send_storage_bootstrap(const nds_storage_bootstrap &bootstrap, std::string *error) const {
     nds_storage_bootstrap_wire wire{};
     char codec_error[NDS_STORAGE_ERROR_CAPACITY]{};
     if (fd_ < 0 || nds_storage_bootstrap_encode(&bootstrap, &wire, codec_error) != 0) {
-        if (error != nullptr) *error = fd_ < 0 ? "TCP peer exchange is not connected" : codec_error;
+        if (error != nullptr)
+            *error = fd_ < 0 ? "TCP peer exchange is not connected" : codec_error;
         return false;
     }
     return write_full(fd_, &wire, sizeof(wire), error);
 }
 
-bool TcpPeerExchange::receive_storage_bootstrap(nds_storage_bootstrap &bootstrap, std::string *error) const
-{
+bool TcpPeerExchange::receive_storage_bootstrap(nds_storage_bootstrap *bootstrap, std::string *error) const {
     nds_storage_bootstrap_wire wire{};
     char codec_error[NDS_STORAGE_ERROR_CAPACITY]{};
-    if (fd_ < 0 || !read_full(fd_, &wire, sizeof(wire), error) ||
-        nds_storage_bootstrap_decode(&wire, &bootstrap, codec_error) != 0) {
-        if (fd_ >= 0 && error != nullptr && codec_error[0] != '\0') *error = codec_error;
+    if (bootstrap == nullptr || fd_ < 0 || !read_full(fd_, &wire, sizeof(wire), error) ||
+        nds_storage_bootstrap_decode(&wire, bootstrap, codec_error) != 0) {
+        if (fd_ >= 0 && error != nullptr && codec_error[0] != '\0')
+            *error = codec_error;
         return false;
     }
     return true;
 }
 
-bool TcpPeerExchange::send_storage_namespace(const nds_storage_namespace &storage_namespace, std::string *error) const
-{
+bool TcpPeerExchange::send_storage_namespace(const nds_storage_namespace &storage_namespace, std::string *error) const {
     nds_storage_namespace_wire wire{};
     char codec_error[NDS_STORAGE_ERROR_CAPACITY]{};
     if (fd_ < 0 || nds_storage_namespace_encode(&storage_namespace, &wire, codec_error) != 0) {
-        if (error != nullptr) *error = fd_ < 0 ? "TCP peer exchange is not connected" : codec_error;
+        if (error != nullptr)
+            *error = fd_ < 0 ? "TCP peer exchange is not connected" : codec_error;
         return false;
     }
     return write_full(fd_, &wire, sizeof(wire), error);
 }
 
-bool TcpPeerExchange::receive_storage_namespace(nds_storage_namespace &storage_namespace, std::string *error) const
-{
+bool TcpPeerExchange::receive_storage_namespace(nds_storage_namespace *storage_namespace, std::string *error) const {
     nds_storage_namespace_wire wire{};
     char codec_error[NDS_STORAGE_ERROR_CAPACITY]{};
-    if (fd_ < 0 || !read_full(fd_, &wire, sizeof(wire), error) ||
-        nds_storage_namespace_decode(&wire, &storage_namespace, codec_error) != 0) {
-        if (fd_ >= 0 && error != nullptr && codec_error[0] != '\0') *error = codec_error;
+    if (storage_namespace == nullptr || fd_ < 0 || !read_full(fd_, &wire, sizeof(wire), error) ||
+        nds_storage_namespace_decode(&wire, storage_namespace, codec_error) != 0) {
+        if (fd_ >= 0 && error != nullptr && codec_error[0] != '\0')
+            *error = codec_error;
         return false;
     }
     return true;
 }
 
-int TcpPeerExchange::fd() const noexcept
-{
+int TcpPeerExchange::fd() const noexcept {
     return fd_;
 }
 
-int TcpPeerExchange::release() noexcept
-{
+int TcpPeerExchange::release() noexcept {
     const int released = fd_;
     fd_ = -1;
     return released;
 }
 
-bool TcpPeerExchange::read_full(int fd, void *buffer, std::size_t length, std::string *error)
-{
+bool TcpPeerExchange::read_full(int fd, void *buffer, std::size_t length, std::string *error) {
     auto *cursor = static_cast<unsigned char *>(buffer);
 
     while (length != 0U) {
@@ -146,8 +127,7 @@ bool TcpPeerExchange::read_full(int fd, void *buffer, std::size_t length, std::s
     return true;
 }
 
-bool TcpPeerExchange::write_full(int fd, const void *buffer, std::size_t length, std::string *error)
-{
+bool TcpPeerExchange::write_full(int fd, const void *buffer, std::size_t length, std::string *error) {
     const auto *cursor = static_cast<const unsigned char *>(buffer);
 
     while (length != 0U) {
@@ -165,8 +145,7 @@ bool TcpPeerExchange::write_full(int fd, const void *buffer, std::size_t length,
     return true;
 }
 
-PeerExchangeResult TcpPeerExchange::exchange(int fd, const nds_rc_endpoint &local, bool client_order)
-{
+PeerExchangeResult TcpPeerExchange::exchange(int fd, const nds_rc_endpoint &local, bool client_order) {
     nds_rc_endpoint_wire local_wire{};
     nds_rc_endpoint_wire peer_wire{};
     PeerExchangeResult result;
@@ -200,25 +179,27 @@ PeerExchangeResult TcpPeerExchange::exchange(int fd, const nds_rc_endpoint &loca
     return result;
 }
 
-PeerExchangeResult TcpPeerExchange::exchange_as_client(const nds_rc_endpoint &local) const
-{
+PeerExchangeResult TcpPeerExchange::exchange_as_client(const nds_rc_endpoint &local) const {
     return exchange(fd_, local, true);
 }
 
-PeerExchangeResult TcpPeerExchange::exchange_as_server(const nds_rc_endpoint &local) const
-{
+PeerExchangeResult TcpPeerExchange::exchange_as_server(const nds_rc_endpoint &local) const {
     return exchange(fd_, local, false);
 }
 
 bool TcpPeerExchange::connect(const std::string &ipv4, std::uint16_t port, std::uint32_t timeout_ms,
-                               TcpPeerExchange &connection, std::string *error)
-{
+                              TcpPeerExchange *connection, std::string *error) {
     sockaddr_in address{};
     int socket_fd;
     int flags;
     int connect_result;
 
-    if (connection.fd_ >= 0) {
+    if (connection == nullptr) {
+        if (error != nullptr)
+            *error = "TCP peer exchange requires an output connection";
+        return false;
+    }
+    if (connection->fd_ >= 0) {
         if (error != nullptr) {
             *error = "output TCP peer exchange object already owns a socket";
         }
@@ -283,18 +264,16 @@ bool TcpPeerExchange::connect(const std::string &ipv4, std::uint16_t port, std::
         (void)close(socket_fd);
         return false;
     }
-    connection.fd_ = socket_fd;
+    connection->fd_ = socket_fd;
     return true;
 }
 
 PeerExchangeResult TcpPeerExchange::connect_and_exchange(const std::string &ipv4, std::uint16_t port,
-                                                         const nds_rc_endpoint &local,
-                                                         std::uint32_t timeout_ms)
-{
+                                                         const nds_rc_endpoint &local, std::uint32_t timeout_ms) {
     TcpPeerExchange connection;
     std::string error;
 
-    if (!connect(ipv4, port, timeout_ms, connection, &error)) {
+    if (!connect(ipv4, port, timeout_ms, &connection, &error)) {
         PeerExchangeResult result;
         result.error = std::move(error);
         return result;
@@ -302,4 +281,4 @@ PeerExchangeResult TcpPeerExchange::connect_and_exchange(const std::string &ipv4
     return connection.exchange_as_client(local);
 }
 
-} // namespace nds
+}  // namespace nds

@@ -17,10 +17,9 @@ namespace nds::log {
  */
 void set_logger(std::string_view name, std::shared_ptr<spdlog::logger> logger);
 std::shared_ptr<spdlog::logger> logger(std::string_view name);
-bool configure(std::string_view name, std::string_view sink, std::string_view level,
-               std::string &error);
+bool configure(std::string_view name, std::string_view sink, std::string_view level, std::string *error);
 
-} // namespace nds::log
+}  // namespace nds::log
 
 #define NDS_LOG_TRACE(name, ...) SPDLOG_LOGGER_TRACE(::nds::log::logger(name), __VA_ARGS__)
 #define NDS_LOG_DEBUG(name, ...) SPDLOG_LOGGER_DEBUG(::nds::log::logger(name), __VA_ARGS__)

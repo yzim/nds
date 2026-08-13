@@ -7,22 +7,23 @@ namespace {
 constexpr const char *kNdsAicpuRdmaPost = "NdsAicpuRdmaPost";
 }
 
-AicpuRdmaPostLauncher::~AicpuRdmaPostLauncher()
-{
+AicpuRdmaPostLauncher::~AicpuRdmaPostLauncher() {
     reset();
 }
 
-void AicpuRdmaPostLauncher::set_error(std::string message)
-{
+void AicpuRdmaPostLauncher::set_error(std::string message) {
     error_ = std::move(message);
 }
 
-bool AicpuRdmaPostLauncher::load(nds_acl_api &acl, const std::string &kernel_config_path)
-{
+bool AicpuRdmaPostLauncher::load(nds_acl_api *acl, const std::string &kernel_config_path) {
     nds_acl_binary_load_option option{};
     nds_acl_binary_load_options options{};
     int result;
 
+    if (acl == nullptr) {
+        set_error("NDS AICPU RDMA post launcher requires AscendCL API storage");
+        return false;
+    }
     if (loaded()) {
         set_error("NDS AICPU RDMA post launcher is already loaded");
         return false;
@@ -31,15 +32,16 @@ bool AicpuRdmaPostLauncher::load(nds_acl_api &acl, const std::string &kernel_con
         set_error("NDS AICPU RDMA post requires the NDS-built nds_aicpu_standard.json path");
         return false;
     }
-    if (acl.binary_load_from_file == nullptr || acl.binary_unload == nullptr || acl.binary_get_function == nullptr ||
-        acl.kernel_args_init == nullptr || acl.kernel_args_append == nullptr || acl.kernel_args_finalize == nullptr ||
-        acl.launch_kernel_with_config == nullptr || acl.create_stream_with_config == nullptr || acl.destroy_stream == nullptr ||
-        acl.synchronize_stream_with_timeout == nullptr) {
+    if (acl->binary_load_from_file == nullptr || acl->binary_unload == nullptr || acl->binary_get_function == nullptr ||
+        acl->kernel_args_init == nullptr || acl->kernel_args_append == nullptr ||
+        acl->kernel_args_finalize == nullptr || acl->launch_kernel_with_config == nullptr ||
+        acl->create_stream_with_config == nullptr || acl->destroy_stream == nullptr ||
+        acl->synchronize_stream_with_timeout == nullptr) {
         set_error("AscendCL is missing a required AICPU binary, argument, launch, or stream symbol");
         return false;
     }
 
-    acl_ = &acl;
+    acl_ = acl;
     option.type = NDS_ACL_BINARY_LOAD_OPT_CPU_KERNEL_MODE;
     option.value.cpu_kernel_mode = 0;
     options.options = &option;
@@ -56,8 +58,7 @@ bool AicpuRdmaPostLauncher::load(nds_acl_api &acl, const std::string &kernel_con
         reset();
         return false;
     }
-    result = acl_->create_stream_with_config(&stream_, 0U,
-                                              NDS_ACL_STREAM_FAST_LAUNCH | NDS_ACL_STREAM_FAST_SYNC);
+    result = acl_->create_stream_with_config(&stream_, 0U, NDS_ACL_STREAM_FAST_LAUNCH | NDS_ACL_STREAM_FAST_SYNC);
     if (result != 0 || stream_ == nullptr) {
         set_error("aclrtCreateStreamWithConfig for NDS AICPU RDMA post failed: " + std::to_string(result));
         reset();
@@ -67,9 +68,7 @@ bool AicpuRdmaPostLauncher::load(nds_acl_api &acl, const std::string &kernel_con
     return true;
 }
 
-bool AicpuRdmaPostLauncher::launch_and_wait(const AicpuRdmaPostRequest &request,
-                                              std::int32_t completion_timeout_ms)
-{
+bool AicpuRdmaPostLauncher::launch_and_wait(const AicpuRdmaPostRequest &request, std::int32_t completion_timeout_ms) {
     nds_aicpu_rdma_post_request parameters{};
     nds_acl_args_handle arguments{};
     nds_acl_param_handle parameter_handle{};
@@ -87,9 +86,8 @@ bool AicpuRdmaPostLauncher::launch_and_wait(const AicpuRdmaPostRequest &request,
         set_error("NDS AICPU request opcode is unsupported");
         return false;
     }
-    if (request.ai_qp_address == 0U || request.local_key == 0U ||
-        request.local_address == 0U || request.data_size == 0U ||
-        request.data_size > NDS_AICPU_ROCE_MAX_BYTES || completion_timeout_ms <= 0 ||
+    if (request.ai_qp_address == 0U || request.local_key == 0U || request.local_address == 0U ||
+        request.data_size == 0U || request.data_size > NDS_AICPU_ROCE_MAX_BYTES || completion_timeout_ms <= 0 ||
         (is_rdma && (request.remote_key == 0U || request.remote_address == 0U)) ||
         (is_send && (request.remote_key != 0U || request.remote_address != 0U))) {
         set_error("NDS AICPU request has invalid QP, memory, operation, or timeout metadata");
@@ -145,8 +143,7 @@ bool AicpuRdmaPostLauncher::launch_and_wait(const AicpuRdmaPostRequest &request,
     return true;
 }
 
-void AicpuRdmaPostLauncher::reset() noexcept
-{
+void AicpuRdmaPostLauncher::reset() noexcept {
     if (acl_ != nullptr && stream_ != nullptr && acl_->destroy_stream != nullptr) {
         (void)acl_->destroy_stream(stream_);
     }
@@ -159,14 +156,12 @@ void AicpuRdmaPostLauncher::reset() noexcept
     acl_ = nullptr;
 }
 
-bool AicpuRdmaPostLauncher::loaded() const noexcept
-{
+bool AicpuRdmaPostLauncher::loaded() const noexcept {
     return acl_ != nullptr && binary_ != nullptr && function_ != nullptr && stream_ != nullptr;
 }
 
-const std::string &AicpuRdmaPostLauncher::error() const noexcept
-{
+const std::string &AicpuRdmaPostLauncher::error() const noexcept {
     return error_;
 }
 
-} // namespace nds
+}  // namespace nds

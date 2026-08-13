@@ -4,9 +4,9 @@
 using namespace AscendC;
 
 /* Matches HCOMM's AIV metadata section convention without importing its runtime. */
-#define NDS_EXPORT_AIV_META_INFO(kernel_name) \
-static const struct FunLevelKType kernel_name##_kernel_type_section __attribute__ \
-((used, section (".ascend.meta." #kernel_name))) = {{F_TYPE_KTYPE, sizeof(unsigned int), K_TYPE_AIV}}
+#define NDS_EXPORT_AIV_META_INFO(kernel_name)                                           \
+    static const struct FunLevelKType kernel_name##_kernel_type_section __attribute__(( \
+        used, section(".ascend.meta." #kernel_name))) = {{F_TYPE_KTYPE, sizeof(unsigned int), K_TYPE_AIV}}
 
 namespace {
 struct HnsRoceRcSqWqe {
@@ -25,8 +25,7 @@ struct HnsRoceSge {
     uint64_t local_address;
 };
 
-__aicore__ inline void CacheWriteThrough(__gm__ uint8_t *address, uint64_t length)
-{
+__aicore__ inline void CacheWriteThrough(__gm__ uint8_t *address, uint64_t length) {
     __gm__ uint8_t *start = (__gm__ uint8_t *)((uint64_t)address / CACHE_LINE_SIZE * CACHE_LINE_SIZE);
     __gm__ uint8_t *end = (__gm__ uint8_t *)(((uint64_t)address + length) / CACHE_LINE_SIZE * CACHE_LINE_SIZE);
     GlobalTensor<uint8_t> global;
@@ -36,19 +35,17 @@ __aicore__ inline void CacheWriteThrough(__gm__ uint8_t *address, uint64_t lengt
     }
 }
 
-__aicore__ inline void StoreU64WithDma(TBuf<> &scratch, __gm__ uint64_t *destination, uint64_t value)
-{
-    LocalTensor<uint64_t> local = scratch.GetWithOffset<uint64_t>(1U, 0U);
+__aicore__ inline void StoreU64WithDma(TBuf<> *scratch, __gm__ uint64_t *destination, uint64_t value) {
+    LocalTensor<uint64_t> local = scratch->GetWithOffset<uint64_t>(1U, 0U);
     local.SetValue(0U, value);
     GlobalTensor<uint64_t> global;
     global.SetGlobalBuffer(destination);
     DataCopyExtParams params{1U, sizeof(uint64_t), 0U, 0U, 0U};
     DataCopyPad(global, local, params);
 }
-} // namespace
+}  // namespace
 
-extern "C" __global__ __aicore__ void NdsAivRdmaPost(GM_ADDR request_address)
-{
+extern "C" __global__ __aicore__ void NdsAivRdmaPost(GM_ADDR request_address) {
     __gm__ const nds_aiv_rdma_post_request *request =
         reinterpret_cast<__gm__ const nds_aiv_rdma_post_request *>(request_address);
     __gm__ const nds_aiv_sq_descriptor *queue = &request->send_queue;
@@ -82,11 +79,11 @@ extern "C" __global__ __aicore__ void NdsAivRdmaPost(GM_ADDR request_address)
         CacheWriteThrough(wqe_address, sizeof(HnsRoceRcSqWqe) + sizeof(HnsRoceSge));
         PipeBarrier<PIPE_ALL>();
         const uint32_t new_head = head + 1U;
-        const uint64_t doorbell = (uint64_t)queue->wqn | ((uint64_t)(new_head & 0xffffU) << 32U) |
-                                  ((uint64_t)queue->service_level << 48U);
-        StoreU64WithDma(scratch, reinterpret_cast<__gm__ uint64_t *>(queue->doorbell_address), doorbell);
+        const uint64_t doorbell =
+            (uint64_t)queue->wqn | ((uint64_t)(new_head & 0xffffU) << 32U) | ((uint64_t)queue->service_level << 48U);
+        StoreU64WithDma(&scratch, reinterpret_cast<__gm__ uint64_t *>(queue->doorbell_address), doorbell);
         PipeBarrier<PIPE_ALL>();
-        StoreU64WithDma(scratch, reinterpret_cast<__gm__ uint64_t *>(head_address), new_head);
+        StoreU64WithDma(&scratch, reinterpret_cast<__gm__ uint64_t *>(head_address), new_head);
         PipeBarrier<PIPE_ALL>();
     }
 }

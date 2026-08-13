@@ -16,9 +16,8 @@ struct HostRaPostRequest {
     std::uint32_t remote_key{};
 };
 
-bool submit_host_ra(NpuRaContext &context, NpuRaQp &qp,
-                    const HostRaPostRequest &request, std::string &error);
+bool submit_host_ra(NpuRaContext *context, NpuRaQp *qp, const HostRaPostRequest &request, std::string *error);
 
-} // namespace nds
+}  // namespace nds
 
 #endif

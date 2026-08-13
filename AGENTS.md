@@ -60,6 +60,12 @@ belong in `docs/`: [HCCP QP and MR lifecycle](docs/hccp-resources.md),
 - NDS is C++20. Use native C++ ownership and `nullptr` in compiled C++ code.
   Use `.cc` for C++ sources and `.hh` for C++ headers. Keep `.h` headers
   C-compatible only where a runtime or device boundary needs it.
+- Function parameters must be values, `const T&` inputs, or pointers. Do not
+  use non-const lvalue-reference parameters: expose output and in/out values
+  as `T*` so mutation is visible at the call site. Stored non-owning mutable
+  dependencies are pointers, not references. The only exception is a C++
+  language-required special member; prefer deleting it when it is unnecessary.
+- Format C++ with the repository `.clang-format` configuration.
 - Use the `nds::log` facade backed by `spdlog` for executable diagnostics. Do
   not add direct `stdout`, `stderr`, `printf`, or `perror` logging. Keep the
   component names `npu-client` and `cpu-server`; applications may replace their

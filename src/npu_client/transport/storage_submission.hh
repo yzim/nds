@@ -19,11 +19,10 @@ struct StorageSubmissionConfig {
 };
 
 /* Posts exactly one NDS storage-command Send from registered NPU memory. */
-bool submit_storage_command(NpuRaContext &context, NpuRaQp &qp,
-                            const StorageSubmissionConfig &config,
-                            std::uint64_t command_address, std::uint32_t command_length,
-                            std::uint32_t command_lkey, std::string &error);
+bool submit_storage_command(NpuRaContext *context, NpuRaQp *qp, const StorageSubmissionConfig &config,
+                            std::uint64_t command_address, std::uint32_t command_length, std::uint32_t command_lkey,
+                            std::string *error);
 
-} // namespace nds
+}  // namespace nds
 
 #endif

@@ -12,59 +12,54 @@ namespace {
 constexpr std::uint32_t kQpnMask = 0x00ffffffU;
 constexpr std::uint32_t kPsnMask = 0x00ffffffU;
 
-bool is_valid_qp_number(std::uint32_t value)
-{
+bool is_valid_qp_number(std::uint32_t value) {
     return value != 0U && value <= kQpnMask;
 }
 
-bool is_valid_psn(std::uint32_t value)
-{
+bool is_valid_psn(std::uint32_t value) {
     return value <= kPsnMask;
 }
 
-} // namespace
+}  // namespace
 
-NpuRaQp::~NpuRaQp()
-{
+NpuRaQp::~NpuRaQp() {
     reset();
 }
 
-void NpuRaQp::set_error(std::string message)
-{
+void NpuRaQp::set_error(std::string message) {
     error_ = std::move(message);
 }
 
-bool NpuRaQp::build_typical_qp(const nds_ra_qp_attr &attributes,
-                               std::uint32_t traffic_class,
-                               std::uint32_t service_level,
-                               std::uint32_t retry_count,
-                               std::uint32_t retry_timeout,
-                               nds_ra_typical_qp &out) const
-{
-    if (!is_valid_qp_number(attributes.qpn) || !is_valid_psn(attributes.psn)) {
+bool NpuRaQp::build_typical_qp(const nds_ra_qp_attr &attributes, std::uint32_t traffic_class,
+                               std::uint32_t service_level, std::uint32_t retry_count, std::uint32_t retry_timeout,
+                               nds_ra_typical_qp *out) const {
+    if (out == nullptr || !is_valid_qp_number(attributes.qpn) || !is_valid_psn(attributes.psn)) {
         return false;
     }
 
-    out = {};
-    out.qpn = attributes.qpn;
-    out.psn = attributes.psn;
-    out.gid_index = attributes.gid_index;
-    std::memcpy(out.gid, attributes.gid, sizeof(out.gid));
-    out.traffic_class = traffic_class;
-    out.service_level = service_level;
-    out.retry_count = retry_count;
-    out.retry_timeout = retry_timeout;
+    *out = {};
+    out->qpn = attributes.qpn;
+    out->psn = attributes.psn;
+    out->gid_index = attributes.gid_index;
+    std::memcpy(out->gid, attributes.gid, sizeof(out->gid));
+    out->traffic_class = traffic_class;
+    out->service_level = service_level;
+    out->retry_count = retry_count;
+    out->retry_timeout = retry_timeout;
     return true;
 }
 
-bool NpuRaQp::create(nds_ra_api &api, const NpuRaQpConfig &config)
-{
+bool NpuRaQp::create(nds_ra_api *api, const NpuRaQpConfig &config) {
     nds_ra_rdev rdev{};
     nds_ra_rdev_init_info rdev_init{};
     nds_ra_typical_qp initial_qp{};
     nds_ra_qp_ext_attrs aicpu_attrs{};
     int result;
 
+    if (api == nullptr) {
+        set_error("NPU RA QP requires RA API storage");
+        return false;
+    }
     if (created()) {
         set_error("NPU RA QP is already created");
         return false;
@@ -73,12 +68,12 @@ bool NpuRaQp::create(nds_ra_api &api, const NpuRaQpConfig &config)
         set_error("NPU RA QP requires a local IPv4 address, nonzero port, and nonzero path MTU");
         return false;
     }
-    if (api.ra_rdev_init_v2 == nullptr || api.ra_rdev_deinit == nullptr || api.ra_qp_destroy == nullptr ||
-        api.ra_get_qp_attr == nullptr || api.ra_typical_qp_modify == nullptr ||
-        (config.submission_mode == NpuRaSubmissionMode::HostRa && api.ra_typical_qp_create == nullptr) ||
+    if (api->ra_rdev_init_v2 == nullptr || api->ra_rdev_deinit == nullptr || api->ra_qp_destroy == nullptr ||
+        api->ra_get_qp_attr == nullptr || api->ra_typical_qp_modify == nullptr ||
+        (config.submission_mode == NpuRaSubmissionMode::HostRa && api->ra_typical_qp_create == nullptr) ||
         ((config.submission_mode == NpuRaSubmissionMode::Aicpu || config.submission_mode == NpuRaSubmissionMode::Aiv) &&
-         (api.ra_ai_qp_create == nullptr || api.ra_set_qp_attr_qos == nullptr ||
-          api.ra_set_qp_attr_timeout == nullptr || api.ra_set_qp_attr_retry_count == nullptr))) {
+         (api->ra_ai_qp_create == nullptr || api->ra_set_qp_attr_qos == nullptr ||
+          api->ra_set_qp_attr_timeout == nullptr || api->ra_set_qp_attr_retry_count == nullptr))) {
         set_error("RA API is missing a required rdev/QP/query operation for the selected submission mode");
         return false;
     }
@@ -90,7 +85,7 @@ bool NpuRaQp::create(nds_ra_api &api, const NpuRaQpConfig &config)
         return false;
     }
 
-    api_ = &api;
+    api_ = api;
     config_ = config;
     rdev_init.mode = NDS_RA_NETWORK_OFFLINE;
     rdev_init.notify_type = NDS_RA_NOTIFY;
@@ -106,7 +101,7 @@ bool NpuRaQp::create(nds_ra_api &api, const NpuRaQpConfig &config)
     }
     if (config_.submission_mode == NpuRaSubmissionMode::HostRa) {
         result = api_->ra_typical_qp_create(rdev_handle_, NDS_RA_QP_FLAG_RC, NDS_RA_QP_MODE_OPBASE, &initial_qp,
-                                             &qp_handle_);
+                                            &qp_handle_);
         if (result != 0 || qp_handle_ == nullptr) {
             set_error("RaTypicalQpCreate failed: " + std::to_string(result));
             reset();
@@ -114,9 +109,8 @@ bool NpuRaQp::create(nds_ra_api &api, const NpuRaQpConfig &config)
         }
     } else {
         /* Normal AI mode lets CP1's provider post ring sq.db_reg directly. AIV needs OPBASE_EXT metadata. */
-        aicpu_attrs.qp_mode = config_.submission_mode == NpuRaSubmissionMode::Aicpu
-                                  ? NDS_RA_QP_MODE_NORMAL
-                                  : NDS_RA_QP_MODE_OPBASE_EXT;
+        aicpu_attrs.qp_mode =
+            config_.submission_mode == NpuRaSubmissionMode::Aicpu ? NDS_RA_QP_MODE_NORMAL : NDS_RA_QP_MODE_OPBASE_EXT;
         aicpu_attrs.cq_attr.send_cq_depth = 32768;
         aicpu_attrs.cq_attr.recv_cq_depth = 128;
         aicpu_attrs.qp_attr.cap.max_send_wr = 32768;
@@ -168,45 +162,42 @@ bool NpuRaQp::create(nds_ra_api &api, const NpuRaQpConfig &config)
     return true;
 }
 
-bool NpuRaQp::make_qp_only_endpoint(nds_rc_endpoint &endpoint)
-{
-    if (!created()) {
+bool NpuRaQp::make_qp_only_endpoint(nds_rc_endpoint *endpoint) {
+    if (endpoint == nullptr || !created()) {
         set_error("NPU RA QP has not been created");
         return false;
     }
 
-    endpoint = {};
-    endpoint.flags = NDS_ENDPOINT_FLAG_QP_ONLY;
-    endpoint.qp_num = local_attributes_.qpn;
-    endpoint.psn = local_attributes_.psn;
-    endpoint.port_num = config_.port_num;
-    endpoint.gid_index = static_cast<std::uint16_t>(local_attributes_.gid_index);
-    endpoint.path_mtu = config_.path_mtu;
-    endpoint.traffic_class = config_.traffic_class;
-    endpoint.service_level = config_.service_level;
-    endpoint.retry_count = config_.retry_count;
-    endpoint.retry_timeout = config_.retry_timeout;
-    std::memcpy(endpoint.gid, local_attributes_.gid, sizeof(endpoint.gid));
+    *endpoint = {};
+    endpoint->flags = NDS_ENDPOINT_FLAG_QP_ONLY;
+    endpoint->qp_num = local_attributes_.qpn;
+    endpoint->psn = local_attributes_.psn;
+    endpoint->port_num = config_.port_num;
+    endpoint->gid_index = static_cast<std::uint16_t>(local_attributes_.gid_index);
+    endpoint->path_mtu = config_.path_mtu;
+    endpoint->traffic_class = config_.traffic_class;
+    endpoint->service_level = config_.service_level;
+    endpoint->retry_count = config_.retry_count;
+    endpoint->retry_timeout = config_.retry_timeout;
+    std::memcpy(endpoint->gid, local_attributes_.gid, sizeof(endpoint->gid));
     error_.clear();
     return true;
 }
 
-bool NpuRaQp::register_memory(void *address, std::uint64_t size, int access, nds_ra_mr_info &info,
-                                void **mr_handle)
-{
+bool NpuRaQp::register_memory(void *address, std::uint64_t size, int access, nds_ra_mr_info *info, void **mr_handle) {
     int result;
 
-    if (!created() || address == nullptr || size == 0U || mr_handle == nullptr) {
+    if (!created() || address == nullptr || size == 0U || info == nullptr || mr_handle == nullptr) {
         set_error("RA memory registration requires a created QP, memory address, nonzero size, and output handle");
         return false;
     }
-    info = {};
-    info.address = address;
-    info.size = size;
-    info.access = access;
+    *info = {};
+    info->address = address;
+    info->size = size;
+    info->access = access;
     *mr_handle = nullptr;
-    result = api_->ra_register_mr(rdev_handle_, &info, mr_handle);
-    if (result != 0 || *mr_handle == nullptr || info.local_key == 0U || info.remote_key == 0U) {
+    result = api_->ra_register_mr(rdev_handle_, info, mr_handle);
+    if (result != 0 || *mr_handle == nullptr || info->local_key == 0U || info->remote_key == 0U) {
         set_error("RaRegisterMr failed or returned invalid keys: " + std::to_string(result));
         return false;
     }
@@ -214,8 +205,7 @@ bool NpuRaQp::register_memory(void *address, std::uint64_t size, int access, nds
     return true;
 }
 
-bool NpuRaQp::deregister_memory(void *mr_handle)
-{
+bool NpuRaQp::deregister_memory(void *mr_handle) {
     int result;
 
     if (!created() || mr_handle == nullptr) {
@@ -232,17 +222,17 @@ bool NpuRaQp::deregister_memory(void *mr_handle)
 }
 
 bool NpuRaQp::post_send(const nds_ra_sge &source, std::uint32_t opcode, std::uint64_t remote_address,
-                        std::uint32_t remote_key, bool signaled, nds_ra_send_response &response)
-{
+                        std::uint32_t remote_key, bool signaled, nds_ra_send_response *response) {
     nds_ra_sge local = source;
     nds_ra_send_wr wr{};
     int result;
 
-    if (!connected_ || local.address == 0U || local.length == 0U || local.local_key == 0U ||
+    if (response == nullptr || !connected_ || local.address == 0U || local.length == 0U || local.local_key == 0U ||
         (opcode != NDS_RA_WR_SEND && opcode != NDS_RA_WR_RDMA_WRITE && opcode != NDS_RA_WR_RDMA_READ) ||
         (opcode != NDS_RA_WR_SEND && (remote_address == 0U || remote_key == 0U)) ||
         (opcode == NDS_RA_WR_SEND && (remote_address != 0U || remote_key != 0U))) {
-        set_error("post requires a connected QP, valid local SGE, supported opcode, and matching remote-memory metadata");
+        set_error(
+            "post requires a connected QP, valid local SGE, supported opcode, and matching remote-memory metadata");
         return false;
     }
     wr.buffers = &local;
@@ -251,8 +241,8 @@ bool NpuRaQp::post_send(const nds_ra_sge &source, std::uint32_t opcode, std::uin
     wr.remote_key = remote_key;
     wr.opcode = opcode;
     wr.send_flags = signaled ? NDS_RA_SEND_SIGNALED : 0;
-    response = {};
-    result = api_->ra_typical_send_wr(qp_handle_, &wr, &response);
+    *response = {};
+    result = api_->ra_typical_send_wr(qp_handle_, &wr, response);
     if (result != 0) {
         set_error("RaTypicalSendWr failed: " + std::to_string(result));
         return false;
@@ -261,105 +251,99 @@ bool NpuRaQp::post_send(const nds_ra_sge &source, std::uint32_t opcode, std::uin
     return true;
 }
 
-bool NpuRaQp::post_rdma_write(const nds_ra_sge &source, std::uint64_t remote_address,
-                              std::uint32_t remote_key, bool signaled, nds_ra_send_response &response)
-{
+bool NpuRaQp::post_rdma_write(const nds_ra_sge &source, std::uint64_t remote_address, std::uint32_t remote_key,
+                              bool signaled, nds_ra_send_response *response) {
     return post_send(source, NDS_RA_WR_RDMA_WRITE, remote_address, remote_key, signaled, response);
 }
 
-bool NpuRaQp::query_cqe_errors(nds_ra_cqe_error *errors, std::uint32_t &count)
-{
+bool NpuRaQp::query_cqe_errors(nds_ra_cqe_error *errors, std::uint32_t *count) {
     unsigned int requested;
     int result;
 
     if (!created() || api_ == nullptr || api_->ra_rdev_get_cqe_error_list == nullptr || errors == nullptr ||
-        count == 0U) {
+        count == nullptr || *count == 0U) {
         set_error("CQE-error query requires a created QP, RaRdevGetCqeErrInfoList, output storage, and capacity");
         return false;
     }
-    requested = count;
+    requested = *count;
     result = api_->ra_rdev_get_cqe_error_list(rdev_handle_, errors, &requested);
     if (result != 0) {
         set_error("RaRdevGetCqeErrInfoList failed: " + std::to_string(result));
         return false;
     }
-    if (requested > count) {
+    if (requested > *count) {
         set_error("RaRdevGetCqeErrInfoList returned more entries than the supplied capacity");
         return false;
     }
-    count = requested;
+    *count = requested;
     error_.clear();
     return true;
 }
 
-bool NpuRaQp::query_port_status(int &status)
-{
+bool NpuRaQp::query_port_status(int *status) {
     int result;
 
-    if (!created() || api_ == nullptr || api_->ra_rdev_get_port_status == nullptr) {
+    if (status == nullptr || !created() || api_ == nullptr || api_->ra_rdev_get_port_status == nullptr) {
         set_error("port-status query requires a created QP and RaRdevGetPortStatus");
         return false;
     }
-    status = -1;
-    result = api_->ra_rdev_get_port_status(rdev_handle_, &status);
+    *status = -1;
+    result = api_->ra_rdev_get_port_status(rdev_handle_, status);
     if (result != 0) {
         set_error("RaRdevGetPortStatus failed: " + std::to_string(result));
         return false;
     }
-    if (status < NDS_RA_PORT_STATUS_DOWN || status > NDS_RA_PORT_STATUS_ACTIVE) {
-        set_error("RaRdevGetPortStatus returned an unknown status: " + std::to_string(status));
+    if (*status < NDS_RA_PORT_STATUS_DOWN || *status > NDS_RA_PORT_STATUS_ACTIVE) {
+        set_error("RaRdevGetPortStatus returned an unknown status: " + std::to_string(*status));
         return false;
     }
     error_.clear();
     return true;
 }
 
-bool NpuRaQp::query_support_lite(int &support_lite)
-{
+bool NpuRaQp::query_support_lite(int *support_lite) {
     int result;
 
-    if (!created() || api_ == nullptr || api_->ra_rdev_get_support_lite == nullptr) {
+    if (support_lite == nullptr || !created() || api_ == nullptr || api_->ra_rdev_get_support_lite == nullptr) {
         set_error("RDMA-lite support query requires a created rdev and RaRdevGetSupportLite");
         return false;
     }
-    support_lite = -1;
-    result = api_->ra_rdev_get_support_lite(rdev_handle_, &support_lite);
+    *support_lite = -1;
+    result = api_->ra_rdev_get_support_lite(rdev_handle_, support_lite);
     if (result != 0) {
         set_error("RaRdevGetSupportLite failed: " + std::to_string(result));
         return false;
     }
-    if (support_lite < NDS_RA_LITE_NOT_SUPPORTED || support_lite > NDS_RA_LITE_ALIGN_2M) {
-        set_error("RaRdevGetSupportLite returned an unknown value: " + std::to_string(support_lite));
+    if (*support_lite < NDS_RA_LITE_NOT_SUPPORTED || *support_lite > NDS_RA_LITE_ALIGN_2M) {
+        set_error("RaRdevGetSupportLite returned an unknown value: " + std::to_string(*support_lite));
         return false;
     }
     error_.clear();
     return true;
 }
 
-bool NpuRaQp::query_status(int &status)
-{
+bool NpuRaQp::query_status(int *status) {
     int result;
 
-    if (!created() || api_ == nullptr || api_->ra_get_qp_status == nullptr) {
+    if (status == nullptr || !created() || api_ == nullptr || api_->ra_get_qp_status == nullptr) {
         set_error("QP-status query requires a created QP and RaGetQpStatus");
         return false;
     }
-    status = -1;
-    result = api_->ra_get_qp_status(qp_handle_, &status);
+    *status = -1;
+    result = api_->ra_get_qp_status(qp_handle_, status);
     if (result != 0) {
         set_error("RaGetQpStatus failed: " + std::to_string(result));
         return false;
     }
-    if (status < NDS_RA_QP_STATUS_NOT_CONNECTED || status > NDS_RA_QP_STATUS_CONNECTING) {
-        set_error("RaGetQpStatus returned an unknown status: " + std::to_string(status));
+    if (*status < NDS_RA_QP_STATUS_NOT_CONNECTED || *status > NDS_RA_QP_STATUS_CONNECTING) {
+        set_error("RaGetQpStatus returned an unknown status: " + std::to_string(*status));
         return false;
     }
     error_.clear();
     return true;
 }
 
-int NpuRaQp::poll_send_completions(nds_ra_completion *completions, std::uint32_t max_entries)
-{
+int NpuRaQp::poll_send_completions(nds_ra_completion *completions, std::uint32_t max_entries) {
     int result;
 
     if (!created() || completions == nullptr || max_entries == 0U) {
@@ -376,8 +360,7 @@ int NpuRaQp::poll_send_completions(nds_ra_completion *completions, std::uint32_t
     return result;
 }
 
-bool NpuRaQp::connect(const nds_rc_endpoint &peer)
-{
+bool NpuRaQp::connect(const nds_rc_endpoint &peer) {
     nds_ra_typical_qp local_qp{};
     nds_ra_qp_attr peer_attributes{};
     nds_ra_typical_qp remote_qp{};
@@ -392,14 +375,14 @@ bool NpuRaQp::connect(const nds_rc_endpoint &peer)
         return false;
     }
     if ((peer.flags & ~NDS_ENDPOINT_FLAG_ALL) != 0U || peer.flags == 0U ||
-        (peer.flags & NDS_ENDPOINT_FLAG_ALL) == NDS_ENDPOINT_FLAG_ALL || peer.qp_num == 0U ||
-        peer.qp_num > kQpnMask || peer.psn > kPsnMask || peer.port_num == 0U || peer.path_mtu == 0U) {
+        (peer.flags & NDS_ENDPOINT_FLAG_ALL) == NDS_ENDPOINT_FLAG_ALL || peer.qp_num == 0U || peer.qp_num > kQpnMask ||
+        peer.psn > kPsnMask || peer.port_num == 0U || peer.path_mtu == 0U) {
         set_error("peer endpoint has invalid QP metadata");
         return false;
     }
 
     if (!build_typical_qp(local_attributes_, config_.traffic_class, config_.service_level, config_.retry_count,
-                          config_.retry_timeout, local_qp)) {
+                          config_.retry_timeout, &local_qp)) {
         set_error("local RA QP attributes cannot be converted to a typical QP description");
         return false;
     }
@@ -407,8 +390,8 @@ bool NpuRaQp::connect(const nds_rc_endpoint &peer)
     peer_attributes.psn = peer.psn;
     peer_attributes.gid_index = peer.gid_index;
     std::memcpy(peer_attributes.gid, peer.gid, sizeof(peer_attributes.gid));
-    if (!build_typical_qp(peer_attributes, peer.traffic_class, peer.service_level, peer.retry_count,
-                          peer.retry_timeout, remote_qp)) {
+    if (!build_typical_qp(peer_attributes, peer.traffic_class, peer.service_level, peer.retry_count, peer.retry_timeout,
+                          &remote_qp)) {
         set_error("peer endpoint cannot be converted to a typical QP description");
         return false;
     }
@@ -423,8 +406,7 @@ bool NpuRaQp::connect(const nds_rc_endpoint &peer)
     return true;
 }
 
-void NpuRaQp::reset() noexcept
-{
+void NpuRaQp::reset() noexcept {
     if (api_ != nullptr && qp_handle_ != nullptr) {
         (void)api_->ra_qp_destroy(qp_handle_);
     }
@@ -440,41 +422,34 @@ void NpuRaQp::reset() noexcept
     connected_ = false;
 }
 
-bool NpuRaQp::created() const noexcept
-{
+bool NpuRaQp::created() const noexcept {
     return qp_handle_ != nullptr;
 }
 
-bool NpuRaQp::connected() const noexcept
-{
+bool NpuRaQp::connected() const noexcept {
     return connected_;
 }
 
-const nds_ra_qp_attr &NpuRaQp::local_attributes() const noexcept
-{
+const nds_ra_qp_attr &NpuRaQp::local_attributes() const noexcept {
     return local_attributes_;
 }
 
-bool NpuRaQp::has_aicpu_qp_info() const noexcept
-{
+bool NpuRaQp::has_aicpu_qp_info() const noexcept {
     return (config_.submission_mode == NpuRaSubmissionMode::Aicpu ||
             config_.submission_mode == NpuRaSubmissionMode::Aiv) &&
            aicpu_qp_info_.ai_qp_address != 0U;
 }
 
-const nds_ra_ai_qp_info &NpuRaQp::aicpu_qp_info() const noexcept
-{
+const nds_ra_ai_qp_info &NpuRaQp::aicpu_qp_info() const noexcept {
     return aicpu_qp_info_;
 }
 
-const NpuRaQpConfig &NpuRaQp::config() const noexcept
-{
+const NpuRaQpConfig &NpuRaQp::config() const noexcept {
     return config_;
 }
 
-const std::string &NpuRaQp::error() const noexcept
-{
+const std::string &NpuRaQp::error() const noexcept {
     return error_;
 }
 
-} // namespace nds
+}  // namespace nds
