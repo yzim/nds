@@ -26,7 +26,7 @@ struct ClientConfig {
 
 nds::Result<int> parse_args(int argc, char **argv, ClientConfig *config, bool *exit_requested) {
     if (config == nullptr || exit_requested == nullptr)
-        return nds::failure(nds::ErrorCode::kInvalidArgument, "client configuration and exit state are required");
+        return nds::unexpected(nds::ErrorCode::kInvalidArgument, "client configuration and exit state are required");
     CLI::App app{"Send one NDS storage command from an NPU to a CPU memory namespace."};
     app.add_option("--ascendcl", config->connection.context.ascendcl_library, "AscendCL shared library")->required();
     app.add_option("--runtime", config->connection.context.runtime_library, "CANN runtime shared library")->required();
@@ -73,9 +73,9 @@ nds::Result<int> parse_args(int argc, char **argv, ClientConfig *config, bool *e
     config->connection.qp.physical_device_id = config->connection.context.physical_device_id;
     if ((backend == "aicpu" && config->connection.backend.aicpu_kernel_config.empty()) ||
         (backend == "aiv" && config->connection.backend.aiv_kernel.empty())) {
-        return nds::failure(nds::ErrorCode::kInvalidArgument, "invalid option combination");
+        return nds::unexpected(nds::ErrorCode::kInvalidArgument, "invalid option combination");
     }
-    return nds::success(0);
+    return 0;
 }
 
 }  // namespace

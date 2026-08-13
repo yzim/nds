@@ -94,15 +94,15 @@ Result<void> wait_for_fd(int fd, short events, std::uint32_t timeout_ms) {
     const int result = poll(&descriptor, 1, static_cast<int>(timeout_ms));
 
     if (result == 0) {
-        return failure(ErrorCode::kTransport, "TCP bootstrap timeout");
+        return unexpected(ErrorCode::kTransport, "TCP bootstrap timeout");
     }
     if (result < 0) {
-        return failure(ErrorCode::kTransport, system_error("poll"));
+        return unexpected(ErrorCode::kTransport, system_error("poll"));
     }
     if ((descriptor.revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
-        return failure(ErrorCode::kTransport, "TCP bootstrap socket became unavailable");
+        return unexpected(ErrorCode::kTransport, "TCP bootstrap socket became unavailable");
     }
-    return success();
+    return {};
 }
 
 }  // namespace
@@ -117,22 +117,22 @@ TcpPeerExchange::~TcpPeerExchange() {
 
 Result<void> TcpPeerExchange::send_bytes(const void *buffer, std::size_t length) const {
     if (fd_ < 0 || buffer == nullptr)
-        return failure(ErrorCode::kInvalidArgument, "TCP bootstrap socket and buffer are required");
+        return unexpected(ErrorCode::kInvalidArgument, "TCP bootstrap socket and buffer are required");
     return write_full(fd_, buffer, length);
 }
 
 Result<void> TcpPeerExchange::receive_bytes(void *buffer, std::size_t length) const {
     if (fd_ < 0 || buffer == nullptr)
-        return failure(ErrorCode::kInvalidArgument, "TCP bootstrap socket and buffer are required");
+        return unexpected(ErrorCode::kInvalidArgument, "TCP bootstrap socket and buffer are required");
     return read_full(fd_, buffer, length);
 }
 
 Result<void> TcpPeerExchange::adopt(int fd) {
     if (fd < 0 || fd_ >= 0) {
-        return failure(ErrorCode::kInvalidArgument, "cannot adopt TCP socket");
+        return unexpected(ErrorCode::kInvalidArgument, "cannot adopt TCP socket");
     }
     fd_ = fd;
-    return success();
+    return {};
 }
 
 Result<void> TcpPeerExchange::read_full(int fd, void *buffer, std::size_t length) {
@@ -141,18 +141,18 @@ Result<void> TcpPeerExchange::read_full(int fd, void *buffer, std::size_t length
     while (length != 0U) {
         const ssize_t result = read(fd, cursor, length);
         if (result == 0) {
-            return failure(ErrorCode::kTransport, "peer closed TCP bootstrap connection");
+            return unexpected(ErrorCode::kTransport, "peer closed TCP bootstrap connection");
         }
         if (result < 0) {
             if (errno == EINTR) {
                 continue;
             }
-            return failure(ErrorCode::kTransport, system_error("read"));
+            return unexpected(ErrorCode::kTransport, system_error("read"));
         }
         cursor += static_cast<std::size_t>(result);
         length -= static_cast<std::size_t>(result);
     }
-    return success();
+    return {};
 }
 
 Result<void> TcpPeerExchange::write_full(int fd, const void *buffer, std::size_t length) {
@@ -164,12 +164,12 @@ Result<void> TcpPeerExchange::write_full(int fd, const void *buffer, std::size_t
             if (errno == EINTR) {
                 continue;
             }
-            return failure(ErrorCode::kTransport, system_error("write"));
+            return unexpected(ErrorCode::kTransport, system_error("write"));
         }
         cursor += static_cast<std::size_t>(result);
         length -= static_cast<std::size_t>(result);
     }
-    return success();
+    return {};
 }
 
 Result<nds_transport_endpoint> TcpPeerExchange::exchange(int fd, const nds_transport_endpoint &local,
@@ -177,27 +177,27 @@ Result<nds_transport_endpoint> TcpPeerExchange::exchange(int fd, const nds_trans
     nds_transport_endpoint_wire local_wire{};
     nds_transport_endpoint_wire peer_wire{};
     if (fd < 0) {
-        return failure(ErrorCode::kTransport, "TCP bootstrap socket is not open");
+        return unexpected(ErrorCode::kTransport, "TCP bootstrap socket is not open");
     }
     if (nds_transport_endpoint_encode(&local, &local_wire) != 0) {
-        return failure(ErrorCode::kTransport, "cannot encode local transport endpoint");
+        return unexpected(ErrorCode::kTransport, "cannot encode local transport endpoint");
     }
     if (client_order) {
         if (const auto result = write_full(fd, &local_wire, sizeof(local_wire)); !result)
-            return propagate(result.error());
+            return unexpected(result.error());
         if (const auto result = read_full(fd, &peer_wire, sizeof(peer_wire)); !result)
-            return propagate(result.error());
+            return unexpected(result.error());
     } else {
         if (const auto result = read_full(fd, &peer_wire, sizeof(peer_wire)); !result)
-            return propagate(result.error());
+            return unexpected(result.error());
         if (const auto result = write_full(fd, &local_wire, sizeof(local_wire)); !result)
-            return propagate(result.error());
+            return unexpected(result.error());
     }
     nds_transport_endpoint peer{};
     if (nds_transport_endpoint_decode(&peer_wire, &peer) != 0) {
-        return failure(ErrorCode::kTransport, "cannot decode peer transport endpoint");
+        return unexpected(ErrorCode::kTransport, "cannot decode peer transport endpoint");
     }
-    return success(peer);
+    return peer;
 }
 
 Result<nds_transport_endpoint> TcpPeerExchange::exchange_as_client(const nds_transport_endpoint &local) const {
@@ -216,35 +216,35 @@ Result<void> TcpPeerExchange::connect(const std::string &ipv4, std::uint16_t por
     int connect_result;
 
     if (connection == nullptr) {
-        return failure(ErrorCode::kInvalidArgument, "TCP bootstrap requires an output connection");
+        return unexpected(ErrorCode::kInvalidArgument, "TCP bootstrap requires an output connection");
     }
     if (connection->fd_ >= 0) {
-        return failure(ErrorCode::kInvalidArgument, "output TCP bootstrap object already owns a socket");
+        return unexpected(ErrorCode::kInvalidArgument, "output TCP bootstrap object already owns a socket");
     }
     address.sin_family = AF_INET;
     address.sin_port = htons(port);
     if (inet_pton(AF_INET, ipv4.c_str(), &address.sin_addr) != 1) {
-        return failure(ErrorCode::kInvalidArgument, "invalid TCP peer IPv4 address: " + ipv4);
+        return unexpected(ErrorCode::kInvalidArgument, "invalid TCP peer IPv4 address: " + ipv4);
     }
     socket_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (socket_fd < 0) {
-        return failure(ErrorCode::kTransport, system_error("socket"));
+        return unexpected(ErrorCode::kTransport, system_error("socket"));
     }
     flags = fcntl(socket_fd, F_GETFL, 0);
     if (flags < 0 || fcntl(socket_fd, F_SETFL, flags | O_NONBLOCK) != 0) {
         (void)close(socket_fd);
-        return failure(ErrorCode::kTransport, system_error("fcntl"));
+        return unexpected(ErrorCode::kTransport, system_error("fcntl"));
     }
     connect_result = ::connect(socket_fd, reinterpret_cast<const sockaddr *>(&address), sizeof(address));
     if (connect_result != 0 && errno != EINPROGRESS) {
         (void)close(socket_fd);
-        return failure(ErrorCode::kTransport, system_error("connect"));
+        return unexpected(ErrorCode::kTransport, system_error("connect"));
     }
     if (connect_result != 0) {
         const auto waited = wait_for_fd(socket_fd, POLLOUT, timeout_ms);
         if (!waited) {
             (void)close(socket_fd);
-            return propagate(waited.error());
+            return unexpected(waited.error());
         }
     }
     if (connect_result != 0) {
@@ -254,17 +254,17 @@ Result<void> TcpPeerExchange::connect(const std::string &ipv4, std::uint16_t por
         if (getsockopt(socket_fd, SOL_SOCKET, SO_ERROR, &socket_error, &socket_error_length) != 0 ||
             socket_error != 0) {
             (void)close(socket_fd);
-            return failure(ErrorCode::kTransport, socket_error != 0
-                                                      ? std::string("connect: ") + std::strerror(socket_error)
-                                                      : system_error("getsockopt"));
+            return unexpected(ErrorCode::kTransport, socket_error != 0
+                                                         ? std::string("connect: ") + std::strerror(socket_error)
+                                                         : system_error("getsockopt"));
         }
     }
     if (fcntl(socket_fd, F_SETFL, flags) != 0) {
         (void)close(socket_fd);
-        return failure(ErrorCode::kTransport, system_error("fcntl"));
+        return unexpected(ErrorCode::kTransport, system_error("fcntl"));
     }
     connection->fd_ = socket_fd;
-    return success();
+    return {};
 }
 
 }  // namespace nds

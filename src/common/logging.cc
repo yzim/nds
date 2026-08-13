@@ -75,18 +75,18 @@ Result<void> configure(std::string_view name, std::string_view sink_name, std::s
         else if (sink_name == "none")
             sink = std::make_shared<spdlog::sinks::null_sink_mt>();
         else {
-            return failure(ErrorCode::kInvalidArgument, "unsupported log sink: " + std::string(sink_name));
+            return unexpected(ErrorCode::kInvalidArgument, "unsupported log sink: " + std::string(sink_name));
         }
         if (!parse_level(level_name, &level)) {
-            return failure(ErrorCode::kInvalidArgument, "unsupported log level: " + std::string(level_name));
+            return unexpected(ErrorCode::kInvalidArgument, "unsupported log level: " + std::string(level_name));
         }
         auto value = std::make_shared<spdlog::logger>(std::string(name), sink);
         value->set_level(level);
         value->set_pattern("%Y-%m-%dT%H:%M:%S.%e%z [%n] [%^%l%$] %v");
         set_logger(name, std::move(value));
-        return success();
+        return {};
     } catch (const std::exception &exception) {
-        return failure(ErrorCode::kRuntime, exception.what());
+        return unexpected(ErrorCode::kRuntime, exception.what());
     }
 }
 

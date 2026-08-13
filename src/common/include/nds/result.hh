@@ -4,7 +4,6 @@
 #include <tl/expected.hpp>
 
 #include <string>
-#include <type_traits>
 #include <utility>
 
 namespace nds {
@@ -23,12 +22,14 @@ struct Error {
     std::string message;
 };
 
+// Keep the expected implementation private here. Replace tl::expected with
+// std::expected when NDS moves to C++23 without changing NDS call sites.
 template <typename T>
 using Result = tl::expected<T, Error>;
 
-class Failure {
+class Unexpected {
 public:
-    explicit Failure(Error error) : error_(std::move(error)) {}
+    explicit Unexpected(Error error) : error_(std::move(error)) {}
 
     template <typename T>
     operator Result<T>() && {
@@ -39,21 +40,12 @@ private:
     Error error_;
 };
 
-inline Failure failure(ErrorCode code, std::string message) {
-    return Failure{{code, std::move(message)}};
+inline Unexpected unexpected(ErrorCode code, std::string message) {
+    return Unexpected{{code, std::move(message)}};
 }
 
-inline Failure propagate(const Error &error) {
-    return Failure{error};
-}
-
-inline Result<void> success() {
-    return {};
-}
-
-template <typename T>
-Result<std::decay_t<T>> success(T &&value) {
-    return std::forward<T>(value);
+inline Unexpected unexpected(const Error &error) {
+    return Unexpected{error};
 }
 
 }  // namespace nds
