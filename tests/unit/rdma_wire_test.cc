@@ -1,4 +1,5 @@
 #include "nds/rdma_wire_codec.h"
+#include "nds/storage_protocol.h"
 
 #include <arpa/inet.h>
 #include <stdio.h>
@@ -63,6 +64,62 @@ int main(void)
     if (expect(nds_rc_endpoint_encode(&source, &wire, error) != 0,
                "QP-only endpoint with rkey rejected") != 0) {
         return 1;
+    }
+
+    {
+        const nds_storage_bootstrap bootstrap_source = {
+            .namespace_capacity = 1024U * 1024U,
+            .completion = {.address = UINT64_C(0x0102030405060708), .length = 64U,
+                           .rkey = UINT32_C(0x12345678), .access = NDS_STORAGE_ACCESS_REMOTE_WRITE},
+        };
+        nds_storage_bootstrap bootstrap_decoded = {};
+        nds_storage_bootstrap_wire bootstrap_wire = {};
+        if (nds_storage_bootstrap_encode(&bootstrap_source, &bootstrap_wire, error) != 0 ||
+            nds_storage_bootstrap_decode(&bootstrap_wire, &bootstrap_decoded, error) != 0 ||
+            expect(memcmp(&bootstrap_source, &bootstrap_decoded, sizeof(bootstrap_source)) == 0,
+                   "storage bootstrap round trip") != 0) {
+            (void)fprintf(stderr, "storage bootstrap codec error: %s\n", error);
+            return 1;
+        }
+    }
+
+    {
+        const nds_storage_command read_source = {
+            .request_id = UINT64_C(0x1020304050607080), .operation = NDS_STORAGE_READ,
+            .offset = 4096U, .length = 8192U,
+            .data = {.address = UINT64_C(0x1020304050607080), .length = 8192U,
+                     .rkey = UINT32_C(0x12345678), .access = NDS_STORAGE_ACCESS_REMOTE_WRITE},
+        };
+        nds_storage_command decoded_command = {};
+        nds_storage_command_wire command_wire = {};
+        if (nds_storage_command_encode(&read_source, &command_wire, error) != 0 ||
+            nds_storage_command_decode(&command_wire, &decoded_command, error) != 0 ||
+            expect(memcmp(&read_source, &decoded_command, sizeof(read_source)) == 0,
+                   "storage Read command round trip") != 0) {
+            (void)fprintf(stderr, "storage command codec error: %s\n", error);
+            return 1;
+        }
+        command_wire.data_access = htonl(NDS_STORAGE_ACCESS_REMOTE_READ);
+        if (expect(nds_storage_command_decode(&command_wire, &decoded_command, error) != 0,
+                   "storage Read command requires remote-write access") != 0) {
+            return 1;
+        }
+    }
+
+    {
+        const nds_storage_completion completion_source = {
+            .request_id = UINT64_C(0x1020304050607080), .state = NDS_STORAGE_COMPLETION_COMPLETE,
+            .status = NDS_STORAGE_SUCCESS, .bytes_transferred = 8192U,
+        };
+        nds_storage_completion decoded_completion = {};
+        nds_storage_completion_wire completion_wire = {};
+        if (nds_storage_completion_encode(&completion_source, &completion_wire, error) != 0 ||
+            nds_storage_completion_decode(&completion_wire, &decoded_completion, error) != 0 ||
+            expect(memcmp(&completion_source, &decoded_completion, sizeof(completion_source)) == 0,
+                   "storage completion round trip") != 0) {
+            (void)fprintf(stderr, "storage completion codec error: %s\n", error);
+            return 1;
+        }
     }
 
     {

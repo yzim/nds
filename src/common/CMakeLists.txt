@@ -1,6 +1,6 @@
 find_package(Threads REQUIRED)
 
-add_library(nds_wire STATIC rdma_wire.cc)
+add_library(nds_wire STATIC rdma_wire.cc storage_protocol.cc)
 target_include_directories(nds_wire PUBLIC include)
 target_compile_options(nds_wire PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
