@@ -13,6 +13,8 @@ nds_add_unit_test(nds_npu_ra_qp_test npu_ra_qp_test.cc)
 target_link_libraries(nds_npu_ra_qp_test PRIVATE nds_npu_ra_qp)
 nds_add_unit_test(nds_aicpu_roce_abi_test aicpu_roce_abi_test.cc)
 target_link_libraries(nds_aicpu_roce_abi_test PRIVATE nds_aicpu_roce)
+nds_add_unit_test(nds_aiv_roce_abi_test aiv_roce_abi_test.cc)
+target_link_libraries(nds_aiv_roce_abi_test PRIVATE nds_aiv_roce)
 nds_add_unit_test(nds_logging_test logging_test.cc)
 target_link_libraries(nds_logging_test PRIVATE nds_logging)
 

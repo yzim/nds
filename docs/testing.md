@@ -9,7 +9,7 @@ network configuration.
 
 Unit tests run without sockets, shared libraries, CANN, RDMA hardware, or an
 NPU. They cover the NDS wire codec, CPU path-MTU policy, RA QP lifecycle logic
-through an in-process fake RA API, and the AICPU request ABI layout.
+through an in-process fake RA API, and the AICPU and AIV request ABI layouts.
 
 ```sh
 ctest --test-dir build --output-on-failure --label-regex '^unit$'
