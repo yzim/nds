@@ -23,13 +23,13 @@ extern "C" {
 #define NDS_ENDPOINT_FLAG_ALL (NDS_ENDPOINT_FLAG_QP_ONLY | NDS_ENDPOINT_FLAG_DATA_READY)
 
 /*
- * Control-plane description of one RC RoCE endpoint. Integer fields are sent
+ * Peer-exchange description of one RC RoCE endpoint. Integer fields are sent
  * in network byte order. `gid` is already a byte string and is copied intact.
  *
  * This protocol belongs to NDS, not HCCP or libibverbs. The eventual NPU
  * adapter translates between this representation and the selected HCCP ABI.
  */
-typedef struct __attribute__((packed)) nds_rc_endpoint_wire_v1 {
+typedef struct __attribute__((packed)) nds_rc_endpoint_wire {
     uint32_t magic;
     uint16_t version;
     uint16_t flags;
@@ -47,14 +47,14 @@ typedef struct __attribute__((packed)) nds_rc_endpoint_wire_v1 {
     uint64_t address;
     uint8_t gid[NDS_GID_BYTES];
     uint8_t reserved[8];
-} nds_rc_endpoint_wire_v1;
+} nds_rc_endpoint_wire;
 
 
 /*
  * Versioned memory descriptor exchanged only after QP establishment. It
  * contains project-owned public fields, never an RA or verbs private object.
  */
-typedef struct __attribute__((packed)) nds_memory_descriptor_wire_v1 {
+typedef struct __attribute__((packed)) nds_memory_descriptor_wire {
     uint32_t magic;
     uint16_t version;
     uint16_t flags;
@@ -64,38 +64,38 @@ typedef struct __attribute__((packed)) nds_memory_descriptor_wire_v1 {
     uint32_t rkey;
     uint32_t access_flags;
     uint8_t reserved[8];
-} nds_memory_descriptor_wire_v1;
+} nds_memory_descriptor_wire;
 
-typedef struct __attribute__((packed)) nds_transfer_status_wire_v1 {
+typedef struct __attribute__((packed)) nds_transfer_status_wire {
     uint32_t magic;
     uint16_t version;
     uint16_t status;
     uint64_t transaction_id;
     uint8_t reserved[8];
-} nds_transfer_status_wire_v1;
+} nds_transfer_status_wire;
 
 #ifdef __cplusplus
-static_assert(sizeof(nds_memory_descriptor_wire_v1) == 48,
+static_assert(sizeof(nds_memory_descriptor_wire) == 48,
               "NDS memory descriptor v1 must remain a fixed 48-byte message");
 #else
-_Static_assert(sizeof(nds_memory_descriptor_wire_v1) == 48,
+_Static_assert(sizeof(nds_memory_descriptor_wire) == 48,
                "NDS memory descriptor v1 must remain a fixed 48-byte message");
 #endif
 
 #ifdef __cplusplus
-static_assert(sizeof(nds_transfer_status_wire_v1) == 24,
+static_assert(sizeof(nds_transfer_status_wire) == 24,
               "NDS transfer status v1 must remain a fixed 24-byte message");
 #else
-_Static_assert(sizeof(nds_transfer_status_wire_v1) == 24,
+_Static_assert(sizeof(nds_transfer_status_wire) == 24,
                "NDS transfer status v1 must remain a fixed 24-byte message");
 #endif
 
 #ifdef __cplusplus
-static_assert(sizeof(nds_rc_endpoint_wire_v1) == 80,
-              "NDS RC endpoint v1 must remain a fixed 80-byte message");
+static_assert(sizeof(nds_rc_endpoint_wire) == 80,
+              "NDS RC endpoint must remain a fixed 80-byte message");
 #else
-_Static_assert(sizeof(nds_rc_endpoint_wire_v1) == 80,
-               "NDS RC endpoint v1 must remain a fixed 80-byte message");
+_Static_assert(sizeof(nds_rc_endpoint_wire) == 80,
+               "NDS RC endpoint must remain a fixed 80-byte message");
 #endif
 
 #ifdef __cplusplus

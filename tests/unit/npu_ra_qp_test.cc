@@ -1,4 +1,4 @@
-#include "nds/npu_ra_qp.hpp"
+#include "nds/npu_ra_qp.hh"
 
 #include <cassert>
 #include <cstdint>

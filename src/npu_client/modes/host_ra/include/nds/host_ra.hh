@@ -1,8 +1,8 @@
 #ifndef NDS_HOST_RA_HPP
 #define NDS_HOST_RA_HPP
 
-#include "nds/npu_ra_context.hpp"
-#include "nds/npu_ra_qp.hpp"
+#include "nds/npu_ra_context.hh"
+#include "nds/npu_ra_qp.hh"
 
 #include <cstdint>
 #include <string>

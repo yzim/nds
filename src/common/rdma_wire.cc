@@ -84,7 +84,7 @@ static int nds_rc_endpoint_validate(const nds_rc_endpoint *endpoint,
     return 0;
 }
 
-int nds_rc_endpoint_encode(const nds_rc_endpoint *endpoint, nds_rc_endpoint_wire_v1 *wire,
+int nds_rc_endpoint_encode(const nds_rc_endpoint *endpoint, nds_rc_endpoint_wire *wire,
                            char error[NDS_WIRE_ERROR_CAPACITY])
 {
     if (wire == nullptr) {
@@ -118,7 +118,7 @@ int nds_rc_endpoint_encode(const nds_rc_endpoint *endpoint, nds_rc_endpoint_wire
     return 0;
 }
 
-int nds_rc_endpoint_decode(const nds_rc_endpoint_wire_v1 *wire, nds_rc_endpoint *endpoint,
+int nds_rc_endpoint_decode(const nds_rc_endpoint_wire *wire, nds_rc_endpoint *endpoint,
                            char error[NDS_WIRE_ERROR_CAPACITY])
 {
     nds_rc_endpoint decoded;
@@ -179,7 +179,7 @@ static int nds_memory_descriptor_validate(const nds_memory_descriptor *descripto
 }
 
 int nds_memory_descriptor_encode(const nds_memory_descriptor *descriptor,
-                                 nds_memory_descriptor_wire_v1 *wire,
+                                 nds_memory_descriptor_wire *wire,
                                  char error[NDS_WIRE_ERROR_CAPACITY])
 {
     if (wire == nullptr) {
@@ -201,7 +201,7 @@ int nds_memory_descriptor_encode(const nds_memory_descriptor *descriptor,
     return 0;
 }
 
-int nds_memory_descriptor_decode(const nds_memory_descriptor_wire_v1 *wire,
+int nds_memory_descriptor_decode(const nds_memory_descriptor_wire *wire,
                                  nds_memory_descriptor *descriptor,
                                  char error[NDS_WIRE_ERROR_CAPACITY])
 {
@@ -236,7 +236,7 @@ static int nds_transfer_status_validate(const nds_transfer_status *status,
 }
 
 int nds_transfer_status_encode(const nds_transfer_status *status,
-                               nds_transfer_status_wire_v1 *wire,
+                               nds_transfer_status_wire *wire,
                                char error[NDS_WIRE_ERROR_CAPACITY])
 {
     if (wire == nullptr || nds_transfer_status_validate(status, error) != 0) return -1;
@@ -248,7 +248,7 @@ int nds_transfer_status_encode(const nds_transfer_status *status,
     return 0;
 }
 
-int nds_transfer_status_decode(const nds_transfer_status_wire_v1 *wire,
+int nds_transfer_status_decode(const nds_transfer_status_wire *wire,
                                nds_transfer_status *status,
                                char error[NDS_WIRE_ERROR_CAPACITY])
 {

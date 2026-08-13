@@ -32,7 +32,7 @@ int main(void)
         .gid = {0xfe, 0x80, 0, 0, 0, 0, 0, 0, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88},
     };
     nds_rc_endpoint decoded = {};
-    nds_rc_endpoint_wire_v1 wire = {};
+    nds_rc_endpoint_wire wire = {};
     char error[NDS_WIRE_ERROR_CAPACITY] = {};
 
     if (nds_rc_endpoint_encode(&source, &wire, error) != 0 ||
@@ -75,7 +75,7 @@ int main(void)
             .access_flags = NDS_MEMORY_ACCESS_REMOTE_WRITE,
         };
         nds_memory_descriptor memory_decoded = {};
-        nds_memory_descriptor_wire_v1 memory_wire = {};
+        nds_memory_descriptor_wire memory_wire = {};
         if (nds_memory_descriptor_encode(&memory_source, &memory_wire, error) != 0 ||
             nds_memory_descriptor_decode(&memory_wire, &memory_decoded, error) != 0 ||
             expect(memory_decoded.flags == memory_source.flags &&
@@ -96,7 +96,7 @@ int main(void)
             .transaction_id = UINT64_C(0x1020304050607080),
         };
         nds_transfer_status status_decoded = {};
-        nds_transfer_status_wire_v1 status_wire = {};
+        nds_transfer_status_wire status_wire = {};
         if (nds_transfer_status_encode(&status_source, &status_wire, error) != 0 ||
             nds_transfer_status_decode(&status_wire, &status_decoded, error) != 0 ||
             expect(status_decoded.status == status_source.status &&

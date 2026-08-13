@@ -1,4 +1,4 @@
-#include "nds/aiv_roce.hpp"
+#include "nds/aiv_roce.hh"
 
 #include <utility>
 
@@ -61,7 +61,7 @@ bool AivRdmaWriteLauncher::load(nds_acl_api &acl, const std::string &kernel_path
 }
 
 bool AivRdmaWriteLauncher::make_device_request(const AivRdmaWriteRequest &request,
-                                                nds_aiv_rdma_write_request_v1 *output)
+                                                nds_aiv_rdma_write_request *output)
 {
     if (output == nullptr || request.send_wq.buffer_address == 0U ||
         request.send_wq.wqebb_size == 0U || request.send_wq.depth < 2U || request.send_wq.head_address == 0U ||

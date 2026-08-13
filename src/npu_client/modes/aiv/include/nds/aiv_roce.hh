@@ -30,7 +30,7 @@ public:
     AivRdmaWriteLauncher &operator=(const AivRdmaWriteLauncher &) = delete;
 
     bool load(nds_acl_api &acl, const std::string &kernel_path);
-    bool make_device_request(const AivRdmaWriteRequest &request, nds_aiv_rdma_write_request_v1 *output);
+    bool make_device_request(const AivRdmaWriteRequest &request, nds_aiv_rdma_write_request *output);
     bool launch_write_and_wait(std::uint64_t device_request_address, std::int32_t completion_timeout_ms);
     void reset() noexcept;
     bool loaded() const noexcept;

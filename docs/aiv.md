@@ -52,12 +52,11 @@ to 16 launches. The product of `--aiv-write-count` and
 
 - Public host/device ABI:
   `src/npu_client/modes/aiv/include/nds/aiv_roce_abi.h`.
-- AIV kernel: `src/npu_client/modes/aiv/kernel/nds_aiv_roce.cpp`, entry point
+- AIV kernel: `src/npu_client/modes/aiv/kernel/nds_aiv_roce.cc`, entry point
   `NdsAivRdmaWrite`.
-- Host launcher: `src/npu_client/modes/aiv/include/nds/aiv_roce.hpp` and
-  `src/npu_client/modes/aiv/launcher.cpp`.
-- Mode build ownership: `src/npu_client/modes/aiv/CMakeLists.txt` and its
-  `kernel/CMakeLists.txt`.
+- Host launcher: `src/npu_client/modes/aiv/include/nds/aiv_roce.hh` and
+  `src/npu_client/modes/aiv/launcher.cc`.
+- Mode build ownership: `src/npu_client/CMakeLists.txt`.
 - QP descriptor source: `RaAiQpCreate` through `NpuRaQp`.
 - Runtime launch boundary: dynamically resolved AscendCL binary and kernel
   APIs.

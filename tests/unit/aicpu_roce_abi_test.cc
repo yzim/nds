@@ -6,7 +6,7 @@
 
 int main()
 {
-    nds_aicpu_rdma_post_request_v2 request{};
+    nds_aicpu_rdma_post_request request{};
     request.abi_version = NDS_AICPU_ROCE_ABI_VERSION;
     request.size = sizeof(request);
     request.opcode = NDS_AICPU_RDMA_WRITE;
@@ -21,16 +21,16 @@ int main()
     request.reserved_0 = UINT64_C(0x123456789000);
     request.reserved = UINT64_C(0x3456);
 
-    if (sizeof(request) != 80U || offsetof(nds_aicpu_rdma_post_request_v2, opcode) != 8U ||
-        offsetof(nds_aicpu_rdma_post_request_v2, logical_device_id) != 12U ||
-        offsetof(nds_aicpu_rdma_post_request_v2, ai_qp_address) != 16U ||
-        offsetof(nds_aicpu_rdma_post_request_v2, local_lkey) != 24U ||
-        offsetof(nds_aicpu_rdma_post_request_v2, remote_rkey) != 28U ||
-        offsetof(nds_aicpu_rdma_post_request_v2, local_address) != 32U ||
-        offsetof(nds_aicpu_rdma_post_request_v2, remote_address) != 40U ||
-        offsetof(nds_aicpu_rdma_post_request_v2, length) != 48U ||
-        offsetof(nds_aicpu_rdma_post_request_v2, wr_id) != 56U ||
-        offsetof(nds_aicpu_rdma_post_request_v2, reserved_0) != 64U ||
+    if (sizeof(request) != 80U || offsetof(nds_aicpu_rdma_post_request, opcode) != 8U ||
+        offsetof(nds_aicpu_rdma_post_request, logical_device_id) != 12U ||
+        offsetof(nds_aicpu_rdma_post_request, ai_qp_address) != 16U ||
+        offsetof(nds_aicpu_rdma_post_request, local_lkey) != 24U ||
+        offsetof(nds_aicpu_rdma_post_request, remote_rkey) != 28U ||
+        offsetof(nds_aicpu_rdma_post_request, local_address) != 32U ||
+        offsetof(nds_aicpu_rdma_post_request, remote_address) != 40U ||
+        offsetof(nds_aicpu_rdma_post_request, length) != 48U ||
+        offsetof(nds_aicpu_rdma_post_request, wr_id) != 56U ||
+        offsetof(nds_aicpu_rdma_post_request, reserved_0) != 64U ||
         request.abi_version != 6U || request.size != sizeof(request) ||
         request.opcode != NDS_AICPU_RDMA_WRITE || request.length > NDS_AICPU_ROCE_MAX_BYTES) {
         (void)std::fputs("NDS AICPU RDMA-post ABI v6 layout check failed\n", stderr);

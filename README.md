@@ -9,7 +9,7 @@ NDS connects two RoCE endpoints directly:
 The endpoints exchange QPN, PSN, GID, port, and retry metadata to connect the
 two RC QPs. For the current NPU-to-CPU Write path, the CPU sends its destination
 address, length, and rkey; the NPU uses its HCCP MR lkey as the local SGE key.
-No HCCP or verbs handles cross the control-plane boundary.
+No HCCP or verbs handles cross the TCP peer exchange boundary.
 
 This is a one-NPU/one-CPU path. It is not an HCCL job: it does not initialize
 HCOMM or HCCL, consume a rank table, or require a second NPU. The CPU endpoint
@@ -49,7 +49,7 @@ CANN RA / HCCP                                  libibverbs
 ## Repository layout
 
 ```text
-src/common/       TCP control plane, NDS wire format, and MTU policy
+src/common/       TCP peer exchange, NDS wire format, and MTU policy
 src/npu_client/   NPU RA lifecycle, runtime loaders, submission modes, and probes
 src/cpu_server/   CPU `libibverbs` endpoint
 tests/            Unit tests and a test-only runtime fixture
@@ -71,6 +71,24 @@ Device-kernel builds and mode-specific invocation are documented in the mode
 guides. Keep target paths, addresses, logs, and operational commands in ignored
 `.local/` files.
 
+## Logging
+
+NDS uses named [`spdlog`](https://github.com/gabime/spdlog) loggers: `npu-client`
+and `cpu-server`. The command-line tools accept `--log-sink
+stderr|stdout|syslog|none` and `--log-level trace|debug|info|warn|error|critical|off`.
+The default is `stderr` at `info`; `syslog` lets a host logging agent collect
+records without parsing terminal output.
+
+Code embedding an NDS component can install a logger with any spdlog sink
+before use:
+
+```cpp
+nds::log::set_logger("npu-client", application_logger);
+```
+
+NDS does not own or require a particular log collector. The CMake build requires
+the system `spdlog` and CLI11 development packages.
+
 ## Documentation
 
 - [HCCP QP and MR lifecycle](docs/hccp-resources.md)
@@ -80,3 +98,4 @@ guides. Keep target paths, addresses, logs, and operational commands in ignored
 - [AICPU](docs/aicpu.md)
 - [Linkage and runtime ABI](docs/linkage.md)
 - [Testing](docs/testing.md)
+- [Protocol roadmap](docs/roadmap.md)

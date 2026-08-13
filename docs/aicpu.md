@@ -56,12 +56,11 @@ happens inside CP1 when the kernel executes.
   `src/npu_client/modes/aicpu/device/include/nds_aicpu_hns_abi.h`.
 - Kernel: `src/npu_client/modes/aicpu/device/nds_aicpu_rdma_post.aicpu`, entry point
   `NdsAicpuRdmaPost`.
-- Host launcher: `src/npu_client/modes/aicpu/include/nds/aicpu_roce.hpp` and
-  `src/npu_client/modes/aicpu/launcher.cpp`.
+- Host launcher: `src/npu_client/modes/aicpu/include/nds/aicpu_roce.hh` and
+  `src/npu_client/modes/aicpu/launcher.cc`.
 - Standard package manifest:
   `src/npu_client/modes/aicpu/device/package/nds_aicpu_standard.json.in`.
-- Mode build ownership: `src/npu_client/modes/aicpu/CMakeLists.txt` and its
-  `device/CMakeLists.txt`.
+- Mode build ownership: `src/npu_client/CMakeLists.txt`.
 
 ABI v6 is fixed at 80 bytes and carries opcode, logical device ID, AI-QP
 address, local and remote keys and addresses, length, and WR ID. The kernel

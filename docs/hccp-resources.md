@@ -10,7 +10,7 @@ teardown. Mode-specific posting and CQ handling are described in
 
 The NPU process owns one HCCP rdev, one HCCP QP, its NPU device allocation, and
 the HCCP MR for that allocation. The CPU process independently owns its verbs
-context, PD, CQ, QP, host buffer, and verbs MR. The TCP control plane never
+context, PD, CQ, QP, host buffer, and verbs MR. The TCP peer exchange never
 transfers an HCCP or verbs object between processes.
 
 NDS exchanges only versioned NDS records:

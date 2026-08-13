@@ -1,4 +1,4 @@
-#include "nds/control_plane.hpp"
+#include "nds/peer_exchange.hh"
 
 #include <arpa/inet.h>
 #include <cerrno>
@@ -27,7 +27,7 @@ bool wait_for_fd(int fd, short events, std::uint32_t timeout_ms, std::string *er
     const int result = poll(&descriptor, 1, static_cast<int>(timeout_ms));
 
     if (result == 0) {
-        *error = "TCP control-plane timeout";
+        *error = "TCP peer exchange timeout";
         return false;
     }
     if (result < 0) {
@@ -35,7 +35,7 @@ bool wait_for_fd(int fd, short events, std::uint32_t timeout_ms, std::string *er
         return false;
     }
     if ((descriptor.revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
-        *error = "TCP control-plane socket became unavailable";
+        *error = "TCP peer exchange socket became unavailable";
         return false;
     }
     return true;
@@ -43,18 +43,18 @@ bool wait_for_fd(int fd, short events, std::uint32_t timeout_ms, std::string *er
 
 } // namespace
 
-TcpControlPlane::TcpControlPlane(int fd) noexcept : fd_(fd) {}
+TcpPeerExchange::TcpPeerExchange(int fd) noexcept : fd_(fd) {}
 
-TcpControlPlane::~TcpControlPlane()
+TcpPeerExchange::~TcpPeerExchange()
 {
     if (fd_ >= 0) {
         (void)close(fd_);
     }
 }
 
-TcpControlPlane::TcpControlPlane(TcpControlPlane &&other) noexcept : fd_(other.release()) {}
+TcpPeerExchange::TcpPeerExchange(TcpPeerExchange &&other) noexcept : fd_(other.release()) {}
 
-TcpControlPlane &TcpControlPlane::operator=(TcpControlPlane &&other) noexcept
+TcpPeerExchange &TcpPeerExchange::operator=(TcpPeerExchange &&other) noexcept
 {
     if (this != &other) {
         if (fd_ >= 0) {
@@ -65,13 +65,13 @@ TcpControlPlane &TcpControlPlane::operator=(TcpControlPlane &&other) noexcept
     return *this;
 }
 
-bool TcpControlPlane::send_memory_descriptor(const nds_memory_descriptor &descriptor, std::string *error) const
+bool TcpPeerExchange::send_memory_descriptor(const nds_memory_descriptor &descriptor, std::string *error) const
 {
-    nds_memory_descriptor_wire_v1 wire{};
+    nds_memory_descriptor_wire wire{};
     char codec_error[NDS_WIRE_ERROR_CAPACITY]{};
 
     if (fd_ < 0) {
-        if (error != nullptr) *error = "control plane is not connected";
+        if (error != nullptr) *error = "TCP peer exchange is not connected";
         return false;
     }
     if (nds_memory_descriptor_encode(&descriptor, &wire, codec_error) != 0) {
@@ -81,13 +81,13 @@ bool TcpControlPlane::send_memory_descriptor(const nds_memory_descriptor &descri
     return write_full(fd_, &wire, sizeof(wire), error);
 }
 
-bool TcpControlPlane::receive_memory_descriptor(nds_memory_descriptor &descriptor, std::string *error) const
+bool TcpPeerExchange::receive_memory_descriptor(nds_memory_descriptor &descriptor, std::string *error) const
 {
-    nds_memory_descriptor_wire_v1 wire{};
+    nds_memory_descriptor_wire wire{};
     char codec_error[NDS_WIRE_ERROR_CAPACITY]{};
 
     if (fd_ < 0) {
-        if (error != nullptr) *error = "control plane is not connected";
+        if (error != nullptr) *error = "TCP peer exchange is not connected";
         return false;
     }
     if (!read_full(fd_, &wire, sizeof(wire), error)) return false;
@@ -98,12 +98,12 @@ bool TcpControlPlane::receive_memory_descriptor(nds_memory_descriptor &descripto
     return true;
 }
 
-bool TcpControlPlane::send_transfer_status(const nds_transfer_status &status, std::string *error) const
+bool TcpPeerExchange::send_transfer_status(const nds_transfer_status &status, std::string *error) const
 {
-    nds_transfer_status_wire_v1 wire{};
+    nds_transfer_status_wire wire{};
     char codec_error[NDS_WIRE_ERROR_CAPACITY]{};
     if (fd_ < 0) {
-        if (error != nullptr) *error = "control plane is not connected";
+        if (error != nullptr) *error = "TCP peer exchange is not connected";
         return false;
     }
     if (nds_transfer_status_encode(&status, &wire, codec_error) != 0) {
@@ -113,12 +113,12 @@ bool TcpControlPlane::send_transfer_status(const nds_transfer_status &status, st
     return write_full(fd_, &wire, sizeof(wire), error);
 }
 
-bool TcpControlPlane::receive_transfer_status(nds_transfer_status &status, std::string *error) const
+bool TcpPeerExchange::receive_transfer_status(nds_transfer_status &status, std::string *error) const
 {
-    nds_transfer_status_wire_v1 wire{};
+    nds_transfer_status_wire wire{};
     char codec_error[NDS_WIRE_ERROR_CAPACITY]{};
     if (fd_ < 0) {
-        if (error != nullptr) *error = "control plane is not connected";
+        if (error != nullptr) *error = "TCP peer exchange is not connected";
         return false;
     }
     if (!read_full(fd_, &wire, sizeof(wire), error)) return false;
@@ -129,26 +129,26 @@ bool TcpControlPlane::receive_transfer_status(nds_transfer_status &status, std::
     return true;
 }
 
-int TcpControlPlane::fd() const noexcept
+int TcpPeerExchange::fd() const noexcept
 {
     return fd_;
 }
 
-int TcpControlPlane::release() noexcept
+int TcpPeerExchange::release() noexcept
 {
     const int released = fd_;
     fd_ = -1;
     return released;
 }
 
-bool TcpControlPlane::read_full(int fd, void *buffer, std::size_t length, std::string *error)
+bool TcpPeerExchange::read_full(int fd, void *buffer, std::size_t length, std::string *error)
 {
     auto *cursor = static_cast<unsigned char *>(buffer);
 
     while (length != 0U) {
         const ssize_t result = read(fd, cursor, length);
         if (result == 0) {
-            *error = "peer closed TCP control-plane connection";
+            *error = "peer closed TCP peer exchange connection";
             return false;
         }
         if (result < 0) {
@@ -164,7 +164,7 @@ bool TcpControlPlane::read_full(int fd, void *buffer, std::size_t length, std::s
     return true;
 }
 
-bool TcpControlPlane::write_full(int fd, const void *buffer, std::size_t length, std::string *error)
+bool TcpPeerExchange::write_full(int fd, const void *buffer, std::size_t length, std::string *error)
 {
     const auto *cursor = static_cast<const unsigned char *>(buffer);
 
@@ -183,15 +183,15 @@ bool TcpControlPlane::write_full(int fd, const void *buffer, std::size_t length,
     return true;
 }
 
-ControlPlaneResult TcpControlPlane::exchange(int fd, const nds_rc_endpoint &local, bool client_order)
+PeerExchangeResult TcpPeerExchange::exchange(int fd, const nds_rc_endpoint &local, bool client_order)
 {
-    nds_rc_endpoint_wire_v1 local_wire{};
-    nds_rc_endpoint_wire_v1 peer_wire{};
-    ControlPlaneResult result;
+    nds_rc_endpoint_wire local_wire{};
+    nds_rc_endpoint_wire peer_wire{};
+    PeerExchangeResult result;
     char codec_error[NDS_WIRE_ERROR_CAPACITY]{};
 
     if (fd < 0) {
-        result.error = "TCP control-plane socket is not open";
+        result.error = "TCP peer exchange socket is not open";
         return result;
     }
     if (nds_rc_endpoint_encode(&local, &local_wire, codec_error) != 0) {
@@ -218,18 +218,18 @@ ControlPlaneResult TcpControlPlane::exchange(int fd, const nds_rc_endpoint &loca
     return result;
 }
 
-ControlPlaneResult TcpControlPlane::exchange_as_client(const nds_rc_endpoint &local) const
+PeerExchangeResult TcpPeerExchange::exchange_as_client(const nds_rc_endpoint &local) const
 {
     return exchange(fd_, local, true);
 }
 
-ControlPlaneResult TcpControlPlane::exchange_as_server(const nds_rc_endpoint &local) const
+PeerExchangeResult TcpPeerExchange::exchange_as_server(const nds_rc_endpoint &local) const
 {
     return exchange(fd_, local, false);
 }
 
-bool TcpControlPlane::connect(const std::string &ipv4, std::uint16_t port, std::uint32_t timeout_ms,
-                               TcpControlPlane &connection, std::string *error)
+bool TcpPeerExchange::connect(const std::string &ipv4, std::uint16_t port, std::uint32_t timeout_ms,
+                               TcpPeerExchange &connection, std::string *error)
 {
     sockaddr_in address{};
     int socket_fd;
@@ -238,7 +238,7 @@ bool TcpControlPlane::connect(const std::string &ipv4, std::uint16_t port, std::
 
     if (connection.fd_ >= 0) {
         if (error != nullptr) {
-            *error = "output control-plane object already owns a socket";
+            *error = "output TCP peer exchange object already owns a socket";
         }
         return false;
     }
@@ -305,15 +305,15 @@ bool TcpControlPlane::connect(const std::string &ipv4, std::uint16_t port, std::
     return true;
 }
 
-ControlPlaneResult TcpControlPlane::connect_and_exchange(const std::string &ipv4, std::uint16_t port,
+PeerExchangeResult TcpPeerExchange::connect_and_exchange(const std::string &ipv4, std::uint16_t port,
                                                          const nds_rc_endpoint &local,
                                                          std::uint32_t timeout_ms)
 {
-    TcpControlPlane connection;
+    TcpPeerExchange connection;
     std::string error;
 
     if (!connect(ipv4, port, timeout_ms, connection, &error)) {
-        ControlPlaneResult result;
+        PeerExchangeResult result;
         result.error = std::move(error);
         return result;
     }

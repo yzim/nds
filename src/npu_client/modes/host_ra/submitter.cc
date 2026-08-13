@@ -1,7 +1,7 @@
-#include "nds/host_ra.hpp"
+#include "nds/host_ra.hh"
+#include "nds/logging.hh"
 
 #include <iomanip>
-#include <iostream>
 
 namespace nds {
 
@@ -13,14 +13,14 @@ bool submit_host_ra_write(NpuRaContext &context, NpuRaQp &qp,
         error = qp.error();
         return false;
     }
-    std::cout << "Posted one signaled RDMA Write: doorbell_index=" << response.doorbell.db_index
+    NDS_LOG_INFO_LINE("npu-client") << "Posted one signaled RDMA Write: doorbell_index=" << response.doorbell.db_index
               << " doorbell_info=0x" << std::hex << response.doorbell.db_info << std::dec << '\n';
     if (!context.submit_rdma_doorbell(response.doorbell.db_index,
                                       static_cast<std::uint64_t>(response.doorbell.db_info))) {
         error = context.error();
         return false;
     }
-    std::cout << "Submitted OPBASE RDMA doorbell on the runtime default stream.\n";
+    NDS_LOG_INFO_LINE("npu-client") << "Submitted OPBASE RDMA doorbell on the runtime default stream.\n";
     error.clear();
     return true;
 }

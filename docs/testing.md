@@ -18,7 +18,7 @@ ctest --test-dir build --output-on-failure --label-regex '^unit$'
 ## Integration tests
 
 Integration tests exercise boundaries that cross local operating-system or
-dynamic-library interfaces without using RDMA hardware. The control-plane test
+dynamic-library interfaces without using RDMA hardware. The TCP peer exchange test
 uses a Unix socket pair. The runtime-loader test builds a fake shared runtime,
 opens it with the NDS loader, resolves its C ABI symbols, and calls them.
 

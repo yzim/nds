@@ -22,7 +22,7 @@ enum nds_aicpu_rdma_opcode {
  * This is intentionally not an HCOMM protocol: it contains no flags, peer
  * acknowledgement, batching, rank state, or completion-poller state.
  */
-typedef struct nds_aicpu_rdma_post_request_v2 {
+typedef struct nds_aicpu_rdma_post_request {
     uint32_t abi_version;
     uint32_t size;
     uint32_t opcode;
@@ -36,13 +36,13 @@ typedef struct nds_aicpu_rdma_post_request_v2 {
     uint64_t wr_id;
     uint64_t reserved_0;
     uint64_t reserved;
-} nds_aicpu_rdma_post_request_v2;
+} nds_aicpu_rdma_post_request;
 
 #if defined(__cplusplus)
-static_assert(sizeof(nds_aicpu_rdma_post_request_v2) == 80,
+static_assert(sizeof(nds_aicpu_rdma_post_request) == 80,
               "NDS AICPU RDMA-post ABI v6 must remain 80 bytes");
 #else
-_Static_assert(sizeof(nds_aicpu_rdma_post_request_v2) == 80,
+_Static_assert(sizeof(nds_aicpu_rdma_post_request) == 80,
                "NDS AICPU RDMA-post ABI v6 must remain 80 bytes");
 #endif
 

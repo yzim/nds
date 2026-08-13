@@ -10,7 +10,7 @@ The production interoperability path does **not** use HCOMM, HCCL, TSD, a rank t
 
 | Library | NDS use | Build treatment | Rationale |
 |---|---|---|---|
-| POSIX / `libdl` / threads | sockets, control plane, dynamic loading | Link | Stable system ABI. |
+| POSIX / `libdl` / threads | sockets, TCP peer exchange, dynamic loading | Link | Stable system ABI. |
 | `libibverbs.so` | CPU-side PD/CQ/QP operations | Link, CPU target only | The CPU endpoint remains CANN-free. |
 | `libascendcl.so` | lifecycle plus AIV/AICPU binary, argument, kernel, and stream APIs when selected | Dynamic by default; optional version-pinned public-ACL link mode | Public lifecycle boundary; dynamic default preserves host build portability. |
 | `libruntime.so` | `rtOpenNetService`, `rtCloseNetService`, `rtRDMADBSend` | Runtime-load | Required by the direct NPU RA lifecycle and default OPBASE Lite doorbell submission; not exposed through a stable NDS-facing SDK contract. |

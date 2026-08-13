@@ -49,9 +49,9 @@ __aicore__ inline void StoreU64WithDma(TBuf<> &scratch, __gm__ uint64_t *destina
 
 extern "C" __global__ __aicore__ void NdsAivRdmaWrite(GM_ADDR request_address)
 {
-    __gm__ const nds_aiv_rdma_write_request_v1 *request =
-        reinterpret_cast<__gm__ const nds_aiv_rdma_write_request_v1 *>(request_address);
-    __gm__ const nds_aiv_sq_descriptor_v1 *queue = &request->send_queue;
+    __gm__ const nds_aiv_rdma_write_request *request =
+        reinterpret_cast<__gm__ const nds_aiv_rdma_write_request *>(request_address);
+    __gm__ const nds_aiv_sq_descriptor *queue = &request->send_queue;
     __gm__ uint32_t *head_address = reinterpret_cast<__gm__ uint32_t *>(queue->head_address);
     __gm__ uint32_t *tail_address = reinterpret_cast<__gm__ uint32_t *>(queue->tail_address);
 

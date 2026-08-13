@@ -18,7 +18,7 @@ bool valid_opcode(uint32_t opcode)
     return opcode == NDS_AICPU_RDMA_WRITE || opcode == NDS_AICPU_RDMA_READ || opcode == NDS_AICPU_SEND;
 }
 
-bool valid_request(const nds_aicpu_rdma_post_request_v2 &request)
+bool valid_request(const nds_aicpu_rdma_post_request &request)
 {
     if (request.abi_version != NDS_AICPU_ROCE_ABI_VERSION || request.size != sizeof(request) ||
         !valid_opcode(request.opcode) || request.ai_qp_address == 0U ||
@@ -55,7 +55,7 @@ uint32_t complete_or_trap(uint32_t result)
 extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuRdmaPost(void *args)
 {
     if (args == nullptr) return complete_or_trap(kInvalidArgument);
-    const auto &request = *static_cast<const nds_aicpu_rdma_post_request_v2 *>(args);
+    const auto &request = *static_cast<const nds_aicpu_rdma_post_request *>(args);
     if (!valid_request(request)) {
         return complete_or_trap(kInvalidArgument);
     }

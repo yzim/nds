@@ -3,7 +3,7 @@
 ## Purpose
 
 NDS is a small interoperability project for one Ascend NPU RNIC and one
-CPU-side RoCE RNIC. It owns its control plane and submission implementations;
+CPU-side RoCE RNIC. It owns its TCP peer-exchange protocol and submission implementations;
 it uses the CANN runtime installed on the target.
 
 The endpoint roles are fixed:
@@ -17,7 +17,8 @@ Start with [README.md](README.md) for the runnable baseline. Technical choices
 belong in `docs/`: [HCCP QP and MR lifecycle](docs/hccp-resources.md),
 [mode overview](docs/modes.md), [host RA](docs/host-ra.md), [AIV](docs/aiv.md),
 [AICPU](docs/aicpu.md), and
-[linkage policy](docs/linkage.md), and [testing](docs/testing.md).
+[linkage policy](docs/linkage.md), [testing](docs/testing.md), and the
+[protocol roadmap](docs/roadmap.md).
 
 ## Non-negotiable rules
 
@@ -46,7 +47,7 @@ belong in `docs/`: [HCCP QP and MR lifecycle](docs/hccp-resources.md),
   are authoritative at runtime.
 - Keep runtime loading, library names, symbol resolution, and ABI checks in the
   loader modules. Missing required symbols must fail closed with a useful error.
-- Keep the TCP control plane independent of RA/HCCP private objects. Exchange
+- Keep the TCP peer exchange independent of RA/HCCP private objects. Exchange
   only NDS-owned versioned wire records with the CPU endpoint. Exchange QPN,
   PSN, GID, transport settings, and memory address/length/rkey; never exchange
   HCCP QP or MR handles, AI-QP descriptors, queue addresses, or provider
@@ -57,8 +58,14 @@ belong in `docs/`: [HCCP QP and MR lifecycle](docs/hccp-resources.md),
   plus the current CPU test-harness check for host RA, or until that check for
   AI-QP modes. Do not describe the CPU check as a general completion API.
 - NDS is C++20. Use native C++ ownership and `nullptr` in compiled C++ code.
-  Keep ABI and wire headers C-compatible only where a runtime or device boundary
-  needs it.
+  Use `.cc` for C++ sources and `.hh` for C++ headers. Keep `.h` headers
+  C-compatible only where a runtime or device boundary needs it.
+- Use the `nds::log` facade backed by `spdlog` for executable diagnostics. Do
+  not add direct `stdout`, `stderr`, `printf`, or `perror` logging. Keep the
+  component names `npu-client` and `cpu-server`; applications may replace their
+  spdlog sink through `nds::log::set_logger`.
+- Use CLI11 for executable command-line parsing. Keep option declarations and
+  cross-option semantic validation at the executable boundary.
 
 ## Network safety
 

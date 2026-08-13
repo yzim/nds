@@ -1,0 +1,31 @@
+#include "nds/logging.hh"
+
+#include <cassert>
+#include <memory>
+#include <sstream>
+#include <string>
+
+#include <spdlog/sinks/ostream_sink.h>
+
+int main()
+{
+    std::ostringstream output;
+    auto sink = std::make_shared<spdlog::sinks::ostream_sink_mt>(output);
+    auto external = std::make_shared<spdlog::logger>("test", sink);
+    external->set_level(spdlog::level::trace);
+    external->set_pattern("%v");
+    nds::log::set_logger("test", external);
+
+    NDS_LOG_INFO("test", "message {}", 7);
+    NDS_LOG_ERROR_LINE("test") << "failure " << 8;
+    NDS_LOG_INFOF("test", "legacy %s\n", "message");
+    external->flush();
+    assert(output.str() == "message 7\nfailure 8\nlegacy message\n");
+
+    std::string error;
+    assert(!nds::log::configure("test", "invalid", "info", error));
+    assert(error == "unsupported log sink: invalid");
+    assert(!nds::log::configure("test", "none", "invalid", error));
+    assert(error == "unsupported log level: invalid");
+    return 0;
+}

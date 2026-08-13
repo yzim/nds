@@ -1,4 +1,4 @@
-#include "nds/aicpu_roce.hpp"
+#include "nds/aicpu_roce.hh"
 
 #include <utility>
 
@@ -70,7 +70,7 @@ bool AicpuRdmaPostLauncher::load(nds_acl_api &acl, const std::string &kernel_con
 bool AicpuRdmaPostLauncher::launch_and_wait(const AicpuRdmaPostRequest &request,
                                               std::int32_t completion_timeout_ms)
 {
-    nds_aicpu_rdma_post_request_v2 parameters{};
+    nds_aicpu_rdma_post_request parameters{};
     nds_acl_args_handle arguments{};
     nds_acl_param_handle parameter_handle{};
     nds_acl_launch_kernel_attr attribute{};
