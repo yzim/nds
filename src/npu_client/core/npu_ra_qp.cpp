@@ -191,24 +191,6 @@ bool NpuRaQp::make_qp_only_endpoint(nds_rc_endpoint &endpoint)
     return true;
 }
 
-bool NpuRaQp::make_data_ready_endpoint(std::uint64_t address, std::uint32_t rkey,
-                                       nds_rc_endpoint &endpoint)
-{
-    if (rkey == 0U || address == 0U) {
-        set_error("data-ready NPU endpoint requires a nonzero address and registered-memory rkey");
-        return false;
-    }
-    if (!make_qp_only_endpoint(endpoint)) {
-        return false;
-    }
-    endpoint.flags = NDS_ENDPOINT_FLAG_DATA_READY;
-    endpoint.rkey = rkey;
-    endpoint.address = address;
-    /* RA MR access flags will be propagated when the data-plane path is added. */
-    endpoint.access_flags = 1U;
-    return true;
-}
-
 bool NpuRaQp::register_memory(void *address, std::uint64_t size, int access, nds_ra_mr_info &info,
                                 void **mr_handle)
 {
@@ -444,7 +426,9 @@ void NpuRaQp::reset() noexcept
     }
     rdev_handle_ = nullptr;
     api_ = nullptr;
+    config_ = {};
     local_attributes_ = {};
+    aicpu_qp_info_ = {};
     connected_ = false;
 }
 

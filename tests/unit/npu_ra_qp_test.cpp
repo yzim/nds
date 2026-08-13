@@ -413,6 +413,8 @@ void test_aicpu_qp_creation_and_connection()
     assert(qp.connect(peer));
     assert(fake.modify_calls == 1);
     qp.reset();
+    assert(!qp.has_aicpu_qp_info());
+    assert(qp.aicpu_qp_info().ai_qp_address == 0U);
     assert(fake.qp_destroy_calls == 1);
     assert(fake.rdev_deinit_calls == 1);
 }
@@ -558,7 +560,6 @@ void test_rejects_invalid_configuration_and_endpoint()
     assert(!qp.query_status(status));
     assert(!qp.error().empty());
     assert(qp.make_qp_only_endpoint(endpoint));
-    assert(!qp.make_data_ready_endpoint(0, 0, endpoint));
     assert(!qp.connect(invalid_peer));
     qp.reset();
 }

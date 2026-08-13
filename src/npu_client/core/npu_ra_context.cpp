@@ -43,48 +43,51 @@ bool NpuRaContext::initialize(const NpuRaContextConfig &config)
 
     if (nds_acl_open(&acl_, config_.ascendcl_library.c_str()) != 0) {
         set_error(std::string("cannot load AscendCL: ") + nds_acl_error(&acl_));
-        goto fail;
+        reset();
+        return false;
     }
     result = acl_.init(nullptr);
     if (result != 0) {
         set_error("aclInit failed: " + std::to_string(result));
-        goto fail;
+        reset();
+        return false;
     }
     acl_initialized_ = true;
     result = acl_.set_device(static_cast<std::int32_t>(config_.logical_device_id));
     if (result != 0) {
         set_error("aclrtSetDevice failed: " + std::to_string(result));
-        goto fail;
+        reset();
+        return false;
     }
 
     if (nds_runtime_open(&runtime_, config_.runtime_library.c_str()) != 0) {
         set_error(std::string("cannot load CANN runtime: ") + nds_runtime_error(&runtime_));
-        goto fail;
+        reset();
+        return false;
     }
     result = runtime_.open_net_service(&open_args);
     if (result != 0) {
         set_error("rtOpenNetService failed: " + std::to_string(result));
-        goto fail;
+        reset();
+        return false;
     }
     net_service_open_ = true;
 
     if (nds_ra_open(&ra_, config_.ra_library.c_str()) != 0) {
         set_error(std::string("cannot load libra.so: ") + nds_ra_error(&ra_));
-        goto fail;
+        reset();
+        return false;
     }
     result = ra_.ra_init(&ra_init_config);
     if (result != 0) {
         set_error("RaInit failed: " + std::to_string(result));
-        goto fail;
+        reset();
+        return false;
     }
     ra_initialized_ = true;
     initialized_ = true;
     error_.clear();
     return true;
-
-fail:
-    reset();
-    return false;
 }
 
 void NpuRaContext::reset() noexcept
@@ -160,19 +163,6 @@ bool NpuRaContext::copy_host_to_device(void *device_ptr, const void *host_ptr, s
                            : acl_.memcpy(device_ptr, size, host_ptr, size, NDS_ACL_MEMCPY_HOST_TO_DEVICE);
     if (result != 0) {
         set_error("aclrtMemcpy(host-to-device) failed: " + std::to_string(result));
-        return false;
-    }
-    error_.clear();
-    return true;
-}
-
-bool NpuRaContext::zero_device_memory(void *device_ptr, std::size_t size)
-{
-    const int result = (!initialized_ || device_ptr == nullptr || size == 0U || acl_.memset_device == nullptr)
-                           ? -1
-                           : acl_.memset_device(device_ptr, size, 0, size);
-    if (result != 0) {
-        set_error("aclrtMemset(device) failed: " + std::to_string(result));
         return false;
     }
     error_.clear();

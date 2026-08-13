@@ -4,7 +4,6 @@
 #include <dlfcn.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <unistd.h>
 
 namespace {
 constexpr uint32_t kSuccess = 0U;
@@ -13,39 +12,6 @@ constexpr uint32_t kPostFailed = 2U;
 constexpr uint32_t kProviderUnavailable = 3U;
 constexpr char kHnsProviderLibrary[] = "libhns-rdmav25.so";
 constexpr char kHnsPostSymbol[] = "ibv_exp_post_send";
-#if !defined(NDS_AICPU_STANDARD_CP1)
-constexpr uint32_t kHalUnavailable = 4U;
-constexpr uint32_t kProcessQueryFailed = 5U;
-constexpr uint32_t kAicpuQueryFailed = 6U;
-constexpr uint32_t kSharePoolBindFailed = 7U;
-constexpr char kAscendHalLibrary[] = "libascend_hal.so";
-constexpr char kProcessQuerySymbol[] = "drvQueryProcessHostPid";
-constexpr char kAicpuQuerySymbol[] = "halQueryDevpid";
-constexpr char kSharePoolBindSymbol[] = "halMemBindSibling";
-constexpr uint32_t kCp1Process = 0U;
-constexpr uint32_t kSharePoolGroup = 1U << 1;
-constexpr unsigned int kBindAttempts = 100U;
-constexpr useconds_t kBindRetryDelayUs = 10000U;
-
-struct HalQueryDevpidInfo {
-    int32_t host_pid;
-    uint32_t device_id;
-    uint32_t vf_id;
-    uint32_t process_type;
-    char reserved[8];
-};
-static_assert(sizeof(HalQueryDevpidInfo) == 24U, "CANN 9.0.0 halQueryDevpidInfo ABI changed");
-
-using QueryProcessHostPidFn = int (*)(int, unsigned int *, unsigned int *, unsigned int *, unsigned int *);
-using QueryDevpidFn = int (*)(HalQueryDevpidInfo, int32_t *);
-using MemBindSiblingFn = int (*)(int, int, unsigned int, unsigned int, unsigned int);
-
-struct HalFunctions {
-    QueryProcessHostPidFn query_process_host_pid;
-    QueryDevpidFn query_dev_pid;
-    MemBindSiblingFn bind_sibling;
-};
-#endif
 
 bool valid_opcode(uint32_t opcode)
 {
@@ -78,69 +44,6 @@ nds_hns_exp_post_send_fn hns_exp_post_send()
     return post;
 }
 
-#if !defined(NDS_AICPU_STANDARD_CP1)
-const HalFunctions *hal_functions()
-{
-    static HalFunctions functions{};
-    static void *hal = nullptr;
-    if (functions.query_process_host_pid != nullptr && functions.query_dev_pid != nullptr &&
-        functions.bind_sibling != nullptr) {
-        return &functions;
-    }
-    hal = dlopen(kAscendHalLibrary, RTLD_NOW);
-    if (hal == nullptr) return nullptr;
-    functions.query_process_host_pid = reinterpret_cast<QueryProcessHostPidFn>(dlsym(hal, kProcessQuerySymbol));
-    functions.query_dev_pid = reinterpret_cast<QueryDevpidFn>(dlsym(hal, kAicpuQuerySymbol));
-    functions.bind_sibling = reinterpret_cast<MemBindSiblingFn>(dlsym(hal, kSharePoolBindSymbol));
-    if (functions.query_process_host_pid == nullptr || functions.query_dev_pid == nullptr ||
-        functions.bind_sibling == nullptr) {
-        return nullptr;
-    }
-    return &functions;
-}
-#endif
-
-uint32_t bind_hccp_share_pool(uint32_t logical_device_id)
-{
-#if defined(NDS_AICPU_STANDARD_CP1)
-    (void)logical_device_id;
-    return kSuccess;
-#else
-    static uint32_t bound_device = UINT32_MAX;
-    if (bound_device == logical_device_id) return kSuccess;
-
-    const HalFunctions *hal = hal_functions();
-    if (hal == nullptr) return kHalUnavailable;
-
-    unsigned int chip_id = 0U;
-    unsigned int vf_id = 0U;
-    unsigned int host_pid = 0U;
-    unsigned int custom_process_type = 0U;
-    if (hal->query_process_host_pid(getpid(), &chip_id, &vf_id, &host_pid, &custom_process_type) != 0 ||
-        host_pid == 0U) {
-        return kProcessQueryFailed;
-    }
-
-    HalQueryDevpidInfo query{};
-    query.host_pid = static_cast<int32_t>(host_pid);
-    query.device_id = logical_device_id;
-    query.vf_id = vf_id;
-    query.process_type = kCp1Process;
-    int32_t aicpu_pid = 0;
-    if (hal->query_dev_pid(query, &aicpu_pid) != 0 || aicpu_pid <= 0) return kAicpuQueryFailed;
-
-    for (unsigned int attempt = 0U; attempt < kBindAttempts; ++attempt) {
-        if (hal->bind_sibling(static_cast<int>(host_pid), aicpu_pid, vf_id, logical_device_id,
-                              kSharePoolGroup) == 0) {
-            bound_device = logical_device_id;
-            return kSuccess;
-        }
-        if (attempt + 1U != kBindAttempts) usleep(kBindRetryDelayUs);
-    }
-    return kSharePoolBindFailed;
-#endif
-}
-
 uint32_t complete_or_trap(uint32_t result)
 {
     if (result != kSuccess) __builtin_trap();
@@ -149,81 +52,6 @@ uint32_t complete_or_trap(uint32_t result)
 
 } // namespace
 
-extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuNoop(void *args)
-{
-    (void)args;
-    return kSuccess;
-}
-
-/* Isolates the device-side provider loader from WQE construction and posting. */
-extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuProviderProbe(void *args)
-{
-    (void)args;
-    return complete_or_trap(hns_exp_post_send() == nullptr ? kProviderUnavailable : kSuccess);
-}
-
-/* Confirms ACL's argument buffer is readable before attempting a provider post. */
-extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuRequestProbe(void *args)
-{
-    if (args == nullptr) return complete_or_trap(kInvalidArgument);
-    const auto &request = *static_cast<const nds_aicpu_rdma_post_request_v2 *>(args);
-    return complete_or_trap(valid_request(request) ? kSuccess : kInvalidArgument);
-}
-
-/* Binds this custom process into HCCP's CP1 shared-pool group without posting. */
-extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuBindingProbe(void *args)
-{
-    if (args == nullptr) return complete_or_trap(kInvalidArgument);
-    const auto &request = *static_cast<const nds_aicpu_rdma_post_request_v2 *>(args);
-    if (!valid_request(request)) return complete_or_trap(kInvalidArgument);
-    return complete_or_trap(bind_hccp_share_pool(request.logical_device_id));
-}
-
-/*
- * Executes the provider call but deliberately suppresses its return value.
- * This separates a provider-returned post error from an exception within the
- * provider without attempting to write AICPU status into ordinary device memory.
- */
-extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuPostAttemptProbe(void *args)
-{
-    if (args == nullptr) return complete_or_trap(kInvalidArgument);
-    const auto &request = *static_cast<const nds_aicpu_rdma_post_request_v2 *>(args);
-    if (!valid_request(request)) return complete_or_trap(kInvalidArgument);
-
-    const uint32_t bind_result = bind_hccp_share_pool(request.logical_device_id);
-    if (bind_result != kSuccess) return complete_or_trap(bind_result);
-
-    const nds_hns_exp_post_send_fn post_send = hns_exp_post_send();
-    if (post_send == nullptr) return complete_or_trap(kProviderUnavailable);
-
-    nds_hns_sge sge{};
-    sge.addr = request.local_address;
-    sge.length = static_cast<uint32_t>(request.length);
-    sge.lkey = request.local_lkey;
-
-    nds_hns_send_wr work_request{};
-    work_request.wr_id = request.wr_id;
-    work_request.sg_list = &sge;
-    work_request.num_sge = 1;
-    work_request.opcode = static_cast<int32_t>(request.opcode);
-    work_request.send_flags = NDS_HNS_SEND_SIGNALED;
-    if (request.opcode != NDS_AICPU_SEND) {
-        work_request.rdma.remote_addr = request.remote_address;
-        work_request.rdma.rkey = request.remote_rkey;
-    }
-
-    nds_hns_send_wr *bad_request = nullptr;
-    nds_hns_post_send_response response{};
-    (void)post_send(reinterpret_cast<void *>(request.ai_qp_address), &work_request, &bad_request, &response);
-
-#if defined(__aarch64__)
-    asm volatile("dsb st" ::: "memory");
-#else
-    asm volatile("" ::: "memory");
-#endif
-    return kSuccess;
-}
-
 extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuRdmaPost(void *args)
 {
     if (args == nullptr) return complete_or_trap(kInvalidArgument);
@@ -231,9 +59,6 @@ extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuRdmaPost(void
     if (!valid_request(request)) {
         return complete_or_trap(kInvalidArgument);
     }
-
-    const uint32_t bind_result = bind_hccp_share_pool(request.logical_device_id);
-    if (bind_result != kSuccess) return complete_or_trap(bind_result);
 
     const nds_hns_exp_post_send_fn post_send = hns_exp_post_send();
     if (post_send == nullptr) {

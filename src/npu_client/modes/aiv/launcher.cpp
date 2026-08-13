@@ -4,7 +4,6 @@
 
 namespace nds {
 namespace {
-constexpr const char *kNdsAivNoop = "NdsAivNoop";
 constexpr const char *kNdsAivRdmaWrite = "NdsAivRdmaWrite";
 }
 
@@ -42,12 +41,6 @@ bool AivRdmaWriteLauncher::load(nds_acl_api &acl, const std::string &kernel_path
     result = acl_->binary_load_from_file(kernel_path.c_str(), &options, &binary_);
     if (result != 0 || binary_ == nullptr) {
         set_error("aclrtBinaryLoadFromFile(NDS AIV binary) failed: " + std::to_string(result));
-        reset();
-        return false;
-    }
-    result = acl_->binary_get_function(binary_, kNdsAivNoop, &noop_function_);
-    if (result != 0 || noop_function_ == nullptr) {
-        set_error("NDS AIV binary does not expose NdsAivNoop: " + std::to_string(result));
         reset();
         return false;
     }
@@ -99,38 +92,21 @@ bool AivRdmaWriteLauncher::make_device_request(const AivRdmaWriteRequest &reques
     return true;
 }
 
-bool AivRdmaWriteLauncher::launch_noop_and_wait(std::uint64_t device_request_address,
-                                                 std::int32_t completion_timeout_ms)
-{
-    return launch_and_wait(kNdsAivNoop, device_request_address, completion_timeout_ms);
-}
-
 bool AivRdmaWriteLauncher::launch_write_and_wait(std::uint64_t device_request_address,
                                                   std::int32_t completion_timeout_ms)
 {
-    return launch_and_wait(kNdsAivRdmaWrite, device_request_address, completion_timeout_ms);
+    return launch_and_wait(device_request_address, completion_timeout_ms);
 }
 
-bool AivRdmaWriteLauncher::launch_and_wait(const char *function_name, std::uint64_t device_request_address,
+bool AivRdmaWriteLauncher::launch_and_wait(std::uint64_t device_request_address,
                                            std::int32_t completion_timeout_ms)
 {
     nds_acl_launch_kernel_attr attributes[2]{};
     nds_acl_launch_kernel_config config{};
-    nds_acl_func_handle function{};
     int result;
 
     if (!loaded() || device_request_address == 0U || completion_timeout_ms <= 0) {
         set_error("NDS AIV launch requires a loaded binary, a device request address, and a positive timeout");
-        return false;
-    }
-    if (function_name == nullptr) {
-        set_error("NDS AIV requested an unavailable kernel entry");
-        return false;
-    }
-    if (std::string(function_name) == kNdsAivNoop) function = noop_function_;
-    else if (std::string(function_name) == kNdsAivRdmaWrite) function = write_function_;
-    else {
-        set_error("NDS AIV requested an unavailable kernel entry");
         return false;
     }
     attributes[0].id = NDS_ACL_LAUNCH_KERNEL_ATTR_SCHEM_MODE;
@@ -139,15 +115,15 @@ bool AivRdmaWriteLauncher::launch_and_wait(const char *function_name, std::uint6
     attributes[1].value.engine_type = NDS_ACL_ENGINE_TYPE_AIV;
     config.attrs = attributes;
     config.num_attrs = 2U;
-    result = acl_->launch_kernel_with_host_args(function, 1U, stream_, &config, &device_request_address,
+    result = acl_->launch_kernel_with_host_args(write_function_, 1U, stream_, &config, &device_request_address,
                                                 sizeof(device_request_address), nullptr, 0U);
     if (result != 0) {
-        set_error("aclrtLaunchKernelWithHostArgs(" + std::string(function_name) + ") failed: " + std::to_string(result));
+        set_error("aclrtLaunchKernelWithHostArgs(NdsAivRdmaWrite) failed: " + std::to_string(result));
         return false;
     }
     result = acl_->synchronize_stream_with_timeout(stream_, completion_timeout_ms);
     if (result != 0) {
-        set_error("aclrtSynchronizeStreamWithTimeout after " + std::string(function_name) + " failed: " + std::to_string(result));
+        set_error("aclrtSynchronizeStreamWithTimeout after NdsAivRdmaWrite failed: " + std::to_string(result));
         return false;
     }
     error_.clear();
@@ -158,7 +134,6 @@ void AivRdmaWriteLauncher::reset() noexcept
 {
     if (acl_ != nullptr && stream_ != nullptr && acl_->destroy_stream != nullptr) (void)acl_->destroy_stream(stream_);
     stream_ = nullptr;
-    noop_function_ = nullptr;
     write_function_ = nullptr;
     if (acl_ != nullptr && binary_ != nullptr && acl_->binary_unload != nullptr) (void)acl_->binary_unload(binary_);
     binary_ = nullptr;
@@ -167,7 +142,7 @@ void AivRdmaWriteLauncher::reset() noexcept
 
 bool AivRdmaWriteLauncher::loaded() const noexcept
 {
-    return acl_ != nullptr && binary_ != nullptr && noop_function_ != nullptr && write_function_ != nullptr && stream_ != nullptr;
+    return acl_ != nullptr && binary_ != nullptr && write_function_ != nullptr && stream_ != nullptr;
 }
 const std::string &AivRdmaWriteLauncher::error() const noexcept { return error_; }
 

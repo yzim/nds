@@ -9,7 +9,6 @@
 
 namespace nds {
 
-/* Loads either NDS's mode-1 diagnostics or its standard-CP1 post primitive. */
 struct AicpuRdmaPostRequest {
     std::uint32_t opcode{NDS_AICPU_RDMA_WRITE};
     std::uint64_t ai_qp_address{};
@@ -30,31 +29,19 @@ public:
     AicpuRdmaPostLauncher(const AicpuRdmaPostLauncher &) = delete;
     AicpuRdmaPostLauncher &operator=(const AicpuRdmaPostLauncher &) = delete;
 
-    bool load(nds_acl_api &acl, const std::string &kernel_config_path,
-              std::int32_t cpu_kernel_mode = 1);
-    bool launch_noop_and_wait(std::int32_t completion_timeout_ms);
-    bool launch_provider_probe_and_wait(std::int32_t completion_timeout_ms);
-    bool launch_request_probe_and_wait(const AicpuRdmaPostRequest &request,
-                                       std::int32_t completion_timeout_ms);
-    bool launch_binding_probe_and_wait(const AicpuRdmaPostRequest &request,
-                                       std::int32_t completion_timeout_ms);
-    bool launch_post_attempt_probe_and_wait(const AicpuRdmaPostRequest &request,
-                                            std::int32_t completion_timeout_ms);
+    bool load(nds_acl_api &acl, const std::string &kernel_config_path);
     bool launch_and_wait(const AicpuRdmaPostRequest &request, std::int32_t completion_timeout_ms);
     void reset() noexcept;
     bool loaded() const noexcept;
     const std::string &error() const noexcept;
 
 private:
-    bool launch_inert_probe_and_wait(const char *function_name, std::int32_t completion_timeout_ms);
-    bool launch_request_and_wait(const char *function_name, const AicpuRdmaPostRequest &request,
-                                 std::int32_t completion_timeout_ms);
     void set_error(std::string message);
 
     nds_acl_api *acl_{};
     nds_acl_bin_handle binary_{};
+    nds_acl_func_handle function_{};
     nds_acl_stream stream_{};
-    std::int32_t cpu_kernel_mode_{-1};
     std::string error_;
 };
 

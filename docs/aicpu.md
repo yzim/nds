@@ -1,6 +1,6 @@
 # AICPU RDMA Post
 
-This guide covers the real standard-CP1 path and the mode-1 diagnostic limit.
+This guide covers NDS's standard-CP1 AICPU submission path.
 Read [submission modes](modes.md) for the shared lifecycle and mode comparison.
 
 ## Basic function
@@ -20,12 +20,8 @@ Select the real data path with:
 
 ```text
 --submission-mode aicpu
---aicpu-cpu-kernel-mode 0
 --aicpu-kernel-config <absolute-path-to-nds_aicpu_standard.json>
 ```
-
-Mode `1` is retained for package and mapping diagnostics only. Real RDMA
-submission fails closed unless mode `0` is selected.
 
 ## Data path
 
@@ -124,14 +120,9 @@ build-aicpu/nds_npu_qp_client \
   --cpu-ip <cpu-roce-ip> \
   --tcp-port <control-port> \
   --submission-mode aicpu \
-  --aicpu-cpu-kernel-mode 0 \
   --aicpu-kernel-config <absolute-build-or-installed-path>/nds_aicpu_standard.json \
   --execute
 ```
-
-Diagnostic entry points for no-op, provider resolution, request reading,
-shared-pool binding, and post-attempt isolation exist, but they are not
-alternative production submission flows.
 
 ## HCOMM and HCCP reference basis
 
@@ -197,11 +188,11 @@ HCCP allocates AI-QP provider objects, shared queue memory, and RNIC doorbell
 mappings for standard CP1. In mode 0 the NDS kernel runs in that process and
 the normal-QP provider can access `sq.db_reg`.
 
-A mode-1 custom AICPU process can load the provider and can be joined to
-HCCP's shared-pool group, but it does not inherit CP1's RNIC doorbell mapping.
-Direct mapping/import and doorbell-forwarding experiments failed with
-`507018` (`ACL_ERROR_RT_AICPU_EXCEPTION`). CANN 9.0.0 exposes no supported API
-that makes this mode a replacement for CP1.
+An earlier custom AICPU experiment could load the provider and join HCCP's
+shared-pool group, but it did not inherit CP1's RNIC doorbell mapping. Direct
+mapping/import and doorbell-forwarding experiments failed with `507018`
+(`ACL_ERROR_RT_AICPU_EXCEPTION`). CANN 9.0.0 exposes no supported API that
+makes that model a replacement for CP1, so NDS no longer builds or exposes it.
 
 ### Package mechanism versus validation overlay
 

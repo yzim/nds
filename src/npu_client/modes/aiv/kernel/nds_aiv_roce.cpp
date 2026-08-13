@@ -8,12 +8,6 @@ using namespace AscendC;
 static const struct FunLevelKType kernel_name##_kernel_type_section __attribute__ \
 ((used, section (".ascend.meta." #kernel_name))) = {{F_TYPE_KTYPE, sizeof(unsigned int), K_TYPE_AIV}}
 
-extern "C" __global__ __aicore__ void NdsAivNoop(GM_ADDR request_address)
-{
-    (void)request_address;
-}
-NDS_EXPORT_AIV_META_INFO(NdsAivNoop);
-
 namespace {
 struct HnsRoceRcSqWqe {
     uint32_t byte_4;

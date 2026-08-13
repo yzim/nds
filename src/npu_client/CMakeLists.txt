@@ -13,7 +13,6 @@ target_compile_options(nds_npu_ra_qp PRIVATE -Wall -Wextra -Wpedantic -Werror)
 add_subdirectory(modes/host_ra)
 add_subdirectory(modes/aiv)
 add_subdirectory(modes/aicpu)
-add_subdirectory(probes)
 
 add_executable(nds_npu_qp_client client.cpp)
 target_link_libraries(nds_npu_qp_client PRIVATE

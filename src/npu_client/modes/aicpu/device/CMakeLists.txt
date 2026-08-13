@@ -10,12 +10,9 @@ if(NOT EXISTS "${NDS_AICPU_COMPILER}")
     message(FATAL_ERROR "CANN AICPU shared-library compiler not found: ${NDS_AICPU_COMPILER}")
 endif()
 
-set(NDS_AICPU_KERNEL_SO "libnds_aicpu_roce.so")
 set(NDS_AICPU_STANDARD_KERNEL_SO "libnds_aicpu_roce_standard.so")
 set(NDS_AICPU_OUTPUT_DIR "${CMAKE_BINARY_DIR}/aicpu")
-set(NDS_AICPU_KERNEL "${NDS_AICPU_OUTPUT_DIR}/${NDS_AICPU_KERNEL_SO}")
 set(NDS_AICPU_STANDARD_KERNEL "${NDS_AICPU_OUTPUT_DIR}/${NDS_AICPU_STANDARD_KERNEL_SO}")
-set(NDS_AICPU_CONFIG "${NDS_AICPU_OUTPUT_DIR}/libnds_aicpu_roce.json")
 set(NDS_AICPU_STANDARD_CONFIG "${NDS_AICPU_OUTPUT_DIR}/nds_aicpu_standard.json")
 set(NDS_AICPU_STANDARD_PACKAGE "${NDS_AICPU_OUTPUT_DIR}/aicpu_nds.tar.gz")
 
@@ -42,11 +39,8 @@ function(nds_add_aicpu_library output source)
         VERBATIM)
 endfunction()
 
-nds_add_aicpu_library("${NDS_AICPU_KERNEL}" "${CMAKE_CURRENT_SOURCE_DIR}/nds_aicpu_rdma_post.aicpu")
-nds_add_aicpu_library("${NDS_AICPU_STANDARD_KERNEL}" "${CMAKE_CURRENT_SOURCE_DIR}/nds_aicpu_rdma_post.aicpu"
-                      -DNDS_AICPU_STANDARD_CP1=1)
+nds_add_aicpu_library("${NDS_AICPU_STANDARD_KERNEL}" "${CMAKE_CURRENT_SOURCE_DIR}/nds_aicpu_rdma_post.aicpu")
 
-configure_file(package/nds_aicpu_roce.json.in "${NDS_AICPU_CONFIG}" @ONLY)
 configure_file(package/nds_aicpu_standard.json.in "${NDS_AICPU_STANDARD_CONFIG}" @ONLY)
 
 add_custom_command(
@@ -60,8 +54,6 @@ add_custom_command(
     VERBATIM)
 
 add_custom_target(nds_aicpu_kernel ALL DEPENDS
-    "${NDS_AICPU_KERNEL}"
     "${NDS_AICPU_STANDARD_KERNEL}"
-    "${NDS_AICPU_CONFIG}"
     "${NDS_AICPU_STANDARD_CONFIG}"
     "${NDS_AICPU_STANDARD_PACKAGE}")
