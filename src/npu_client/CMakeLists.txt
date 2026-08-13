@@ -46,6 +46,11 @@ target_include_directories(nds_aicpu_roce PUBLIC modes/aicpu/include)
 target_link_libraries(nds_aicpu_roce PUBLIC nds_ra_loader)
 target_compile_options(nds_aicpu_roce PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
+add_library(nds_storage_submission STATIC transport/storage_submission.cc)
+target_include_directories(nds_storage_submission PUBLIC transport)
+target_link_libraries(nds_storage_submission PUBLIC nds_npu_ra_context nds_npu_ra_qp nds_host_ra nds_aiv_roce nds_aicpu_roce)
+target_compile_options(nds_storage_submission PRIVATE -Wall -Wextra -Wpedantic -Werror)
+
 if(NDS_BUILD_AIV_KERNEL)
     if(NOT CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
         message(FATAL_ERROR "NDS AIV kernel is only built on an aarch64 CANN host")
@@ -130,5 +135,6 @@ target_link_libraries(nds_npu_qp_client PRIVATE
     nds_logging
     nds_host_ra
     nds_aiv_roce
-    nds_aicpu_roce)
+    nds_aicpu_roce
+    nds_storage_submission)
 target_compile_options(nds_npu_qp_client PRIVATE -Wall -Wextra -Wpedantic -Werror)

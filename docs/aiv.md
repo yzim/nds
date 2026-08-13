@@ -15,8 +15,7 @@ Host: poll copied NPU completion record
 
 `NdsAivRdmaPost` owns only the direct WQE/doorbell action. Opcode `0` is Send
 and has zero remote address/key; the ABI also retains opcode `3` for its narrow
-one-sided Write primitive. The storage path allows exactly one Send post per
-launch.
+one-sided Write primitive. The storage path posts exactly one command.
 
 ## Interfaces and Usage
 

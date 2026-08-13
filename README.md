@@ -47,9 +47,9 @@ host-RA local CQE are not this protocol completion.
 ## Repository layout
 
 ```text
-src/common/       TCP peer exchange, NDS wire format, and MTU policy
-src/npu_client/   NPU RA lifecycle, runtime loaders, submission modes, and probes
-src/cpu_server/   CPU `libibverbs` endpoint
+src/common/       Protocol records, TCP bootstrap, logging, and MTU policy
+src/npu_client/   NPU RA lifecycle, backend posters, and NPU transport session
+src/cpu_server/   CPU verbs connection and storage transport executor
 tests/            Unit tests and a test-only runtime fixture
 docs/             Resource lifecycle, modes, linkage, and implementation guides
 ```

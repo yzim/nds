@@ -26,9 +26,9 @@ NDS has validated one bounded storage Write in all three modes, and a Host RA
 Read from a fresh zeroed namespace. It has not published throughput or latency
 results.
 
-The initial protocol permits one command in flight on one RC QP. The AIV
-storage path permits one post per launch. Queueing, multi-QP sessions, and an
-NPU Receive-based completion option are tracked in [the roadmap](roadmap.md).
+The initial protocol permits one command in flight on one RC QP. Queueing,
+multi-QP sessions, and an NPU Receive-based completion option are tracked in
+[the roadmap](roadmap.md).
 
 - [Host RA](host-ra.md)
 - [AIV](aiv.md)

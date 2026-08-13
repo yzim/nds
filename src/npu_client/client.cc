@@ -1,11 +1,9 @@
-#include "nds/aicpu_roce.hh"
-#include "nds/aiv_roce.hh"
 #include "nds/peer_exchange.hh"
-#include "nds/host_ra.hh"
 #include "nds/logging.hh"
 #include "nds/npu_ra_context.hh"
 #include "nds/npu_ra_qp.hh"
 #include "nds/storage_protocol.h"
+#include "storage_submission.hh"
 
 #include <CLI/CLI.hpp>
 
@@ -25,7 +23,6 @@ namespace {
 constexpr std::uint64_t kMaxTransferBytes = 64U * 1024U;
 constexpr std::uint32_t kCompletionTimeoutMs = 5000U;
 constexpr std::uint32_t kMaxQpOnlyHoldMs = 60000U;
-constexpr std::uint32_t kMaxAivWriteCount = 16U;
 
 struct ClientConfig {
     nds::NpuRaContextConfig context{};
@@ -38,8 +35,6 @@ struct ClientConfig {
     std::uint32_t qp_only_hold_ms{0};
     std::string aicpu_kernel_config;
     std::string aiv_kernel;
-    std::uint32_t aiv_post_count{1U};
-    std::uint32_t aiv_launch_count{1U};
     std::string operation{"write"};
     std::uint64_t offset{};
     std::uint32_t bytes{4096U};
@@ -110,10 +105,6 @@ int parse_args(int argc, char **argv, ClientConfig *config, std::string &error, 
         ->check(CLI::IsMember({"host-ra", "aicpu", "aiv"}));
     app.add_option("--aicpu-kernel-config", config->aicpu_kernel_config, "AICPU kernel package configuration");
     app.add_option("--aiv-kernel", config->aiv_kernel, "AIV kernel binary");
-    app.add_option("--aiv-post-count", config->aiv_post_count, "Posts per AIV launch")
-        ->check(CLI::Range(std::uint32_t{1}, kMaxAivWriteCount));
-    app.add_option("--aiv-launch-count", config->aiv_launch_count, "AIV launches")
-        ->check(CLI::Range(std::uint32_t{1}, kMaxAivWriteCount));
     app.add_option("--operation", config->operation, "Storage operation")->check(CLI::IsMember({"read", "write"}));
     app.add_option("--offset", config->offset, "Namespace byte offset");
     app.add_option("--bytes", config->bytes, "Storage transfer length")
@@ -147,11 +138,7 @@ int parse_args(int argc, char **argv, ClientConfig *config, std::string &error, 
            !config->context.ascendcl_library.empty() && !config->context.runtime_library.empty() &&
            !config->context.ra_library.empty() && !config->qp.local_ipv4.empty() && !config->cpu_ipv4.empty() &&
            (config->qp.submission_mode != nds::NpuRaSubmissionMode::Aicpu || !config->aicpu_kernel_config.empty()) &&
-           (config->qp.submission_mode != nds::NpuRaSubmissionMode::Aiv || !config->aiv_kernel.empty()) &&
-           (config->qp.submission_mode == nds::NpuRaSubmissionMode::Aiv || config->aiv_post_count == 1U) &&
-           (config->qp.submission_mode == nds::NpuRaSubmissionMode::Aiv || config->aiv_launch_count == 1U) &&
-           (config->qp.submission_mode != nds::NpuRaSubmissionMode::Aiv ||
-            (config->aiv_post_count == 1U && config->aiv_launch_count == 1U)))) {
+           (config->qp.submission_mode != nds::NpuRaSubmissionMode::Aiv || !config->aiv_kernel.empty()))) {
         error = "invalid option combination";
         return -1;
     }
@@ -345,9 +332,6 @@ int main(int argc, char **argv)
     RegisteredMemory data_mr(qp);
     RegisteredMemory command_mr(qp);
     RegisteredMemory completion_mr(qp);
-    DeviceAllocation aiv_request_buffer(context);
-    nds::AicpuRdmaPostLauncher aicpu_launcher;
-    nds::AivRdmaPostLauncher aiv_launcher;
     nds_storage_completion pending{request_id, NDS_STORAGE_COMPLETION_PENDING, NDS_STORAGE_SUCCESS, 0U};
     nds_storage_completion_wire completion_wire{};
     char storage_error[NDS_STORAGE_ERROR_CAPACITY]{};
@@ -388,82 +372,14 @@ int main(int argc, char **argv)
     NDS_LOG_INFO_LINE("npu-client") << "NPU storage command MR: addr=" << device_command.get()
               << " bytes=" << sizeof(command_wire) << " lkey=" << command_mr.info().local_key << '\n';
     if (!print_qp_status(qp, "before storage command") || !print_port_status(qp, "before storage command")) return EXIT_FAILURE;
-    if (config.qp.submission_mode == nds::NpuRaSubmissionMode::HostRa) {
-        std::string submission_error;
-        const nds::HostRaPostRequest request{
-            {reinterpret_cast<std::uint64_t>(device_command.get()), static_cast<std::uint32_t>(sizeof(command_wire)),
-             command_mr.info().local_key}, NDS_RA_WR_SEND, 0U, 0U};
-        if (!nds::submit_host_ra(context, qp, request, submission_error)) {
-            NDS_LOG_ERROR_LINE("npu-client") << "host RA storage command submission failed: " << submission_error << '\n';
-            return EXIT_FAILURE;
-        }
-    } else if (config.qp.submission_mode == nds::NpuRaSubmissionMode::Aicpu) {
-        if (!qp.has_aicpu_qp_info() || !aicpu_launcher.load(context.acl_api(), config.aicpu_kernel_config)) {
-            NDS_LOG_ERROR_LINE("npu-client") << "NDS AICPU RDMA-post setup failed: "
-                      << (aicpu_launcher.error().empty() ? (qp.error().empty() ? context.error() : qp.error()) : aicpu_launcher.error())
-                      << '\n';
-            return EXIT_FAILURE;
-        }
-        const nds_ra_ai_qp_info &ai_qp = qp.aicpu_qp_info();
-        const nds::AicpuRdmaPostRequest request{
-            NDS_AICPU_SEND, ai_qp.ai_qp_address, command_mr.info().local_key, 0U,
-            reinterpret_cast<std::uint64_t>(device_command.get()), 0U, sizeof(command_wire), 1U,
-            static_cast<std::uint32_t>(config.context.logical_device_id)};
-        if (!aicpu_launcher.launch_and_wait(request, static_cast<std::int32_t>(kCompletionTimeoutMs))) {
-            NDS_LOG_ERROR_LINE("npu-client") << "NdsAicpuRdmaPost failed: " << aicpu_launcher.error() << '\n';
-            return EXIT_FAILURE;
-        }
-    } else {
-        if (!qp.has_aicpu_qp_info()) {
-            NDS_LOG_ERROR_LINE("npu-client") << "NDS AIV resource setup failed: RaAiQpCreate returned no AI-QP metadata\n";
-            return EXIT_FAILURE;
-        }
-        const nds_ra_ai_qp_info &ai_qp = qp.aicpu_qp_info();
-        if (ai_qp.data_plane_info == nullptr) {
-            NDS_LOG_ERROR_LINE("npu-client") << "NDS AIV resource setup failed: RaAiQpCreate returned no AI data-plane metadata\n";
-            return EXIT_FAILURE;
-        }
-        const auto *data_plane = reinterpret_cast<const nds_ra_ai_data_plane_info *>(ai_qp.data_plane_info);
-        nds_aiv_rdma_post_request device_request{};
-        const nds::AivRdmaPostRequest request{
-            data_plane->send_wq, config.qp.service_level, NDS_AIV_SEND, command_mr.info().local_key, 0U,
-            reinterpret_cast<std::uint64_t>(device_command.get()), 0U,
-            static_cast<std::uint32_t>(sizeof(command_wire)), config.aiv_post_count};
-        NDS_LOG_INFO_LINE("npu-client") << "NPU AIV SQ: wqn=" << data_plane->send_wq.wqn
-                  << " buf=0x" << std::hex << data_plane->send_wq.buffer_address
-                  << " wqebb=" << std::dec << data_plane->send_wq.wqebb_size
-                  << " depth=" << data_plane->send_wq.depth
-                  << " head=0x" << std::hex << data_plane->send_wq.head_address
-                  << " tail=0x" << data_plane->send_wq.tail_address
-                  << " swdb=0x" << data_plane->send_wq.software_doorbell_address
-                  << " dbreg=0x" << data_plane->send_wq.doorbell_register_address << std::dec << '\n';
-        if (!aiv_launcher.load(context.acl_api(), config.aiv_kernel)) {
-            NDS_LOG_ERROR_LINE("npu-client") << "NDS AIV binary setup failed: " << aiv_launcher.error() << '\n';
-            return EXIT_FAILURE;
-        }
-        if (!aiv_launcher.make_device_request(request, &device_request)) {
-            NDS_LOG_ERROR_LINE("npu-client") << "NDS AIV request setup failed: " << aiv_launcher.error() << '\n';
-            return EXIT_FAILURE;
-        }
-        if (!aiv_request_buffer.allocate(sizeof(device_request))) {
-            NDS_LOG_ERROR_LINE("npu-client") << "NDS AIV request allocation failed: " << context.error() << '\n';
-            return EXIT_FAILURE;
-        }
-        if (!context.copy_host_to_device(aiv_request_buffer.get(), &device_request, sizeof(device_request))) {
-            NDS_LOG_ERROR_LINE("npu-client") << "NDS AIV request copy failed: " << context.error() << '\n';
-            return EXIT_FAILURE;
-        }
-        for (std::uint32_t launch = 0U; launch < config.aiv_launch_count; ++launch) {
-            if (!aiv_launcher.launch_post_and_wait(reinterpret_cast<std::uint64_t>(aiv_request_buffer.get()),
-                                                    static_cast<std::int32_t>(kCompletionTimeoutMs))) {
-                NDS_LOG_ERROR_LINE("npu-client") << "NdsAivRdmaPost launch " << (launch + 1U) << "/" << config.aiv_launch_count
-                          << " failed: " << aiv_launcher.error() << '\n';
-                return EXIT_FAILURE;
-            }
-        }
-        NDS_LOG_INFO_LINE("npu-client") << "NDS AIV completed " << config.aiv_launch_count << " kernel launches and posted "
-                  << (config.aiv_launch_count * config.aiv_post_count)
-                  << " signaled AIV Send posts through the AI SQ hardware doorbell.\n";
+    std::string submission_error;
+    const nds::StorageSubmissionConfig submission_config{config.qp.submission_mode,
+        config.context.logical_device_id, config.qp.service_level, config.aicpu_kernel_config, config.aiv_kernel};
+    if (!nds::submit_storage_command(context, qp, submission_config,
+                                     reinterpret_cast<std::uint64_t>(device_command.get()), sizeof(command_wire),
+                                     command_mr.info().local_key, submission_error)) {
+        NDS_LOG_ERROR_LINE("npu-client") << "storage command submission failed: " << submission_error << '\n';
+        return EXIT_FAILURE;
     }
     if (!wait_for_storage_completion(context, device_completion, request_id, config.bytes)) return EXIT_FAILURE;
     if (operation == NDS_STORAGE_READ) {

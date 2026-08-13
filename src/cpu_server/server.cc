@@ -5,6 +5,7 @@
 #include "nds/rdma_wire_codec.h"
 #include "nds/logging.hh"
 #include "nds/storage_protocol.h"
+#include "transport/storage_execution.hh"
 
 #include <CLI/CLI.hpp>
 
@@ -357,75 +358,6 @@ static int post_command_receive(struct nds_verbs_resources *resources)
     return 0;
 }
 
-static int poll_completion(struct nds_verbs_resources *resources, enum ibv_wc_opcode expected_opcode)
-{
-    const timespec delay{0, 1000000L};
-    for (unsigned int elapsed = 0U; elapsed < NDS_TRANSFER_WAIT_MS; ++elapsed) {
-        ibv_wc completion{};
-        const int count = ibv_poll_cq(resources->cq, 1, &completion);
-        if (count < 0 || (count == 1 && (completion.status != IBV_WC_SUCCESS || completion.opcode != expected_opcode))) {
-            NDS_LOG_ERRORF("cpu-server", "unexpected CQ completion: count=%d status=%d opcode=%d\n", count,
-                           count == 1 ? completion.status : -1, count == 1 ? completion.opcode : -1);
-            return -1;
-        }
-        if (count == 1) return 0;
-        (void)nanosleep(&delay, nullptr);
-    }
-    NDS_LOG_ERROR("cpu-server", "timed out waiting for verbs CQ completion");
-    return -1;
-}
-
-static int post_storage_operation(struct nds_verbs_resources *resources, const nds_storage_command *command,
-                                  const nds_storage_bootstrap *bootstrap)
-{
-    ibv_sge data_sge{};
-    ibv_sge completion_sge{};
-    ibv_send_wr data{};
-    ibv_send_wr completion{};
-    ibv_send_wr *bad = nullptr;
-    nds_storage_completion response{command->request_id, NDS_STORAGE_COMPLETION_COMPLETE, NDS_STORAGE_SUCCESS, command->length};
-    char error[NDS_STORAGE_ERROR_CAPACITY]{};
-
-    if (command->offset > resources->namespace_buffer.size() || command->length > resources->namespace_buffer.size() - command->offset) {
-        response.status = NDS_STORAGE_RANGE_ERROR;
-        response.bytes_transferred = 0U;
-    }
-    if (nds_storage_completion_encode(&response, &resources->completion, error) != 0) {
-        NDS_LOG_ERRORF("cpu-server", "cannot encode completion: %s\n", error);
-        return -1;
-    }
-    completion_sge.addr = reinterpret_cast<std::uintptr_t>(&resources->completion);
-    completion_sge.length = sizeof(nds_storage_completion_wire);
-    completion_sge.lkey = resources->completion_mr->lkey;
-    completion.wr_id = 3U;
-    completion.sg_list = &completion_sge;
-    completion.num_sge = 1;
-    completion.opcode = IBV_WR_RDMA_WRITE;
-    completion.send_flags = IBV_SEND_SIGNALED;
-    completion.wr.rdma.remote_addr = bootstrap->completion.address;
-    completion.wr.rdma.rkey = bootstrap->completion.rkey;
-    if (response.status == NDS_STORAGE_SUCCESS) {
-        data_sge.addr = reinterpret_cast<std::uintptr_t>(resources->namespace_buffer.data() + command->offset);
-        data_sge.length = static_cast<uint32_t>(command->length);
-        data_sge.lkey = resources->namespace_mr->lkey;
-        data.wr_id = 2U;
-        data.sg_list = &data_sge;
-        data.num_sge = 1;
-        data.opcode = command->operation == NDS_STORAGE_READ ? IBV_WR_RDMA_WRITE : IBV_WR_RDMA_READ;
-        data.wr.rdma.remote_addr = command->data.address;
-        data.wr.rdma.rkey = command->data.rkey;
-        data.next = &completion;
-        if (ibv_post_send(resources->qp, &data, &bad) != 0) {
-            NDS_LOG_ERROR("cpu-server", "{}: {}", "ibv_post_send(storage data)", strerror(errno));
-            return -1;
-        }
-    } else if (ibv_post_send(resources->qp, &completion, &bad) != 0) {
-        NDS_LOG_ERROR("cpu-server", "{}: {}", "ibv_post_send(range completion)", strerror(errno));
-        return -1;
-    }
-    return poll_completion(resources, IBV_WC_RDMA_WRITE);
-}
-
 static int move_qp_to_init(const struct nds_verbs_resources *resources,
                            const struct nds_server_config *config)
 {
@@ -770,12 +702,14 @@ static int run_server(int argc, char **argv)
         NDS_LOG_ERROR_LINE("cpu-server") << "CPU namespace bootstrap failed: " << exchange_error << '\n';
         return EXIT_FAILURE;
     }
-    if (poll_completion(&resources, IBV_WC_RECV) != 0 ||
+    if (!nds::poll_cpu_completion(resources.cq, IBV_WC_RECV, NDS_TRANSFER_WAIT_MS, "cpu-server") ||
         nds_storage_command_decode(&resources.command, &command, wire_error) != 0) {
         NDS_LOG_ERRORF("cpu-server", "invalid NDS storage command: %s\n", wire_error);
         return EXIT_FAILURE;
     }
-    if (post_storage_operation(&resources, &command, &bootstrap) != 0) return EXIT_FAILURE;
+    nds::CpuStorageTransport storage_transport{resources.qp, resources.cq, &resources.namespace_buffer,
+                                                resources.namespace_mr, &resources.completion, resources.completion_mr};
+    if (!nds::execute_storage_command(storage_transport, command, bootstrap, NDS_TRANSFER_WAIT_MS, "cpu-server")) return EXIT_FAILURE;
     if (report_qp(&resources, "after storage completion") != 0) return EXIT_FAILURE;
     hold_for_passive_diagnostics(config.post_close_hold_ms);
     NDS_LOG_INFOF("cpu-server", "completed NDS storage command request_id=%llu operation=%u bytes=%llu\n",
