@@ -21,6 +21,12 @@ This is a one-NPU/one-CPU path. It is not an HCCL job: it does not initialize
 HCOMM or HCCL, consume a rank table, or require a second NPU. The CPU endpoint
 is CANN-free.
 
+NDS's lifecycle, provider-ABI, and queue/doorbell design was learned from the
+public HCOMM, HCCL, patched rdma-core, upstream RDMA, and Ascend repositories.
+These sources are reference evidence only: NDS neither vendors nor links their
+implementation code, and the installed CANN/driver ABI plus bounded target
+experiments remain authoritative. See [open-source reference basis](docs/open-source-references.md).
+
 ## NPU backends
 
 NDS provides three backends for the NPU endpoint.
@@ -124,5 +130,6 @@ the system `spdlog` and CLI11 development packages.
 - [AIV](docs/aiv.md)
 - [AICPU](docs/aicpu.md)
 - [Linkage and runtime ABI](docs/linkage.md)
+- [Open-source reference basis](docs/open-source-references.md)
 - [Testing](docs/testing.md)
 - [Protocol roadmap](docs/roadmap.md)

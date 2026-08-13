@@ -23,6 +23,28 @@ The production interoperability path does **not** use HCOMM, HCCL, TSD, a rank t
 
 We thank the maintainers and contributors of the open-source [HCCL](https://gitcode.com/cann/hccl) and [HCOMM](https://gitcode.com/cann/hcomm) projects. The technical basis for NDS lifecycle, transport, and ABI validation is based on information already publicly available through those projects. HCCP source under HCOMM is especially relevant to RA. The installed CANN shared objects are authoritative at runtime.
 
+### HNS provider reference
+
+The matching HCOMM v9.0.0 checkout fetches a Huawei-patched rdma-core 42.7
+source tree. Its configuration builds the `kern-abi` target for generated ABI
+headers; it does not build or install an HNS provider shared object for NDS.
+The patched `providers/hns` source is nevertheless useful reference evidence
+for the userspace HNS ABI. In particular, it documents:
+
+- SQ and RQ WQE layouts, field packing, producer-index updates, and ordering
+  barriers.
+- SCQ and RCQ CQE parsing, consumer-index updates, and ownership handling.
+- The choice between a record doorbell (`sdb`, `rdb`, or CQ `db`) and an MMIO
+  hardware-doorbell write.
+- The custom data-plane export of queue buffers, indices, record-doorbell
+  addresses, and hardware-doorbell-register addresses.
+
+This source is not the deployed kernel driver, RNIC firmware, or a guarantee
+that the installed provider has identical behavior. It is appropriate for
+understanding the expected byte layout and bit operations, but NDS must not
+copy or link it. The selected CANN/driver provider, its resolved symbols, and
+a bounded target experiment remain the runtime compatibility authority.
+
 ## Dynamic-loader invariants
 
 1. All CANN libraries used by one NPU process must come from one selected CANN release.
