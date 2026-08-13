@@ -495,6 +495,12 @@ void test_send_wr_and_polling()
     assert(fake.send_wr.opcode == NDS_RA_WR_RDMA_WRITE);
     assert(fake.send_wr.send_flags == NDS_RA_SEND_SIGNALED);
     assert(response.wqe.sq_index == 17U && response.wqe.wqe_index == 23U);
+    assert(!qp.post_send({0x1000U, 64U, 0x99U}, NDS_RA_WR_SEND, 0x2000U, 0x88U, true, response));
+    assert(qp.post_send({0x1000U, 64U, 0x99U}, NDS_RA_WR_SEND, 0U, 0U, true, response));
+    assert(fake.send_wr_calls == 2);
+    assert(fake.send_wr.remote_address == 0U);
+    assert(fake.send_wr.remote_key == 0U);
+    assert(fake.send_wr.opcode == NDS_RA_WR_SEND);
     fake.poll_result = 0;
     assert(qp.poll_send_completions(&completion, 1U) == 0);
     fake.poll_result = 1;

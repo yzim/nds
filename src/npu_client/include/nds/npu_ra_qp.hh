@@ -51,6 +51,8 @@ public:
     bool make_qp_only_endpoint(nds_rc_endpoint &endpoint);
     bool register_memory(void *address, std::uint64_t size, int access, nds_ra_mr_info &info, void **mr_handle);
     bool deregister_memory(void *mr_handle);
+    bool post_send(const nds_ra_sge &source, std::uint32_t opcode, std::uint64_t remote_address,
+                   std::uint32_t remote_key, bool signaled, nds_ra_send_response &response);
     bool post_rdma_write(const nds_ra_sge &source, std::uint64_t remote_address, std::uint32_t remote_key,
                          bool signaled, nds_ra_send_response &response);
     int poll_send_completions(nds_ra_completion *completions, std::uint32_t max_entries);

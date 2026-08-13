@@ -32,6 +32,8 @@ enum {
     /* HCOMM v9.0.0 TransportDirectNpu::RegUserMem access policy. */
     NDS_RA_ACCESS_DIRECT_NPU = NDS_RA_ACCESS_LOCAL_WRITE | NDS_RA_ACCESS_REMOTE_WRITE | NDS_RA_ACCESS_REMOTE_READ,
     NDS_RA_WR_RDMA_WRITE = 0,
+    NDS_RA_WR_SEND = 2,
+    NDS_RA_WR_RDMA_READ = 4,
     NDS_RA_SEND_SIGNALED = 1 << 1,
     /* rdma_lite_wc_status values returned through RaPollCq for an OPBASE Lite QP. */
     NDS_RA_WC_SUCCESS = 0,

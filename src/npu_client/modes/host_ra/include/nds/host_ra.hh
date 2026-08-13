@@ -9,14 +9,15 @@
 
 namespace nds {
 
-struct HostRaWriteRequest {
+struct HostRaPostRequest {
     nds_ra_sge source{};
+    std::uint32_t opcode{NDS_RA_WR_SEND};
     std::uint64_t remote_address{};
     std::uint32_t remote_key{};
 };
 
-bool submit_host_ra_write(NpuRaContext &context, NpuRaQp &qp,
-                          const HostRaWriteRequest &request, std::string &error);
+bool submit_host_ra(NpuRaContext &context, NpuRaQp &qp,
+                    const HostRaPostRequest &request, std::string &error);
 
 } // namespace nds
 

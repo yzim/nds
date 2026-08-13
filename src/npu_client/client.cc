@@ -389,12 +389,13 @@ int main(int argc, char **argv)
     if (!print_qp_status(qp, "before RDMA Write") || !print_port_status(qp, "before RDMA Write")) return EXIT_FAILURE;
     if (config.qp.submission_mode == nds::NpuRaSubmissionMode::HostRa) {
         std::string submission_error;
-        const nds::HostRaWriteRequest request{
+        const nds::HostRaPostRequest request{
             {reinterpret_cast<std::uint64_t>(device_buffer.get()), static_cast<std::uint32_t>(destination.length),
              source_mr.info().local_key},
+            NDS_RA_WR_RDMA_WRITE,
             destination.address,
             destination.rkey};
-        if (!nds::submit_host_ra_write(context, qp, request, submission_error)) {
+        if (!nds::submit_host_ra(context, qp, request, submission_error)) {
             NDS_LOG_ERROR_LINE("npu-client") << "host RA RDMA Write submission failed: " << submission_error << '\n';
             return EXIT_FAILURE;
         }

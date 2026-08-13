@@ -231,23 +231,25 @@ bool NpuRaQp::deregister_memory(void *mr_handle)
     return true;
 }
 
-bool NpuRaQp::post_rdma_write(const nds_ra_sge &source, std::uint64_t remote_address,
-                              std::uint32_t remote_key, bool signaled, nds_ra_send_response &response)
+bool NpuRaQp::post_send(const nds_ra_sge &source, std::uint32_t opcode, std::uint64_t remote_address,
+                        std::uint32_t remote_key, bool signaled, nds_ra_send_response &response)
 {
     nds_ra_sge local = source;
     nds_ra_send_wr wr{};
     int result;
 
     if (!connected_ || local.address == 0U || local.length == 0U || local.local_key == 0U ||
-        remote_address == 0U || remote_key == 0U) {
-        set_error("RDMA write requires a connected QP, one valid local SGE, and valid remote memory metadata");
+        (opcode != NDS_RA_WR_SEND && opcode != NDS_RA_WR_RDMA_WRITE && opcode != NDS_RA_WR_RDMA_READ) ||
+        (opcode != NDS_RA_WR_SEND && (remote_address == 0U || remote_key == 0U)) ||
+        (opcode == NDS_RA_WR_SEND && (remote_address != 0U || remote_key != 0U))) {
+        set_error("post requires a connected QP, valid local SGE, supported opcode, and matching remote-memory metadata");
         return false;
     }
     wr.buffers = &local;
     wr.buffer_count = 1U;
     wr.remote_address = remote_address;
     wr.remote_key = remote_key;
-    wr.opcode = NDS_RA_WR_RDMA_WRITE;
+    wr.opcode = opcode;
     wr.send_flags = signaled ? NDS_RA_SEND_SIGNALED : 0;
     response = {};
     result = api_->ra_typical_send_wr(qp_handle_, &wr, &response);
@@ -257,6 +259,12 @@ bool NpuRaQp::post_rdma_write(const nds_ra_sge &source, std::uint64_t remote_add
     }
     error_.clear();
     return true;
+}
+
+bool NpuRaQp::post_rdma_write(const nds_ra_sge &source, std::uint64_t remote_address,
+                              std::uint32_t remote_key, bool signaled, nds_ra_send_response &response)
+{
+    return post_send(source, NDS_RA_WR_RDMA_WRITE, remote_address, remote_key, signaled, response);
 }
 
 bool NpuRaQp::query_cqe_errors(nds_ra_cqe_error *errors, std::uint32_t &count)
