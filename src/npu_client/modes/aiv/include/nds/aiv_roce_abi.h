@@ -3,7 +3,12 @@
 
 #include <stdint.h>
 
-#define NDS_AIV_ROCE_ABI_VERSION UINT32_C(1)
+#define NDS_AIV_ROCE_ABI_VERSION UINT32_C(2)
+
+enum nds_aiv_rdma_opcode {
+    NDS_AIV_SEND = 0U,
+    NDS_AIV_RDMA_WRITE = 3U,
+};
 
 /*
  * NDS-owned, compact AIV request. The descriptor is copied from the HCCP
@@ -23,24 +28,25 @@ typedef struct nds_aiv_sq_descriptor {
     uint32_t reserved_1;
 } nds_aiv_sq_descriptor;
 
-typedef struct nds_aiv_rdma_write_request {
+typedef struct nds_aiv_rdma_post_request {
     uint32_t abi_version;
     uint32_t size;
     nds_aiv_sq_descriptor send_queue;
+    uint32_t opcode;
     uint32_t local_lkey;
     uint32_t remote_rkey;
     uint64_t local_address;
     uint64_t remote_address;
     uint32_t length;
-    uint32_t write_count;
-} nds_aiv_rdma_write_request;
+    uint32_t post_count;
+} nds_aiv_rdma_post_request;
 
 #if defined(__cplusplus)
 static_assert(sizeof(nds_aiv_sq_descriptor) == 56, "NDS AIV SQ descriptor ABI must remain 56 bytes");
-static_assert(sizeof(nds_aiv_rdma_write_request) == 96, "NDS AIV Write request ABI must remain 96 bytes");
+static_assert(sizeof(nds_aiv_rdma_post_request) == 104, "NDS AIV post request ABI must remain 104 bytes");
 #else
 _Static_assert(sizeof(nds_aiv_sq_descriptor) == 56, "NDS AIV SQ descriptor ABI must remain 56 bytes");
-_Static_assert(sizeof(nds_aiv_rdma_write_request) == 96, "NDS AIV Write request ABI must remain 96 bytes");
+_Static_assert(sizeof(nds_aiv_rdma_post_request) == 104, "NDS AIV post request ABI must remain 104 bytes");
 #endif
 
 #endif

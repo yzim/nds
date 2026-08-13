@@ -47,10 +47,10 @@ __aicore__ inline void StoreU64WithDma(TBuf<> &scratch, __gm__ uint64_t *destina
 }
 } // namespace
 
-extern "C" __global__ __aicore__ void NdsAivRdmaWrite(GM_ADDR request_address)
+extern "C" __global__ __aicore__ void NdsAivRdmaPost(GM_ADDR request_address)
 {
-    __gm__ const nds_aiv_rdma_write_request *request =
-        reinterpret_cast<__gm__ const nds_aiv_rdma_write_request *>(request_address);
+    __gm__ const nds_aiv_rdma_post_request *request =
+        reinterpret_cast<__gm__ const nds_aiv_rdma_post_request *>(request_address);
     __gm__ const nds_aiv_sq_descriptor *queue = &request->send_queue;
     __gm__ uint32_t *head_address = reinterpret_cast<__gm__ uint32_t *>(queue->head_address);
     __gm__ uint32_t *tail_address = reinterpret_cast<__gm__ uint32_t *>(queue->tail_address);
@@ -58,7 +58,7 @@ extern "C" __global__ __aicore__ void NdsAivRdmaWrite(GM_ADDR request_address)
     TPipe pipe;
     TBuf<> scratch;
     pipe.InitBuffer(scratch, 64U);
-    for (uint32_t index = 0U; index < request->write_count; ++index) {
+    for (uint32_t index = 0U; index < request->post_count; ++index) {
         CacheWriteThrough(reinterpret_cast<__gm__ uint8_t *>(head_address), sizeof(uint64_t));
         const uint32_t head = *head_address;
         while ((head - *tail_address) >= queue->depth - 1U) {
@@ -68,13 +68,13 @@ extern "C" __global__ __aicore__ void NdsAivRdmaWrite(GM_ADDR request_address)
             queue->buffer_address + (uint64_t)queue->wqebb_size * (head % queue->depth));
         const uint32_t owner_bit = (head >> 15U) & 1U;
         __gm__ HnsRoceRcSqWqe *wqe = reinterpret_cast<__gm__ HnsRoceRcSqWqe *>(wqe_address);
-        wqe->byte_4 = 3U | (((~owner_bit) << 7U) & (1U << 7U)) | (1U << 8U);
+        wqe->byte_4 = request->opcode | (((~owner_bit) << 7U) & (1U << 7U)) | (1U << 8U);
         wqe->message_length = request->length;
         wqe->immediate_data = 0U;
         wqe->sge_count = 1U << 24U;
         wqe->start_sge_index = 0U;
-        wqe->remote_key = request->remote_rkey;
-        wqe->remote_address = request->remote_address;
+        wqe->remote_key = request->opcode == NDS_AIV_SEND ? 0U : request->remote_rkey;
+        wqe->remote_address = request->opcode == NDS_AIV_SEND ? 0U : request->remote_address;
         __gm__ HnsRoceSge *sge = reinterpret_cast<__gm__ HnsRoceSge *>(wqe_address + sizeof(HnsRoceRcSqWqe));
         sge->length = request->length;
         sge->local_key = request->local_lkey;
@@ -90,4 +90,4 @@ extern "C" __global__ __aicore__ void NdsAivRdmaWrite(GM_ADDR request_address)
         PipeBarrier<PIPE_ALL>();
     }
 }
-NDS_EXPORT_AIV_META_INFO(NdsAivRdmaWrite);
+NDS_EXPORT_AIV_META_INFO(NdsAivRdmaPost);
