@@ -9,7 +9,7 @@
 #include <thread>
 #include <unistd.h>
 
-namespace nds::cpu {
+namespace nds::server {
 namespace {
 
 constexpr std::uint32_t kQpDepth = 16U;
@@ -268,4 +268,4 @@ const nds_transport_endpoint &VerbsBackend::local_endpoint() const noexcept {
     return local_;
 }
 
-}  // namespace nds::cpu
+}  // namespace nds::server

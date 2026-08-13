@@ -1,5 +1,5 @@
-#ifndef NDS_CPU_TRANSPORT_HH
-#define NDS_CPU_TRANSPORT_HH
+#ifndef NDS_SERVER_TRANSPORT_HH
+#define NDS_SERVER_TRANSPORT_HH
 
 #include "backend.hh"
 #include "nds/transport.hh"
@@ -7,7 +7,7 @@
 #include <cstdint>
 #include <string>
 
-namespace nds::cpu {
+namespace nds::server {
 
 enum class MemoryAccess {
     LocalRead,
@@ -40,5 +40,5 @@ private:
     nds_transport_endpoint_wire local_wire_{};
 };
 
-}  // namespace nds::cpu
+}  // namespace nds::server
 #endif

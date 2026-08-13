@@ -1,5 +1,5 @@
-#ifndef NDS_NPU_TRANSPORT_HH
-#define NDS_NPU_TRANSPORT_HH
+#ifndef NDS_CLIENT_TRANSPORT_HH
+#define NDS_CLIENT_TRANSPORT_HH
 
 #include "backend/backend.hh"
 #include "nds/npu_ra_context.hh"
@@ -10,7 +10,7 @@
 #include <cstdint>
 #include <string>
 
-namespace nds::npu {
+namespace nds::client {
 
 struct ConnectionConfig {
     NpuRaContextConfig context;
@@ -83,6 +83,6 @@ private:
     nds_transport_endpoint local_{};
 };
 
-}  // namespace nds::npu
+}  // namespace nds::client
 
 #endif

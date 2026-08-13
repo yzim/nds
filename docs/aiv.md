@@ -19,10 +19,10 @@ one-sided Write primitive. The storage path posts exactly one command.
 
 ## Interfaces and Usage
 
-- ABI: `src/npu_client/backend/aiv/include/nds/aiv_roce_abi.h`.
-- Kernel: `src/npu_client/backend/aiv/kernel/nds_aiv_roce.cc`, entry
+- ABI: `src/client/backend/aiv/include/nds/aiv_roce_abi.h`.
+- Kernel: `src/client/backend/aiv/kernel/nds_aiv_roce.cc`, entry
   `NdsAivRdmaPost`.
-- Host launcher: `src/npu_client/backend/aiv/launcher.cc`.
+- Host launcher: `src/client/backend/aiv/launcher.cc`.
 
 Build on the target only:
 

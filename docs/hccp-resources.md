@@ -7,8 +7,8 @@ and teardown. Mode-specific posting and CQ handling are described in
 [NPU backends](modes.md).
 
 In the source tree, HCCP lifecycle code is backend support under
-`src/npu_client/backend/support`; mode-specific posting remains under
-`src/npu_client/backend/host_ra`, `aiv`, and `aicpu`. The transport connection
+`src/client/backend/support`; mode-specific posting remains under
+`src/client/backend/host_ra`, `aiv`, and `aicpu`. The transport connection
 uses those resources without exposing HCCP handles to the storage protocol.
 
 ## Ownership model

@@ -11,12 +11,12 @@ Application -> Storage protocol -> Transport connection -> Backend
 
 ```text
 src/
-  npu_client/
+  client/         NPU-attached endpoint
     main.cc        CLI, application buffers, and workload verification
     protocol.*     NPU side of the storage command and completion flow
     transport.*    one connected NPU-to-CPU transport session
     backend/       host_ra, aiv, aicpu, and their shared RA support
-  cpu_server/
+  server/         CPU-side endpoint
     main.cc        CLI and memory-backed namespace ownership
     protocol.*     command decode, range checks, data movement, completion
     transport.*    one connected CPU-to-NPU transport session
@@ -33,7 +33,7 @@ Backends own resource and work-request mechanics. The NPU backend creates and
 registers resources through the dynamically loaded CANN RA boundary, then
 posts Send through exactly one selected implementation: `host_ra`, `aiv`, or
 `aicpu`. RA contexts, QPs, and runtime loaders are implementation support under
-`npu_client/backend/support`; they are not a fourth mode.
+`client/backend/support`; they are not a fourth mode.
 
 The CPU backend owns `libibverbs` context, PD, CQ, RC QP, MR registration,
 Receive posting, RDMA Read/Write posting, and CQ polling. Backend interfaces do

@@ -18,10 +18,10 @@ rings its normal-QP doorbell; provider-OP mode only returns doorbell metadata.
 
 ## Interfaces and Usage
 
-- Request ABI: `src/npu_client/backend/aicpu/include/nds/aicpu_roce_abi.h`.
-- CP1 source: `src/npu_client/backend/aicpu/device/nds_aicpu_rdma_post.aicpu`.
+- Request ABI: `src/client/backend/aicpu/include/nds/aicpu_roce_abi.h`.
+- CP1 source: `src/client/backend/aicpu/device/nds_aicpu_rdma_post.aicpu`.
 - Entry point: `NdsAicpuRdmaPost`.
-- Package manifest: `src/npu_client/backend/aicpu/device/package/nds_aicpu_standard.json.in`.
+- Package manifest: `src/client/backend/aicpu/device/package/nds_aicpu_standard.json.in`.
 
 Build on the matching target:
 

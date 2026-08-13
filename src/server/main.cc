@@ -11,7 +11,7 @@
 
 namespace {
 struct Config {
-    nds::cpu::ConnectionConfig connection;
+    nds::server::ConnectionConfig connection;
     std::uint32_t namespace_bytes{1024U * 1024U};
     std::string log_sink{"stderr"};
     std::string log_level{"info"};
@@ -50,13 +50,13 @@ int main(int argc, char **argv) {
         return result;
     if (!nds::log::configure("cpu-server", config.log_sink, config.log_level, &error))
         return EXIT_FAILURE;
-    nds::cpu::Connection connection;
+    nds::server::Connection connection;
     if (!connection.open(config.connection, &error)) {
         NDS_LOG_ERROR("cpu-server", "CPU transport connection failed: {}", error);
         return EXIT_FAILURE;
     }
     std::vector<unsigned char> storage(config.namespace_bytes, 0U);
-    if (!nds::cpu::serve_storage_request(&connection, &storage, 5000U, &error)) {
+    if (!nds::server::serve_storage_request(&connection, &storage, 5000U, &error)) {
         NDS_LOG_ERROR("cpu-server", "storage protocol failed: {}", error);
         return EXIT_FAILURE;
     }

@@ -15,7 +15,7 @@ namespace {
 
 constexpr std::uint64_t kMaxTransferBytes = 64U * 1024U;
 struct ClientConfig {
-    nds::npu::ConnectionConfig connection;
+    nds::client::ConnectionConfig connection;
     std::string operation{"write"};
     std::uint64_t offset{};
     std::uint32_t bytes{4096U};
@@ -98,7 +98,7 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
 
-    nds::npu::Connection connection;
+    nds::client::Connection connection;
     if (!connection.open(config.connection, &error)) {
         NDS_LOG_ERROR("npu-client", "NPU transport connection failed: {}", error);
         return EXIT_FAILURE;
@@ -107,7 +107,7 @@ int main(int argc, char **argv) {
     for (std::size_t index = 0; index < payload.size(); ++index) {
         payload[index] = static_cast<unsigned char>(index ^ 0x5aU);
     }
-    nds::npu::DeviceBuffer data;
+    nds::client::DeviceBuffer data;
     if (!connection.allocate(payload.size(), &data, &error) ||
         !connection.copy_to_device(&data, payload.data(), payload.size(), &error)) {
         NDS_LOG_ERROR("npu-client", "NPU application buffer setup failed: {}", error);
@@ -117,8 +117,8 @@ int main(int argc, char **argv) {
     const std::uint16_t operation = config.operation == "read" ? NDS_STORAGE_READ : NDS_STORAGE_WRITE;
     const nds_transport_endpoint &local = connection.local_endpoint();
     const std::uint64_t request_id = (static_cast<std::uint64_t>(local.qp_num) << 32U) | local.psn;
-    if (!nds::npu::execute_storage_request(&connection, {request_id, operation, config.offset, config.bytes, &data},
-                                           &error)) {
+    if (!nds::client::execute_storage_request(&connection, {request_id, operation, config.offset, config.bytes, &data},
+                                              &error)) {
         NDS_LOG_ERROR("npu-client", "storage protocol failed: {}", error);
         return EXIT_FAILURE;
     }

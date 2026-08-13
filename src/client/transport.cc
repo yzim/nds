@@ -1,6 +1,6 @@
 #include "transport.hh"
 
-namespace nds::npu {
+namespace nds::client {
 
 DeviceBuffer::~DeviceBuffer() {
     if (context_ != nullptr && data_ != nullptr)
@@ -134,4 +134,4 @@ bool Connection::ready(std::string *error) {
     return true;
 }
 
-}  // namespace nds::npu
+}  // namespace nds::client

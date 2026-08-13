@@ -1,12 +1,12 @@
-#ifndef NDS_NPU_PROTOCOL_HH
-#define NDS_NPU_PROTOCOL_HH
+#ifndef NDS_CLIENT_PROTOCOL_HH
+#define NDS_CLIENT_PROTOCOL_HH
 
 #include "transport.hh"
 
 #include <cstdint>
 #include <string>
 
-namespace nds::npu {
+namespace nds::client {
 
 struct StorageRequest {
     std::uint64_t request_id{};
@@ -18,6 +18,6 @@ struct StorageRequest {
 
 bool execute_storage_request(Connection *connection, const StorageRequest &request, std::string *error);
 
-}  // namespace nds::npu
+}  // namespace nds::client
 
 #endif

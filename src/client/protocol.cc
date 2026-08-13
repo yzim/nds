@@ -5,7 +5,7 @@
 #include <chrono>
 #include <thread>
 
-namespace nds::npu {
+namespace nds::client {
 namespace {
 
 constexpr std::uint32_t kCompletionTimeoutMs = 5000U;
@@ -113,4 +113,4 @@ bool execute_storage_request(Connection *connection, const StorageRequest &reque
     return wait_for_completion(connection, completion_buffer, request.request_id, request.length, error);
 }
 
-}  // namespace nds::npu
+}  // namespace nds::client

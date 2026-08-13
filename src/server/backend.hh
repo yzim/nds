@@ -9,7 +9,7 @@
 #include <cstdint>
 #include <string>
 
-namespace nds::cpu {
+namespace nds::server {
 
 struct BackendConfig {
     std::string device_name;
@@ -64,6 +64,6 @@ private:
     BackendConfig config_{};
 };
 
-}  // namespace nds::cpu
+}  // namespace nds::server
 
 #endif

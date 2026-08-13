@@ -8,7 +8,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-namespace nds::cpu {
+namespace nds::server {
 
 bool Connection::open(const ConnectionConfig &config, std::string *error) {
     if (error == nullptr || !backend_.open(config.backend, error))
@@ -81,4 +81,4 @@ TcpPeerExchange *Connection::bootstrap() noexcept {
     return &bootstrap_;
 }
 
-}  // namespace nds::cpu
+}  // namespace nds::server

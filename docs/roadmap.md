@@ -43,12 +43,12 @@ The implementation is organized by responsibility:
    protocol or transport responsibility.
 
 The current source tree implements these boundaries independently in
-`src/npu_client` and `src/cpu_server`. Each endpoint has `transport.*`,
-`protocol.*`, and a `main.cc` application entry point. The NPU's selectable
-implementations remain under `npu_client/backend/`; the CPU has one verbs
-implementation in `cpu_server/backend.*`. Shared endpoint metadata and TCP
-bootstrap live in `src/common/transport.*`, and shared storage records live in
-`src/common/protocol.*`.
+`src/client` and `src/server`. The NPU-attached client and CPU-side server each
+have `transport.*`, `protocol.*`, and a `main.cc` application entry point. The
+client's selectable NPU implementations remain under `client/backend/`; the
+server has one verbs implementation in `server/backend.*`. Shared endpoint
+metadata and TCP bootstrap live in `src/common/transport.*`, and shared storage
+records live in `src/common/protocol.*`.
 See [architecture](architecture.md) for concrete ownership rules.
 
 `src/common/include/nds/` is an internal shared-header boundary. Its `nds/`

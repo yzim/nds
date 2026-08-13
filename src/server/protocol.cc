@@ -2,7 +2,7 @@
 
 #include "nds/protocol.h"
 
-namespace nds::cpu {
+namespace nds::server {
 namespace {
 
 bool exchange_bootstrap(Connection *connection, std::uint64_t capacity, nds_storage_bootstrap *bootstrap,
@@ -74,4 +74,4 @@ bool serve_storage_request(Connection *connection, std::vector<unsigned char> *s
                              sizeof(completion_wire), error);
 }
 
-}  // namespace nds::cpu
+}  // namespace nds::server
