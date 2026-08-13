@@ -17,10 +17,10 @@ int main()
     nds::log::set_logger("test", external);
 
     NDS_LOG_INFO("test", "message {}", 7);
-    NDS_LOG_ERROR_LINE("test") << "failure " << 8;
-    NDS_LOG_INFOF("test", "legacy %s\n", "message");
+    NDS_LOG_ERROR("test", "failure {}", 8);
+    NDS_LOG_INFO("test", "formatted {}", "message");
     external->flush();
-    assert(output.str() == "message 7\nfailure 8\nlegacy message\n");
+    assert(output.str() == "message 7\nfailure 8\nformatted message\n");
 
     std::string error;
     assert(!nds::log::configure("test", "invalid", "info", error));

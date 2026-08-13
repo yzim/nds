@@ -85,16 +85,4 @@ bool configure(std::string_view name, std::string_view sink_name, std::string_vi
     }
 }
 
-Line::Line(std::string_view name, spdlog::level::level_enum level)
-    : logger_(logger(name)), level_(level)
-{
-}
-
-Line::~Line()
-{
-    std::string message = stream_.str();
-    while (!message.empty() && (message.back() == '\n' || message.back() == '\r')) message.pop_back();
-    logger_->log(level_, "{}", message);
-}
-
 } // namespace nds::log

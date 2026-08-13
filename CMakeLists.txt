@@ -3,6 +3,9 @@ project(nds LANGUAGES CXX)
 
 include(CTest)
 
+# spdlog releases before 1.12 require the fmt 8/9 format API. Resolve fmt
+# first so CMake cannot pair a system spdlog with an incompatible newer copy.
+find_package(fmt 8...<10 CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 find_package(CLI11 CONFIG REQUIRED)
 

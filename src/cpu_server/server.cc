@@ -301,13 +301,13 @@ static int create_resources(struct ibv_device *device, const struct nds_server_c
             return -1;
         }
         if (port_attributes.state != IBV_PORT_ACTIVE) {
-            NDS_LOG_ERRORF("cpu-server", "RDMA port %u is not active (state=%u)\n", config->ib_port,
-                          (unsigned int)port_attributes.state);
+            NDS_LOG_ERROR("cpu-server", "RDMA port {} is not active (state={})", config->ib_port,
+                          static_cast<unsigned int>(port_attributes.state));
             return -1;
         }
         resources->path_mtu = mtu_to_bytes(port_attributes.active_mtu);
         if (resources->path_mtu == 0U) {
-            NDS_LOG_ERRORF("cpu-server", "RDMA port %u reported an unsupported active MTU\n", config->ib_port);
+            NDS_LOG_ERROR("cpu-server", "RDMA port {} reported an unsupported active MTU", config->ib_port);
             return -1;
         }
     }
@@ -397,11 +397,11 @@ static int move_qp_to_rtr_rts(const struct nds_verbs_resources *resources,
     const uint32_t local_path_mtu = nds_cpu_qp_path_mtu_select(resources->path_mtu, peer->path_mtu);
 
     if (local_path_mtu == 0U || mtu_from_bytes(local_path_mtu, &path_mtu) != 0) {
-        NDS_LOG_ERRORF("cpu-server", "local port has unsupported path MTU: %u\n", resources->path_mtu);
+        NDS_LOG_ERROR("cpu-server", "local port has unsupported path MTU: {}", resources->path_mtu);
         return -1;
     }
     if (peer->path_mtu != local_path_mtu) {
-        NDS_LOG_INFOF("cpu-server", "CPU uses local active path MTU %u; peer record reports %u (diagnostic only).\n",
+        NDS_LOG_INFO("cpu-server", "CPU uses local active path MTU {}; peer record reports {} (diagnostic only).",
                      local_path_mtu, peer->path_mtu);
     }
 
@@ -494,11 +494,11 @@ static int report_qp(const struct nds_verbs_resources *resources, const char *ph
         NDS_LOG_ERROR("cpu-server", "{}: {}", "ibv_query_qp", strerror(errno));
         return -1;
     }
-    NDS_LOG_INFOF("cpu-server", "CPU QP %s: qpn=%u state=%s port=%u pkey_index=%u access=0x%x "
-                 "path_mtu=%u dest_qpn=%u rq_psn=%u sq_psn=%u timeout=%u retry=%u rnr_retry=%u "
-                 "max_rd_atomic=%u max_dest_rd_atomic=%u min_rnr_timer=%u global=%u sgid_index=%u "
-                 "hop_limit=%u tc=%u sl=%u cq_depth=%u max_send_wr=%u max_recv_wr=%u "
-                 "max_send_sge=%u max_recv_sge=%u sq_sig_all=%u\n",
+    NDS_LOG_INFO("cpu-server", "CPU QP {}: qpn={} state={} port={} pkey_index={} access=0x{:x} "
+                 "path_mtu={} dest_qpn={} rq_psn={} sq_psn={} timeout={} retry={} rnr_retry={} "
+                 "max_rd_atomic={} max_dest_rd_atomic={} min_rnr_timer={} global={} sgid_index={} "
+                 "hop_limit={} tc={} sl={} cq_depth={} max_send_wr={} max_recv_wr={} "
+                 "max_send_sge={} max_recv_sge={} sq_sig_all={}",
                  phase, resources->qp->qp_num, qp_state_name(attributes.qp_state), attributes.port_num,
                  attributes.pkey_index, attributes.qp_access_flags, mtu_to_bytes(attributes.path_mtu),
                  attributes.dest_qp_num, attributes.rq_psn, attributes.sq_psn, attributes.timeout,
@@ -520,7 +520,7 @@ static void hold_for_passive_diagnostics(unsigned int milliseconds)
     }
     remaining.tv_sec = (time_t)(milliseconds / 1000U);
     remaining.tv_nsec = (long)(milliseconds % 1000U) * 1000000L;
-    NDS_LOG_INFOF("cpu-server", "Holding CPU QP and storage MRs for %u ms for passive diagnostics; no additional work is posted.\n",
+    NDS_LOG_INFO("cpu-server", "Holding CPU QP and storage MRs for {} ms for passive diagnostics; no additional work is posted.",
                  milliseconds);
     while (nanosleep(&remaining, &remaining) != 0 && errno == EINTR) {
     }
@@ -531,8 +531,8 @@ static void report_endpoint(const char *label, const nds_rc_endpoint *endpoint)
     char gid[INET6_ADDRSTRLEN];
 
     format_gid(endpoint->gid, gid);
-    NDS_LOG_INFOF("cpu-server", "%s endpoint: phase=%s qpn=%u psn=%u port=%u gid_index=%u gid=%s path_mtu=%u "
-                 "tc=%u sl=%u retry_count=%u retry_timeout=%u\n",
+    NDS_LOG_INFO("cpu-server", "{} endpoint: phase={} qpn={} psn={} port={} gid_index={} gid={} path_mtu={} "
+                 "tc={} sl={} retry_count={} retry_timeout={}",
                  label, (endpoint->flags & NDS_ENDPOINT_FLAG_QP_ONLY) != 0U ? "QP-only" : "data-ready",
                  endpoint->qp_num, endpoint->psn, endpoint->port_num, endpoint->gid_index, gid,
                  endpoint->path_mtu, endpoint->traffic_class, endpoint->service_level,
@@ -556,7 +556,7 @@ static int wait_for_peer_close(int descriptor)
             NDS_LOG_ERROR("cpu-server", "{}: {}", "read control connection", strerror(errno));
             return -1;
         }
-        NDS_LOG_ERRORF("cpu-server", "unexpected control byte after endpoint exchange: 0x%02x\n", unexpected_byte);
+        NDS_LOG_ERROR("cpu-server", "unexpected control byte after endpoint exchange: 0x{:02x}", unexpected_byte);
         return -1;
     }
 }
@@ -580,7 +580,7 @@ static int open_listener(const struct nds_server_config *config)
     address.sin_family = AF_INET;
     address.sin_port = htons((uint16_t)config->tcp_port);
     if (inet_pton(AF_INET, config->listen_address.c_str(), &address.sin_addr) != 1) {
-        NDS_LOG_ERRORF("cpu-server", "invalid IPv4 listen address: %s\n", config->listen_address.c_str());
+        NDS_LOG_ERROR("cpu-server", "invalid IPv4 listen address: {}", config->listen_address);
         (void)close(descriptor);
         return -1;
     }
@@ -626,7 +626,7 @@ static int run_server(int argc, char **argv)
     }
     device = find_device(config.device_name.c_str(), &device_list);
     if (device == nullptr) {
-        NDS_LOG_ERRORF("cpu-server", "RDMA device not found: %s\n", config.device_name.c_str());
+        NDS_LOG_ERROR("cpu-server", "RDMA device not found: {}", config.device_name);
         return EXIT_FAILURE;
     }
     if (create_resources(device, &config, &resources) != 0 || move_qp_to_init(&resources, &config) != 0) {
@@ -635,7 +635,7 @@ static int run_server(int argc, char **argv)
     if (!config.qp_only && create_storage_memory(&resources, config.namespace_bytes) != 0) return EXIT_FAILURE;
     if (make_endpoint(&resources, &config, &local_wire, wire_error) != 0 ||
         nds_rc_endpoint_decode(&local_wire, &local, wire_error) != 0) {
-        NDS_LOG_ERRORF("cpu-server", "could not create local QP-only endpoint: %s\n", wire_error);
+        NDS_LOG_ERROR("cpu-server", "could not create local QP-only endpoint: {}", wire_error);
         return EXIT_FAILURE;
     }
     if (report_qp(&resources, "after INIT") != 0) {
@@ -646,15 +646,15 @@ static int run_server(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
-    NDS_LOG_INFOF("cpu-server", "NDS verbs server ready: device=%s ib_port=%u gid_index=%u tcp=%s:%u mode=%s namespace_bytes=%u\n",
-                 config.device_name.c_str(), config.ib_port, config.gid_index, config.listen_address.c_str(), config.tcp_port,
+    NDS_LOG_INFO("cpu-server", "NDS verbs server ready: device={} ib_port={} gid_index={} tcp={}:{} mode={} namespace_bytes={}",
+                 config.device_name, config.ib_port, config.gid_index, config.listen_address, config.tcp_port,
                  config.qp_only ? "qp-only" : "storage", config.namespace_bytes);
     report_endpoint("CPU local", &local);
     if (!config.qp_only) {
-        NDS_LOG_INFOF("cpu-server", "CPU memory-backed namespace: bytes=%zu lkey=%u rkey=%u\n",
-                      resources.namespace_buffer.size(), resources.namespace_mr->lkey, resources.namespace_mr->rkey);
+        NDS_LOG_INFO("cpu-server", "CPU memory-backed namespace: bytes={} lkey={} rkey={}",
+                     resources.namespace_buffer.size(), resources.namespace_mr->lkey, resources.namespace_mr->rkey);
     }
-    NDS_LOG_INFOF("cpu-server", "Waiting for an NDS QP endpoint description.\n");
+    NDS_LOG_INFO("cpu-server", "Waiting for an NDS QP endpoint description.");
     connection.reset(accept(listener.get(), nullptr, nullptr));
     if (connection.get() < 0) {
         NDS_LOG_ERROR("cpu-server", "{}: {}", "accept", strerror(errno));
@@ -662,11 +662,11 @@ static int run_server(int argc, char **argv)
     }
     if (read_full(connection.get(), &peer_wire, sizeof(peer_wire)) != 0 ||
         nds_rc_endpoint_decode(&peer_wire, &peer, wire_error) != 0) {
-        NDS_LOG_ERRORF("cpu-server", "invalid or incomplete NDS peer endpoint description: %s\n", wire_error);
+        NDS_LOG_ERROR("cpu-server", "invalid or incomplete NDS peer endpoint description: {}", wire_error);
         return EXIT_FAILURE;
     }
     if ((peer.flags & NDS_ENDPOINT_FLAG_QP_ONLY) == 0U) {
-        NDS_LOG_ERRORF("cpu-server", "CPU QP-only server rejects a data-ready peer endpoint\n");
+        NDS_LOG_ERROR("cpu-server", "CPU QP-only server rejects a data-ready peer endpoint");
         return EXIT_FAILURE;
     }
     report_endpoint("NPU remote", &peer);
@@ -694,17 +694,17 @@ static int run_server(int argc, char **argv)
     nds::TcpPeerExchange exchange(connection.release());
     std::string exchange_error;
     if (!exchange.receive_storage_bootstrap(bootstrap, &exchange_error)) {
-        NDS_LOG_ERROR_LINE("cpu-server") << "NPU storage bootstrap failed: " << exchange_error << '\n';
+        NDS_LOG_ERROR("cpu-server", "NPU storage bootstrap failed: {}", exchange_error);
         return EXIT_FAILURE;
     }
     storage_namespace.capacity = resources.namespace_buffer.size();
     if (!exchange.send_storage_namespace(storage_namespace, &exchange_error)) {
-        NDS_LOG_ERROR_LINE("cpu-server") << "CPU namespace bootstrap failed: " << exchange_error << '\n';
+        NDS_LOG_ERROR("cpu-server", "CPU namespace bootstrap failed: {}", exchange_error);
         return EXIT_FAILURE;
     }
     if (!nds::poll_cpu_completion(resources.cq, IBV_WC_RECV, NDS_TRANSFER_WAIT_MS, "cpu-server") ||
         nds_storage_command_decode(&resources.command, &command, wire_error) != 0) {
-        NDS_LOG_ERRORF("cpu-server", "invalid NDS storage command: %s\n", wire_error);
+        NDS_LOG_ERROR("cpu-server", "invalid NDS storage command: {}", wire_error);
         return EXIT_FAILURE;
     }
     nds::CpuStorageTransport storage_transport{resources.qp, resources.cq, &resources.namespace_buffer,
@@ -712,8 +712,8 @@ static int run_server(int argc, char **argv)
     if (!nds::execute_storage_command(storage_transport, command, bootstrap, NDS_TRANSFER_WAIT_MS, "cpu-server")) return EXIT_FAILURE;
     if (report_qp(&resources, "after storage completion") != 0) return EXIT_FAILURE;
     hold_for_passive_diagnostics(config.post_close_hold_ms);
-    NDS_LOG_INFOF("cpu-server", "completed NDS storage command request_id=%llu operation=%u bytes=%llu\n",
-                  (unsigned long long)command.request_id, command.operation, (unsigned long long)command.length);
+    NDS_LOG_INFO("cpu-server", "completed NDS storage command request_id={} operation={} bytes={}",
+                 command.request_id, command.operation, command.length);
     return EXIT_SUCCESS;
 }
 

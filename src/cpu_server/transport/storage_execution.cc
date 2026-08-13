@@ -17,8 +17,8 @@ bool poll_cpu_completion(ibv_cq *cq, ibv_wc_opcode expected_opcode,
         const int count = ibv_poll_cq(cq, 1, &completion);
         if (count < 0 || (count == 1 &&
             (completion.status != IBV_WC_SUCCESS || completion.opcode != expected_opcode))) {
-            NDS_LOG_ERRORF(component, "unexpected CQ completion: count=%d status=%d opcode=%d\n", count,
-                           count == 1 ? completion.status : -1, count == 1 ? completion.opcode : -1);
+            NDS_LOG_ERROR(component, "unexpected CQ completion: count={} status={} opcode={}", count,
+                          count == 1 ? completion.status : -1, count == 1 ? completion.opcode : -1);
             return false;
         }
         if (count == 1) return true;
@@ -53,7 +53,7 @@ bool execute_storage_command(CpuStorageTransport &transport,
         response.bytes_transferred = 0U;
     }
     if (nds_storage_completion_encode(&response, transport.completion, error) != 0) {
-        NDS_LOG_ERRORF(component, "cannot encode completion: %s\n", error);
+        NDS_LOG_ERROR(component, "cannot encode completion: {}", error);
         return false;
     }
     completion_sge.addr = reinterpret_cast<std::uintptr_t>(transport.completion);
