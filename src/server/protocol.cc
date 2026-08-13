@@ -9,19 +9,16 @@ Result<nds_protocol_bootstrap> exchange_bootstrap(Connection *connection, std::u
     nds_protocol_bootstrap_wire bootstrap_wire{};
     nds_protocol_namespace_wire namespace_wire{};
     const nds_protocol_namespace namespace_record{capacity};
-    char codec_error[NDS_PROTOCOL_ERROR_CAPACITY]{};
-    std::string error;
-    if (!connection->bootstrap()->receive_bytes(&bootstrap_wire, sizeof(bootstrap_wire), &error)) {
-        return failure(ErrorCode::kTransport, std::move(error));
-    }
+    if (const auto received = connection->bootstrap()->receive_bytes(&bootstrap_wire, sizeof(bootstrap_wire));
+        !received)
+        return tl::make_unexpected(received.error());
     nds_protocol_bootstrap bootstrap{};
-    if (nds_protocol_bootstrap_decode(&bootstrap_wire, &bootstrap, codec_error) != 0 ||
-        nds_protocol_namespace_encode(&namespace_record, &namespace_wire, codec_error) != 0) {
-        return failure(ErrorCode::kProtocol, codec_error);
+    if (nds_protocol_bootstrap_decode(&bootstrap_wire, &bootstrap) != 0 ||
+        nds_protocol_namespace_encode(&namespace_record, &namespace_wire) != 0) {
+        return failure(ErrorCode::kProtocol, "invalid protocol record");
     }
-    if (!connection->bootstrap()->send_bytes(&namespace_wire, sizeof(namespace_wire), &error)) {
-        return failure(ErrorCode::kTransport, std::move(error));
-    }
+    if (const auto sent = connection->bootstrap()->send_bytes(&namespace_wire, sizeof(namespace_wire)); !sent)
+        return tl::make_unexpected(sent.error());
     return bootstrap;
 }
 
@@ -50,9 +47,8 @@ Result<void> serve_request(Connection *connection, std::vector<unsigned char> *s
         return tl::make_unexpected(result.error());
 
     nds_protocol_command command{};
-    char codec_error[NDS_PROTOCOL_ERROR_CAPACITY]{};
-    if (nds_protocol_command_decode(&command_wire, &command, codec_error) != 0) {
-        return failure(ErrorCode::kProtocol, codec_error);
+    if (nds_protocol_command_decode(&command_wire, &command) != 0) {
+        return failure(ErrorCode::kProtocol, "invalid protocol record");
     }
     nds_protocol_completion completion{command.request_id, NDS_PROTOCOL_COMPLETION_COMPLETE, NDS_PROTOCOL_SUCCESS,
                                        command.length};
@@ -74,8 +70,8 @@ Result<void> serve_request(Connection *connection, std::vector<unsigned char> *s
         if (!transferred)
             return tl::make_unexpected(transferred.error());
     }
-    if (nds_protocol_completion_encode(&completion, &completion_wire, codec_error) != 0) {
-        return failure(ErrorCode::kProtocol, codec_error);
+    if (nds_protocol_completion_encode(&completion, &completion_wire) != 0) {
+        return failure(ErrorCode::kProtocol, "invalid protocol record");
     }
     return connection->write(completion_region, bootstrap->completion.address, bootstrap->completion.rkey,
                              sizeof(completion_wire));

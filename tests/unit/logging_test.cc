@@ -21,10 +21,11 @@ int main() {
     external->flush();
     assert(output.str() == "message 7\nfailure 8\nformatted message\n");
 
-    std::string error;
-    assert(!nds::log::configure("test", "invalid", "info", &error));
-    assert(error == "unsupported log sink: invalid");
-    assert(!nds::log::configure("test", "none", "invalid", &error));
-    assert(error == "unsupported log level: invalid");
+    const auto invalid_sink = nds::log::configure("test", "invalid", "info");
+    assert(!invalid_sink);
+    assert(invalid_sink.error().message == "unsupported log sink: invalid");
+    const auto invalid_level = nds::log::configure("test", "none", "invalid");
+    assert(!invalid_level);
+    assert(invalid_level.error().message == "unsupported log level: invalid");
     return 0;
 }

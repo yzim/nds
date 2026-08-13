@@ -35,16 +35,16 @@ Result<void> Connection::open(const ConnectionConfig &config) {
     if (!qp_.create(&context_.ra_api(), config_.qp) || !qp_.make_endpoint(&local_)) {
         return failure(ErrorCode::kRa, qp_.error());
     }
-    std::string error;
-    if (!TcpPeerExchange::connect(config.cpu_ipv4, config.tcp_port, config.tcp_timeout_ms, &bootstrap_, &error)) {
-        return failure(ErrorCode::kTransport, std::move(error));
+    if (const auto connected =
+            TcpPeerExchange::connect(config.cpu_ipv4, config.tcp_port, config.tcp_timeout_ms, &bootstrap_);
+        !connected) {
+        return tl::make_unexpected(connected.error());
     }
-    const PeerExchangeResult exchanged = bootstrap_.exchange_as_client(local_);
-    if (!exchanged.ok) {
-        return failure(ErrorCode::kTransport,
-                       exchanged.error.empty() ? "server endpoint exchange failed" : std::move(exchanged.error));
+    const auto peer = bootstrap_.exchange_as_client(local_);
+    if (!peer) {
+        return tl::make_unexpected(peer.error());
     }
-    if (!qp_.connect(exchanged.peer)) {
+    if (!qp_.connect(*peer)) {
         return failure(ErrorCode::kRa, qp_.error());
     }
     return ready();
@@ -89,11 +89,7 @@ Result<void> Connection::copy_from_device(void *destination, const DeviceBuffer 
 }
 
 Result<void> Connection::send(const RegisteredRegion &source, std::uint32_t length) {
-    std::string error;
-    if (!post_send(&context_, &qp_, config_.backend, source.address(), length, source.info_.local_key, &error)) {
-        return failure(ErrorCode::kRa, std::move(error));
-    }
-    return {};
+    return post_send(&context_, &qp_, config_.backend, source.address(), length, source.info_.local_key);
 }
 
 Result<RemoteRegion> Connection::remote_region(const RegisteredRegion &region) const {

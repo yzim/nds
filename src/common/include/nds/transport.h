@@ -50,13 +50,17 @@ typedef struct nds_transport_endpoint {
     uint8_t gid[NDS_GID_BYTES];
 } nds_transport_endpoint;
 
-enum { NDS_TRANSPORT_ERROR_CAPACITY = 256 };
+enum nds_transport_result {
+    NDS_TRANSPORT_RESULT_OK = 0,
+    NDS_TRANSPORT_RESULT_INVALID_ARGUMENT = 1,
+    NDS_TRANSPORT_RESULT_INVALID_RECORD = 2,
+};
 
 /* Encode/decode fixed-size transport endpoint metadata. All host fields remain host order. */
-int nds_transport_endpoint_encode(const nds_transport_endpoint *endpoint, nds_transport_endpoint_wire *wire,
-                                  char error[NDS_TRANSPORT_ERROR_CAPACITY]);
-int nds_transport_endpoint_decode(const nds_transport_endpoint_wire *wire, nds_transport_endpoint *endpoint,
-                                  char error[NDS_TRANSPORT_ERROR_CAPACITY]);
+enum nds_transport_result nds_transport_endpoint_encode(const nds_transport_endpoint *endpoint,
+                                                        nds_transport_endpoint_wire *wire);
+enum nds_transport_result nds_transport_endpoint_decode(const nds_transport_endpoint_wire *wire,
+                                                        nds_transport_endpoint *endpoint);
 
 /* Standard RC path-MTU byte values accepted by NDS's CPU verbs adapter. */
 int nds_transport_mtu_is_supported(uint32_t mtu_bytes);
@@ -67,13 +71,10 @@ int nds_transport_mtu_is_supported(uint32_t mtu_bytes);
  */
 uint32_t nds_transport_mtu_select(uint32_t local_active_mtu, uint32_t peer_reported_mtu);
 
-
 #ifdef __cplusplus
-static_assert(sizeof(nds_transport_endpoint_wire) == 80,
-              "NDS RC endpoint must remain a fixed 80-byte message");
+static_assert(sizeof(nds_transport_endpoint_wire) == 80, "NDS RC endpoint must remain a fixed 80-byte message");
 #else
-_Static_assert(sizeof(nds_transport_endpoint_wire) == 80,
-               "NDS RC endpoint must remain a fixed 80-byte message");
+_Static_assert(sizeof(nds_transport_endpoint_wire) == 80, "NDS RC endpoint must remain a fixed 80-byte message");
 #endif
 
 #ifdef __cplusplus

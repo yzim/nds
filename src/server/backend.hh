@@ -40,21 +40,23 @@ public:
     VerbsBackend(const VerbsBackend &) = delete;
     VerbsBackend &operator=(const VerbsBackend &) = delete;
 
-    bool open(const BackendConfig &config, std::string *error);
-    bool connect(const nds_transport_endpoint &peer, std::string *error);
-    bool register_memory(void *address, std::size_t length, int access, RegisteredRegion *region, std::string *error);
-    bool post_receive(const RegisteredRegion &region, std::string *error);
-    bool wait_receive(std::uint32_t timeout_ms, std::string *error);
+    bool open(const BackendConfig &config);
+    bool connect(const nds_transport_endpoint &peer);
+    bool register_memory(void *address, std::size_t length, int access, RegisteredRegion *region);
+    bool post_receive(const RegisteredRegion &region);
+    bool wait_receive(std::uint32_t timeout_ms);
     bool read(const RegisteredRegion &local, std::uint64_t remote_address, std::uint32_t remote_key,
-              std::uint32_t length, std::string *error);
+              std::uint32_t length);
     bool write(const RegisteredRegion &local, std::uint64_t remote_address, std::uint32_t remote_key,
-               std::uint32_t length, std::string *error);
+               std::uint32_t length);
     const nds_transport_endpoint &local_endpoint() const noexcept;
+    const std::string &error() const noexcept;
 
 private:
     bool transfer(ibv_wr_opcode opcode, const RegisteredRegion &local, std::uint64_t remote_address,
-                  std::uint32_t remote_key, std::uint32_t length, std::string *error);
-    bool poll(ibv_wc_opcode opcode, std::uint32_t timeout_ms, std::string *error);
+                  std::uint32_t remote_key, std::uint32_t length);
+    bool poll(ibv_wc_opcode opcode, std::uint32_t timeout_ms);
+    void set_error(std::string message);
 
     ibv_context *context_{};
     ibv_pd *pd_{};
@@ -62,6 +64,7 @@ private:
     ibv_qp *qp_{};
     nds_transport_endpoint local_{};
     BackendConfig config_{};
+    std::string error_;
 };
 
 }  // namespace nds::server

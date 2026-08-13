@@ -12,5 +12,5 @@ target_compile_options(nds_protocol PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 add_library(nds_logging STATIC logging.cc)
 target_include_directories(nds_logging PUBLIC include)
-target_link_libraries(nds_logging PUBLIC spdlog::spdlog)
+target_link_libraries(nds_logging PUBLIC spdlog::spdlog tl::expected)
 target_compile_options(nds_logging PRIVATE -Wall -Wextra -Wpedantic -Werror)

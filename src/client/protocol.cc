@@ -16,17 +16,16 @@ Result<std::uint64_t> exchange_bootstrap(Connection *connection, const RemoteReg
     nds_protocol_bootstrap_wire bootstrap_wire{};
     nds_protocol_namespace_wire namespace_wire{};
     nds_protocol_namespace namespace_record{};
-    char codec_error[NDS_PROTOCOL_ERROR_CAPACITY]{};
-    if (nds_protocol_bootstrap_encode(&bootstrap, &bootstrap_wire, codec_error) != 0) {
-        return failure(ErrorCode::kProtocol, codec_error);
+    if (nds_protocol_bootstrap_encode(&bootstrap, &bootstrap_wire) != 0) {
+        return failure(ErrorCode::kProtocol, "invalid protocol record");
     }
-    std::string error;
-    if (!connection->bootstrap()->send_bytes(&bootstrap_wire, sizeof(bootstrap_wire), &error) ||
-        !connection->bootstrap()->receive_bytes(&namespace_wire, sizeof(namespace_wire), &error)) {
-        return failure(ErrorCode::kTransport, std::move(error));
-    }
-    if (nds_protocol_namespace_decode(&namespace_wire, &namespace_record, codec_error) != 0) {
-        return failure(ErrorCode::kProtocol, codec_error);
+    if (const auto sent = connection->bootstrap()->send_bytes(&bootstrap_wire, sizeof(bootstrap_wire)); !sent)
+        return tl::make_unexpected(sent.error());
+    if (const auto received = connection->bootstrap()->receive_bytes(&namespace_wire, sizeof(namespace_wire));
+        !received)
+        return tl::make_unexpected(received.error());
+    if (nds_protocol_namespace_decode(&namespace_wire, &namespace_record) != 0) {
+        return failure(ErrorCode::kProtocol, "invalid protocol record");
     }
     return namespace_record.capacity;
 }
@@ -37,12 +36,11 @@ Result<void> wait_for_completion(Connection *connection, const DeviceBuffer &buf
     while (std::chrono::steady_clock::now() < deadline) {
         nds_protocol_completion_wire wire{};
         nds_protocol_completion completion{};
-        char codec_error[NDS_PROTOCOL_ERROR_CAPACITY]{};
         if (const auto result = connection->copy_from_device(&wire, buffer, sizeof(wire)); !result) {
             return tl::make_unexpected(result.error());
         }
-        if (nds_protocol_completion_decode(&wire, &completion, codec_error) != 0) {
-            return failure(ErrorCode::kProtocol, codec_error);
+        if (nds_protocol_completion_decode(&wire, &completion) != 0) {
+            return failure(ErrorCode::kProtocol, "invalid protocol record");
         }
         if (completion.state == NDS_PROTOCOL_COMPLETION_COMPLETE) {
             if (completion.request_id != request_id || completion.status != NDS_PROTOCOL_SUCCESS ||
@@ -70,9 +68,8 @@ Result<void> execute_request(Connection *connection, const Request &request) {
     RegisteredRegion completion_region;
     nds_protocol_completion pending{request.request_id, NDS_PROTOCOL_COMPLETION_PENDING, NDS_PROTOCOL_SUCCESS, 0U};
     nds_protocol_completion_wire completion_wire{};
-    char codec_error[NDS_PROTOCOL_ERROR_CAPACITY]{};
-    if (nds_protocol_completion_encode(&pending, &completion_wire, codec_error) != 0) {
-        return failure(ErrorCode::kProtocol, codec_error);
+    if (nds_protocol_completion_encode(&pending, &completion_wire) != 0) {
+        return failure(ErrorCode::kProtocol, "invalid protocol record");
     }
     if (const auto result = connection->allocate(sizeof(nds_protocol_command_wire), &command_buffer); !result)
         return tl::make_unexpected(result.error());
@@ -107,8 +104,8 @@ Result<void> execute_request(Connection *connection, const Request &request) {
     const nds_protocol_command command{request.request_id, request.operation, request.offset, request.length,
                                        remote_data};
     nds_protocol_command_wire command_wire{};
-    if (nds_protocol_command_encode(&command, &command_wire, codec_error) != 0) {
-        return failure(ErrorCode::kProtocol, codec_error);
+    if (nds_protocol_command_encode(&command, &command_wire) != 0) {
+        return failure(ErrorCode::kProtocol, "invalid protocol record");
     }
     if (const auto result = connection->copy_to_device(&command_buffer, &command_wire, sizeof(command_wire)); !result)
         return tl::make_unexpected(result.error());

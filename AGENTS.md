@@ -73,10 +73,11 @@ are defined in [architecture](docs/architecture.md).
   language-required special member; prefer deleting it when it is unnecessary.
 - Use `nds::Result<T>` for C++ operations that can fail during normal runtime
   execution. It is backed by `tl::expected` until NDS adopts C++23
-  `std::expected`. Return `nds::Error` with a category and message; do not pair
-  a boolean result with a caller-provided `std::string*`. Keep C ABI and direct
-  third-party adapter boundaries in their native error form, then translate
-  them at the NDS C++ boundary.
+  `std::expected`. Return `nds::Error` with a category and message. No NDS API
+  may accept a caller-owned diagnostic string or character buffer. C wire
+  codecs return typed result enums. Vendor loader structs may retain only their
+  embedded ABI error fields internally; translate those diagnostics at the NDS
+  C++ boundary.
 - Format C++ with the repository `.clang-format` configuration.
 - Use the `nds::log` facade backed by `spdlog` for executable diagnostics. Do
   not add direct `stdout`, `stderr`, `printf`, or `perror` logging. Keep the

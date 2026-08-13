@@ -1,6 +1,8 @@
 #ifndef NDS_LOGGING_HPP
 #define NDS_LOGGING_HPP
 
+#include "nds/result.hh"
+
 #include <memory>
 #include <string>
 #include <string_view>
@@ -17,7 +19,7 @@ namespace nds::log {
  */
 void set_logger(std::string_view name, std::shared_ptr<spdlog::logger> logger);
 std::shared_ptr<spdlog::logger> logger(std::string_view name);
-bool configure(std::string_view name, std::string_view sink, std::string_view level, std::string *error);
+Result<void> configure(std::string_view name, std::string_view sink, std::string_view level);
 
 }  // namespace nds::log
 

@@ -7,12 +7,16 @@
 extern "C" {
 #endif
 
-#define NDS_PROTOCOL_BOOTSTRAP_MAGIC UINT32_C(0x4e445342) /* "NDSB" */
-#define NDS_PROTOCOL_COMMAND_MAGIC UINT32_C(0x4e445343) /* "NDSC" */
+#define NDS_PROTOCOL_BOOTSTRAP_MAGIC UINT32_C(0x4e445342)  /* "NDSB" */
+#define NDS_PROTOCOL_COMMAND_MAGIC UINT32_C(0x4e445343)    /* "NDSC" */
 #define NDS_PROTOCOL_COMPLETION_MAGIC UINT32_C(0x4e445344) /* "NDSD" */
-#define NDS_PROTOCOL_NAMESPACE_MAGIC UINT32_C(0x4e44534e) /* "NDSN" */
+#define NDS_PROTOCOL_NAMESPACE_MAGIC UINT32_C(0x4e44534e)  /* "NDSN" */
 #define NDS_PROTOCOL_VERSION UINT16_C(1)
-#define NDS_PROTOCOL_ERROR_CAPACITY 256U
+enum nds_protocol_result {
+    NDS_PROTOCOL_RESULT_OK = 0,
+    NDS_PROTOCOL_RESULT_INVALID_ARGUMENT = 1,
+    NDS_PROTOCOL_RESULT_INVALID_RECORD = 2,
+};
 
 enum nds_protocol_access {
     NDS_PROTOCOL_ACCESS_REMOTE_WRITE = UINT32_C(0x00000002),
@@ -125,22 +129,22 @@ _Static_assert(sizeof(nds_protocol_command_wire) == 64, "NDS protocol command wi
 _Static_assert(sizeof(nds_protocol_completion_wire) == 32, "NDS protocol completion wire ABI must remain 32 bytes");
 #endif
 
-int nds_protocol_bootstrap_encode(const nds_protocol_bootstrap *bootstrap, nds_protocol_bootstrap_wire *wire,
-                                 char error[NDS_PROTOCOL_ERROR_CAPACITY]);
-int nds_protocol_bootstrap_decode(const nds_protocol_bootstrap_wire *wire, nds_protocol_bootstrap *bootstrap,
-                                 char error[NDS_PROTOCOL_ERROR_CAPACITY]);
-int nds_protocol_namespace_encode(const nds_protocol_namespace *namespace_record, nds_protocol_namespace_wire *wire,
-                                 char error[NDS_PROTOCOL_ERROR_CAPACITY]);
-int nds_protocol_namespace_decode(const nds_protocol_namespace_wire *wire, nds_protocol_namespace *namespace_record,
-                                 char error[NDS_PROTOCOL_ERROR_CAPACITY]);
-int nds_protocol_command_encode(const nds_protocol_command *command, nds_protocol_command_wire *wire,
-                               char error[NDS_PROTOCOL_ERROR_CAPACITY]);
-int nds_protocol_command_decode(const nds_protocol_command_wire *wire, nds_protocol_command *command,
-                               char error[NDS_PROTOCOL_ERROR_CAPACITY]);
-int nds_protocol_completion_encode(const nds_protocol_completion *completion, nds_protocol_completion_wire *wire,
-                                  char error[NDS_PROTOCOL_ERROR_CAPACITY]);
-int nds_protocol_completion_decode(const nds_protocol_completion_wire *wire, nds_protocol_completion *completion,
-                                  char error[NDS_PROTOCOL_ERROR_CAPACITY]);
+enum nds_protocol_result nds_protocol_bootstrap_encode(const nds_protocol_bootstrap *bootstrap,
+                                                       nds_protocol_bootstrap_wire *wire);
+enum nds_protocol_result nds_protocol_bootstrap_decode(const nds_protocol_bootstrap_wire *wire,
+                                                       nds_protocol_bootstrap *bootstrap);
+enum nds_protocol_result nds_protocol_namespace_encode(const nds_protocol_namespace *namespace_record,
+                                                       nds_protocol_namespace_wire *wire);
+enum nds_protocol_result nds_protocol_namespace_decode(const nds_protocol_namespace_wire *wire,
+                                                       nds_protocol_namespace *namespace_record);
+enum nds_protocol_result nds_protocol_command_encode(const nds_protocol_command *command,
+                                                     nds_protocol_command_wire *wire);
+enum nds_protocol_result nds_protocol_command_decode(const nds_protocol_command_wire *wire,
+                                                     nds_protocol_command *command);
+enum nds_protocol_result nds_protocol_completion_encode(const nds_protocol_completion *completion,
+                                                        nds_protocol_completion_wire *wire);
+enum nds_protocol_result nds_protocol_completion_decode(const nds_protocol_completion_wire *wire,
+                                                        nds_protocol_completion *completion);
 
 #ifdef __cplusplus
 }

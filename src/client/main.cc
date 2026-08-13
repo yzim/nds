@@ -1,5 +1,6 @@
 #include "nds/logging.hh"
 #include "nds/protocol.h"
+#include "nds/result.hh"
 #include "protocol.hh"
 #include "transport.hh"
 
@@ -23,9 +24,9 @@ struct ClientConfig {
     std::string log_level{"info"};
 };
 
-int parse_args(int argc, char **argv, ClientConfig *config, std::string *error, bool *exit_requested) {
-    if (config == nullptr || error == nullptr || exit_requested == nullptr)
-        return -1;
+nds::Result<int> parse_args(int argc, char **argv, ClientConfig *config, bool *exit_requested) {
+    if (config == nullptr || exit_requested == nullptr)
+        return nds::failure(nds::ErrorCode::kInvalidArgument, "client configuration and exit state are required");
     CLI::App app{"Send one NDS storage command from an NPU to a CPU memory namespace."};
     app.add_option("--ascendcl", config->connection.context.ascendcl_library, "AscendCL shared library")->required();
     app.add_option("--runtime", config->connection.context.runtime_library, "CANN runtime shared library")->required();
@@ -72,8 +73,7 @@ int parse_args(int argc, char **argv, ClientConfig *config, std::string *error, 
     config->connection.qp.physical_device_id = config->connection.context.physical_device_id;
     if ((backend == "aicpu" && config->connection.backend.aicpu_kernel_config.empty()) ||
         (backend == "aiv" && config->connection.backend.aiv_kernel.empty())) {
-        *error = "invalid option combination";
-        return -1;
+        return nds::failure(nds::ErrorCode::kInvalidArgument, "invalid option combination");
     }
     return 0;
 }
@@ -81,20 +81,21 @@ int parse_args(int argc, char **argv, ClientConfig *config, std::string *error, 
 }  // namespace
 
 int main(int argc, char **argv) {
-    std::string error;
-    (void)nds::log::configure("npu-client", "stderr", "info", &error);
+    (void)nds::log::configure("npu-client", "stderr", "info");
     ClientConfig config;
     config.connection.tcp_port = 18515U;
     config.connection.tcp_timeout_ms = 10000U;
     bool exit_requested = false;
-    const int parse_result = parse_args(argc, argv, &config, &error, &exit_requested);
-    if (exit_requested || parse_result != 0) {
-        if (parse_result < 0)
-            NDS_LOG_ERROR("npu-client", "{}", error);
-        return parse_result < 0 ? EXIT_FAILURE : parse_result;
+    const auto parse_result = parse_args(argc, argv, &config, &exit_requested);
+    if (!parse_result) {
+        NDS_LOG_ERROR("npu-client", "{}", parse_result.error().message);
+        return EXIT_FAILURE;
     }
-    if (!nds::log::configure("npu-client", config.log_sink, config.log_level, &error)) {
-        NDS_LOG_ERROR("npu-client", "invalid logger configuration: {}", error);
+    if (exit_requested || *parse_result != 0) {
+        return *parse_result;
+    }
+    if (const auto configured = nds::log::configure("npu-client", config.log_sink, config.log_level); !configured) {
+        NDS_LOG_ERROR("npu-client", "invalid logger configuration: {}", configured.error().message);
         return EXIT_FAILURE;
     }
 

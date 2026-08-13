@@ -3,6 +3,7 @@
 
 #include "nds/npu_ra_context.hh"
 #include "nds/npu_ra_qp.hh"
+#include "nds/result.hh"
 
 #include <cstdint>
 #include <string>
@@ -16,7 +17,7 @@ struct HostRaPostRequest {
     std::uint32_t remote_key{};
 };
 
-bool post_host_ra(NpuRaContext *context, NpuRaQp *qp, const HostRaPostRequest &request, std::string *error);
+Result<void> post_host_ra(NpuRaContext *context, NpuRaQp *qp, const HostRaPostRequest &request);
 
 }  // namespace nds
 

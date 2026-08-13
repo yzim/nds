@@ -41,14 +41,13 @@ int parse(int argc, char **argv, Config *config, bool *exit_requested) {
 }  // namespace
 
 int main(int argc, char **argv) {
-    std::string error;
-    (void)nds::log::configure("cpu-server", "stderr", "info", &error);
+    (void)nds::log::configure("cpu-server", "stderr", "info");
     Config config;
     bool exit_requested{};
     const int result = parse(argc, argv, &config, &exit_requested);
     if (exit_requested || result != 0)
         return result;
-    if (!nds::log::configure("cpu-server", config.log_sink, config.log_level, &error))
+    if (!nds::log::configure("cpu-server", config.log_sink, config.log_level))
         return EXIT_FAILURE;
     nds::server::Connection connection;
     if (const auto opened = connection.open(config.connection); !opened) {

@@ -62,9 +62,7 @@ std::shared_ptr<spdlog::logger> logger(std::string_view name) {
     return value;
 }
 
-bool configure(std::string_view name, std::string_view sink_name, std::string_view level_name, std::string *error) {
-    if (error == nullptr)
-        return false;
+Result<void> configure(std::string_view name, std::string_view sink_name, std::string_view level_name) {
     try {
         std::shared_ptr<spdlog::sinks::sink> sink;
         spdlog::level::level_enum level;
@@ -77,22 +75,18 @@ bool configure(std::string_view name, std::string_view sink_name, std::string_vi
         else if (sink_name == "none")
             sink = std::make_shared<spdlog::sinks::null_sink_mt>();
         else {
-            *error = "unsupported log sink: " + std::string(sink_name);
-            return false;
+            return failure(ErrorCode::kInvalidArgument, "unsupported log sink: " + std::string(sink_name));
         }
         if (!parse_level(level_name, &level)) {
-            *error = "unsupported log level: " + std::string(level_name);
-            return false;
+            return failure(ErrorCode::kInvalidArgument, "unsupported log level: " + std::string(level_name));
         }
         auto value = std::make_shared<spdlog::logger>(std::string(name), sink);
         value->set_level(level);
         value->set_pattern("%Y-%m-%dT%H:%M:%S.%e%z [%n] [%^%l%$] %v");
         set_logger(name, std::move(value));
-        error->clear();
-        return true;
+        return {};
     } catch (const std::exception &exception) {
-        *error = exception.what();
-        return false;
+        return failure(ErrorCode::kRuntime, exception.what());
     }
 }
 
