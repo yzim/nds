@@ -4,7 +4,7 @@ This guide describes the common resource model used before any NDS backend
 posts a request. It covers the NPU HCCP/RA rdev, QP, and memory
 registration; the independent CPU verbs resources; the NDS transport bootstrap;
 and teardown. Mode-specific posting and CQ handling are described in
-[NPU backends](modes.md).
+[NPU backends](npu-backends.md).
 
 In the source tree, HCCP lifecycle code is backend support under
 `src/client/backend/support`; mode-specific posting remains under
@@ -105,4 +105,4 @@ The resource lifecycle is based on the CANN 9.0.0 HCCP implementation in the
 matching HCOMM source tree, particularly `src/platform/hccp`, and is implemented
 by `NpuRaContext` and `NpuRaQp`. NDS dynamically loads the required RA/runtime
 ABI and does not link or copy HCCP implementation code. See
-[linkage and runtime ABI](linkage.md) for the library boundary.
+[runtime libraries and ABI](runtime-abi.md) for the library boundary.

@@ -58,6 +58,12 @@ Relevant paths include `src/platform/hccp`,
 `third_party/rdma-core-42.7/providers/hns/hns_roce_u_hw_v2.c`, and
 `third_party/rdma-core-42.7/providers/hns/hns_roce_u_ai.c`.
 
+This source is not the deployed kernel driver, RNIC firmware, or a guarantee
+that the installed provider has identical behavior. It is appropriate for
+understanding the expected byte layout and bit operations, but NDS must not
+copy or link it. The selected CANN/driver provider, resolved symbols, and a
+bounded target experiment remain the runtime compatibility authority.
+
 ### HCCL
 
 [HCCL](https://gitcode.com/cann/hccl) is a reference for collective-layer
@@ -108,6 +114,5 @@ They do not publish the private HCCP/RA or device-side RNIC mapping contract.
 ## Related NDS documents
 
 - [HCCP QP and MR lifecycle](hccp-resources.md)
-- [Linkage and runtime ABI](linkage.md)
-- [NPU backends](modes.md)
-- [AIV](aiv.md) and [AICPU](aicpu.md)
+- [Runtime libraries and ABI](runtime-abi.md)
+- [NPU backends](npu-backends.md)

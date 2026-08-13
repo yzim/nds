@@ -1,31 +1,23 @@
-# NDS
+# NPU Direct Storage (NDS)
 
-NDS is a storage-protocol prototype between two RoCE endpoints:
+NDS is a one-NPU/one-CPU RoCE storage-protocol prototype. The NPU client
+submits requests through Host RA, AIV, or AICPU; the CPU `libibverbs` server
+owns a memory-backed namespace and performs the data movement.
 
-- **NPU client:** creates HCCP resources and sends storage commands through
-  host RA, AIV, or AICPU.
-- **CPU server:** owns a memory-backed namespace and uses `libibverbs`.
+NDS's QP creation, queue manipulation, doorbell, and provider-ABI knowledge
+was learned from public HCOMM, HCCL, rdma-core, and Ascend repositories. We are
+grateful to their maintainers and contributors; see the
+[open-source reference basis](docs/open-source-references.md).
 
-The NPU client sends a storage command. The CPU server receives it and moves
-the command's data with RDMA Read or RDMA Write against a memory-backed
-namespace. The CPU then writes a completion record to NPU memory.
+## Architecture
 
-NDS creates the NPU HCCP rdev/QP and registers NPU memory through CANN RA. The
-CPU independently creates an RC QP and registers memory through `libibverbs`.
-`src/common/transport.*` uses TCP only to bootstrap the connected RC QPs and
-exchange NDS-owned endpoint metadata. `src/common/protocol.*` defines the
-storage bootstrap, namespace, command, and completion records; storage
-commands and data use RoCE.
+```text
+Application -> Storage protocol -> Transport connection -> Backend
+```
 
-This is a one-NPU/one-CPU path. It is not an HCCL job: it does not initialize
-HCOMM or HCCL, consume a rank table, or require a second NPU. The CPU endpoint
-is CANN-free.
-
-NDS's lifecycle, provider-ABI, and queue/doorbell design was learned from the
-public HCOMM, HCCL, patched rdma-core, upstream RDMA, and Ascend repositories.
-These sources are reference evidence only: NDS neither vendors nor links their
-implementation code, and the installed CANN/driver ABI plus bounded target
-experiments remain authoritative. See [open-source reference basis](docs/open-source-references.md).
+The backend owns QP/MR operations and posting; the transport owns one connected
+QP; the protocol sequences command, data movement, and completion; and the
+application owns configuration and verification. See [architecture](docs/architecture.md).
 
 ## NPU backends
 
@@ -33,14 +25,14 @@ NDS provides three backends for the NPU endpoint.
 
 | Backend | `post_send` | Local completion | Protocol completion | Guide |
 |---|---|---|---|
-| `host-ra` | NPU-side host CPU: RA Send plus runtime doorbell | Host RA CQ is available | NPU host polls the CPU-written completion record | [Host RA](docs/host-ra.md) |
-| `aiv` | NDS AIV kernel writes one Send WQE and doorbell | HCCP internal AI-QP handling; future AIV backend handling | NPU host polls the CPU-written completion record | [AIV](docs/aiv.md) |
-| `aicpu` | NDS standard-CP1 kernel calls NPU-side provider `post_send` | HCCP internal AI-QP handling; future AICPU backend handling | NPU host polls the CPU-written completion record | [AICPU](docs/aicpu.md) |
+| `host-ra` | NPU-side host CPU: RA Send plus runtime doorbell | Host RA CQ is available | NPU host polls the CPU-written completion record | [Host RA](docs/npu-backends.md#host-ra) |
+| `aiv` | NDS AIV kernel writes one Send WQE and doorbell | HCCP internal AI-QP handling; future AIV backend handling | NPU host polls the CPU-written completion record | [AIV](docs/npu-backends.md#aiv) |
+| `aicpu` | NDS standard-CP1 kernel calls NPU-side provider `post_send` | HCCP internal AI-QP handling; future AICPU backend handling | NPU host polls the CPU-written completion record | [AICPU](docs/npu-backends.md#aicpu) |
 
 The backends share the same HCCP rdev/QP connection and
 memory-registration lifecycle. Their QP types, post paths, CQ ownership, and
 current limitations differ; see [HCCP QP and MR lifecycle](docs/hccp-resources.md)
-and [NPU backends](docs/modes.md).
+and [NPU backends](docs/npu-backends.md).
 
 ## Storage path
 
@@ -55,20 +47,6 @@ The CPU actively polls its verbs CQ for both the command Receive and its
 signaled completion Write. The NPU treats the CPU-written completion record as
 the command result. A backend launch, HCCP internal AI-QP CQ processing, and a
 host-RA local CQE are not this protocol completion.
-
-## Architecture
-
-Each endpoint follows the same dependency direction:
-
-```text
-Application -> Storage protocol -> Transport connection -> Backend
-```
-
-The backend owns QP/MR operations and hardware-specific posting. The transport
-owns one connected QP and exposes connection-level operations. The storage
-protocol sequences command Send, CPU data movement, and completion. The
-application owns CLI configuration, buffers, and workload verification. See
-[architecture](docs/architecture.md) for the concrete source boundaries.
 
 ## Repository layout
 
@@ -103,33 +81,24 @@ Device-kernel builds and mode-specific invocation are documented in the mode
 guides. Keep target paths, addresses, logs, and operational commands in ignored
 `.local/` files.
 
-## Logging
-
-NDS uses named [`spdlog`](https://github.com/gabime/spdlog) loggers: `npu-client`
-and `cpu-server`. The command-line tools accept `--log-sink
-stderr|stdout|syslog|none` and `--log-level trace|debug|info|warn|error|critical|off`.
-The default is `stderr` at `info`; `syslog` lets a host logging agent collect
-records without parsing terminal output.
-
-Code embedding an NDS component can install a logger with any spdlog sink
-before use:
-
-```cpp
-nds::log::set_logger("npu-client", application_logger);
-```
-
-NDS does not own or require a particular log collector. The CMake build requires
-the system `spdlog` and CLI11 development packages.
-
 ## Documentation
 
-- [HCCP QP and MR lifecycle](docs/hccp-resources.md)
-- [Architecture](docs/architecture.md)
-- [NPU backends](docs/modes.md)
-- [Host RA](docs/host-ra.md)
-- [AIV](docs/aiv.md)
-- [AICPU](docs/aicpu.md)
-- [Linkage and runtime ABI](docs/linkage.md)
-- [Open-source reference basis](docs/open-source-references.md)
-- [Testing](docs/testing.md)
-- [Protocol roadmap](docs/roadmap.md)
+**System design**
+
+- [Architecture](docs/architecture.md): ownership boundaries and the storage
+  protocol.
+- [HCCP QP and MR lifecycle](docs/hccp-resources.md): resource ownership,
+  bootstrap, and teardown.
+- [NPU backends](docs/npu-backends.md): Host RA, AIV, and AICPU posting paths.
+
+**Runtime and evidence**
+
+- [Runtime libraries and ABI](docs/runtime-abi.md): linked libraries, dynamic
+  loaders, provider boundary, and runtime invariants.
+- [Open-source reference basis](docs/open-source-references.md): public source
+  material that informed NDS, with its limits.
+
+**Validation and future work**
+
+- [Testing](docs/testing.md): unit, integration, and opt-in hardware tests.
+- [Protocol roadmap](docs/roadmap.md): next protocol and concurrency work.

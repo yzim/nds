@@ -1,4 +1,4 @@
-# Linkage and Runtime ABI
+# Runtime Libraries and ABI
 
 NDS makes one explicit decision per library. Stable platform and CPU verbs APIs
 are linked normally. Version-coupled CANN interfaces stay behind narrow runtime
@@ -18,32 +18,6 @@ The production interoperability path does **not** use HCOMM, HCCL, TSD, a rank t
 | NDS AIV object | `NdsAivRdmaPost` from the CCEC-built `nds_aiv_roce.o` | Built from this repository with the selected CANN toolchain and loaded through ACL | Owns the minimal direct HNS SQ/WQE/doorbell implementation. It does not load HCOMM. |
 | NDS AICPU package | `NdsAicpuRdmaPost` from the NDS standard-CP1 package | Built from this repository on the selected aarch64 CANN host; installed as a customer AICPU package and loaded through ACL mode 0 | Owns a minimal one-WR RDMA-post kernel. It neither vendors nor loads HCOMM payloads. |
 | `libhcomm.so`, HCCL | none | No loader or wrapper is built | Their communicator, bundled Tx/Rx kernels, rank state, and peer protocols are outside the direct CPU-peer topology. |
-
-## Reference boundary
-
-We thank the maintainers and contributors of the open-source [HCCL](https://gitcode.com/cann/hccl) and [HCOMM](https://gitcode.com/cann/hcomm) projects. The technical basis for NDS lifecycle, transport, and ABI validation is based on information already publicly available through those projects. HCCP source under HCOMM is especially relevant to RA. The installed CANN shared objects are authoritative at runtime.
-
-### HNS provider reference
-
-The matching HCOMM v9.0.0 checkout fetches a Huawei-patched rdma-core 42.7
-source tree. Its configuration builds the `kern-abi` target for generated ABI
-headers; it does not build or install an HNS provider shared object for NDS.
-The patched `providers/hns` source is nevertheless useful reference evidence
-for the userspace HNS ABI. In particular, it documents:
-
-- SQ and RQ WQE layouts, field packing, producer-index updates, and ordering
-  barriers.
-- SCQ and RCQ CQE parsing, consumer-index updates, and ownership handling.
-- The choice between a record doorbell (`sdb`, `rdb`, or CQ `db`) and an MMIO
-  hardware-doorbell write.
-- The custom data-plane export of queue buffers, indices, record-doorbell
-  addresses, and hardware-doorbell-register addresses.
-
-This source is not the deployed kernel driver, RNIC firmware, or a guarantee
-that the installed provider has identical behavior. It is appropriate for
-understanding the expected byte layout and bit operations, but NDS must not
-copy or link it. The selected CANN/driver provider, its resolved symbols, and
-a bounded target experiment remain the runtime compatibility authority.
 
 ## Dynamic-loader invariants
 
@@ -93,4 +67,4 @@ aclInit → aclrtSetDevice → rtOpenNetService → RaInit
 
 The device entry point contains no copied HCOMM implementation. It validates NDS's 80-byte v6 request, dynamically opens the CANN-9.0.0 HNS provider through device-side `dlopen`/`dlsym`, and resolves `ibv_exp_post_send`. NDS creates an AI NORMAL QP because the provider rings `sq.db_reg` itself only in that mode. OPBASE_EXT is normalized to provider OP mode and would require a separate dispatcher to ring the returned `db_info`. NDS does not adopt HCOMM's KFC dispatcher, flag buffers, peer waits, batch/split flows, rank state, retry protocol, or background event poller.
 
-See [NPU backends](modes.md) for the backend comparison and detailed guides.
+See [NPU backends](npu-backends.md) for the backend comparison and detailed guides.
