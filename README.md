@@ -23,11 +23,11 @@ application owns configuration and verification. See [architecture](docs/archite
 
 NDS provides three backends for the NPU endpoint.
 
-| Backend | `post_send` | Local completion | Protocol completion | Guide |
+| Backend | `post_send` | Local completion | Guide |
 |---|---|---|---|
-| `host-ra` | NPU-side host CPU: RA Send plus runtime doorbell | Host RA CQ is available | NPU host polls the CPU-written completion record | [Host RA](docs/npu-backends.md#host-ra) |
-| `aiv` | NDS AIV kernel writes one Send WQE and doorbell | HCCP internal AI-QP handling; future AIV backend handling | NPU host polls the CPU-written completion record | [AIV](docs/npu-backends.md#aiv) |
-| `aicpu` | NDS standard-CP1 kernel calls NPU-side provider `post_send` | HCCP internal AI-QP handling; future AICPU backend handling | NPU host polls the CPU-written completion record | [AICPU](docs/npu-backends.md#aicpu) |
+| `host-ra` | NPU-side host CPU: RA Send plus runtime doorbell | Host RA CQ is available | [Host RA](docs/npu-backends.md#host-ra) |
+| `aiv` | NDS AIV kernel writes one Send WQE and doorbell | HCCP internal AI-QP handling; future AIV backend handling | [AIV](docs/npu-backends.md#aiv) |
+| `aicpu` | NDS standard-CP1 kernel calls NPU-side provider `post_send` | HCCP internal AI-QP handling; future AICPU backend handling | [AICPU](docs/npu-backends.md#aicpu) |
 
 The backends share the same HCCP rdev/QP connection and
 memory-registration lifecycle. Their QP types, post paths, CQ ownership, and
