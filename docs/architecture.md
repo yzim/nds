@@ -71,3 +71,8 @@ not manipulate QPs, MRs, work requests, CQs, or wire codecs.
 MTU policy. `src/common/protocol.*` contains the C-compatible storage record
 ABI and codecs. Neither endpoint exchanges HCCP handles, verbs objects, AI-QP
 descriptors, queue addresses, or doorbell addresses.
+
+The corresponding headers live in `src/common/include/nds/`. They are shared
+between NDS targets, not an installed public SDK: `transport.h` is the C ABI
+for endpoint metadata and MTU policy, `transport.hh` owns the C++ TCP
+bootstrap object, and `protocol.h` is the C ABI for storage records.

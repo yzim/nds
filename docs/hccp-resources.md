@@ -2,8 +2,8 @@
 
 This guide describes the common resource model used before any NDS backend
 posts a request. It covers the NPU HCCP/RA rdev, QP, and memory
-registration; the independent CPU verbs resources; the NDS wire exchange; and
-teardown. Mode-specific posting and CQ handling are described in
+registration; the independent CPU verbs resources; the NDS transport bootstrap;
+and teardown. Mode-specific posting and CQ handling are described in
 [NPU backends](modes.md).
 
 In the source tree, HCCP lifecycle code is backend support under
@@ -16,8 +16,8 @@ uses those resources without exposing HCCP handles to the storage protocol.
 The NPU process owns one HCCP rdev, one HCCP QP, and separate registered NPU
 application, command, and completion allocations. The CPU process independently
 owns its verbs context, PD, CQ, QP, command Receive record, memory namespace,
-and completion-record source buffer. The TCP peer exchange never transfers an
-HCCP or verbs object between processes.
+and completion-record source buffer. The TCP transport bootstrap never
+transfers an HCCP or verbs object between processes.
 
 NDS exchanges only versioned NDS records:
 
@@ -63,9 +63,10 @@ NPU execution environment.
 ## Peer connection
 
 After QP creation, `RaGetQpAttr` returns the NPU QPN, PSN, GID, and GID index.
-NDS serializes those public peer fields into its endpoint record. The CPU server
-creates an independent RC QP using `libibverbs`, moves it through `INIT`, `RTR`,
-and `RTS`, and returns its own endpoint record.
+NDS serializes those public peer fields into its endpoint record through
+`src/common/transport.*`. The CPU server creates an independent RC QP using
+`libibverbs`, moves it through `INIT`, `RTR`, and `RTS`, and returns its own
+endpoint record.
 
 The NPU converts the CPU endpoint record into the RA representation and calls
 `RaTypicalQpModify`. The CPU uses its local active-port MTU for

@@ -12,8 +12,10 @@ namespace. The CPU then writes a completion record to NPU memory.
 
 NDS creates the NPU HCCP rdev/QP and registers NPU memory through CANN RA. The
 CPU independently creates an RC QP and registers memory through `libibverbs`.
-TCP is used only to exchange session metadata; storage commands and data use
-RoCE.
+`src/common/transport.*` uses TCP only to bootstrap the connected RC QPs and
+exchange NDS-owned endpoint metadata. `src/common/protocol.*` defines the
+storage bootstrap, namespace, command, and completion records; storage
+commands and data use RoCE.
 
 This is a one-NPU/one-CPU path. It is not an HCCL job: it does not initialize
 HCOMM or HCCL, consume a rank table, or require a second NPU. The CPU endpoint
@@ -71,6 +73,10 @@ src/common/       Shared transport bootstrap/metadata, storage ABI, and logging
 tests/            Unit tests and a test-only runtime fixture
 docs/             Resource lifecycle, modes, linkage, and implementation guides
 ```
+
+The headers in `src/common/include/nds/` are shared internal interfaces, named
+with an `nds/` prefix to avoid collisions. NDS does not currently install an
+external SDK.
 
 ## Build
 

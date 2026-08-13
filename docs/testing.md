@@ -8,8 +8,9 @@ network configuration.
 ## Unit tests
 
 Unit tests run without sockets, shared libraries, CANN, RDMA hardware, or an
-NPU. They cover the NDS wire codec, CPU path-MTU policy, RA QP lifecycle logic
-through an in-process fake RA API, and the AICPU and AIV request ABI layouts.
+NPU. They cover the NDS transport and storage codecs, CPU path-MTU policy, RA
+QP lifecycle logic through an in-process fake RA API, and the AICPU and AIV
+request ABI layouts.
 
 ```sh
 ctest --test-dir build --output-on-failure --label-regex '^unit$'
@@ -18,9 +19,10 @@ ctest --test-dir build --output-on-failure --label-regex '^unit$'
 ## Integration tests
 
 Integration tests exercise boundaries that cross local operating-system or
-dynamic-library interfaces without using RDMA hardware. The TCP peer exchange test
-uses a Unix socket pair. The runtime-loader test builds a fake shared runtime,
-opens it with the NDS loader, resolves its C ABI symbols, and calls them.
+dynamic-library interfaces without using RDMA hardware. The TCP transport
+bootstrap test uses a Unix socket pair. The runtime-loader test builds a fake
+shared runtime, opens it with the NDS loader, resolves its C ABI symbols, and
+calls them.
 
 ```sh
 ctest --test-dir build --output-on-failure --label-regex '^integration$'
@@ -44,9 +46,10 @@ ctest --test-dir build-e2e --output-on-failure --label-regex '^e2e$'
 ```
 
 The wrapper owns server startup, client invocation, timeout, cleanup, and
-validation for one selected mode. It must not be tracked because it contains
-target addresses and deployment paths. The registered test has a 120-second
-CTest timeout and labels `e2e`, `requires-ascend-npu`, and `requires-rdma`.
+validation for one selected mode. Create it locally when needed; it must not be
+tracked because it contains target addresses and deployment paths. The
+registered test has a 120-second CTest timeout and labels `e2e`,
+`requires-ascend-npu`, and `requires-rdma`.
 
 ## CI
 

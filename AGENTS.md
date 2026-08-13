@@ -3,8 +3,8 @@
 ## Purpose
 
 NDS is a small interoperability project for one Ascend NPU RNIC and one
-CPU-side RoCE RNIC. It owns its TCP peer-exchange protocol and NPU backends;
-it uses the CANN runtime installed on the target.
+CPU-side RoCE RNIC. It owns its TCP transport bootstrap, storage protocol, and
+NPU backends; it uses the CANN runtime installed on the target.
 
 The endpoint roles are fixed:
 
@@ -53,7 +53,7 @@ are defined in [architecture](docs/architecture.md).
   shared endpoint metadata, TCP bootstrap, and MTU policy;
   `src/common/protocol.*` owns shared storage records. Backend and transport
   code must not depend on storage command semantics.
-- Keep the TCP peer exchange independent of RA/HCCP private objects. Exchange
+- Keep the TCP transport bootstrap independent of RA/HCCP private objects. Exchange
   only NDS-owned versioned wire records with the CPU endpoint. Exchange QPN,
   PSN, GID, transport settings, and memory address/length/rkey; never exchange
   HCCP QP or MR handles, AI-QP descriptors, queue addresses, or provider

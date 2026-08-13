@@ -10,7 +10,7 @@ The production interoperability path does **not** use HCOMM, HCCL, TSD, a rank t
 
 | Library | NDS use | Build treatment | Rationale |
 |---|---|---|---|
-| POSIX / `libdl` / threads | sockets, TCP peer exchange, dynamic loading | Link | Stable system ABI. |
+| POSIX / `libdl` / threads | sockets, TCP transport bootstrap, dynamic loading | Link | Stable system ABI. |
 | `libibverbs.so` | CPU-side PD/CQ/QP operations | Link, CPU target only | The CPU endpoint remains CANN-free. |
 | `libascendcl.so` | lifecycle plus AIV/AICPU binary, argument, kernel, and stream APIs when selected | Dynamic by default; optional version-pinned public-ACL link mode | Public lifecycle boundary; dynamic default preserves host build portability. |
 | `libruntime.so` | `rtOpenNetService`, `rtCloseNetService`, `rtRDMADBSend` | Runtime-load | Required by the direct NPU RA lifecycle and default OPBASE Lite doorbell ring; not exposed through a stable NDS-facing SDK contract. |
@@ -28,7 +28,8 @@ We thank the maintainers and contributors of the open-source [HCCL](https://gitc
 1. All CANN libraries used by one NPU process must come from one selected CANN release.
 2. Resolve required symbols with `dlsym` before executing hardware work; fail closed on a missing ABI entry point.
 3. Do not assume an open-source HCOMM checkout has exactly the same symbols as the installed CANN package.
-4. Keep ABI-facing structs internal to the loader boundary and exchange only NDS wire records with the CPU process.
+4. Keep ABI-facing structs internal to the loader boundary and exchange only
+   NDS-owned transport and storage records with the CPU process.
 5. The CPU verbs executable must never link or load CANN.
 6. `--backend aicpu` loads only the NDS-built standard-CP1 package. NDS does not build or expose a custom-process AICPU mode because CANN does not publish the RNIC mapping/import contract that it would require.
 7. CANN 9.0.0 provides an AICPU loader but no public device-side RNIC post API. The NDS-owned AICPU package is a normal aarch64 DYN shared object (built by the same shared-library model as CANN's custom-kernel template), not a `bisheng -x aicpu` relocatable object. It confines the version-coupled HNS provider ABI to `src/npu_client/backend/aicpu/device/include/nds_aicpu_hns_abi.h` and dynamically resolves `libhns-rdmav25.so:ibv_exp_post_send` through `dlopen` / `dlsym` from inside the AICPU/NPU execution environment. This matches HCOMM's device-side `DlHnsFunction` path (`HcclDlopen` is a wrapper around `dlopen`) beneath `TransportDeviceIbverbs::HnsPostSend`. The host launcher does not link, load, probe, or make availability claims about that device-side provider; it only loads NDS's kernel package through ACL.
