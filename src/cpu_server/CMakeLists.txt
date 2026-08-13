@@ -3,7 +3,7 @@ pkg_check_modules(IBVERBS QUIET IMPORTED_TARGET libibverbs)
 
 if(IBVERBS_FOUND)
     add_executable(nds_verbs_server server.cc)
-    target_link_libraries(nds_verbs_server PRIVATE CLI11::CLI11 nds_wire nds_rdma_path_mtu nds_logging PkgConfig::IBVERBS)
+    target_link_libraries(nds_verbs_server PRIVATE CLI11::CLI11 nds_wire nds_rdma_path_mtu nds_peer_exchange nds_logging PkgConfig::IBVERBS)
     target_compile_options(nds_verbs_server PRIVATE -Wall -Wextra -Wpedantic -Werror)
 else()
     message(WARNING "libibverbs was not found; nds_verbs_server will not be built")

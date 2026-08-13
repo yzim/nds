@@ -169,6 +169,19 @@ bool NpuRaContext::copy_host_to_device(void *device_ptr, const void *host_ptr, s
     return true;
 }
 
+bool NpuRaContext::copy_device_to_host(void *host_ptr, const void *device_ptr, std::size_t size)
+{
+    const int result = (!initialized_ || device_ptr == nullptr || host_ptr == nullptr || size == 0U || acl_.memcpy == nullptr)
+                           ? -1
+                           : acl_.memcpy(host_ptr, size, device_ptr, size, NDS_ACL_MEMCPY_DEVICE_TO_HOST);
+    if (result != 0) {
+        set_error("aclrtMemcpy(device-to-host) failed: " + std::to_string(result));
+        return false;
+    }
+    error_.clear();
+    return true;
+}
+
 bool NpuRaContext::submit_rdma_doorbell(std::uint32_t db_index, std::uint64_t db_info)
 {
     int result;

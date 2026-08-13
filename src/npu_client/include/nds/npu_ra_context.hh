@@ -41,6 +41,7 @@ public:
     bool allocate_device_memory(std::size_t size, void **device_ptr);
     bool free_device_memory(void *device_ptr);
     bool copy_host_to_device(void *device_ptr, const void *host_ptr, std::size_t size);
+    bool copy_device_to_host(void *host_ptr, const void *device_ptr, std::size_t size);
     bool submit_rdma_doorbell(std::uint32_t db_index, std::uint64_t db_info);
     nds_ra_api &ra_api() noexcept;
     nds_acl_api &acl_api() noexcept;

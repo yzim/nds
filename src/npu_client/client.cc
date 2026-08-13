@@ -5,6 +5,7 @@
 #include "nds/logging.hh"
 #include "nds/npu_ra_context.hh"
 #include "nds/npu_ra_qp.hh"
+#include "nds/storage_protocol.h"
 
 #include <CLI/CLI.hpp>
 
@@ -23,7 +24,6 @@ namespace {
 
 constexpr std::uint64_t kMaxTransferBytes = 64U * 1024U;
 constexpr std::uint32_t kCompletionTimeoutMs = 5000U;
-constexpr std::uint32_t kCqeErrorCapacity = 128U;
 constexpr std::uint32_t kMaxQpOnlyHoldMs = 60000U;
 constexpr std::uint32_t kMaxAivWriteCount = 16U;
 
@@ -40,6 +40,9 @@ struct ClientConfig {
     std::string aiv_kernel;
     std::uint32_t aiv_write_count{1U};
     std::uint32_t aiv_launch_count{1U};
+    std::string operation{"write"};
+    std::uint64_t offset{};
+    std::uint32_t bytes{4096U};
     std::string log_sink{"stderr"};
     std::string log_level{"info"};
 };
@@ -94,7 +97,7 @@ private:
 
 int parse_args(int argc, char **argv, ClientConfig *config, std::string &error, bool &exit_requested)
 {
-    CLI::App app{"Create one NPU RA RC QP and submit an NPU-to-CPU RDMA Write."};
+    CLI::App app{"Submit one NDS storage command from an NPU to a CPU memory namespace."};
     app.add_flag("--execute", config->execute, "Permit QP creation and submission")->required();
     app.add_flag("--qp-only", config->qp_only, "Validate QP establishment only");
     app.add_option("--qp-only-hold-ms", config->qp_only_hold_ms, "Passive diagnostic hold time")
@@ -111,6 +114,10 @@ int parse_args(int argc, char **argv, ClientConfig *config, std::string &error, 
         ->check(CLI::Range(std::uint32_t{1}, kMaxAivWriteCount));
     app.add_option("--aiv-launch-count", config->aiv_launch_count, "AIV launches")
         ->check(CLI::Range(std::uint32_t{1}, kMaxAivWriteCount));
+    app.add_option("--operation", config->operation, "Storage operation")->check(CLI::IsMember({"read", "write"}));
+    app.add_option("--offset", config->offset, "Namespace byte offset");
+    app.add_option("--bytes", config->bytes, "Storage transfer length")
+        ->check(CLI::Range(std::uint32_t{1}, static_cast<std::uint32_t>(kMaxTransferBytes)));
     app.add_option("--npu-ip", config->qp.local_ipv4, "NPU RoCE IPv4 address")->required();
     app.add_option("--logical-device", config->context.logical_device_id, "NPU logical device")->required();
     app.add_option("--physical-device", config->context.physical_device_id, "NPU physical device")->required();
@@ -189,15 +196,6 @@ const char *port_status_name(int status)
     }
 }
 
-const char *completion_status_name(int status)
-{
-    switch (status) {
-    case NDS_RA_WC_SUCCESS: return "success";
-    case NDS_RA_WC_RETRY_EXCEEDED: return "retry-exceeded";
-    default: return "unknown";
-    }
-}
-
 bool print_port_status(nds::NpuRaQp &qp, const char *stage)
 {
     int status = -1;
@@ -254,59 +252,35 @@ bool print_qp_status(nds::NpuRaQp &qp, const char *stage)
     return true;
 }
 
-void print_failure_diagnostics(nds::NpuRaQp &qp)
-{
-    int status = -1;
-    if (qp.query_status(status)) {
-        NDS_LOG_ERROR_LINE("npu-client") << "NPU QP status after write failure: " << qp_status_name(status) << " (" << status << ")\n";
-    } else {
-        NDS_LOG_ERROR_LINE("npu-client") << "RaGetQpStatus(after write failure) failed: " << qp.error() << '\n';
-    }
-    if (qp.query_port_status(status)) {
-        NDS_LOG_ERROR_LINE("npu-client") << "NPU rdev port status after write failure: " << port_status_name(status) << " (" << status << ")\n";
-    } else {
-        NDS_LOG_ERROR_LINE("npu-client") << "RaRdevGetPortStatus(after write failure) failed: " << qp.error() << '\n';
-    }
-
-    std::array<nds_ra_cqe_error, kCqeErrorCapacity> errors{};
-    std::uint32_t count = kCqeErrorCapacity;
-    if (!qp.query_cqe_errors(errors.data(), count)) {
-        NDS_LOG_ERROR_LINE("npu-client") << "RaRdevGetCqeErrInfoList(after write failure) failed: " << qp.error() << '\n';
-        return;
-    }
-    NDS_LOG_ERROR_LINE("npu-client") << "NPU CQE error records consumed after write failure: " << count << '\n';
-    for (std::uint32_t index = 0; index < count; ++index) {
-        const nds_ra_cqe_error &error = errors[index];
-        NDS_LOG_ERROR_LINE("npu-client") << "  cqe_error[" << index << "]: status=" << error.status << " qpn=" << error.qp_number
-                  << " time=" << static_cast<long long>(error.time.tv_sec) << "." << error.time.tv_usec << '\n';
-    }
-}
-
-bool wait_for_send_completions(nds::NpuRaQp &qp, std::uint32_t expected_count)
+bool wait_for_storage_completion(nds::NpuRaContext &context, const DeviceAllocation &device_completion,
+                                 std::uint64_t request_id, std::uint64_t expected_bytes)
 {
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(kCompletionTimeoutMs);
-    nds_ra_completion completion{};
-    std::uint32_t completed = 0U;
-    if (expected_count == 0U) return false;
+    nds_storage_completion_wire wire{};
+    nds_storage_completion completion{};
+    char error[NDS_STORAGE_ERROR_CAPACITY]{};
     while (std::chrono::steady_clock::now() < deadline) {
-        const int count = qp.poll_send_completions(&completion, 1U);
-        if (count < 0) {
-            NDS_LOG_ERROR_LINE("npu-client") << "RaPollCq(send) failed: " << qp.error() << '\n';
+        if (!context.copy_device_to_host(&wire, device_completion.get(), sizeof(wire))) {
+            NDS_LOG_ERROR_LINE("npu-client") << "completion copy failed: " << context.error() << '\n';
             return false;
         }
-        if (count > 0) {
-            NDS_LOG_INFO_LINE("npu-client") << "NPU send completion: status=" << completion_status_name(completion.status)
-                      << " (" << completion.status << ") opcode=" << completion.opcode
-                      << " qpn=" << completion.qp_number << " bytes=" << completion.byte_length
-                      << " vendor_error=" << completion.vendor_error << '\n';
-            if (completion.status != NDS_RA_WC_SUCCESS) return false;
-            ++completed;
-            if (completed == expected_count) return true;
+        if (nds_storage_completion_decode(&wire, &completion, error) != 0) {
+            NDS_LOG_ERROR_LINE("npu-client") << "invalid storage completion: " << error << '\n';
+            return false;
+        }
+        if (completion.state == NDS_STORAGE_COMPLETION_COMPLETE) {
+            if (completion.request_id != request_id || completion.status != NDS_STORAGE_SUCCESS ||
+                completion.bytes_transferred != expected_bytes) {
+                NDS_LOG_ERROR_LINE("npu-client") << "storage completion rejected request: request_id="
+                          << completion.request_id << " status=" << completion.status
+                          << " bytes=" << completion.bytes_transferred << '\n';
+                return false;
+            }
+            return true;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
-    NDS_LOG_ERROR_LINE("npu-client") << "timed out waiting " << kCompletionTimeoutMs << " ms for " << expected_count
-              << " signaled NPU RDMA Write completions; received " << completed << '\n';
+    NDS_LOG_ERROR_LINE("npu-client") << "timed out waiting for CPU storage completion record\n";
     return false;
 }
 
@@ -321,7 +295,6 @@ int main(int argc, char **argv)
     nds::NpuRaQp qp;
     nds::TcpPeerExchange peer_exchange;
     nds_rc_endpoint local{};
-    nds_memory_descriptor destination{};
     std::string peer_exchange_error;
 
     bool exit_requested = false;
@@ -362,45 +335,66 @@ int main(int argc, char **argv)
         NDS_LOG_INFO_LINE("npu-client") << "QP-only validation passed; no memory registration or RDMA work request was posted.\n";
         return EXIT_SUCCESS;
     }
-    if (!peer_exchange.receive_memory_descriptor(destination, &peer_exchange_error)) {
-        NDS_LOG_ERROR_LINE("npu-client") << "CPU destination-MR exchange failed: " << peer_exchange_error << '\n'; return EXIT_FAILURE;
-    }
-    if ((destination.access_flags & NDS_MEMORY_ACCESS_REMOTE_WRITE) == 0U || destination.length == 0U ||
-        destination.length > kMaxTransferBytes || destination.length > std::numeric_limits<std::uint32_t>::max()) {
-        NDS_LOG_ERROR_LINE("npu-client") << "CPU advertised an unsupported destination-MR descriptor\n"; return EXIT_FAILURE;
-    }
-    NDS_LOG_INFO_LINE("npu-client") << "CPU destination MR: transaction=" << destination.transaction_id << " addr=0x" << std::hex
-              << destination.address << std::dec << " bytes=" << destination.length << " rkey=" << destination.rkey << '\n';
-    std::vector<unsigned char> payload(static_cast<std::size_t>(destination.length));
+    const std::uint16_t operation = config.operation == "read" ? NDS_STORAGE_READ : NDS_STORAGE_WRITE;
+    const std::uint64_t request_id = (static_cast<std::uint64_t>(local.qp_num) << 32U) | local.psn;
+    std::vector<unsigned char> payload(config.bytes);
     for (std::size_t index = 0; index < payload.size(); ++index) payload[index] = static_cast<unsigned char>(index ^ 0x5aU);
-    DeviceAllocation device_buffer(context);
-    RegisteredMemory source_mr(qp);
+    DeviceAllocation device_data(context);
+    DeviceAllocation device_command(context);
+    DeviceAllocation device_completion(context);
+    RegisteredMemory data_mr(qp);
+    RegisteredMemory command_mr(qp);
+    RegisteredMemory completion_mr(qp);
     DeviceAllocation aiv_request_buffer(context);
     nds::AicpuRdmaPostLauncher aicpu_launcher;
     nds::AivRdmaWriteLauncher aiv_launcher;
-    if (!device_buffer.allocate(payload.size()) ||
-        !context.copy_host_to_device(device_buffer.get(), payload.data(), payload.size()) ||
-        !source_mr.register_memory(device_buffer.get(), destination.length, NDS_RA_ACCESS_DIRECT_NPU)) {
-        NDS_LOG_ERROR_LINE("npu-client") << "NPU source preparation failed: " << (qp.error().empty() ? context.error() : qp.error()) << '\n';
+    nds_storage_completion pending{request_id, NDS_STORAGE_COMPLETION_PENDING, NDS_STORAGE_SUCCESS, 0U};
+    nds_storage_completion_wire completion_wire{};
+    char storage_error[NDS_STORAGE_ERROR_CAPACITY]{};
+    if (nds_storage_completion_encode(&pending, &completion_wire, storage_error) != 0 ||
+        !device_data.allocate(payload.size()) || !device_command.allocate(sizeof(nds_storage_command_wire)) ||
+        !device_completion.allocate(sizeof(completion_wire)) ||
+        !context.copy_host_to_device(device_data.get(), payload.data(), payload.size()) ||
+        !context.copy_host_to_device(device_completion.get(), &completion_wire, sizeof(completion_wire)) ||
+        !data_mr.register_memory(device_data.get(), payload.size(), NDS_RA_ACCESS_DIRECT_NPU) ||
+        !command_mr.register_memory(device_command.get(), sizeof(nds_storage_command_wire), NDS_RA_ACCESS_DIRECT_NPU) ||
+        !completion_mr.register_memory(device_completion.get(), sizeof(completion_wire), NDS_RA_ACCESS_DIRECT_NPU)) {
+        NDS_LOG_ERROR_LINE("npu-client") << "NPU storage buffer preparation failed: "
+                  << (qp.error().empty() ? context.error() : qp.error()) << '\n';
         return EXIT_FAILURE;
     }
-    NDS_LOG_INFO_LINE("npu-client") << "NPU source MR: addr=" << device_buffer.get() << " bytes=" << destination.length
-              << " lkey=" << source_mr.info().local_key << " rkey=" << source_mr.info().remote_key << '\n';
-    if (!print_qp_status(qp, "before RDMA Write") || !print_port_status(qp, "before RDMA Write")) return EXIT_FAILURE;
+    nds_storage_bootstrap bootstrap{{reinterpret_cast<std::uint64_t>(device_completion.get()), sizeof(completion_wire),
+                                     completion_mr.info().remote_key, NDS_STORAGE_ACCESS_REMOTE_WRITE}};
+    nds_storage_namespace storage_namespace{};
+    if (!peer_exchange.send_storage_bootstrap(bootstrap, &peer_exchange_error) ||
+        !peer_exchange.receive_storage_namespace(storage_namespace, &peer_exchange_error)) {
+        NDS_LOG_ERROR_LINE("npu-client") << "storage bootstrap failed: " << peer_exchange_error << '\n';
+        return EXIT_FAILURE;
+    }
+    if (config.offset > storage_namespace.capacity || config.bytes > storage_namespace.capacity - config.offset) {
+        NDS_LOG_ERROR_LINE("npu-client") << "requested storage range exceeds CPU namespace capacity\n";
+        return EXIT_FAILURE;
+    }
+    const std::uint32_t data_access = operation == NDS_STORAGE_READ ? NDS_STORAGE_ACCESS_REMOTE_WRITE : NDS_STORAGE_ACCESS_REMOTE_READ;
+    nds_storage_command command{request_id, operation, config.offset, config.bytes,
+                                {reinterpret_cast<std::uint64_t>(device_data.get()), payload.size(), data_mr.info().remote_key, data_access}};
+    nds_storage_command_wire command_wire{};
+    if (nds_storage_command_encode(&command, &command_wire, storage_error) != 0 ||
+        !context.copy_host_to_device(device_command.get(), &command_wire, sizeof(command_wire))) {
+        NDS_LOG_ERROR_LINE("npu-client") << "storage command preparation failed: "
+                  << (storage_error[0] == '\0' ? context.error() : storage_error) << '\n';
+        return EXIT_FAILURE;
+    }
+    NDS_LOG_INFO_LINE("npu-client") << "NPU storage command MR: addr=" << device_command.get()
+              << " bytes=" << sizeof(command_wire) << " lkey=" << command_mr.info().local_key << '\n';
+    if (!print_qp_status(qp, "before storage command") || !print_port_status(qp, "before storage command")) return EXIT_FAILURE;
     if (config.qp.submission_mode == nds::NpuRaSubmissionMode::HostRa) {
         std::string submission_error;
         const nds::HostRaPostRequest request{
-            {reinterpret_cast<std::uint64_t>(device_buffer.get()), static_cast<std::uint32_t>(destination.length),
-             source_mr.info().local_key},
-            NDS_RA_WR_RDMA_WRITE,
-            destination.address,
-            destination.rkey};
+            {reinterpret_cast<std::uint64_t>(device_command.get()), static_cast<std::uint32_t>(sizeof(command_wire)),
+             command_mr.info().local_key}, NDS_RA_WR_SEND, 0U, 0U};
         if (!nds::submit_host_ra(context, qp, request, submission_error)) {
-            NDS_LOG_ERROR_LINE("npu-client") << "host RA RDMA Write submission failed: " << submission_error << '\n';
-            return EXIT_FAILURE;
-        }
-        if (!wait_for_send_completions(qp, 1U)) {
-            print_failure_diagnostics(qp);
+            NDS_LOG_ERROR_LINE("npu-client") << "host RA storage command submission failed: " << submission_error << '\n';
             return EXIT_FAILURE;
         }
     } else if (config.qp.submission_mode == nds::NpuRaSubmissionMode::Aicpu) {
@@ -412,8 +406,8 @@ int main(int argc, char **argv)
         }
         const nds_ra_ai_qp_info &ai_qp = qp.aicpu_qp_info();
         const nds::AicpuRdmaPostRequest request{
-            NDS_AICPU_RDMA_WRITE, ai_qp.ai_qp_address, source_mr.info().local_key, destination.rkey,
-            reinterpret_cast<std::uint64_t>(device_buffer.get()), destination.address, destination.length, 1U,
+            NDS_AICPU_SEND, ai_qp.ai_qp_address, command_mr.info().local_key, 0U,
+            reinterpret_cast<std::uint64_t>(device_command.get()), 0U, sizeof(command_wire), 1U,
             static_cast<std::uint32_t>(config.context.logical_device_id)};
         if (!aicpu_launcher.launch_and_wait(request, static_cast<std::int32_t>(kCompletionTimeoutMs))) {
             NDS_LOG_ERROR_LINE("npu-client") << "NdsAicpuRdmaPost failed: " << aicpu_launcher.error() << '\n';
@@ -432,9 +426,9 @@ int main(int argc, char **argv)
         const auto *data_plane = reinterpret_cast<const nds_ra_ai_data_plane_info *>(ai_qp.data_plane_info);
         nds_aiv_rdma_write_request device_request{};
         const nds::AivRdmaWriteRequest request{
-            data_plane->send_wq, config.qp.service_level, source_mr.info().local_key, destination.rkey,
-            reinterpret_cast<std::uint64_t>(device_buffer.get()), destination.address,
-            static_cast<std::uint32_t>(destination.length), config.aiv_write_count};
+            data_plane->send_wq, config.qp.service_level, command_mr.info().local_key, 0U,
+            reinterpret_cast<std::uint64_t>(device_command.get()), 0U,
+            static_cast<std::uint32_t>(sizeof(command_wire)), config.aiv_write_count};
         NDS_LOG_INFO_LINE("npu-client") << "NPU AIV SQ: wqn=" << data_plane->send_wq.wqn
                   << " buf=0x" << std::hex << data_plane->send_wq.buffer_address
                   << " wqebb=" << std::dec << data_plane->send_wq.wqebb_size
@@ -472,17 +466,18 @@ int main(int argc, char **argv)
                   << " signaled RDMA Writes through the AI SQ hardware doorbell.\n";
         NDS_LOG_INFO_LINE("npu-client") << "HCCP owns this AI QP's CQ and processes its completion channel asynchronously.\n";
     }
-    const nds_transfer_status submitted{NDS_TRANSFER_SUBMITTED, destination.transaction_id};
-    nds_transfer_status verified{};
-    if (!peer_exchange.send_transfer_status(submitted, &peer_exchange_error) ||
-        !peer_exchange.receive_transfer_status(verified, &peer_exchange_error)) {
-        NDS_LOG_ERROR_LINE("npu-client") << "CPU transfer acknowledgment failed: " << peer_exchange_error << '\n';
-        return EXIT_FAILURE;
+    if (!wait_for_storage_completion(context, device_completion, request_id, config.bytes)) return EXIT_FAILURE;
+    if (operation == NDS_STORAGE_READ) {
+        std::vector<unsigned char> result(payload.size());
+        if (!context.copy_device_to_host(result.data(), device_data.get(), result.size())) {
+            NDS_LOG_ERROR_LINE("npu-client") << "readback copy failed: " << context.error() << '\n';
+            return EXIT_FAILURE;
+        }
+        if (result != std::vector<unsigned char>(result.size(), 0U)) {
+            NDS_LOG_ERROR_LINE("npu-client") << "storage Read returned nonzero data from a new namespace\n";
+            return EXIT_FAILURE;
+        }
     }
-    if (verified.transaction_id != destination.transaction_id || verified.status != NDS_TRANSFER_VERIFIED) {
-        NDS_LOG_ERROR_LINE("npu-client") << "CPU rejected RDMA transfer validation\n";
-        return EXIT_FAILURE;
-    }
-    NDS_LOG_INFO_LINE("npu-client") << "CPU verified the RDMA transfer; NPU resources may now be released.\n";
+    NDS_LOG_INFO_LINE("npu-client") << "CPU completed the NDS storage command; NPU resources may now be released.\n";
     return EXIT_SUCCESS;
 }

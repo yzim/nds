@@ -1,8 +1,10 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include "nds/rdma_path_mtu.h"
+#include "nds/peer_exchange.hh"
 #include "nds/rdma_wire_codec.h"
 #include "nds/logging.hh"
+#include "nds/storage_protocol.h"
 
 #include <CLI/CLI.hpp>
 
@@ -11,6 +13,7 @@
 #include <infiniband/verbs.h>
 #include <limits.h>
 #include <netinet/in.h>
+#include <cstdint>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -18,7 +21,6 @@
 #include <time.h>
 #include <unistd.h>
 
-#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -27,11 +29,6 @@
 #define NDS_DEFAULT_IB_PORT 1U
 #define NDS_UNSET_GID_INDEX UINT_MAX
 #define NDS_QP_DEPTH 16U
-#define NDS_DEFAULT_BYTES 4096U
-#define NDS_MAX_BYTES (64U * 1024U)
-#define NDS_GUARD_BYTES 64U
-#define NDS_GUARD_VALUE 0xa5U
-#define NDS_PAYLOAD_INITIAL_VALUE 0xccU
 #define NDS_TRANSFER_WAIT_MS 5000U
 
 struct nds_server_config {
@@ -40,7 +37,7 @@ struct nds_server_config {
     unsigned int tcp_port;
     unsigned int ib_port;
     unsigned int gid_index;
-    unsigned int bytes;
+    unsigned int namespace_bytes;
     unsigned int post_close_hold_ms;
     bool qp_only;
     std::string log_sink{"stderr"};
@@ -55,9 +52,12 @@ struct nds_verbs_resources {
     uint32_t psn = 0U;
     uint32_t path_mtu = 0U;
     ibv_gid gid = {};
-    std::vector<unsigned char> buffer;
-    size_t buffer_length = 0U;
-    ibv_mr *mr = nullptr;
+    nds_storage_command_wire command = {};
+    ibv_mr *command_mr = nullptr;
+    nds_storage_completion_wire completion = {};
+    ibv_mr *completion_mr = nullptr;
+    std::vector<unsigned char> namespace_buffer;
+    ibv_mr *namespace_mr = nullptr;
 
     nds_verbs_resources() = default;
     nds_verbs_resources(const nds_verbs_resources &) = delete;
@@ -65,7 +65,9 @@ struct nds_verbs_resources {
 
     ~nds_verbs_resources()
     {
-        if (mr != nullptr) (void)ibv_dereg_mr(mr);
+        if (namespace_mr != nullptr) (void)ibv_dereg_mr(namespace_mr);
+        if (completion_mr != nullptr) (void)ibv_dereg_mr(completion_mr);
+        if (command_mr != nullptr) (void)ibv_dereg_mr(command_mr);
         if (qp != nullptr) (void)ibv_destroy_qp(qp);
         if (cq != nullptr) (void)ibv_destroy_cq(cq);
         if (pd != nullptr) (void)ibv_dealloc_pd(pd);
@@ -84,6 +86,12 @@ public:
     }
 
     int get() const { return descriptor_; }
+    int release()
+    {
+        const int released = descriptor_;
+        descriptor_ = -1;
+        return released;
+    }
     void reset(int descriptor = -1)
     {
         if (descriptor_ >= 0) (void)close(descriptor_);
@@ -112,15 +120,16 @@ static int parse_arguments(int argc, char **argv, struct nds_server_config *conf
     config->tcp_port = NDS_DEFAULT_TCP_PORT;
     config->ib_port = NDS_DEFAULT_IB_PORT;
     config->gid_index = NDS_UNSET_GID_INDEX;
-    config->bytes = NDS_DEFAULT_BYTES;
+    config->namespace_bytes = 1024U * 1024U;
     config->post_close_hold_ms = 0U;
-    CLI::App app{"Create one CPU verbs RC QP and receive an NPU RDMA Write."};
+    CLI::App app{"Serve one-command NDS memory-backed storage requests."};
     app.add_option("--device", config->device_name, "RDMA device name")->required();
     app.add_option("--gid-index", config->gid_index, "RoCE GID index")->required()->check(CLI::Range(0U, static_cast<unsigned int>(INT32_MAX)));
     app.add_option("--listen", config->listen_address, "TCP listen IPv4 address");
     app.add_option("--tcp-port", config->tcp_port, "TCP peer-exchange port")->check(CLI::Range(1U, static_cast<unsigned int>(UINT16_MAX)));
     app.add_option("--ib-port", config->ib_port, "RDMA port")->check(CLI::Range(1U, static_cast<unsigned int>(UINT8_MAX)));
-    app.add_option("--bytes", config->bytes, "Destination buffer size")->check(CLI::Range(1U, NDS_MAX_BYTES));
+    app.add_option("--namespace-bytes", config->namespace_bytes, "Memory-backed namespace capacity")
+        ->check(CLI::Range(1U, 64U * 1024U * 1024U));
     app.add_option("--post-close-hold-ms", config->post_close_hold_ms, "Passive diagnostic hold time")->check(CLI::Range(0U, 60000U));
     app.add_flag("--qp-only", config->qp_only, "Validate QP establishment only");
     app.add_option("--log-sink", config->log_sink, "Log sink")->check(CLI::IsMember({"stderr", "stdout", "syslog", "none"}));
@@ -305,58 +314,116 @@ static int create_resources(struct ibv_device *device, const struct nds_server_c
     return 0;
 }
 
-static int create_destination_memory(struct nds_verbs_resources *resources, unsigned int bytes)
+static int create_storage_memory(struct nds_verbs_resources *resources, unsigned int bytes)
 {
-    const size_t total = (size_t)bytes + (2U * NDS_GUARD_BYTES);
-
-    resources->buffer.resize(total);
-    std::fill_n(resources->buffer.begin(), NDS_GUARD_BYTES, NDS_GUARD_VALUE);
-    std::fill_n(resources->buffer.begin() + NDS_GUARD_BYTES, bytes, NDS_PAYLOAD_INITIAL_VALUE);
-    std::fill_n(resources->buffer.begin() + NDS_GUARD_BYTES + bytes, NDS_GUARD_BYTES, NDS_GUARD_VALUE);
-    resources->buffer_length = bytes;
-    resources->mr = ibv_reg_mr(resources->pd, resources->buffer.data(), total,
-                               IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
-    if (resources->mr == nullptr) {
-        NDS_LOG_ERROR("cpu-server", "{}: {}", "ibv_reg_mr(destination)", strerror(errno));
-        resources->buffer.clear();
-        resources->buffer_length = 0U;
+    resources->namespace_buffer.resize(bytes, 0U);
+    resources->namespace_mr = ibv_reg_mr(resources->pd, resources->namespace_buffer.data(), bytes,
+                                         IBV_ACCESS_LOCAL_WRITE);
+    if (resources->namespace_mr == nullptr) {
+        NDS_LOG_ERROR("cpu-server", "{}: {}", "ibv_reg_mr(namespace)", strerror(errno));
+        resources->namespace_buffer.clear();
+        return -1;
+    }
+    resources->completion_mr = ibv_reg_mr(resources->pd, &resources->completion,
+                                          sizeof(resources->completion), 0);
+    if (resources->completion_mr == nullptr) {
+        NDS_LOG_ERROR("cpu-server", "{}: {}", "ibv_reg_mr(completion)", strerror(errno));
         return -1;
     }
     return 0;
 }
 
-static bool destination_is_valid(const struct nds_verbs_resources *resources,
-                                 const unsigned char *expected)
+static int post_command_receive(struct nds_verbs_resources *resources)
 {
-    const unsigned char *allocation = resources->buffer.data();
-    const size_t bytes = resources->buffer_length;
-    size_t index;
-
-    if (resources->buffer.empty() || expected == nullptr || memcmp(allocation + NDS_GUARD_BYTES, expected, bytes) != 0) {
-        return false;
+    ibv_sge sge{};
+    ibv_recv_wr receive{};
+    ibv_recv_wr *bad = nullptr;
+    resources->command_mr = ibv_reg_mr(resources->pd, &resources->command, sizeof(resources->command),
+                                        IBV_ACCESS_LOCAL_WRITE);
+    if (resources->command_mr == nullptr) {
+        NDS_LOG_ERROR("cpu-server", "{}: {}", "ibv_reg_mr(command)", strerror(errno));
+        return -1;
     }
-    for (index = 0U; index < NDS_GUARD_BYTES; ++index) {
-        if (allocation[index] != NDS_GUARD_VALUE ||
-            allocation[NDS_GUARD_BYTES + bytes + index] != NDS_GUARD_VALUE) {
-            return false;
-        }
+    sge.addr = reinterpret_cast<std::uintptr_t>(&resources->command);
+    sge.length = sizeof(resources->command);
+    sge.lkey = resources->command_mr->lkey;
+    receive.wr_id = 1U;
+    receive.sg_list = &sge;
+    receive.num_sge = 1;
+    if (ibv_post_recv(resources->qp, &receive, &bad) != 0) {
+        NDS_LOG_ERROR("cpu-server", "{}: {}", "ibv_post_recv(command)", strerror(errno));
+        return -1;
     }
-    return true;
+    return 0;
 }
 
-static bool wait_for_destination(const struct nds_verbs_resources *resources,
-                                 const unsigned char *expected)
+static int poll_completion(struct nds_verbs_resources *resources, enum ibv_wc_opcode expected_opcode)
 {
-    const struct timespec delay = {.tv_sec = 0, .tv_nsec = 1000000L};
-    unsigned int elapsed;
-
-    for (elapsed = 0U; elapsed < NDS_TRANSFER_WAIT_MS; ++elapsed) {
-        if (destination_is_valid(resources, expected)) {
-            return true;
+    const timespec delay{0, 1000000L};
+    for (unsigned int elapsed = 0U; elapsed < NDS_TRANSFER_WAIT_MS; ++elapsed) {
+        ibv_wc completion{};
+        const int count = ibv_poll_cq(resources->cq, 1, &completion);
+        if (count < 0 || (count == 1 && (completion.status != IBV_WC_SUCCESS || completion.opcode != expected_opcode))) {
+            NDS_LOG_ERRORF("cpu-server", "unexpected CQ completion: count=%d status=%d opcode=%d\n", count,
+                           count == 1 ? completion.status : -1, count == 1 ? completion.opcode : -1);
+            return -1;
         }
+        if (count == 1) return 0;
         (void)nanosleep(&delay, nullptr);
     }
-    return destination_is_valid(resources, expected);
+    NDS_LOG_ERROR("cpu-server", "timed out waiting for verbs CQ completion");
+    return -1;
+}
+
+static int post_storage_operation(struct nds_verbs_resources *resources, const nds_storage_command *command,
+                                  const nds_storage_bootstrap *bootstrap)
+{
+    ibv_sge data_sge{};
+    ibv_sge completion_sge{};
+    ibv_send_wr data{};
+    ibv_send_wr completion{};
+    ibv_send_wr *bad = nullptr;
+    nds_storage_completion response{command->request_id, NDS_STORAGE_COMPLETION_COMPLETE, NDS_STORAGE_SUCCESS, command->length};
+    char error[NDS_STORAGE_ERROR_CAPACITY]{};
+
+    if (command->offset > resources->namespace_buffer.size() || command->length > resources->namespace_buffer.size() - command->offset) {
+        response.status = NDS_STORAGE_RANGE_ERROR;
+        response.bytes_transferred = 0U;
+    }
+    if (nds_storage_completion_encode(&response, &resources->completion, error) != 0) {
+        NDS_LOG_ERRORF("cpu-server", "cannot encode completion: %s\n", error);
+        return -1;
+    }
+    completion_sge.addr = reinterpret_cast<std::uintptr_t>(&resources->completion);
+    completion_sge.length = sizeof(nds_storage_completion_wire);
+    completion_sge.lkey = resources->completion_mr->lkey;
+    completion.wr_id = 3U;
+    completion.sg_list = &completion_sge;
+    completion.num_sge = 1;
+    completion.opcode = IBV_WR_RDMA_WRITE;
+    completion.send_flags = IBV_SEND_SIGNALED;
+    completion.wr.rdma.remote_addr = bootstrap->completion.address;
+    completion.wr.rdma.rkey = bootstrap->completion.rkey;
+    if (response.status == NDS_STORAGE_SUCCESS) {
+        data_sge.addr = reinterpret_cast<std::uintptr_t>(resources->namespace_buffer.data() + command->offset);
+        data_sge.length = static_cast<uint32_t>(command->length);
+        data_sge.lkey = resources->namespace_mr->lkey;
+        data.wr_id = 2U;
+        data.sg_list = &data_sge;
+        data.num_sge = 1;
+        data.opcode = command->operation == NDS_STORAGE_READ ? IBV_WR_RDMA_WRITE : IBV_WR_RDMA_READ;
+        data.wr.rdma.remote_addr = command->data.address;
+        data.wr.rdma.rkey = command->data.rkey;
+        data.next = &completion;
+        if (ibv_post_send(resources->qp, &data, &bad) != 0) {
+            NDS_LOG_ERROR("cpu-server", "{}: {}", "ibv_post_send(storage data)", strerror(errno));
+            return -1;
+        }
+    } else if (ibv_post_send(resources->qp, &completion, &bad) != 0) {
+        NDS_LOG_ERROR("cpu-server", "{}: {}", "ibv_post_send(range completion)", strerror(errno));
+        return -1;
+    }
+    return poll_completion(resources, IBV_WC_RDMA_WRITE);
 }
 
 static int move_qp_to_init(const struct nds_verbs_resources *resources,
@@ -521,7 +588,7 @@ static void hold_for_passive_diagnostics(unsigned int milliseconds)
     }
     remaining.tv_sec = (time_t)(milliseconds / 1000U);
     remaining.tv_nsec = (long)(milliseconds % 1000U) * 1000000L;
-    NDS_LOG_INFOF("cpu-server", "Holding CPU QP and destination MR for %u ms for passive diagnostics; no additional work is posted.\n",
+    NDS_LOG_INFOF("cpu-server", "Holding CPU QP and storage MRs for %u ms for passive diagnostics; no additional work is posted.\n",
                  milliseconds);
     while (nanosleep(&remaining, &remaining) != 0 && errno == EINTR) {
     }
@@ -608,11 +675,9 @@ static int run_server(int argc, char **argv)
     nds_rc_endpoint_wire local_wire;
     nds_rc_endpoint peer;
     nds_rc_endpoint local;
-    nds_memory_descriptor_wire memory_wire;
-    nds_memory_descriptor memory;
-    nds_transfer_status_wire status_wire;
-    nds_transfer_status status;
-    std::vector<unsigned char> expected;
+    nds_storage_bootstrap bootstrap{};
+    nds_storage_namespace storage_namespace{};
+    nds_storage_command command{};
     char wire_error[NDS_WIRE_ERROR_CAPACITY] = {};
     nds_file_descriptor listener;
     nds_file_descriptor connection;
@@ -635,15 +700,7 @@ static int run_server(int argc, char **argv)
     if (create_resources(device, &config, &resources) != 0 || move_qp_to_init(&resources, &config) != 0) {
         return EXIT_FAILURE;
     }
-    if (!config.qp_only) {
-        if (create_destination_memory(&resources, config.bytes) != 0) {
-            return EXIT_FAILURE;
-        }
-        expected.resize(config.bytes);
-        for (unsigned int index = 0U; index < config.bytes; ++index) {
-            expected[index] = (unsigned char)(index ^ 0x5aU);
-        }
-    }
+    if (!config.qp_only && create_storage_memory(&resources, config.namespace_bytes) != 0) return EXIT_FAILURE;
     if (make_endpoint(&resources, &config, &local_wire, wire_error) != 0 ||
         nds_rc_endpoint_decode(&local_wire, &local, wire_error) != 0) {
         NDS_LOG_ERRORF("cpu-server", "could not create local QP-only endpoint: %s\n", wire_error);
@@ -657,16 +714,15 @@ static int run_server(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
-    NDS_LOG_INFOF("cpu-server", "NDS verbs server ready: device=%s ib_port=%u gid_index=%u tcp=%s:%u mode=%s bytes=%u\n",
+    NDS_LOG_INFOF("cpu-server", "NDS verbs server ready: device=%s ib_port=%u gid_index=%u tcp=%s:%u mode=%s namespace_bytes=%u\n",
                  config.device_name.c_str(), config.ib_port, config.gid_index, config.listen_address.c_str(), config.tcp_port,
-                 config.qp_only ? "qp-only" : "rdma-write", config.bytes);
+                 config.qp_only ? "qp-only" : "storage", config.namespace_bytes);
     report_endpoint("CPU local", &local);
     if (!config.qp_only) {
-        NDS_LOG_INFOF("cpu-server", "CPU destination MR: addr=%p payload_bytes=%zu lkey=%u rkey=%u\n",
-                     resources.buffer.data() + NDS_GUARD_BYTES, resources.buffer_length,
-                     resources.mr->lkey, resources.mr->rkey);
+        NDS_LOG_INFOF("cpu-server", "CPU memory-backed namespace: bytes=%zu lkey=%u rkey=%u\n",
+                      resources.namespace_buffer.size(), resources.namespace_mr->lkey, resources.namespace_mr->rkey);
     }
-    NDS_LOG_INFOF("cpu-server", "Waiting for an 80-byte NDS v2 QP-only peer endpoint description.\n");
+    NDS_LOG_INFOF("cpu-server", "Waiting for an NDS QP endpoint description.\n");
     connection.reset(accept(listener.get(), nullptr, nullptr));
     if (connection.get() < 0) {
         NDS_LOG_ERROR("cpu-server", "{}: {}", "accept", strerror(errno));
@@ -690,6 +746,7 @@ static int run_server(int argc, char **argv)
     if (move_qp_to_rtr_rts(&resources, &config, &peer) != 0 || report_qp(&resources, "after RTR/RTS") != 0) {
         return EXIT_FAILURE;
     }
+    if (!config.qp_only && post_command_receive(&resources) != 0) return EXIT_FAILURE;
     if (write_full(connection.get(), &local_wire, sizeof(local_wire)) != 0) {
         NDS_LOG_ERROR("cpu-server", "{}: {}", "write endpoint", strerror(errno));
         return EXIT_FAILURE;
@@ -702,38 +759,27 @@ static int run_server(int argc, char **argv)
         NDS_LOG_INFO("cpu-server", "QP-only validation passed; NPU closed the control connection without a work request.");
         return EXIT_SUCCESS;
     }
-    memory = {};
-    memory.flags = 0U;
-    memory.transaction_id = ((uint64_t)resources.qp->qp_num << 32) | resources.psn;
-    memory.address = (uint64_t)(uintptr_t)(resources.buffer.data() + NDS_GUARD_BYTES);
-    memory.length = resources.buffer_length;
-    memory.rkey = resources.mr->rkey;
-    memory.access_flags = NDS_MEMORY_ACCESS_REMOTE_WRITE;
-    if (nds_memory_descriptor_encode(&memory, &memory_wire, wire_error) != 0 ||
-        write_full(connection.get(), &memory_wire, sizeof(memory_wire)) != 0) {
-        NDS_LOG_ERRORF("cpu-server", "could not send CPU memory descriptor: %s\n", wire_error);
+    nds::TcpPeerExchange exchange(connection.release());
+    std::string exchange_error;
+    if (!exchange.receive_storage_bootstrap(bootstrap, &exchange_error)) {
+        NDS_LOG_ERROR_LINE("cpu-server") << "NPU storage bootstrap failed: " << exchange_error << '\n';
         return EXIT_FAILURE;
     }
-    if (read_full(connection.get(), &status_wire, sizeof(status_wire)) != 0 ||
-        nds_transfer_status_decode(&status_wire, &status, wire_error) != 0 ||
-        status.status != NDS_TRANSFER_SUBMITTED || status.transaction_id != memory.transaction_id) {
-        NDS_LOG_ERRORF("cpu-server", "invalid or incomplete NDS transfer submission: %s\n", wire_error);
+    storage_namespace.capacity = resources.namespace_buffer.size();
+    if (!exchange.send_storage_namespace(storage_namespace, &exchange_error)) {
+        NDS_LOG_ERROR_LINE("cpu-server") << "CPU namespace bootstrap failed: " << exchange_error << '\n';
         return EXIT_FAILURE;
     }
-    status.status = wait_for_destination(&resources, expected.data()) ? NDS_TRANSFER_VERIFIED : NDS_TRANSFER_FAILED;
-    if (nds_transfer_status_encode(&status, &status_wire, wire_error) != 0 ||
-        write_full(connection.get(), &status_wire, sizeof(status_wire)) != 0) {
-        NDS_LOG_ERRORF("cpu-server", "could not send NDS transfer acknowledgment: %s\n", wire_error);
+    if (poll_completion(&resources, IBV_WC_RECV) != 0 ||
+        nds_storage_command_decode(&resources.command, &command, wire_error) != 0) {
+        NDS_LOG_ERRORF("cpu-server", "invalid NDS storage command: %s\n", wire_error);
         return EXIT_FAILURE;
     }
-    if (report_qp(&resources, "after transfer acknowledgment") != 0) return EXIT_FAILURE;
+    if (post_storage_operation(&resources, &command, &bootstrap) != 0) return EXIT_FAILURE;
+    if (report_qp(&resources, "after storage completion") != 0) return EXIT_FAILURE;
     hold_for_passive_diagnostics(config.post_close_hold_ms);
-    if (status.status != NDS_TRANSFER_VERIFIED) {
-        NDS_LOG_ERRORF("cpu-server", "RDMA Write validation failed: payload or guard bytes differ.\n");
-        return EXIT_FAILURE;
-    }
-    NDS_LOG_INFOF("cpu-server", "RDMA Write validation passed: %u bytes matched and both %u-byte guards are intact.\n",
-                 config.bytes, NDS_GUARD_BYTES);
+    NDS_LOG_INFOF("cpu-server", "completed NDS storage command request_id=%llu operation=%u bytes=%llu\n",
+                  (unsigned long long)command.request_id, command.operation, (unsigned long long)command.length);
     return EXIT_SUCCESS;
 }
 
