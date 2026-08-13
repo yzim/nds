@@ -2,8 +2,7 @@
 
 #include <stdio.h>
 
-static int expect(int condition, const char *message)
-{
+static int expect(int condition, const char *message) {
     if (condition == 0) {
         (void)fprintf(stderr, "FAIL: %s\n", message);
         return -1;
@@ -11,8 +10,7 @@ static int expect(int condition, const char *message)
     return 0;
 }
 
-int main(void)
-{
+int main(void) {
     static const uint32_t supported[] = {256U, 512U, 1024U, 2048U, 4096U};
     size_t index;
 

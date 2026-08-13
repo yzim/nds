@@ -19,10 +19,10 @@ one-sided Write primitive. The storage path posts exactly one command.
 
 ## Interfaces and Usage
 
-- ABI: `src/npu_client/modes/aiv/include/nds/aiv_roce_abi.h`.
-- Kernel: `src/npu_client/modes/aiv/kernel/nds_aiv_roce.cc`, entry
+- ABI: `src/npu_client/backend/aiv/include/nds/aiv_roce_abi.h`.
+- Kernel: `src/npu_client/backend/aiv/kernel/nds_aiv_roce.cc`, entry
   `NdsAivRdmaPost`.
-- Host launcher: `src/npu_client/modes/aiv/launcher.cc`.
+- Host launcher: `src/npu_client/backend/aiv/launcher.cc`.
 
 Build on the target only:
 
@@ -31,7 +31,7 @@ cmake -S . -B build-aiv -DNDS_CANN_ROOT=<cann-root> -DNDS_BUILD_AIV_KERNEL=ON
 cmake --build build-aiv --parallel
 ```
 
-Run the normal NPU client arguments with `--submission-mode aiv` and
+Run the normal NPU client arguments with `--backend aiv` and
 `--aiv-kernel <absolute-path>/aiv/nds_aiv_roce.o`. The CPU server and command
 options are described in [Host RA](host-ra.md).
 

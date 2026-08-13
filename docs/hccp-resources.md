@@ -1,10 +1,15 @@
 # HCCP QP and MR Lifecycle
 
-This guide describes the common resource model used before any NDS submission
-mode posts a request. It covers the NPU HCCP/RA rdev, QP, and memory
+This guide describes the common resource model used before any NDS backend
+posts a request. It covers the NPU HCCP/RA rdev, QP, and memory
 registration; the independent CPU verbs resources; the NDS wire exchange; and
 teardown. Mode-specific posting and CQ handling are described in
-[submission modes](modes.md).
+[NPU backends](modes.md).
+
+In the source tree, HCCP lifecycle code is backend support under
+`src/npu_client/backend/support`; mode-specific posting remains under
+`src/npu_client/backend/host_ra`, `aiv`, and `aicpu`. The transport connection
+uses those resources without exposing HCCP handles to the storage protocol.
 
 ## Ownership model
 
@@ -79,7 +84,7 @@ direction.
 
 ## Lifetime and teardown
 
-Submission does not permit either endpoint to release its resources. The QPs,
+Posting a command does not permit either endpoint to release its resources. The QPs,
 MRs, and NPU allocations remain valid until the CPU completes its data and
 terminal completion Write, and the NPU observes that completion record.
 

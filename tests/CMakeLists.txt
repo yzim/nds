@@ -6,7 +6,7 @@ function(nds_add_unit_test target)
 endfunction()
 
 nds_add_unit_test(nds_rdma_wire_test rdma_wire_test.cc)
-target_link_libraries(nds_rdma_wire_test PRIVATE nds_wire)
+target_link_libraries(nds_rdma_wire_test PRIVATE nds_protocol)
 nds_add_unit_test(nds_rdma_path_mtu_test rdma_path_mtu_test.cc)
 target_link_libraries(nds_rdma_path_mtu_test PRIVATE nds_rdma_path_mtu)
 nds_add_unit_test(nds_npu_ra_qp_test npu_ra_qp_test.cc)

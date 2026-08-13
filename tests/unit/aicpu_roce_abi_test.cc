@@ -4,8 +4,7 @@
 #include <cstdint>
 #include <cstdio>
 
-int main()
-{
+int main() {
     nds_aicpu_rdma_post_request request{};
     request.abi_version = NDS_AICPU_ROCE_ABI_VERSION;
     request.size = sizeof(request);
@@ -28,11 +27,10 @@ int main()
         offsetof(nds_aicpu_rdma_post_request, remote_rkey) != 28U ||
         offsetof(nds_aicpu_rdma_post_request, local_address) != 32U ||
         offsetof(nds_aicpu_rdma_post_request, remote_address) != 40U ||
-        offsetof(nds_aicpu_rdma_post_request, length) != 48U ||
-        offsetof(nds_aicpu_rdma_post_request, wr_id) != 56U ||
-        offsetof(nds_aicpu_rdma_post_request, reserved_0) != 64U ||
-        request.abi_version != 6U || request.size != sizeof(request) ||
-        request.opcode != NDS_AICPU_RDMA_WRITE || request.length > NDS_AICPU_ROCE_MAX_BYTES) {
+        offsetof(nds_aicpu_rdma_post_request, length) != 48U || offsetof(nds_aicpu_rdma_post_request, wr_id) != 56U ||
+        offsetof(nds_aicpu_rdma_post_request, reserved_0) != 64U || request.abi_version != 6U ||
+        request.size != sizeof(request) || request.opcode != NDS_AICPU_RDMA_WRITE ||
+        request.length > NDS_AICPU_ROCE_MAX_BYTES) {
         (void)std::fputs("NDS AICPU RDMA-post ABI v6 layout check failed\n", stderr);
         return 1;
     }

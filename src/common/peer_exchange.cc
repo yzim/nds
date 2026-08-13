@@ -9,8 +9,6 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-#include <utility>
-
 namespace nds {
 namespace {
 
@@ -49,60 +47,22 @@ TcpPeerExchange::~TcpPeerExchange() {
     }
 }
 
-bool TcpPeerExchange::send_storage_bootstrap(const nds_storage_bootstrap &bootstrap, std::string *error) const {
-    nds_storage_bootstrap_wire wire{};
-    char codec_error[NDS_STORAGE_ERROR_CAPACITY]{};
-    if (fd_ < 0 || nds_storage_bootstrap_encode(&bootstrap, &wire, codec_error) != 0) {
+bool TcpPeerExchange::send_bytes(const void *buffer, std::size_t length, std::string *error) const {
+    return fd_ >= 0 && buffer != nullptr && write_full(fd_, buffer, length, error);
+}
+
+bool TcpPeerExchange::receive_bytes(void *buffer, std::size_t length, std::string *error) const {
+    return fd_ >= 0 && buffer != nullptr && read_full(fd_, buffer, length, error);
+}
+
+bool TcpPeerExchange::adopt(int fd, std::string *error) {
+    if (fd < 0 || fd_ >= 0) {
         if (error != nullptr)
-            *error = fd_ < 0 ? "TCP peer exchange is not connected" : codec_error;
+            *error = "cannot adopt TCP socket";
         return false;
     }
-    return write_full(fd_, &wire, sizeof(wire), error);
-}
-
-bool TcpPeerExchange::receive_storage_bootstrap(nds_storage_bootstrap *bootstrap, std::string *error) const {
-    nds_storage_bootstrap_wire wire{};
-    char codec_error[NDS_STORAGE_ERROR_CAPACITY]{};
-    if (bootstrap == nullptr || fd_ < 0 || !read_full(fd_, &wire, sizeof(wire), error) ||
-        nds_storage_bootstrap_decode(&wire, bootstrap, codec_error) != 0) {
-        if (fd_ >= 0 && error != nullptr && codec_error[0] != '\0')
-            *error = codec_error;
-        return false;
-    }
+    fd_ = fd;
     return true;
-}
-
-bool TcpPeerExchange::send_storage_namespace(const nds_storage_namespace &storage_namespace, std::string *error) const {
-    nds_storage_namespace_wire wire{};
-    char codec_error[NDS_STORAGE_ERROR_CAPACITY]{};
-    if (fd_ < 0 || nds_storage_namespace_encode(&storage_namespace, &wire, codec_error) != 0) {
-        if (error != nullptr)
-            *error = fd_ < 0 ? "TCP peer exchange is not connected" : codec_error;
-        return false;
-    }
-    return write_full(fd_, &wire, sizeof(wire), error);
-}
-
-bool TcpPeerExchange::receive_storage_namespace(nds_storage_namespace *storage_namespace, std::string *error) const {
-    nds_storage_namespace_wire wire{};
-    char codec_error[NDS_STORAGE_ERROR_CAPACITY]{};
-    if (storage_namespace == nullptr || fd_ < 0 || !read_full(fd_, &wire, sizeof(wire), error) ||
-        nds_storage_namespace_decode(&wire, storage_namespace, codec_error) != 0) {
-        if (fd_ >= 0 && error != nullptr && codec_error[0] != '\0')
-            *error = codec_error;
-        return false;
-    }
-    return true;
-}
-
-int TcpPeerExchange::fd() const noexcept {
-    return fd_;
-}
-
-int TcpPeerExchange::release() noexcept {
-    const int released = fd_;
-    fd_ = -1;
-    return released;
 }
 
 bool TcpPeerExchange::read_full(int fd, void *buffer, std::size_t length, std::string *error) {
@@ -266,19 +226,6 @@ bool TcpPeerExchange::connect(const std::string &ipv4, std::uint16_t port, std::
     }
     connection->fd_ = socket_fd;
     return true;
-}
-
-PeerExchangeResult TcpPeerExchange::connect_and_exchange(const std::string &ipv4, std::uint16_t port,
-                                                         const nds_rc_endpoint &local, std::uint32_t timeout_ms) {
-    TcpPeerExchange connection;
-    std::string error;
-
-    if (!connect(ipv4, port, timeout_ms, &connection, &error)) {
-        PeerExchangeResult result;
-        result.error = std::move(error);
-        return result;
-    }
-    return connection.exchange_as_client(local);
 }
 
 }  // namespace nds

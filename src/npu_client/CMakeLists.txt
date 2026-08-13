@@ -1,8 +1,8 @@
 add_library(nds_ra_loader STATIC
-    loaders/ra_loader.cc
-    loaders/runtime_loader.cc
-    loaders/acl_loader.cc)
-target_include_directories(nds_ra_loader PUBLIC include)
+    backend/support/loaders/ra_loader.cc
+    backend/support/loaders/runtime_loader.cc
+    backend/support/loaders/acl_loader.cc)
+target_include_directories(nds_ra_loader PUBLIC backend/support/include)
 target_compile_options(nds_ra_loader PRIVATE -Wall -Wextra -Wpedantic -Werror)
 target_link_libraries(nds_ra_loader PUBLIC ${CMAKE_DL_LIBS})
 
@@ -21,35 +21,45 @@ if(NDS_LINK_PUBLIC_ACL)
     endif()
 endif()
 
-add_library(nds_npu_ra_context STATIC core/npu_ra_context.cc)
-target_include_directories(nds_npu_ra_context PUBLIC include)
+add_library(nds_npu_ra_context STATIC backend/support/core/npu_ra_context.cc)
+target_include_directories(nds_npu_ra_context PUBLIC backend/support/include)
 target_link_libraries(nds_npu_ra_context PUBLIC nds_ra_loader)
 target_compile_options(nds_npu_ra_context PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
-add_library(nds_npu_ra_qp STATIC core/npu_ra_qp.cc)
-target_include_directories(nds_npu_ra_qp PUBLIC include)
-target_link_libraries(nds_npu_ra_qp PUBLIC nds_ra_loader nds_wire)
+add_library(nds_npu_ra_qp STATIC backend/support/core/npu_ra_qp.cc)
+target_include_directories(nds_npu_ra_qp PUBLIC backend/support/include)
+target_link_libraries(nds_npu_ra_qp PUBLIC nds_ra_loader nds_protocol)
 target_compile_options(nds_npu_ra_qp PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
-add_library(nds_host_ra STATIC modes/host_ra/submitter.cc)
-target_include_directories(nds_host_ra PUBLIC modes/host_ra/include)
-target_link_libraries(nds_host_ra PUBLIC nds_npu_ra_context nds_npu_ra_qp)
+add_library(nds_host_ra STATIC backend/host_ra/backend.cc)
+target_include_directories(nds_host_ra PUBLIC backend/host_ra/include)
+target_link_libraries(nds_host_ra PUBLIC nds_npu_ra_context nds_npu_ra_qp nds_logging)
 target_compile_options(nds_host_ra PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
-add_library(nds_aiv_roce STATIC modes/aiv/launcher.cc)
-target_include_directories(nds_aiv_roce PUBLIC modes/aiv/include)
+add_library(nds_aiv_roce STATIC backend/aiv/launcher.cc)
+target_include_directories(nds_aiv_roce PUBLIC backend/aiv/include)
 target_link_libraries(nds_aiv_roce PUBLIC nds_ra_loader)
 target_compile_options(nds_aiv_roce PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
-add_library(nds_aicpu_roce STATIC modes/aicpu/launcher.cc)
-target_include_directories(nds_aicpu_roce PUBLIC modes/aicpu/include)
+add_library(nds_aicpu_roce STATIC backend/aicpu/launcher.cc)
+target_include_directories(nds_aicpu_roce PUBLIC backend/aicpu/include)
 target_link_libraries(nds_aicpu_roce PUBLIC nds_ra_loader)
 target_compile_options(nds_aicpu_roce PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
-add_library(nds_storage_submission STATIC transport/storage_submission.cc)
-target_include_directories(nds_storage_submission PUBLIC transport)
-target_link_libraries(nds_storage_submission PUBLIC nds_npu_ra_context nds_npu_ra_qp nds_host_ra nds_aiv_roce nds_aicpu_roce)
-target_compile_options(nds_storage_submission PRIVATE -Wall -Wextra -Wpedantic -Werror)
+add_library(nds_npu_backend STATIC backend/backend.cc)
+target_include_directories(nds_npu_backend PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(nds_npu_backend PUBLIC nds_npu_ra_context nds_npu_ra_qp nds_host_ra nds_aiv_roce nds_aicpu_roce)
+target_compile_options(nds_npu_backend PRIVATE -Wall -Wextra -Wpedantic -Werror)
+
+add_library(nds_npu_transport STATIC transport/connection.cc)
+target_include_directories(nds_npu_transport PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(nds_npu_transport PUBLIC nds_npu_backend nds_peer_exchange nds_protocol)
+target_compile_options(nds_npu_transport PRIVATE -Wall -Wextra -Wpedantic -Werror)
+
+add_library(nds_npu_storage_protocol STATIC protocol/storage.cc)
+target_include_directories(nds_npu_storage_protocol PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(nds_npu_storage_protocol PUBLIC nds_npu_transport nds_protocol)
+target_compile_options(nds_npu_storage_protocol PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 if(NDS_BUILD_AIV_KERNEL)
     if(NOT CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
@@ -65,7 +75,7 @@ if(NDS_BUILD_AIV_KERNEL)
         message(FATAL_ERROR "CANN AIV CCEC/ld.lld tools were not found below ${NDS_CANN_ROOT}/aarch64-linux/bin")
     endif()
 
-    set(NDS_AIV_KERNEL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/modes/aiv/kernel")
+    set(NDS_AIV_KERNEL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/backend/aiv/kernel")
     set(NDS_AIV_OUTPUT_DIR "${CMAKE_BINARY_DIR}/aiv")
     set(NDS_AIV_OBJECT "${NDS_AIV_OUTPUT_DIR}/nds_aiv_roce.o")
     set(NDS_AIV_RELOCATABLE "${NDS_AIV_OUTPUT_DIR}/nds_aiv_roce.reloc.o")
@@ -78,9 +88,9 @@ if(NDS_BUILD_AIV_KERNEL)
             -I${NDS_CANN_ROOT}/aarch64-linux/asc/include/micro_api -I${NDS_CANN_ROOT}/aarch64-linux/asc/impl
             -I${NDS_CANN_ROOT}/aarch64-linux/asc/impl/basic_api -I${NDS_CANN_ROOT}/aarch64-linux/asc/impl/micro_api
             -I${NDS_CANN_ROOT}/aarch64-linux/ascendc/include -I${NDS_CANN_ROOT}/aarch64-linux/ascendc/include/highlevel_api
-            -I${CMAKE_CURRENT_SOURCE_DIR}/modes/aiv/include ${NDS_AIV_KERNEL_DIR}/nds_aiv_roce.cc -o ${NDS_AIV_RELOCATABLE}
+            -I${CMAKE_CURRENT_SOURCE_DIR}/backend/aiv/include ${NDS_AIV_KERNEL_DIR}/nds_aiv_roce.cc -o ${NDS_AIV_RELOCATABLE}
         COMMAND "${NDS_AIV_LD}" -m aicorelinux -Ttext=0 "${NDS_AIV_RELOCATABLE}" -static -o "${NDS_AIV_OBJECT}"
-        DEPENDS "${NDS_AIV_KERNEL_DIR}/nds_aiv_roce.cc" "${CMAKE_CURRENT_SOURCE_DIR}/modes/aiv/include/nds/aiv_roce_abi.h"
+        DEPENDS "${NDS_AIV_KERNEL_DIR}/nds_aiv_roce.cc" "${CMAKE_CURRENT_SOURCE_DIR}/backend/aiv/include/nds/aiv_roce_abi.h"
         VERBATIM)
     add_custom_target(nds_aiv_kernel ALL DEPENDS "${NDS_AIV_OBJECT}")
 endif()
@@ -93,7 +103,7 @@ if(NDS_BUILD_AICPU_KERNEL)
         message(FATAL_ERROR "NDS_BUILD_AICPU_KERNEL requires -DNDS_CANN_ROOT=<CANN root>")
     endif()
 
-    set(NDS_AICPU_DEVICE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/modes/aicpu/device")
+    set(NDS_AICPU_DEVICE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/backend/aicpu/device")
     set(NDS_AICPU_COMPILER "${NDS_CANN_ROOT}/tools/hcc/bin/aarch64-target-linux-gnu-g++")
     if(NOT EXISTS "${NDS_AICPU_COMPILER}")
         message(FATAL_ERROR "CANN AICPU shared-library compiler not found: ${NDS_AICPU_COMPILER}")
@@ -126,7 +136,7 @@ if(NDS_BUILD_AICPU_KERNEL)
         "${NDS_AICPU_STANDARD_CONFIG}" "${NDS_AICPU_STANDARD_PACKAGE}")
 endif()
 
-add_executable(nds_npu_qp_client client.cc)
+add_executable(nds_npu_qp_client application/main.cc)
 target_link_libraries(nds_npu_qp_client PRIVATE
     CLI11::CLI11
     nds_npu_ra_context
@@ -136,5 +146,5 @@ target_link_libraries(nds_npu_qp_client PRIVATE
     nds_host_ra
     nds_aiv_roce
     nds_aicpu_roce
-    nds_storage_submission)
+    nds_npu_storage_protocol)
 target_compile_options(nds_npu_qp_client PRIVATE -Wall -Wextra -Wpedantic -Werror)

@@ -5,8 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 
-static int expect(int condition, const char *message)
-{
+static int expect(int condition, const char *message) {
     if (condition == 0) {
         (void)fprintf(stderr, "FAIL: %s\n", message);
         return -1;
@@ -14,22 +13,17 @@ static int expect(int condition, const char *message)
     return 0;
 }
 
-int main(void)
-{
+int main(void) {
     nds_rc_endpoint source = {
-        .flags = NDS_ENDPOINT_FLAG_DATA_READY,
         .qp_num = UINT32_C(0x00abcd),
         .psn = UINT32_C(0x00123456),
-        .rkey = UINT32_C(0x87654321),
         .port_num = 1,
         .gid_index = 3,
         .path_mtu = 4096,
-        .access_flags = UINT32_C(0x1234),
         .traffic_class = 106,
         .service_level = 5,
         .retry_count = 7,
         .retry_timeout = 14,
-        .address = UINT64_C(0x0123456789abcdef),
         .gid = {0xfe, 0x80, 0, 0, 0, 0, 0, 0, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88},
     };
     nds_rc_endpoint decoded = {};
@@ -47,29 +41,12 @@ int main(void)
         return 1;
     }
 
-
-    source.flags = NDS_ENDPOINT_FLAG_QP_ONLY;
-    source.rkey = 0;
-    source.address = 0;
-    source.access_flags = 0;
-    if (nds_rc_endpoint_encode(&source, &wire, error) != 0 ||
-        nds_rc_endpoint_decode(&wire, &decoded, error) != 0 ||
-        expect(decoded.flags == NDS_ENDPOINT_FLAG_QP_ONLY, "QP-only phase round trip") != 0 ||
-        expect(decoded.rkey == 0U && decoded.address == 0U && decoded.access_flags == 0U,
-               "QP-only has no memory metadata") != 0) {
-        (void)fprintf(stderr, "QP-only codec error: %s\n", error);
-        return 1;
-    }
-    source.rkey = 1;
-    if (expect(nds_rc_endpoint_encode(&source, &wire, error) != 0,
-               "QP-only endpoint with rkey rejected") != 0) {
-        return 1;
-    }
-
     {
         const nds_storage_bootstrap bootstrap_source = {
-            .completion = {.address = UINT64_C(0x0102030405060708), .length = 64U,
-                           .rkey = UINT32_C(0x12345678), .access = NDS_STORAGE_ACCESS_REMOTE_WRITE},
+            .completion = {.address = UINT64_C(0x0102030405060708),
+                           .length = 64U,
+                           .rkey = UINT32_C(0x12345678),
+                           .access = NDS_STORAGE_ACCESS_REMOTE_WRITE},
         };
         nds_storage_bootstrap bootstrap_decoded = {};
         nds_storage_bootstrap_wire bootstrap_wire = {};
@@ -96,10 +73,14 @@ int main(void)
 
     {
         const nds_storage_command read_source = {
-            .request_id = UINT64_C(0x1020304050607080), .operation = NDS_STORAGE_READ,
-            .offset = 4096U, .length = 8192U,
-            .data = {.address = UINT64_C(0x1020304050607080), .length = 8192U,
-                     .rkey = UINT32_C(0x12345678), .access = NDS_STORAGE_ACCESS_REMOTE_WRITE},
+            .request_id = UINT64_C(0x1020304050607080),
+            .operation = NDS_STORAGE_READ,
+            .offset = 4096U,
+            .length = 8192U,
+            .data = {.address = UINT64_C(0x1020304050607080),
+                     .length = 8192U,
+                     .rkey = UINT32_C(0x12345678),
+                     .access = NDS_STORAGE_ACCESS_REMOTE_WRITE},
         };
         nds_storage_command decoded_command = {};
         nds_storage_command_wire command_wire = {};
@@ -119,8 +100,10 @@ int main(void)
 
     {
         const nds_storage_completion completion_source = {
-            .request_id = UINT64_C(0x1020304050607080), .state = NDS_STORAGE_COMPLETION_COMPLETE,
-            .status = NDS_STORAGE_SUCCESS, .bytes_transferred = 8192U,
+            .request_id = UINT64_C(0x1020304050607080),
+            .state = NDS_STORAGE_COMPLETION_COMPLETE,
+            .status = NDS_STORAGE_SUCCESS,
+            .bytes_transferred = 8192U,
         };
         nds_storage_completion decoded_completion = {};
         nds_storage_completion_wire completion_wire = {};

@@ -3,7 +3,7 @@
 ## Purpose
 
 NDS is a small interoperability project for one Ascend NPU RNIC and one
-CPU-side RoCE RNIC. It owns its TCP peer-exchange protocol and submission implementations;
+CPU-side RoCE RNIC. It owns its TCP peer-exchange protocol and NPU backends;
 it uses the CANN runtime installed on the target.
 
 The endpoint roles are fixed:
@@ -18,7 +18,8 @@ belong in `docs/`: [HCCP QP and MR lifecycle](docs/hccp-resources.md),
 [mode overview](docs/modes.md), [host RA](docs/host-ra.md), [AIV](docs/aiv.md),
 [AICPU](docs/aicpu.md), and
 [linkage policy](docs/linkage.md), [testing](docs/testing.md), and the
-[protocol roadmap](docs/roadmap.md).
+[protocol roadmap](docs/roadmap.md). Source ownership and dependency direction
+are defined in [architecture](docs/architecture.md).
 
 ## Non-negotiable rules
 
@@ -47,6 +48,10 @@ belong in `docs/`: [HCCP QP and MR lifecycle](docs/hccp-resources.md),
   are authoritative at runtime.
 - Keep runtime loading, library names, symbol resolution, and ABI checks in the
   loader modules. Missing required symbols must fail closed with a useful error.
+- Preserve the endpoint-local dependency direction: application -> storage
+  protocol -> transport connection -> backend. Shared wire codecs belong in
+  `src/protocol`; generic support belongs in `src/common`. Backend and transport
+  code must not depend on storage command semantics.
 - Keep the TCP peer exchange independent of RA/HCCP private objects. Exchange
   only NDS-owned versioned wire records with the CPU endpoint. Exchange QPN,
   PSN, GID, transport settings, and memory address/length/rkey; never exchange
@@ -81,10 +86,7 @@ network configuration system and verify connectivity in both directions.
 
 ## Validation scope
 
-The validated data path is one bounded NPU-to-CPU RDMA Write. The CPU server
-currently does not provide the receive or remote-memory setup required to claim
-end-to-end RDMA Read or Send support. Do not represent a package build, stream
-synchronization, or provider resolution as an RNIC completion. Completion
-ownership is mode-specific and documented in `docs/modes.md`. A project-facing
-completion contract for AIV and AICPU remains unfinished; HCCP's internal
-AI-QP CQ handling is not that contract.
+Do not represent a package build, stream synchronization, provider resolution,
+or HCCP internal AI-QP CQ handling as an NDS command completion. Completion
+ownership is mode-specific and documented in `docs/modes.md`. Keep claims of
+hardware validation tied to recorded, bounded target experiments.

@@ -24,6 +24,7 @@ option(NDS_BUILD_AIV_KERNEL "Build the NDS-owned AIV RoCE binary (aarch64 CANN h
 set(NDS_CANN_ROOT "" CACHE PATH "CANN root required by public ACL or device-kernel builds")
 
 add_subdirectory(src/common)
+add_subdirectory(src/protocol)
 add_subdirectory(src/npu_client)
 add_subdirectory(src/cpu_server)
 

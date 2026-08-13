@@ -42,13 +42,11 @@ The implementation is organized by responsibility:
 4. Application: chooses workloads and validates transferred data. It is not a
    protocol or transport responsibility.
 
-The current source boundary is deliberately small: `src/common` owns protocol
-records and bootstrap; `src/npu_client/modes` owns backend-specific posting;
-`src/npu_client/transport/storage_submission.cc` dispatches one registered
-command record to a backend; and
-`src/cpu_server/transport/storage_execution.cc` owns CPU data movement and
-terminal completion publication. The command-line endpoints remain applications
-that create a session and perform the bounded verification workload.
+The current source tree implements these boundaries independently in
+`src/npu_client` and `src/cpu_server`. Each endpoint contains `backend`,
+`transport`, `protocol`, and `application` directories. Shared wire records and
+codecs live in `src/protocol`; protocol-neutral support lives in `src/common`.
+See [architecture](architecture.md) for concrete ownership rules.
 
 The selected NPU backend posts the protocol command with RDMA Send. The CPU
 uses ordinary `libibverbs` for its command Receive, storage-data RDMA

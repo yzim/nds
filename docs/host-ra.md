@@ -26,12 +26,14 @@ record written by the CPU after its ordered data operation.
 
 ## Interfaces
 
-- `src/npu_client/modes/host_ra/submitter.cc`: RA post and runtime doorbell.
-- `src/npu_client/core/npu_ra_qp.cc`: QP and MR RA calls.
-- `src/npu_client/core/npu_ra_context.cc`: runtime lifecycle, doorbell, and
+- `src/npu_client/backend/host_ra/backend.cc`: RA post and runtime doorbell.
+- `src/npu_client/backend/support/core/npu_ra_qp.cc`: QP and MR RA calls.
+- `src/npu_client/backend/support/core/npu_ra_context.cc`: runtime lifecycle, doorbell, and
   device-to-host completion copy.
-- `src/cpu_server/server.cc`: CPU Receive, data RDMA, completion Write, and CQ
-  polling.
+- `src/npu_client/transport/connection.cc`: registered buffers and command Send.
+- `src/cpu_server/protocol/storage.cc`: CPU Receive, data RDMA, and completion
+  Write sequencing.
+- `src/cpu_server/backend/verbs/backend.cc`: verbs work requests and CQ polling.
 
 ## Usage
 
@@ -45,7 +47,7 @@ build/nds_verbs_server --device <cpu-rdma-device> --gid-index <gid-index> \
 Then submit one command from the NPU:
 
 ```sh
-build/nds_npu_qp_client --execute --submission-mode host-ra \
+build/nds_npu_qp_client --backend host-ra \
   --ascendcl <cann-root>/aarch64-linux/lib64/libascendcl.so \
   --runtime <cann-root>/aarch64-linux/lib64/libruntime.so \
   --ra <cann-root>/aarch64-linux/lib64/libra.so \

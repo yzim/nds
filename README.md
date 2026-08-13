@@ -2,33 +2,37 @@
 
 NDS is a storage-protocol prototype between two RoCE endpoints:
 
-- **NPU client:** creates HCCP resources and submits storage commands through
+- **NPU client:** creates HCCP resources and sends storage commands through
   host RA, AIV, or AICPU.
 - **CPU server:** owns a memory-backed namespace and uses `libibverbs`.
 
+The NPU client sends a storage command. The CPU server receives it and moves
+the command's data with RDMA Read or RDMA Write against a memory-backed
+namespace. The CPU then writes a completion record to NPU memory.
+
 NDS creates the NPU HCCP rdev/QP and registers NPU memory through CANN RA. The
-CPU creates an RC QP and registers its local namespace through `libibverbs`.
-TCP only bootstraps QP metadata, namespace capacity, and the NPU completion-MR
-descriptor; HCCP handles, queue addresses, and provider objects never cross it.
+CPU independently creates an RC QP and registers memory through `libibverbs`.
+TCP is used only to exchange session metadata; storage commands and data use
+RoCE.
 
 This is a one-NPU/one-CPU path. It is not an HCCL job: it does not initialize
 HCOMM or HCCL, consume a rank table, or require a second NPU. The CPU endpoint
 is CANN-free.
 
-## Submission modes
+## NPU backends
 
-NDS supports three ways to submit the NPU storage-command Send.
+NDS provides three backends for the NPU endpoint.
 
-| Mode | `post_send` | Protocol completion | Guide |
+| Backend | `post_send` | Local completion | Protocol completion | Guide |
 |---|---|---|---|
-| `host-ra` | NPU-side host CPU: RA Send plus runtime doorbell | NPU host polls the NPU completion record copied from device memory | [Host RA](docs/host-ra.md) |
-| `aiv` | NDS AIV kernel writes one Send WQE and doorbell | NPU host polls the NPU completion record copied from device memory | [AIV](docs/aiv.md) |
-| `aicpu` | NDS standard-CP1 kernel calls NPU-side provider `post_send` | NPU host polls the NPU completion record copied from device memory | [AICPU](docs/aicpu.md) |
+| `host-ra` | NPU-side host CPU: RA Send plus runtime doorbell | Host RA CQ is available | NPU host polls the CPU-written completion record | [Host RA](docs/host-ra.md) |
+| `aiv` | NDS AIV kernel writes one Send WQE and doorbell | HCCP internal AI-QP handling; future AIV backend handling | NPU host polls the CPU-written completion record | [AIV](docs/aiv.md) |
+| `aicpu` | NDS standard-CP1 kernel calls NPU-side provider `post_send` | HCCP internal AI-QP handling; future AICPU backend handling | NPU host polls the CPU-written completion record | [AICPU](docs/aicpu.md) |
 
-The submission implementations share the same HCCP rdev/QP connection and
+The backends share the same HCCP rdev/QP connection and
 memory-registration lifecycle. Their QP types, post paths, CQ ownership, and
 current limitations differ; see [HCCP QP and MR lifecycle](docs/hccp-resources.md)
-and [submission modes](docs/modes.md).
+and [NPU backends](docs/modes.md).
 
 ## Storage path
 
@@ -44,12 +48,27 @@ signaled completion Write. The NPU treats the CPU-written completion record as
 the command result. A backend launch, HCCP internal AI-QP CQ processing, and a
 host-RA local CQE are not this protocol completion.
 
+## Architecture
+
+Each endpoint follows the same dependency direction:
+
+```text
+Application -> Storage protocol -> Transport connection -> Backend
+```
+
+The backend owns QP/MR operations and hardware-specific posting. The transport
+owns one connected QP and exposes connection-level operations. The storage
+protocol sequences command Send, CPU data movement, and completion. The
+application owns CLI configuration, buffers, and workload verification. See
+[architecture](docs/architecture.md) for the concrete source boundaries.
+
 ## Repository layout
 
 ```text
-src/common/       Protocol records, TCP bootstrap, logging, and MTU policy
-src/npu_client/   NPU RA lifecycle, backend posters, and NPU transport session
-src/cpu_server/   CPU verbs connection and storage transport executor
+src/npu_client/   NPU endpoint: application, protocol, transport, and backends
+src/cpu_server/   CPU endpoint: application, protocol, transport, and verbs backend
+src/protocol/     Shared, versioned wire records and codecs
+src/common/       Logging, TCP peer exchange, and generic support
 tests/            Unit tests and a test-only runtime fixture
 docs/             Resource lifecycle, modes, linkage, and implementation guides
 ```
@@ -90,7 +109,8 @@ the system `spdlog` and CLI11 development packages.
 ## Documentation
 
 - [HCCP QP and MR lifecycle](docs/hccp-resources.md)
-- [Submission modes](docs/modes.md)
+- [Architecture](docs/architecture.md)
+- [NPU backends](docs/modes.md)
 - [Host RA](docs/host-ra.md)
 - [AIV](docs/aiv.md)
 - [AICPU](docs/aicpu.md)

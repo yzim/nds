@@ -4,8 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     nds_runtime_api api = {};
     nds_rt_proc_ext_param parameter = {"--hdcType=18", 12U};
     nds_rt_net_service_open_args args = {&parameter, 1U};
@@ -14,8 +13,7 @@ int main(int argc, char **argv)
         (void)fprintf(stderr, "usage: %s <fake-runtime-library>\n", argv[0]);
         return 1;
     }
-    if (nds_runtime_open(&api, "") == 0 ||
-        strstr(nds_runtime_error(&api), "non-empty library path") == nullptr) {
+    if (nds_runtime_open(&api, "") == 0 || strstr(nds_runtime_error(&api), "non-empty library path") == nullptr) {
         (void)fprintf(stderr, "runtime loader did not reject an empty path: %s\n", nds_runtime_error(&api));
         return 1;
     }

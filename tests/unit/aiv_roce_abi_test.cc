@@ -3,8 +3,7 @@
 #include <cstddef>
 #include <cstdio>
 
-int main()
-{
+int main() {
     nds_aiv_rdma_post_request request{};
     request.abi_version = NDS_AIV_ROCE_ABI_VERSION;
     request.size = sizeof(request);
@@ -20,8 +19,7 @@ int main()
         offsetof(nds_aiv_rdma_post_request, local_address) != 80U ||
         offsetof(nds_aiv_rdma_post_request, remote_address) != 88U ||
         offsetof(nds_aiv_rdma_post_request, length) != 96U || request.abi_version != 2U ||
-        request.size != sizeof(request) || request.opcode != NDS_AIV_SEND ||
-        NDS_AIV_RDMA_WRITE != 3U) {
+        request.size != sizeof(request) || request.opcode != NDS_AIV_SEND || NDS_AIV_RDMA_WRITE != 3U) {
         (void)std::fputs("NDS AIV post ABI layout check failed\n", stderr);
         return 1;
     }

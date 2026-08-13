@@ -294,19 +294,14 @@ void test_create_advertise_connect_and_reset() {
     assert(fake.qp_create_calls == 1);
     assert(fake.get_attributes_calls == 1);
 
-    assert(qp.make_qp_only_endpoint(&local));
+    assert(qp.make_endpoint(&local));
     assert(local.qp_num == 0x1234U);
     assert(local.psn == 0x4567U);
     assert(local.gid_index == 3U);
     assert(local.gid[15] == 42U);
-    assert(local.flags == NDS_ENDPOINT_FLAG_QP_ONLY);
-    assert(local.rkey == 0U);
-    assert(local.address == 0U);
-    assert(local.access_flags == 0U);
     assert(local.traffic_class == 7U);
     assert(local.service_level == 2U);
 
-    peer.flags = NDS_ENDPOINT_FLAG_QP_ONLY;
     peer.qp_num = 0x2000U;
     peer.psn = 0x3000U;
     peer.port_num = 1;
@@ -353,7 +348,7 @@ void test_aicpu_qp_creation_and_connection() {
     nds_rc_endpoint peer{};
 
     config.local_ipv4 = "192.0.2.10";
-    config.submission_mode = nds::NpuRaSubmissionMode::Aicpu;
+    config.backend = nds::NpuBackendMode::Aicpu;
     assert(qp.create(&api, config));
     assert(!fake.rdev_init.disabled_lite_thread);
     assert(fake.qp_create_calls == 0);
@@ -375,13 +370,12 @@ void test_aicpu_qp_creation_and_connection() {
     assert(fake.timeout == 14U);
     assert(fake.set_retry_count_calls == 1);
     assert(fake.retry_count == 7U);
-    assert(qp.has_aicpu_qp_info());
-    assert(qp.aicpu_qp_info().ai_qp_address == UINT64_C(0x123456789abcdef0));
-    assert(qp.aicpu_qp_info().sq_index == 17U);
-    assert(qp.aicpu_qp_info().db_index == 19U);
+    assert(qp.has_ai_qp_info());
+    assert(qp.ai_qp_info().ai_qp_address == UINT64_C(0x123456789abcdef0));
+    assert(qp.ai_qp_info().sq_index == 17U);
+    assert(qp.ai_qp_info().db_index == 19U);
 
-    assert(qp.make_qp_only_endpoint(&local));
-    peer.flags = NDS_ENDPOINT_FLAG_QP_ONLY;
+    assert(qp.make_endpoint(&local));
     peer.qp_num = 0x2000U;
     peer.psn = 0x3000U;
     peer.port_num = 1U;
@@ -392,8 +386,8 @@ void test_aicpu_qp_creation_and_connection() {
     assert(qp.connect(peer));
     assert(fake.modify_calls == 1);
     qp.reset();
-    assert(!qp.has_aicpu_qp_info());
-    assert(qp.aicpu_qp_info().ai_qp_address == 0U);
+    assert(!qp.has_ai_qp_info());
+    assert(qp.ai_qp_info().ai_qp_address == 0U);
     assert(fake.qp_destroy_calls == 1);
     assert(fake.rdev_deinit_calls == 1);
 }
@@ -406,7 +400,7 @@ void test_aiv_uses_opbase_ext_qp() {
     nds::NpuRaQpConfig config{};
 
     config.local_ipv4 = "192.0.2.10";
-    config.submission_mode = nds::NpuRaSubmissionMode::Aiv;
+    config.backend = nds::NpuBackendMode::Aiv;
     assert(qp.create(&api, config));
     assert(fake.ai_qp_create_calls == 1);
     assert(fake.ai_qp_attrs.qp_mode == NDS_RA_QP_MODE_OPBASE_EXT);
@@ -451,7 +445,6 @@ void test_send_wr_and_polling() {
     config.local_ipv4 = "192.0.2.10";
     assert(qp.create(&api, config));
     assert(!qp.post_rdma_write({0x1000U, 64U, 0x99U}, 0x2000U, 0x88U, true, &response));
-    peer.flags = NDS_ENDPOINT_FLAG_QP_ONLY;
     peer.qp_num = 0x2000U;
     peer.psn = 0x3000U;
     peer.port_num = 1U;
@@ -540,7 +533,7 @@ void test_rejects_invalid_configuration_and_endpoint() {
     fake.get_status_result = -9;
     assert(!qp.query_status(&status));
     assert(!qp.error().empty());
-    assert(qp.make_qp_only_endpoint(&endpoint));
+    assert(qp.make_endpoint(&endpoint));
     assert(!qp.connect(invalid_peer));
     qp.reset();
 }

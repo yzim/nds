@@ -18,10 +18,10 @@ rings its normal-QP doorbell; provider-OP mode only returns doorbell metadata.
 
 ## Interfaces and Usage
 
-- Request ABI: `src/npu_client/modes/aicpu/include/nds/aicpu_roce_abi.h`.
-- CP1 source: `src/npu_client/modes/aicpu/device/nds_aicpu_rdma_post.aicpu`.
+- Request ABI: `src/npu_client/backend/aicpu/include/nds/aicpu_roce_abi.h`.
+- CP1 source: `src/npu_client/backend/aicpu/device/nds_aicpu_rdma_post.aicpu`.
 - Entry point: `NdsAicpuRdmaPost`.
-- Package manifest: `src/npu_client/modes/aicpu/device/package/nds_aicpu_standard.json.in`.
+- Package manifest: `src/npu_client/backend/aicpu/device/package/nds_aicpu_standard.json.in`.
 
 Build on the matching target:
 
@@ -31,7 +31,7 @@ cmake --build build-aicpu --parallel
 ```
 
 Install the generated package using CANN's supported customer-AICPU procedure,
-then run the normal client arguments with `--submission-mode aicpu` and
+then run the normal client arguments with `--backend aicpu` and
 `--aicpu-kernel-config <path>/nds_aicpu_standard.json`.
 
 ## Reference Basis and Limits
