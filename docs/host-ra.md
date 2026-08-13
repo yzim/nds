@@ -1,157 +1,65 @@
-# Host RA RDMA Write
+# Host RA Backend
 
-This is the default and recommended first validation path. Read
-[submission modes](modes.md) for the common lifecycle and completion model.
+Host RA is the NPU-host-CPU backend for the NDS storage command Send. It is
+the baseline because it uses the public CANN RA and runtime boundary without a
+device kernel.
 
-## Basic function
-
-Host RA submission is NDS's reference data path. The host process asks HCCP to
-prepare one signaled RDMA Write, submits the returned doorbell through the CANN
-runtime, and explicitly polls the send CQ. The payload starts in registered NPU
-device memory and lands in a CPU `libibverbs` MR.
-
-It creates the NPU QP with `RaTypicalQpCreate(..., RC, OPBASE)`. The common
-[QP and MR lifecycle](hccp-resources.md) explains how NDS connects
-that QP to the CPU verbs QP and registers the NPU device allocation through
-`RaRegisterMr`.
-
-Select it with:
+## Data Path
 
 ```text
---submission-mode host-ra
+NPU host: RaTypicalSendWr(SEND) -> rtRDMADBSend
+CPU:      Receive command -> RDMA Read or Write application data
+CPU:      RDMA Write terminal completion record -> NPU completion memory
+NPU host: aclrtMemcpy(device-to-host) polls terminal completion record
 ```
 
-It is also the default when `--submission-mode` is omitted.
+The host creates an OPBASE RC QP with `RaTypicalQpCreate`, connects it to the
+CPU verbs QP with `RaTypicalQpModify`, and registers the NPU application,
+command, and completion allocations with `RaRegisterMr`. The CPU uses the
+command descriptor to choose its data operation: storage Write is CPU RDMA
+Read; storage Read is CPU RDMA Write.
 
-## Data path
+`RaTypicalSendWr` returns doorbell metadata for this QP, so
+`rtRDMADBSend` is required to submit the Send. NDS does not use a Host RA CQE
+as protocol completion. The authoritative result is the terminal completion
+record written by the CPU after its ordered data operation.
 
-```text
-NPU device source buffer
-  -> RaRegisterMr
-  -> RaTypicalSendWr(RDMA_WRITE, signaled)
-       HCCP/provider writes the WQE and returns db_index + db_info
-  -> rtRDMADBSend(db_index, db_info)
-  -> RNIC sends RC packets
-  -> CPU RNIC writes the destination MR
-  -> RaPollCq(send)
-  -> CPU verifies payload and guards, then acknowledges the transaction
-```
+## Interfaces
 
-`RaTypicalSendWr` does not ring this OPBASE Lite QP's doorbell. The explicit
-`rtRDMADBSend` call is therefore part of submission, not completion handling.
+- `src/npu_client/modes/host_ra/submitter.cc`: RA post and runtime doorbell.
+- `src/npu_client/core/npu_ra_qp.cc`: QP and MR RA calls.
+- `src/npu_client/core/npu_ra_context.cc`: runtime lifecycle, doorbell, and
+  device-to-host completion copy.
+- `src/cpu_server/server.cc`: CPU Receive, data RDMA, completion Write, and CQ
+  polling.
 
-## NDS interfaces
+## Usage
 
-The principal implementation surfaces are:
-
-- `NpuRaContext`: AscendCL/runtime/RA initialization and `rtRDMADBSend`.
-- `NpuRaQp`: rdev/QP lifecycle, MR registration, `RaTypicalSendWr`, and
-  `RaPollCq`.
-- `src/npu_client/modes/host_ra`: mode-owned request and doorbell submission.
-- `TcpPeerExchange`: endpoint, destination-MR, and transfer-status exchange.
-- `nds_npu_qp_client`: command-line orchestration.
-- `nds_verbs_server`: CPU RC QP and destination-MR owner.
-
-The dynamically resolved runtime boundary uses:
-
-```text
-RaRdevInitV2
-RaTypicalQpCreate
-RaGetQpAttr
-RaTypicalQpModify
-RaRegisterMr / RaDeregisterMr
-RaTypicalSendWr
-RaPollCq
-RaQpDestroy / RaRdevDeinit
-rtRDMADBSend
-```
-
-## Build and usage
-
-Build on an aarch64 target with `libibverbs` development files available:
+Start the CPU server:
 
 ```sh
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build --parallel
-ctest --test-dir build --output-on-failure
+build/nds_verbs_server --device <cpu-rdma-device> --gid-index <gid-index> \
+  --listen <cpu-roce-ip> --tcp-port <port> --namespace-bytes 1048576
 ```
 
-Start the CPU endpoint first:
+Then submit one command from the NPU:
 
 ```sh
-build/nds_verbs_server \
-  --device <cpu-rdma-device> \
-  --gid-index <cpu-gid-index> \
-  --listen <cpu-roce-ip> \
-  --tcp-port <control-port> \
-  --bytes 4096
-```
-
-Then run the NPU endpoint:
-
-```sh
-build/nds_npu_qp_client \
+build/nds_npu_qp_client --execute --submission-mode host-ra \
   --ascendcl <cann-root>/aarch64-linux/lib64/libascendcl.so \
   --runtime <cann-root>/aarch64-linux/lib64/libruntime.so \
   --ra <cann-root>/aarch64-linux/lib64/libra.so \
-  --npu-ip <npu-roce-ip> \
-  --logical-device 0 \
-  --physical-device 0 \
-  --cpu-ip <cpu-roce-ip> \
-  --tcp-port <control-port> \
-  --submission-mode host-ra \
-  --execute
+  --npu-ip <npu-roce-ip> --logical-device 0 --physical-device 0 \
+  --cpu-ip <cpu-roce-ip> --tcp-port <port> \
+  --operation write --offset 0 --bytes 4096
 ```
 
-Use a process-level timeout around hardware tests. The client currently
-restricts one invocation to one bounded Write.
+Use `--operation read` to have the CPU RDMA Write a namespace range into the
+NPU application buffer. Hardware invocations need a whole-process timeout.
 
-## HCOMM and HCCP reference basis
+## Reference Basis
 
-The implementation was derived from behavior and ABI in the CANN-matched
-HCOMM source, especially:
-
-- `src/platform/hccp/rdma_agent/client/ra_host.c`: exported RA lifecycle and
-  `RaPollCq` dispatch.
-- `src/platform/hccp/rdma_agent/hdc/ra_hdc_rdma.c`: host-to-HCCP QP and send
-  operations.
-- `src/platform/hccp/rdma_service/rs_rdma.c`: service-side QP lifecycle and CQ
-  ownership.
-- `src/platform/resource/transport/host/transport_ibverbs.cc`: HCOMM host
-  transport QP setup and send behavior.
-- `src/platform/common/adapter/adapter_rts.cc`: runtime RDMA doorbell adapter.
-
-NDS transcribes only the ABI fields and symbols it uses. It does not link
-HCOMM or copy HCCP implementation code.
-
-## Choices and hidden decisions
-
-### QP and rdev mode
-
-The host path creates an RC OPBASE QP with `RaTypicalQpCreate`. The offline
-rdev uses `NOTIFY (1)`, not `NO_USE (0)`; this is required by the HCCP offline
-HDC lifecycle.
-
-NDS keeps the RA Lite context enabled to match the validated direct lifecycle,
-but completion consumption for this path is explicit in `RaPollCq`. Do not add
-a second application CQ consumer.
-
-### Completion ownership
-
-This is the only NDS mode that treats an NPU-side CQE as directly visible
-application evidence. A successful `RaTypicalSendWr` or `rtRDMADBSend` return
-is not completion. NDS polls until it receives the one signaled completion,
-checks its status, and still waits for CPU payload verification before freeing
-resources.
-
-### Path MTU
-
-The CPU QP uses its local active-port MTU, matching HCCP's
-`RsDrvQpStateModifytoRtr` behavior. The NDS endpoint MTU field is diagnostic;
-it is not negotiated or used to clamp the CPU QP.
-
-### Why this remains the baseline
-
-This path avoids custom NPU kernels and private HNS WQE layout. It separates
-connection or registration failures from AIV/AICPU execution failures and
-therefore remains the preferred first validation step.
+The RA lifecycle and doorbell flow were derived from CANN-matched HCOMM source:
+`ra_host.c`, `ra_hdc_rdma.c`, `rs_rdma.c`,
+`transport_ibverbs.cc`, and `adapter_rts.cc`. NDS uses their ABI behavior but
+does not link HCOMM or copy its implementation.

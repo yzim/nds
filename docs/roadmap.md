@@ -2,8 +2,8 @@
 
 NDS is evolving from a bounded RoCE interoperability harness into a
 storage-oriented protocol between an NPU initiator and a CPU target. This page
-states the intended direction; it does not claim that unfinished capabilities
-are implemented or hardware-validated.
+records the protocol direction and distinguishes the implemented single-command
+baseline from later concurrency work.
 
 ## Target Model
 
@@ -98,21 +98,21 @@ HCCP-managed AI-QP CQ is an NDS completion API.
 
 ## Delivery Order
 
-- [ ] Introduce the backend, transport, protocol, and application boundaries.
-- [ ] Implement a memory-backed CPU namespace with offset-and-length Read and
+- [x] Introduce the backend, transport, protocol, and application boundaries.
+- [x] Implement a memory-backed CPU namespace with offset-and-length Read and
   Write commands.
-- [ ] Implement NPU Send and CPU Receive for command and completion records.
-- [ ] Implement CPU-initiated RDMA Read for storage Write data movement.
-- [ ] Implement CPU-initiated RDMA Write for storage Read data movement.
-- [ ] Define a project-facing completion contract for each NPU backend.
-- [ ] Implement and validate the common storage protocol contract with Host RA
+- [x] Implement NPU Send and CPU Receive for command and completion records.
+- [x] Implement CPU-initiated RDMA Read for storage Write data movement.
+- [x] Implement CPU-initiated RDMA Write for storage Read data movement.
+- [x] Define the initial project-facing completion contract for each NPU backend.
+- [x] Implement and validate the common storage protocol contract with Host RA
   first.
-- [ ] Implement and validate that same storage protocol contract for AICPU and
+- [x] Implement and validate that same storage protocol contract for AICPU and
   AIV. All three backends are required; Host RA is only the implementation
   starting point.
-- [ ] Add the application validation workflow: Read an untouched range and
-  verify zero bytes, Write a deterministic payload, then Read it back and
-  verify the payload.
+- [x] Validate a Read of an untouched range and a deterministic storage Write.
+- [ ] Add a multi-command application workflow that writes a deterministic
+  payload and reads it back in the same session.
 - [ ] Add an optional two-sided completion mode: NPU pre-posts Receive WRs and
   actively polls its receive CQ for CPU completion Send records. This is the
   NVMe-oF-like direction for scalable command queues, but is not required for

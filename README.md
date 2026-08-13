@@ -1,15 +1,15 @@
 # NDS
 
-NDS connects two RoCE endpoints directly:
+NDS is a storage-protocol prototype between two RoCE endpoints:
 
-- **NPU client:** creates an HCCP rdev and RC QP, registers NPU source memory,
-  and submits RDMA requests through host RA, AIV, or AICPU.
-- **CPU server:** creates an RC QP and destination MR with `libibverbs`.
+- **NPU client:** creates HCCP resources and submits storage commands through
+  host RA, AIV, or AICPU.
+- **CPU server:** owns a memory-backed namespace and uses `libibverbs`.
 
-The endpoints exchange QPN, PSN, GID, port, and retry metadata to connect the
-two RC QPs. For the current NPU-to-CPU Write path, the CPU sends its destination
-address, length, and rkey; the NPU uses its HCCP MR lkey as the local SGE key.
-No HCCP or verbs handles cross the TCP peer exchange boundary.
+NDS creates the NPU HCCP rdev/QP and registers NPU memory through CANN RA. The
+CPU creates an RC QP and registers its local namespace through `libibverbs`.
+TCP only bootstraps QP metadata, namespace capacity, and the NPU completion-MR
+descriptor; HCCP handles, queue addresses, and provider objects never cross it.
 
 This is a one-NPU/one-CPU path. It is not an HCCL job: it does not initialize
 HCOMM or HCCL, consume a rank table, or require a second NPU. The CPU endpoint
@@ -17,34 +17,32 @@ is CANN-free.
 
 ## Submission modes
 
-NDS supports three ways to submit an NPU RDMA request. The table identifies
-only the request submitter and the current owner of the NPU send CQ.
+NDS supports three ways to submit the NPU storage-command Send.
 
-| Mode | Submission | NPU send-CQ handling | Guide |
+| Mode | `post_send` | Protocol completion | Guide |
 |---|---|---|---|
-| `host-ra` | NPU-side host CPU | NPU-side host CPU polls the CQ | [Host RA](docs/host-ra.md) |
-| `aiv` | NDS AIV kernel | HCCP handles the AI-QP CQ internally on the NPU | [AIV](docs/aiv.md) |
-| `aicpu` | NDS standard-CP1 AICPU kernel | HCCP handles the AI-QP CQ internally on the NPU | [AICPU](docs/aicpu.md) |
+| `host-ra` | NPU-side host CPU: RA Send plus runtime doorbell | NPU host polls the NPU completion record copied from device memory | [Host RA](docs/host-ra.md) |
+| `aiv` | NDS AIV kernel writes one Send WQE and doorbell | NPU host polls the NPU completion record copied from device memory | [AIV](docs/aiv.md) |
+| `aicpu` | NDS standard-CP1 kernel calls NPU-side provider `post_send` | NPU host polls the NPU completion record copied from device memory | [AICPU](docs/aicpu.md) |
 
 The submission implementations share the same HCCP rdev/QP connection and
 memory-registration lifecycle. Their QP types, post paths, CQ ownership, and
 current limitations differ; see [HCCP QP and MR lifecycle](docs/hccp-resources.md)
 and [submission modes](docs/modes.md).
 
-## Architecture
+## Storage path
 
 ```text
-NPU client                                      CPU server
-----------                                      ----------
-CANN RA / HCCP                                  libibverbs
-  create rdev, QP, and source MR                  create QP and destination MR
-       |                                                |
-       +------ NDS TCP peer and memory exchange -------+
-                              |
-                     selected NPU submission mode
-                              |
-                    direct RoCE data transfer
+NPU RDMA Send(command) -> CPU Receive
+CPU storage Write -> CPU RDMA Read(NPU application buffer)
+CPU storage Read  -> CPU RDMA Write(NPU application buffer)
+CPU RDMA Write(completion record) -> NPU internal completion buffer
 ```
+
+The CPU actively polls its verbs CQ for both the command Receive and its
+signaled completion Write. The NPU treats the CPU-written completion record as
+the command result. A backend launch, HCCP internal AI-QP CQ processing, and a
+host-RA local CQE are not this protocol completion.
 
 ## Repository layout
 

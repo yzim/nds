@@ -8,17 +8,20 @@ teardown. Mode-specific posting and CQ handling are described in
 
 ## Ownership model
 
-The NPU process owns one HCCP rdev, one HCCP QP, its NPU device allocation, and
-the HCCP MR for that allocation. The CPU process independently owns its verbs
-context, PD, CQ, QP, host buffer, and verbs MR. The TCP peer exchange never
-transfers an HCCP or verbs object between processes.
+The NPU process owns one HCCP rdev, one HCCP QP, and separate registered NPU
+application, command, and completion allocations. The CPU process independently
+owns its verbs context, PD, CQ, QP, command Receive record, memory namespace,
+and completion-record source buffer. The TCP peer exchange never transfers an
+HCCP or verbs object between processes.
 
 NDS exchanges only versioned NDS records:
 
 - Endpoint record: QPN, PSN, GID, GID index, port, QoS/retry values, and a
   diagnostic MTU.
-- CPU memory record: destination address, length, rkey, remote-write access,
-  and transaction ID.
+- Storage bootstrap: NPU completion-record address, length, rkey, and access.
+- Namespace record: CPU memory-backed namespace capacity.
+- Command record: request ID, operation, namespace range, and NPU application
+  memory descriptor.
 
 It must not exchange HCCP QP or MR handles, AI-QP descriptors, queue or
 doorbell addresses, or provider-private objects. Those addresses are valid only
@@ -66,30 +69,19 @@ The NPU converts the CPU endpoint record into the RA representation and calls
 
 ## Memory registration and keys
 
-The CPU allocates its destination buffer and registers it with `ibv_reg_mr`
-using `IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE`. It sends the payload
-address, length, and rkey to the NPU in the NDS memory record.
-
-The NPU allocates source memory through AscendCL, fills it with the test payload,
-and registers it through `RaRegisterMr` on the HCCP rdev. NDS supplies the NPU
-device address, length, and `NDS_RA_ACCESS_DIRECT_NPU`. RA returns an opaque MR
-handle and keys:
-
-- The NPU lkey identifies the local source SGE to the NPU RNIC.
-- The CPU rkey authorizes the NPU RNIC to write the CPU destination MR.
-- The NPU rkey is not sent in the current one-way NPU-to-CPU Write because the
-  CPU does not initiate an RDMA operation.
-
-Read and Send need different CPU-side resource setup and are not end-to-end
-features yet.
+The CPU registers a command Receive record, memory-backed namespace, and
+completion-record source buffer. The NPU separately registers application,
+command, and completion allocations. The application MR grants CPU remote read
+and remote write; the command MR supplies the NPU Send SGE key; and the
+completion MR grants CPU remote write and is exchanged once during TCP
+bootstrap. Commands carry the application address, rkey, length, and access
+direction.
 
 ## Lifetime and teardown
 
 Submission does not permit either endpoint to release its resources. The QPs,
-MRs, and NPU allocation remain valid through the mode's completion handling.
-The current CPU payload/guard exchange is an integration-test harness used to
-hold resources while the bounded Write is checked; it is not the final
-project-facing completion interface.
+MRs, and NPU allocations remain valid until the CPU completes its data and
+terminal completion Write, and the NPU observes that completion record.
 
 NDS tears down in reverse ownership order:
 
