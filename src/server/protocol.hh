@@ -8,7 +8,7 @@
 #include <vector>
 
 namespace nds::server {
-bool serve_storage_request(Connection *connection, std::vector<unsigned char> *storage, std::uint32_t timeout_ms,
-                           std::string *error);
+bool serve_request(Connection *connection, std::vector<unsigned char> *storage, std::uint32_t timeout_ms,
+                   std::string *error);
 }
 #endif

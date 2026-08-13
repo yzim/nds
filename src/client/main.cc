@@ -114,15 +114,15 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
 
-    const std::uint16_t operation = config.operation == "read" ? NDS_STORAGE_READ : NDS_STORAGE_WRITE;
+    const std::uint16_t operation = config.operation == "read" ? NDS_PROTOCOL_READ : NDS_PROTOCOL_WRITE;
     const nds_transport_endpoint &local = connection.local_endpoint();
     const std::uint64_t request_id = (static_cast<std::uint64_t>(local.qp_num) << 32U) | local.psn;
-    if (!nds::client::execute_storage_request(&connection, {request_id, operation, config.offset, config.bytes, &data},
-                                              &error)) {
+    if (!nds::client::execute_request(&connection, {request_id, operation, config.offset, config.bytes, &data},
+                                      &error)) {
         NDS_LOG_ERROR("npu-client", "storage protocol failed: {}", error);
         return EXIT_FAILURE;
     }
-    if (operation == NDS_STORAGE_READ) {
+    if (operation == NDS_PROTOCOL_READ) {
         std::vector<unsigned char> result(payload.size());
         if (!connection.copy_from_device(result.data(), data, result.size(), &error) ||
             result != std::vector<unsigned char>(result.size(), 0U)) {

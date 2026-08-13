@@ -56,7 +56,7 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
     std::vector<unsigned char> storage(config.namespace_bytes, 0U);
-    if (!nds::server::serve_storage_request(&connection, &storage, 5000U, &error)) {
+    if (!nds::server::serve_request(&connection, &storage, 5000U, &error)) {
         NDS_LOG_ERROR("cpu-server", "storage protocol failed: {}", error);
         return EXIT_FAILURE;
     }

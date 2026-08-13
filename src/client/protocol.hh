@@ -8,7 +8,7 @@
 
 namespace nds::client {
 
-struct StorageRequest {
+struct Request {
     std::uint64_t request_id{};
     std::uint16_t operation{};
     std::uint64_t offset{};
@@ -16,7 +16,7 @@ struct StorageRequest {
     DeviceBuffer *data{};
 };
 
-bool execute_storage_request(Connection *connection, const StorageRequest &request, std::string *error);
+bool execute_request(Connection *connection, const Request &request, std::string *error);
 
 }  // namespace nds::client
 
