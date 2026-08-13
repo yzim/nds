@@ -20,7 +20,7 @@ src/
     main.cc        CLI and memory-backed namespace ownership
     protocol.*     command decode, range checks, data movement, completion
     transport.*    one connected CPU-to-NPU transport session
-    backend/       libibverbs QP, MR, work request, and CQ operations
+    backend.*      libibverbs QP, MR, work request, and CQ operations
   common/
     transport.*    endpoint metadata, TCP bootstrap, and MTU policy
     protocol.*     shared versioned storage records and codecs

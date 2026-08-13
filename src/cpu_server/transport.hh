@@ -1,7 +1,7 @@
 #ifndef NDS_CPU_TRANSPORT_HH
 #define NDS_CPU_TRANSPORT_HH
 
-#include "backend/verbs/backend.hh"
+#include "backend.hh"
 #include "nds/transport.hh"
 
 #include <cstdint>

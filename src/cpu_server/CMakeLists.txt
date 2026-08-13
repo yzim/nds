@@ -2,7 +2,7 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(IBVERBS QUIET IMPORTED_TARGET libibverbs)
 
 if(IBVERBS_FOUND)
-    add_library(nds_verbs_backend STATIC backend/verbs/backend.cc)
+    add_library(nds_verbs_backend STATIC backend.cc)
     target_include_directories(nds_verbs_backend PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
     target_link_libraries(nds_verbs_backend PUBLIC nds_transport PkgConfig::IBVERBS)
     target_compile_options(nds_verbs_backend PRIVATE -Wall -Wextra -Wpedantic -Werror)

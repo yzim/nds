@@ -33,7 +33,7 @@ record written by the CPU after its ordered data operation.
 - `src/npu_client/transport.cc`: registered buffers and command Send.
 - `src/cpu_server/protocol.cc`: CPU Receive, data RDMA, and completion
   Write sequencing.
-- `src/cpu_server/backend/verbs/backend.cc`: verbs work requests and CQ polling.
+- `src/cpu_server/backend.cc`: verbs work requests and CQ polling.
 
 ## Usage
 
