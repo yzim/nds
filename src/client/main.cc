@@ -75,7 +75,7 @@ nds::Result<int> parse_args(int argc, char **argv, ClientConfig *config, bool *e
         (backend == "aiv" && config->connection.backend.aiv_kernel.empty())) {
         return nds::failure(nds::ErrorCode::kInvalidArgument, "invalid option combination");
     }
-    return 0;
+    return nds::success(0);
 }
 
 }  // namespace

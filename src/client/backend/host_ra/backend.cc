@@ -18,7 +18,7 @@ Result<void> post_host_ra(NpuRaContext *context, NpuRaQp *qp, const HostRaPostRe
         return failure(ErrorCode::kRuntime, context->error());
     }
     NDS_LOG_INFO("npu-client", "Rang the OPBASE RDMA doorbell on the runtime default stream.");
-    return {};
+    return success();
 }
 
 }  // namespace nds

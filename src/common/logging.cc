@@ -84,7 +84,7 @@ Result<void> configure(std::string_view name, std::string_view sink_name, std::s
         value->set_level(level);
         value->set_pattern("%Y-%m-%dT%H:%M:%S.%e%z [%n] [%^%l%$] %v");
         set_logger(name, std::move(value));
-        return {};
+        return success();
     } catch (const std::exception &exception) {
         return failure(ErrorCode::kRuntime, exception.what());
     }

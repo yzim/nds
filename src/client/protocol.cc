@@ -20,10 +20,10 @@ Result<std::uint64_t> exchange_bootstrap(Connection *connection, const RemoteReg
         return failure(ErrorCode::kProtocol, "invalid protocol record");
     }
     if (const auto sent = connection->bootstrap()->send_bytes(&bootstrap_wire, sizeof(bootstrap_wire)); !sent)
-        return tl::make_unexpected(sent.error());
+        return propagate(sent.error());
     if (const auto received = connection->bootstrap()->receive_bytes(&namespace_wire, sizeof(namespace_wire));
         !received)
-        return tl::make_unexpected(received.error());
+        return propagate(received.error());
     if (nds_protocol_namespace_decode(&namespace_wire, &namespace_record) != 0) {
         return failure(ErrorCode::kProtocol, "invalid protocol record");
     }
@@ -37,7 +37,7 @@ Result<void> wait_for_completion(Connection *connection, const DeviceBuffer &buf
         nds_protocol_completion_wire wire{};
         nds_protocol_completion completion{};
         if (const auto result = connection->copy_from_device(&wire, buffer, sizeof(wire)); !result) {
-            return tl::make_unexpected(result.error());
+            return propagate(result.error());
         }
         if (nds_protocol_completion_decode(&wire, &completion) != 0) {
             return failure(ErrorCode::kProtocol, "invalid protocol record");
@@ -47,7 +47,7 @@ Result<void> wait_for_completion(Connection *connection, const DeviceBuffer &buf
                 completion.bytes_transferred != expected_bytes) {
                 return failure(ErrorCode::kProtocol, "storage completion does not match the request");
             }
-            return {};
+            return success();
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
@@ -72,25 +72,25 @@ Result<void> execute_request(Connection *connection, const Request &request) {
         return failure(ErrorCode::kProtocol, "invalid protocol record");
     }
     if (const auto result = connection->allocate(sizeof(nds_protocol_command_wire), &command_buffer); !result)
-        return tl::make_unexpected(result.error());
+        return propagate(result.error());
     if (const auto result = connection->allocate(sizeof(completion_wire), &completion_buffer); !result)
-        return tl::make_unexpected(result.error());
+        return propagate(result.error());
     if (const auto result = connection->copy_to_device(&completion_buffer, &completion_wire, sizeof(completion_wire));
         !result)
-        return tl::make_unexpected(result.error());
+        return propagate(result.error());
     if (const auto result = connection->register_memory(request.data, &data_region); !result)
-        return tl::make_unexpected(result.error());
+        return propagate(result.error());
     if (const auto result = connection->register_memory(&command_buffer, &command_region); !result)
-        return tl::make_unexpected(result.error());
+        return propagate(result.error());
     if (const auto result = connection->register_memory(&completion_buffer, &completion_region); !result)
-        return tl::make_unexpected(result.error());
+        return propagate(result.error());
 
     const auto completion_remote = connection->remote_region(completion_region);
     if (!completion_remote)
-        return tl::make_unexpected(completion_remote.error());
+        return propagate(completion_remote.error());
     const auto capacity = exchange_bootstrap(connection, *completion_remote);
     if (!capacity)
-        return tl::make_unexpected(capacity.error());
+        return propagate(capacity.error());
     if (request.offset > *capacity || request.length > *capacity - request.offset) {
         return failure(ErrorCode::kProtocol, "requested storage range exceeds server namespace capacity");
     }
@@ -99,7 +99,7 @@ Result<void> execute_request(Connection *connection, const Request &request) {
         request.operation == NDS_PROTOCOL_READ ? NDS_PROTOCOL_ACCESS_REMOTE_WRITE : NDS_PROTOCOL_ACCESS_REMOTE_READ;
     const auto data_remote = connection->remote_region(data_region);
     if (!data_remote)
-        return tl::make_unexpected(data_remote.error());
+        return propagate(data_remote.error());
     const nds_protocol_memory remote_data{data_remote->address, data_remote->length, data_remote->key, remote_access};
     const nds_protocol_command command{request.request_id, request.operation, request.offset, request.length,
                                        remote_data};
@@ -108,11 +108,11 @@ Result<void> execute_request(Connection *connection, const Request &request) {
         return failure(ErrorCode::kProtocol, "invalid protocol record");
     }
     if (const auto result = connection->copy_to_device(&command_buffer, &command_wire, sizeof(command_wire)); !result)
-        return tl::make_unexpected(result.error());
+        return propagate(result.error());
     if (const auto result = connection->ready(); !result)
-        return tl::make_unexpected(result.error());
+        return propagate(result.error());
     if (const auto result = connection->send(command_region, sizeof(command_wire)); !result)
-        return tl::make_unexpected(result.error());
+        return propagate(result.error());
     return wait_for_completion(connection, completion_buffer, request.request_id, request.length);
 }
 

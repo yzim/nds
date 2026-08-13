@@ -4,6 +4,7 @@
 #include <tl/expected.hpp>
 
 #include <string>
+#include <type_traits>
 #include <utility>
 
 namespace nds {
@@ -25,8 +26,34 @@ struct Error {
 template <typename T>
 using Result = tl::expected<T, Error>;
 
-inline tl::unexpected<Error> failure(ErrorCode code, std::string message) {
-    return tl::make_unexpected(Error{code, std::move(message)});
+class Failure {
+public:
+    explicit Failure(Error error) : error_(std::move(error)) {}
+
+    template <typename T>
+    operator Result<T>() && {
+        return tl::make_unexpected(std::move(error_));
+    }
+
+private:
+    Error error_;
+};
+
+inline Failure failure(ErrorCode code, std::string message) {
+    return Failure{{code, std::move(message)}};
+}
+
+inline Failure propagate(const Error &error) {
+    return Failure{error};
+}
+
+inline Result<void> success() {
+    return {};
+}
+
+template <typename T>
+Result<std::decay_t<T>> success(T &&value) {
+    return std::forward<T>(value);
 }
 
 }  // namespace nds

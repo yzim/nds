@@ -78,10 +78,9 @@ The headers in `src/common/include/nds/` are shared internal interfaces, named
 with an `nds/` prefix to avoid collisions. NDS does not currently install an
 external SDK.
 
-Host C++ operations return `nds::Result<T>`, backed by
-[`tl::expected`](https://github.com/TartanLlama/expected). NDS uses this for
-expected runtime, RA, verbs, transport, and protocol failures rather than
-exceptions or a separate boolean and error-output parameter.
+Host C++ operations return `nds::Result<T>`. NDS uses this for expected
+runtime, RA, verbs, transport, and protocol failures rather than exceptions or
+a separate boolean and error-output parameter.
 
 ## Build
 

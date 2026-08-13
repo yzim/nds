@@ -72,8 +72,8 @@ are defined in [architecture](docs/architecture.md).
   dependencies are pointers, not references. The only exception is a C++
   language-required special member; prefer deleting it when it is unnecessary.
 - Use `nds::Result<T>` for C++ operations that can fail during normal runtime
-  execution. It is backed by `tl::expected` until NDS adopts C++23
-  `std::expected`. Return `nds::Error` with a category and message. No NDS API
+  execution. Construct and propagate outcomes only through the helpers in
+  `nds/result.hh`. Return `nds::Error` with a category and message. No NDS API
   may accept a caller-owned diagnostic string or character buffer. C wire
   codecs return typed result enums. Vendor loader structs may retain only their
   embedded ABI error fields internally; translate those diagnostics at the NDS

@@ -53,7 +53,7 @@ Result<void> post_send(NpuRaContext *context, NpuRaQp *qp, const BackendConfig &
                                       5000)) {
             return failure(ErrorCode::kRuntime, launcher.error());
         }
-        return {};
+        return success();
     }
     if (!qp->has_ai_qp_info() || qp->ai_qp_info().data_plane_info == nullptr) {
         return failure(ErrorCode::kRa, "AIV backend requires AI send-queue metadata");
@@ -73,7 +73,7 @@ Result<void> post_send(NpuRaContext *context, NpuRaQp *qp, const BackendConfig &
         !launcher.launch_post_and_wait(reinterpret_cast<std::uint64_t>(device_request.get()), 5000)) {
         return failure(ErrorCode::kRuntime, launcher.error().empty() ? context->error() : launcher.error());
     }
-    return {};
+    return success();
 }
 
 }  // namespace nds

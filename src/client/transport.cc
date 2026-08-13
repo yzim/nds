@@ -38,11 +38,11 @@ Result<void> Connection::open(const ConnectionConfig &config) {
     if (const auto connected =
             TcpPeerExchange::connect(config.cpu_ipv4, config.tcp_port, config.tcp_timeout_ms, &bootstrap_);
         !connected) {
-        return tl::make_unexpected(connected.error());
+        return propagate(connected.error());
     }
     const auto peer = bootstrap_.exchange_as_client(local_);
     if (!peer) {
-        return tl::make_unexpected(peer.error());
+        return propagate(peer.error());
     }
     if (!qp_.connect(*peer)) {
         return failure(ErrorCode::kRa, qp_.error());
@@ -57,7 +57,7 @@ Result<void> Connection::allocate(std::size_t size, DeviceBuffer *buffer) {
     }
     buffer->context_ = &context_;
     buffer->size_ = size;
-    return {};
+    return success();
 }
 
 Result<void> Connection::register_memory(DeviceBuffer *buffer, RegisteredRegion *region) {
@@ -67,7 +67,7 @@ Result<void> Connection::register_memory(DeviceBuffer *buffer, RegisteredRegion 
         return failure(ErrorCode::kRa, qp_.error().empty() ? "invalid memory registration" : qp_.error());
     }
     region->qp_ = &qp_;
-    return {};
+    return success();
 }
 
 Result<void> Connection::copy_to_device(DeviceBuffer *buffer, const void *source, std::size_t size) {
@@ -76,7 +76,7 @@ Result<void> Connection::copy_to_device(DeviceBuffer *buffer, const void *source
         return failure(ErrorCode::kRuntime,
                        context_.error().empty() ? "invalid host-to-device copy" : context_.error());
     }
-    return {};
+    return success();
 }
 
 Result<void> Connection::copy_from_device(void *destination, const DeviceBuffer &buffer, std::size_t size) {
@@ -85,7 +85,7 @@ Result<void> Connection::copy_from_device(void *destination, const DeviceBuffer 
         return failure(ErrorCode::kRuntime,
                        context_.error().empty() ? "invalid device-to-host copy" : context_.error());
     }
-    return {};
+    return success();
 }
 
 Result<void> Connection::send(const RegisteredRegion &source, std::uint32_t length) {
@@ -116,7 +116,7 @@ Result<void> Connection::ready() {
         lite == NDS_RA_LITE_NOT_SUPPORTED) {
         return failure(ErrorCode::kRa, qp_.error().empty() ? "client connection is not ready" : qp_.error());
     }
-    return {};
+    return success();
 }
 
 }  // namespace nds::client
