@@ -28,26 +28,6 @@ typedef struct nds_rc_endpoint {
     uint8_t gid[NDS_GID_BYTES];
 } nds_rc_endpoint;
 
-typedef struct nds_memory_descriptor {
-    uint16_t flags;
-    uint64_t transaction_id;
-    uint64_t address;
-    uint64_t length;
-    uint32_t rkey;
-    uint32_t access_flags;
-} nds_memory_descriptor;
-
-enum nds_transfer_status_code {
-    NDS_TRANSFER_SUBMITTED = 1,
-    NDS_TRANSFER_VERIFIED = 2,
-    NDS_TRANSFER_FAILED = 3,
-};
-
-typedef struct nds_transfer_status {
-    uint16_t status;
-    uint64_t transaction_id;
-} nds_transfer_status;
-
 enum { NDS_WIRE_ERROR_CAPACITY = 256 };
 
 /* Encode/decode the fixed-size NDS wire record. All host fields remain host order. */
@@ -55,18 +35,6 @@ int nds_rc_endpoint_encode(const nds_rc_endpoint *endpoint, nds_rc_endpoint_wire
                            char error[NDS_WIRE_ERROR_CAPACITY]);
 int nds_rc_endpoint_decode(const nds_rc_endpoint_wire *wire, nds_rc_endpoint *endpoint,
                            char error[NDS_WIRE_ERROR_CAPACITY]);
-int nds_memory_descriptor_encode(const nds_memory_descriptor *descriptor,
-                                 nds_memory_descriptor_wire *wire,
-                                 char error[NDS_WIRE_ERROR_CAPACITY]);
-int nds_memory_descriptor_decode(const nds_memory_descriptor_wire *wire,
-                                 nds_memory_descriptor *descriptor,
-                                 char error[NDS_WIRE_ERROR_CAPACITY]);
-int nds_transfer_status_encode(const nds_transfer_status *status,
-                               nds_transfer_status_wire *wire,
-                               char error[NDS_WIRE_ERROR_CAPACITY]);
-int nds_transfer_status_decode(const nds_transfer_status_wire *wire,
-                               nds_transfer_status *status,
-                               char error[NDS_WIRE_ERROR_CAPACITY]);
 
 #ifdef __cplusplus
 }

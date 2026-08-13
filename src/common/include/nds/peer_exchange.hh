@@ -43,12 +43,6 @@ public:
     /* Server ordering: receive the peer endpoint, then send the local endpoint. */
     PeerExchangeResult exchange_as_server(const nds_rc_endpoint &local) const;
 
-    /* Legacy Write-harness records. Remove with the old application path. */
-    bool send_memory_descriptor(const nds_memory_descriptor &descriptor, std::string *error) const;
-    bool receive_memory_descriptor(nds_memory_descriptor &descriptor, std::string *error) const;
-    bool send_transfer_status(const nds_transfer_status &status, std::string *error) const;
-    bool receive_transfer_status(nds_transfer_status &status, std::string *error) const;
-
     /* Session bootstrap only; storage commands never use TCP. */
     bool send_storage_bootstrap(const nds_storage_bootstrap &bootstrap, std::string *error) const;
     bool receive_storage_bootstrap(nds_storage_bootstrap &bootstrap, std::string *error) const;

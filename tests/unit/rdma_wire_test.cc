@@ -133,48 +133,6 @@ int main(void)
         }
     }
 
-    {
-        const nds_memory_descriptor memory_source = {
-            .flags = 0,
-            .transaction_id = UINT64_C(0x1020304050607080),
-            .address = UINT64_C(0x0123456789abcdef),
-            .length = 4096,
-            .rkey = UINT32_C(0x10203040),
-            .access_flags = NDS_MEMORY_ACCESS_REMOTE_WRITE,
-        };
-        nds_memory_descriptor memory_decoded = {};
-        nds_memory_descriptor_wire memory_wire = {};
-        if (nds_memory_descriptor_encode(&memory_source, &memory_wire, error) != 0 ||
-            nds_memory_descriptor_decode(&memory_wire, &memory_decoded, error) != 0 ||
-            expect(memory_decoded.flags == memory_source.flags &&
-                       memory_decoded.transaction_id == memory_source.transaction_id &&
-                       memory_decoded.address == memory_source.address &&
-                       memory_decoded.length == memory_source.length &&
-                       memory_decoded.rkey == memory_source.rkey &&
-                       memory_decoded.access_flags == memory_source.access_flags,
-                   "memory descriptor round trip") != 0) {
-            (void)fprintf(stderr, "memory descriptor codec error: %s\n", error);
-            return 1;
-        }
-    }
-
-    {
-        const nds_transfer_status status_source = {
-            .status = NDS_TRANSFER_VERIFIED,
-            .transaction_id = UINT64_C(0x1020304050607080),
-        };
-        nds_transfer_status status_decoded = {};
-        nds_transfer_status_wire status_wire = {};
-        if (nds_transfer_status_encode(&status_source, &status_wire, error) != 0 ||
-            nds_transfer_status_decode(&status_wire, &status_decoded, error) != 0 ||
-            expect(status_decoded.status == status_source.status &&
-                       status_decoded.transaction_id == status_source.transaction_id,
-                   "transfer status round trip") != 0) {
-            (void)fprintf(stderr, "transfer status codec error: %s\n", error);
-            return 1;
-        }
-    }
-
     wire.magic = 0;
     if (expect(nds_rc_endpoint_decode(&wire, &decoded, error) != 0, "bad magic rejected") != 0) {
         return 1;
