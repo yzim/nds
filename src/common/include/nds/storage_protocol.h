@@ -10,6 +10,7 @@ extern "C" {
 #define NDS_STORAGE_BOOTSTRAP_MAGIC UINT32_C(0x4e445342) /* "NDSB" */
 #define NDS_STORAGE_COMMAND_MAGIC UINT32_C(0x4e445343) /* "NDSC" */
 #define NDS_STORAGE_COMPLETION_MAGIC UINT32_C(0x4e445344) /* "NDSD" */
+#define NDS_STORAGE_NAMESPACE_MAGIC UINT32_C(0x4e44534e) /* "NDSN" */
 #define NDS_STORAGE_PROTOCOL_VERSION UINT16_C(1)
 #define NDS_STORAGE_ERROR_CAPACITY 256U
 
@@ -45,9 +46,12 @@ typedef struct nds_storage_memory {
 
 /* TCP bootstrap record. The completion MR is session-static. */
 typedef struct nds_storage_bootstrap {
-    uint64_t namespace_capacity;
     nds_storage_memory completion;
 } nds_storage_bootstrap;
+
+typedef struct nds_storage_namespace {
+    uint64_t capacity;
+} nds_storage_namespace;
 
 /* NPU-to-CPU RDMA Send payload. Data memory is application-owned per command. */
 typedef struct nds_storage_command {
@@ -70,13 +74,19 @@ typedef struct __attribute__((packed)) nds_storage_bootstrap_wire {
     uint32_t magic;
     uint16_t version;
     uint16_t reserved_0;
-    uint64_t namespace_capacity;
     uint64_t completion_address;
     uint64_t completion_length;
     uint32_t completion_rkey;
     uint32_t completion_access;
     uint8_t reserved[8];
 } nds_storage_bootstrap_wire;
+
+typedef struct __attribute__((packed)) nds_storage_namespace_wire {
+    uint32_t magic;
+    uint16_t version;
+    uint16_t reserved_0;
+    uint64_t capacity;
+} nds_storage_namespace_wire;
 
 typedef struct __attribute__((packed)) nds_storage_command_wire {
     uint32_t magic;
@@ -104,11 +114,13 @@ typedef struct __attribute__((packed)) nds_storage_completion_wire {
 } nds_storage_completion_wire;
 
 #ifdef __cplusplus
-static_assert(sizeof(nds_storage_bootstrap_wire) == 48, "NDS storage bootstrap wire ABI must remain 48 bytes");
+static_assert(sizeof(nds_storage_bootstrap_wire) == 40, "NDS storage bootstrap wire ABI must remain 40 bytes");
+static_assert(sizeof(nds_storage_namespace_wire) == 16, "NDS storage namespace wire ABI must remain 16 bytes");
 static_assert(sizeof(nds_storage_command_wire) == 64, "NDS storage command wire ABI must remain 64 bytes");
 static_assert(sizeof(nds_storage_completion_wire) == 32, "NDS storage completion wire ABI must remain 32 bytes");
 #else
-_Static_assert(sizeof(nds_storage_bootstrap_wire) == 48, "NDS storage bootstrap wire ABI must remain 48 bytes");
+_Static_assert(sizeof(nds_storage_bootstrap_wire) == 40, "NDS storage bootstrap wire ABI must remain 40 bytes");
+_Static_assert(sizeof(nds_storage_namespace_wire) == 16, "NDS storage namespace wire ABI must remain 16 bytes");
 _Static_assert(sizeof(nds_storage_command_wire) == 64, "NDS storage command wire ABI must remain 64 bytes");
 _Static_assert(sizeof(nds_storage_completion_wire) == 32, "NDS storage completion wire ABI must remain 32 bytes");
 #endif
@@ -116,6 +128,10 @@ _Static_assert(sizeof(nds_storage_completion_wire) == 32, "NDS storage completio
 int nds_storage_bootstrap_encode(const nds_storage_bootstrap *bootstrap, nds_storage_bootstrap_wire *wire,
                                  char error[NDS_STORAGE_ERROR_CAPACITY]);
 int nds_storage_bootstrap_decode(const nds_storage_bootstrap_wire *wire, nds_storage_bootstrap *bootstrap,
+                                 char error[NDS_STORAGE_ERROR_CAPACITY]);
+int nds_storage_namespace_encode(const nds_storage_namespace *storage_namespace, nds_storage_namespace_wire *wire,
+                                 char error[NDS_STORAGE_ERROR_CAPACITY]);
+int nds_storage_namespace_decode(const nds_storage_namespace_wire *wire, nds_storage_namespace *storage_namespace,
                                  char error[NDS_STORAGE_ERROR_CAPACITY]);
 int nds_storage_command_encode(const nds_storage_command *command, nds_storage_command_wire *wire,
                                char error[NDS_STORAGE_ERROR_CAPACITY]);

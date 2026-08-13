@@ -68,7 +68,6 @@ int main(void)
 
     {
         const nds_storage_bootstrap bootstrap_source = {
-            .namespace_capacity = 1024U * 1024U,
             .completion = {.address = UINT64_C(0x0102030405060708), .length = 64U,
                            .rkey = UINT32_C(0x12345678), .access = NDS_STORAGE_ACCESS_REMOTE_WRITE},
         };
@@ -79,6 +78,18 @@ int main(void)
             expect(memcmp(&bootstrap_source, &bootstrap_decoded, sizeof(bootstrap_source)) == 0,
                    "storage bootstrap round trip") != 0) {
             (void)fprintf(stderr, "storage bootstrap codec error: %s\n", error);
+            return 1;
+        }
+    }
+
+    {
+        const nds_storage_namespace namespace_source = {.capacity = 1024U * 1024U};
+        nds_storage_namespace namespace_decoded = {};
+        nds_storage_namespace_wire namespace_wire = {};
+        if (nds_storage_namespace_encode(&namespace_source, &namespace_wire, error) != 0 ||
+            nds_storage_namespace_decode(&namespace_wire, &namespace_decoded, error) != 0 ||
+            expect(namespace_decoded.capacity == namespace_source.capacity, "storage namespace round trip") != 0) {
+            (void)fprintf(stderr, "storage namespace codec error: %s\n", error);
             return 1;
         }
     }

@@ -48,10 +48,8 @@ int validate_memory(const nds_storage_memory *memory, uint32_t required_access,
 
 int validate_bootstrap(const nds_storage_bootstrap *bootstrap, char error[NDS_STORAGE_ERROR_CAPACITY])
 {
-    if (bootstrap == nullptr || bootstrap->namespace_capacity == 0U ||
-        validate_memory(&bootstrap->completion, NDS_STORAGE_ACCESS_REMOTE_WRITE, error) != 0 ||
+    if (bootstrap == nullptr || validate_memory(&bootstrap->completion, NDS_STORAGE_ACCESS_REMOTE_WRITE, error) != 0 ||
         bootstrap->completion.length < sizeof(nds_storage_completion_wire)) {
-        if (bootstrap != nullptr && bootstrap->namespace_capacity == 0U) set_error(error, "namespace capacity must be nonzero");
         return -1;
     }
     return 0;
@@ -95,7 +93,6 @@ int nds_storage_bootstrap_encode(const nds_storage_bootstrap *bootstrap, nds_sto
     *wire = {};
     wire->magic = htonl(NDS_STORAGE_BOOTSTRAP_MAGIC);
     wire->version = htons(NDS_STORAGE_PROTOCOL_VERSION);
-    wire->namespace_capacity = host_to_be64(bootstrap->namespace_capacity);
     wire->completion_address = host_to_be64(bootstrap->completion.address);
     wire->completion_length = host_to_be64(bootstrap->completion.length);
     wire->completion_rkey = htonl(bootstrap->completion.rkey);
@@ -112,10 +109,41 @@ int nds_storage_bootstrap_decode(const nds_storage_bootstrap_wire *wire, nds_sto
         set_error(error, "invalid storage bootstrap header");
         return -1;
     }
-    *bootstrap = {be64_to_host(wire->namespace_capacity),
-                  {be64_to_host(wire->completion_address), be64_to_host(wire->completion_length),
+    *bootstrap = {{be64_to_host(wire->completion_address), be64_to_host(wire->completion_length),
                    ntohl(wire->completion_rkey), ntohl(wire->completion_access)}};
     return validate_bootstrap(bootstrap, error);
+}
+
+int nds_storage_namespace_encode(const nds_storage_namespace *storage_namespace, nds_storage_namespace_wire *wire,
+                                 char error[NDS_STORAGE_ERROR_CAPACITY])
+{
+    if (storage_namespace == nullptr || wire == nullptr || storage_namespace->capacity == 0U) {
+        set_error(error, "namespace capacity must be nonzero");
+        return -1;
+    }
+    *wire = {};
+    wire->magic = htonl(NDS_STORAGE_NAMESPACE_MAGIC);
+    wire->version = htons(NDS_STORAGE_PROTOCOL_VERSION);
+    wire->capacity = host_to_be64(storage_namespace->capacity);
+    clear_error(error);
+    return 0;
+}
+
+int nds_storage_namespace_decode(const nds_storage_namespace_wire *wire, nds_storage_namespace *storage_namespace,
+                                 char error[NDS_STORAGE_ERROR_CAPACITY])
+{
+    if (wire == nullptr || storage_namespace == nullptr || ntohl(wire->magic) != NDS_STORAGE_NAMESPACE_MAGIC ||
+        ntohs(wire->version) != NDS_STORAGE_PROTOCOL_VERSION) {
+        set_error(error, "invalid storage namespace header");
+        return -1;
+    }
+    storage_namespace->capacity = be64_to_host(wire->capacity);
+    if (storage_namespace->capacity == 0U) {
+        set_error(error, "namespace capacity must be nonzero");
+        return -1;
+    }
+    clear_error(error);
+    return 0;
 }
 
 int nds_storage_command_encode(const nds_storage_command *command, nds_storage_command_wire *wire,

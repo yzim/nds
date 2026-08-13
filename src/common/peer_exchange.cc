@@ -129,6 +129,52 @@ bool TcpPeerExchange::receive_transfer_status(nds_transfer_status &status, std::
     return true;
 }
 
+bool TcpPeerExchange::send_storage_bootstrap(const nds_storage_bootstrap &bootstrap, std::string *error) const
+{
+    nds_storage_bootstrap_wire wire{};
+    char codec_error[NDS_STORAGE_ERROR_CAPACITY]{};
+    if (fd_ < 0 || nds_storage_bootstrap_encode(&bootstrap, &wire, codec_error) != 0) {
+        if (error != nullptr) *error = fd_ < 0 ? "TCP peer exchange is not connected" : codec_error;
+        return false;
+    }
+    return write_full(fd_, &wire, sizeof(wire), error);
+}
+
+bool TcpPeerExchange::receive_storage_bootstrap(nds_storage_bootstrap &bootstrap, std::string *error) const
+{
+    nds_storage_bootstrap_wire wire{};
+    char codec_error[NDS_STORAGE_ERROR_CAPACITY]{};
+    if (fd_ < 0 || !read_full(fd_, &wire, sizeof(wire), error) ||
+        nds_storage_bootstrap_decode(&wire, &bootstrap, codec_error) != 0) {
+        if (fd_ >= 0 && error != nullptr && codec_error[0] != '\0') *error = codec_error;
+        return false;
+    }
+    return true;
+}
+
+bool TcpPeerExchange::send_storage_namespace(const nds_storage_namespace &storage_namespace, std::string *error) const
+{
+    nds_storage_namespace_wire wire{};
+    char codec_error[NDS_STORAGE_ERROR_CAPACITY]{};
+    if (fd_ < 0 || nds_storage_namespace_encode(&storage_namespace, &wire, codec_error) != 0) {
+        if (error != nullptr) *error = fd_ < 0 ? "TCP peer exchange is not connected" : codec_error;
+        return false;
+    }
+    return write_full(fd_, &wire, sizeof(wire), error);
+}
+
+bool TcpPeerExchange::receive_storage_namespace(nds_storage_namespace &storage_namespace, std::string *error) const
+{
+    nds_storage_namespace_wire wire{};
+    char codec_error[NDS_STORAGE_ERROR_CAPACITY]{};
+    if (fd_ < 0 || !read_full(fd_, &wire, sizeof(wire), error) ||
+        nds_storage_namespace_decode(&wire, &storage_namespace, codec_error) != 0) {
+        if (fd_ >= 0 && error != nullptr && codec_error[0] != '\0') *error = codec_error;
+        return false;
+    }
+    return true;
+}
+
 int TcpPeerExchange::fd() const noexcept
 {
     return fd_;

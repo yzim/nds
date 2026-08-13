@@ -2,6 +2,7 @@
 #define NDS_PEER_EXCHANGE_HH
 
 #include "nds/rdma_wire_codec.h"
+#include "nds/storage_protocol.h"
 
 #include <cstdint>
 #include <string>
@@ -42,11 +43,17 @@ public:
     /* Server ordering: receive the peer endpoint, then send the local endpoint. */
     PeerExchangeResult exchange_as_server(const nds_rc_endpoint &local) const;
 
-    /* These fixed-size records are exchanged after endpoint negotiation. */
+    /* Legacy Write-harness records. Remove with the old application path. */
     bool send_memory_descriptor(const nds_memory_descriptor &descriptor, std::string *error) const;
     bool receive_memory_descriptor(nds_memory_descriptor &descriptor, std::string *error) const;
     bool send_transfer_status(const nds_transfer_status &status, std::string *error) const;
     bool receive_transfer_status(nds_transfer_status &status, std::string *error) const;
+
+    /* Session bootstrap only; storage commands never use TCP. */
+    bool send_storage_bootstrap(const nds_storage_bootstrap &bootstrap, std::string *error) const;
+    bool receive_storage_bootstrap(nds_storage_bootstrap &bootstrap, std::string *error) const;
+    bool send_storage_namespace(const nds_storage_namespace &storage_namespace, std::string *error) const;
+    bool receive_storage_namespace(nds_storage_namespace &storage_namespace, std::string *error) const;
 
     int fd() const noexcept;
     int release() noexcept;
