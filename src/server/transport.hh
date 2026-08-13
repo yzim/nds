@@ -2,6 +2,7 @@
 #define NDS_SERVER_TRANSPORT_HH
 
 #include "backend.hh"
+#include "nds/result.hh"
 #include "nds/transport.hh"
 
 #include <cstdint>
@@ -22,16 +23,15 @@ struct ConnectionConfig {
 
 class Connection {
 public:
-    bool open(const ConnectionConfig &config, std::string *error);
-    bool prepare_receive(void *buffer, std::size_t length, RegisteredRegion *region, std::string *error);
-    bool activate(std::string *error);
-    bool receive(std::uint32_t timeout_ms, std::string *error);
-    bool register_memory(void *buffer, std::size_t length, MemoryAccess access, RegisteredRegion *region,
-                         std::string *error);
-    bool read(const RegisteredRegion &local, std::uint64_t remote_address, std::uint32_t remote_key,
-              std::uint32_t length, std::string *error);
-    bool write(const RegisteredRegion &local, std::uint64_t remote_address, std::uint32_t remote_key,
-               std::uint32_t length, std::string *error);
+    Result<void> open(const ConnectionConfig &config);
+    Result<void> prepare_receive(void *buffer, std::size_t length, RegisteredRegion *region);
+    Result<void> activate();
+    Result<void> receive(std::uint32_t timeout_ms);
+    Result<void> register_memory(void *buffer, std::size_t length, MemoryAccess access, RegisteredRegion *region);
+    Result<void> read(const RegisteredRegion &local, std::uint64_t remote_address, std::uint32_t remote_key,
+                      std::uint32_t length);
+    Result<void> write(const RegisteredRegion &local, std::uint64_t remote_address, std::uint32_t remote_key,
+                       std::uint32_t length);
     TcpPeerExchange *bootstrap() noexcept;
 
 private:

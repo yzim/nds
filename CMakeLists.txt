@@ -2,12 +2,21 @@ cmake_minimum_required(VERSION 3.20)
 project(nds LANGUAGES CXX)
 
 include(CTest)
+include(FetchContent)
 
 # spdlog releases before 1.12 require the fmt 8/9 format API. Resolve fmt
 # first so CMake cannot pair a system spdlog with an incompatible newer copy.
 find_package(fmt 8...<10 CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 find_package(CLI11 CONFIG REQUIRED)
+
+set(EXPECTED_BUILD_TESTS OFF CACHE BOOL "Disable tl::expected's upstream tests" FORCE)
+FetchContent_Declare(
+    tl_expected
+    GIT_REPOSITORY https://github.com/TartanLlama/expected.git
+    GIT_TAG 292eff8bd8ee230a7df1d6a1c00c4ea0eb2f0362 # v1.1.0
+    GIT_SHALLOW TRUE)
+FetchContent_MakeAvailable(tl_expected)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

@@ -26,90 +26,81 @@ std::uint64_t RegisteredRegion::length() const noexcept {
     return info_.size;
 }
 
-bool Connection::open(const ConnectionConfig &config, std::string *error) {
-    if (error == nullptr)
-        return false;
+Result<void> Connection::open(const ConnectionConfig &config) {
     config_ = config;
     config_.qp.backend = config.backend.mode;
     if (!context_.initialize(config_.context)) {
-        *error = context_.error();
-        return false;
+        return failure(ErrorCode::kRuntime, context_.error());
     }
     if (!qp_.create(&context_.ra_api(), config_.qp) || !qp_.make_endpoint(&local_)) {
-        *error = qp_.error();
-        return false;
+        return failure(ErrorCode::kRa, qp_.error());
     }
-    if (!TcpPeerExchange::connect(config.cpu_ipv4, config.tcp_port, config.tcp_timeout_ms, &bootstrap_, error)) {
-        return false;
+    std::string error;
+    if (!TcpPeerExchange::connect(config.cpu_ipv4, config.tcp_port, config.tcp_timeout_ms, &bootstrap_, &error)) {
+        return failure(ErrorCode::kTransport, std::move(error));
     }
     const PeerExchangeResult exchanged = bootstrap_.exchange_as_client(local_);
     if (!exchanged.ok) {
-        *error = exchanged.error.empty() ? "CPU endpoint exchange failed" : exchanged.error;
-        return false;
+        return failure(ErrorCode::kTransport,
+                       exchanged.error.empty() ? "server endpoint exchange failed" : std::move(exchanged.error));
     }
     if (!qp_.connect(exchanged.peer)) {
-        *error = qp_.error();
-        return false;
+        return failure(ErrorCode::kRa, qp_.error());
     }
-    return ready(error);
+    return ready();
 }
 
-bool Connection::allocate(std::size_t size, DeviceBuffer *buffer, std::string *error) {
-    if (buffer == nullptr || error == nullptr || buffer->data_ != nullptr || size == 0U ||
+Result<void> Connection::allocate(std::size_t size, DeviceBuffer *buffer) {
+    if (buffer == nullptr || buffer->data_ != nullptr || size == 0U ||
         !context_.allocate_device_memory(size, &buffer->data_)) {
-        if (error != nullptr)
-            *error = context_.error().empty() ? "invalid device allocation" : context_.error();
-        return false;
+        return failure(ErrorCode::kRuntime, context_.error().empty() ? "invalid device allocation" : context_.error());
     }
     buffer->context_ = &context_;
     buffer->size_ = size;
-    return true;
+    return {};
 }
 
-bool Connection::register_memory(DeviceBuffer *buffer, RegisteredRegion *region, std::string *error) {
-    if (buffer == nullptr || region == nullptr || error == nullptr || region->handle_ != nullptr ||
+Result<void> Connection::register_memory(DeviceBuffer *buffer, RegisteredRegion *region) {
+    if (buffer == nullptr || region == nullptr || region->handle_ != nullptr ||
         !qp_.register_memory(buffer->data_, buffer->size_, NDS_RA_ACCESS_DIRECT_NPU, &region->info_,
                              &region->handle_)) {
-        if (error != nullptr)
-            *error = qp_.error().empty() ? "invalid memory registration" : qp_.error();
-        return false;
+        return failure(ErrorCode::kRa, qp_.error().empty() ? "invalid memory registration" : qp_.error());
     }
     region->qp_ = &qp_;
-    return true;
+    return {};
 }
 
-bool Connection::copy_to_device(DeviceBuffer *buffer, const void *source, std::size_t size, std::string *error) {
-    if (buffer == nullptr || source == nullptr || error == nullptr || size > buffer->size_ ||
+Result<void> Connection::copy_to_device(DeviceBuffer *buffer, const void *source, std::size_t size) {
+    if (buffer == nullptr || source == nullptr || size > buffer->size_ ||
         !context_.copy_host_to_device(buffer->data_, source, size)) {
-        if (error != nullptr)
-            *error = context_.error().empty() ? "invalid host-to-device copy" : context_.error();
-        return false;
+        return failure(ErrorCode::kRuntime,
+                       context_.error().empty() ? "invalid host-to-device copy" : context_.error());
     }
-    return true;
+    return {};
 }
 
-bool Connection::copy_from_device(void *destination, const DeviceBuffer &buffer, std::size_t size, std::string *error) {
-    if (destination == nullptr || error == nullptr || size > buffer.size_ ||
+Result<void> Connection::copy_from_device(void *destination, const DeviceBuffer &buffer, std::size_t size) {
+    if (destination == nullptr || size > buffer.size_ ||
         !context_.copy_device_to_host(destination, buffer.data_, size)) {
-        if (error != nullptr)
-            *error = context_.error().empty() ? "invalid device-to-host copy" : context_.error();
-        return false;
+        return failure(ErrorCode::kRuntime,
+                       context_.error().empty() ? "invalid device-to-host copy" : context_.error());
     }
-    return true;
+    return {};
 }
 
-bool Connection::send(const RegisteredRegion &source, std::uint32_t length, std::string *error) {
-    return post_send(&context_, &qp_, config_.backend, source.address(), length, source.info_.local_key, error);
+Result<void> Connection::send(const RegisteredRegion &source, std::uint32_t length) {
+    std::string error;
+    if (!post_send(&context_, &qp_, config_.backend, source.address(), length, source.info_.local_key, &error)) {
+        return failure(ErrorCode::kRa, std::move(error));
+    }
+    return {};
 }
 
-bool Connection::remote_region(const RegisteredRegion &region, RemoteRegion *remote, std::string *error) const {
-    if (remote == nullptr || error == nullptr || region.handle_ == nullptr) {
-        if (error != nullptr)
-            *error = "registered region is not available";
-        return false;
+Result<RemoteRegion> Connection::remote_region(const RegisteredRegion &region) const {
+    if (region.handle_ == nullptr) {
+        return failure(ErrorCode::kRa, "registered region is not available");
     }
-    *remote = {region.address(), region.length(), region.info_.remote_key};
-    return true;
+    return RemoteRegion{region.address(), region.length(), region.info_.remote_key};
 }
 
 TcpPeerExchange *Connection::bootstrap() noexcept {
@@ -120,18 +111,16 @@ const nds_transport_endpoint &Connection::local_endpoint() const noexcept {
     return local_;
 }
 
-bool Connection::ready(std::string *error) {
+Result<void> Connection::ready() {
     int port = -1;
     int qp_status = -1;
     int lite = -1;
-    if (error == nullptr || !qp_.query_port_status(&port) || !qp_.query_status(&qp_status) ||
-        !qp_.query_support_lite(&lite) || port != NDS_RA_PORT_STATUS_ACTIVE ||
-        qp_status != NDS_RA_QP_STATUS_CONNECTED || lite == NDS_RA_LITE_NOT_SUPPORTED) {
-        if (error != nullptr)
-            *error = qp_.error().empty() ? "NPU transport connection is not ready" : qp_.error();
-        return false;
+    if (!qp_.query_port_status(&port) || !qp_.query_status(&qp_status) || !qp_.query_support_lite(&lite) ||
+        port != NDS_RA_PORT_STATUS_ACTIVE || qp_status != NDS_RA_QP_STATUS_CONNECTED ||
+        lite == NDS_RA_LITE_NOT_SUPPORTED) {
+        return failure(ErrorCode::kRa, qp_.error().empty() ? "client connection is not ready" : qp_.error());
     }
-    return true;
+    return {};
 }
 
 }  // namespace nds::client

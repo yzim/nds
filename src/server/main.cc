@@ -51,13 +51,13 @@ int main(int argc, char **argv) {
     if (!nds::log::configure("cpu-server", config.log_sink, config.log_level, &error))
         return EXIT_FAILURE;
     nds::server::Connection connection;
-    if (!connection.open(config.connection, &error)) {
-        NDS_LOG_ERROR("cpu-server", "CPU transport connection failed: {}", error);
+    if (const auto opened = connection.open(config.connection); !opened) {
+        NDS_LOG_ERROR("cpu-server", "server connection failed: {}", opened.error().message);
         return EXIT_FAILURE;
     }
     std::vector<unsigned char> storage(config.namespace_bytes, 0U);
-    if (!nds::server::serve_request(&connection, &storage, 5000U, &error)) {
-        NDS_LOG_ERROR("cpu-server", "storage protocol failed: {}", error);
+    if (const auto served = nds::server::serve_request(&connection, &storage, 5000U); !served) {
+        NDS_LOG_ERROR("cpu-server", "protocol request failed: {}", served.error().message);
         return EXIT_FAILURE;
     }
     NDS_LOG_INFO("cpu-server", "completed one NDS storage command");

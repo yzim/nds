@@ -99,8 +99,8 @@ int main(int argc, char **argv) {
     }
 
     nds::client::Connection connection;
-    if (!connection.open(config.connection, &error)) {
-        NDS_LOG_ERROR("npu-client", "NPU transport connection failed: {}", error);
+    if (const auto result = connection.open(config.connection); !result) {
+        NDS_LOG_ERROR("npu-client", "client connection failed: {}", result.error().message);
         return EXIT_FAILURE;
     }
     std::vector<unsigned char> payload(config.bytes);
@@ -108,25 +108,32 @@ int main(int argc, char **argv) {
         payload[index] = static_cast<unsigned char>(index ^ 0x5aU);
     }
     nds::client::DeviceBuffer data;
-    if (!connection.allocate(payload.size(), &data, &error) ||
-        !connection.copy_to_device(&data, payload.data(), payload.size(), &error)) {
-        NDS_LOG_ERROR("npu-client", "NPU application buffer setup failed: {}", error);
+    if (const auto result = connection.allocate(payload.size(), &data); !result) {
+        NDS_LOG_ERROR("npu-client", "client application buffer allocation failed: {}", result.error().message);
+        return EXIT_FAILURE;
+    }
+    if (const auto result = connection.copy_to_device(&data, payload.data(), payload.size()); !result) {
+        NDS_LOG_ERROR("npu-client", "client application buffer copy failed: {}", result.error().message);
         return EXIT_FAILURE;
     }
 
     const std::uint16_t operation = config.operation == "read" ? NDS_PROTOCOL_READ : NDS_PROTOCOL_WRITE;
     const nds_transport_endpoint &local = connection.local_endpoint();
     const std::uint64_t request_id = (static_cast<std::uint64_t>(local.qp_num) << 32U) | local.psn;
-    if (!nds::client::execute_request(&connection, {request_id, operation, config.offset, config.bytes, &data},
-                                      &error)) {
-        NDS_LOG_ERROR("npu-client", "storage protocol failed: {}", error);
+    if (const auto result =
+            nds::client::execute_request(&connection, {request_id, operation, config.offset, config.bytes, &data});
+        !result) {
+        NDS_LOG_ERROR("npu-client", "protocol request failed: {}", result.error().message);
         return EXIT_FAILURE;
     }
     if (operation == NDS_PROTOCOL_READ) {
         std::vector<unsigned char> result(payload.size());
-        if (!connection.copy_from_device(result.data(), data, result.size(), &error) ||
-            result != std::vector<unsigned char>(result.size(), 0U)) {
-            NDS_LOG_ERROR("npu-client", "storage Read verification failed: {}", error);
+        if (const auto copied = connection.copy_from_device(result.data(), data, result.size()); !copied) {
+            NDS_LOG_ERROR("npu-client", "client Read copy failed: {}", copied.error().message);
+            return EXIT_FAILURE;
+        }
+        if (result != std::vector<unsigned char>(result.size(), 0U)) {
+            NDS_LOG_ERROR("npu-client", "storage Read verification failed");
             return EXIT_FAILURE;
         }
     }

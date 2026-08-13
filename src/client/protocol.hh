@@ -16,7 +16,7 @@ struct Request {
     DeviceBuffer *data{};
 };
 
-bool execute_request(Connection *connection, const Request &request, std::string *error);
+Result<void> execute_request(Connection *connection, const Request &request);
 
 }  // namespace nds::client
 

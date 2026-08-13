@@ -4,6 +4,7 @@
 #include "backend/backend.hh"
 #include "nds/npu_ra_context.hh"
 #include "nds/npu_ra_qp.hh"
+#include "nds/result.hh"
 #include "nds/transport.hh"
 
 #include <cstddef>
@@ -63,17 +64,17 @@ struct RemoteRegion {
 
 class Connection {
 public:
-    bool open(const ConnectionConfig &config, std::string *error);
-    bool allocate(std::size_t size, DeviceBuffer *buffer, std::string *error);
-    bool register_memory(DeviceBuffer *buffer, RegisteredRegion *region, std::string *error);
-    bool copy_to_device(DeviceBuffer *buffer, const void *source, std::size_t size, std::string *error);
-    bool copy_from_device(void *destination, const DeviceBuffer &buffer, std::size_t size, std::string *error);
-    bool send(const RegisteredRegion &source, std::uint32_t length, std::string *error);
-    bool remote_region(const RegisteredRegion &region, RemoteRegion *remote, std::string *error) const;
+    Result<void> open(const ConnectionConfig &config);
+    Result<void> allocate(std::size_t size, DeviceBuffer *buffer);
+    Result<void> register_memory(DeviceBuffer *buffer, RegisteredRegion *region);
+    Result<void> copy_to_device(DeviceBuffer *buffer, const void *source, std::size_t size);
+    Result<void> copy_from_device(void *destination, const DeviceBuffer &buffer, std::size_t size);
+    Result<void> send(const RegisteredRegion &source, std::uint32_t length);
+    Result<RemoteRegion> remote_region(const RegisteredRegion &region) const;
     TcpPeerExchange *bootstrap() noexcept;
 
     const nds_transport_endpoint &local_endpoint() const noexcept;
-    bool ready(std::string *error);
+    Result<void> ready();
 
 private:
     ConnectionConfig config_{};
