@@ -2,7 +2,7 @@
 #define NDS_NPU_RA_QP_HPP
 
 #include "nds/ra_loader.h"
-#include "nds/rdma_wire_codec.h"
+#include "nds/transport.h"
 
 #include <cstdint>
 #include <string>
@@ -48,7 +48,7 @@ public:
     NpuRaQp &operator=(NpuRaQp &&) = delete;
 
     bool create(nds_ra_api *api, const NpuRaQpConfig &config);
-    bool make_endpoint(nds_rc_endpoint *endpoint);
+    bool make_endpoint(nds_transport_endpoint *endpoint);
     bool register_memory(void *address, std::uint64_t size, int access, nds_ra_mr_info *info, void **mr_handle);
     bool deregister_memory(void *mr_handle);
     bool post_send(const nds_ra_sge &source, std::uint32_t opcode, std::uint64_t remote_address,
@@ -60,7 +60,7 @@ public:
     bool query_support_lite(int *support_lite);
     bool query_status(int *status);
     bool query_cqe_errors(nds_ra_cqe_error *errors, std::uint32_t *count);
-    bool connect(const nds_rc_endpoint &peer);
+    bool connect(const nds_transport_endpoint &peer);
     void reset() noexcept;
 
     bool created() const noexcept;

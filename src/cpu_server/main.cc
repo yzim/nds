@@ -1,6 +1,6 @@
 #include "nds/logging.hh"
-#include "protocol/storage.hh"
-#include "transport/connection.hh"
+#include "protocol.hh"
+#include "transport.hh"
 
 #include <CLI/CLI.hpp>
 

@@ -1,13 +1,13 @@
 find_package(Threads REQUIRED)
 
-add_library(nds_rdma_path_mtu STATIC rdma_path_mtu.cc)
-target_include_directories(nds_rdma_path_mtu PUBLIC include)
-target_compile_options(nds_rdma_path_mtu PRIVATE -Wall -Wextra -Wpedantic -Werror)
+add_library(nds_transport STATIC transport.cc)
+target_include_directories(nds_transport PUBLIC include)
+target_link_libraries(nds_transport PUBLIC Threads::Threads)
+target_compile_options(nds_transport PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
-add_library(nds_peer_exchange STATIC peer_exchange.cc)
-target_include_directories(nds_peer_exchange PUBLIC include)
-target_link_libraries(nds_peer_exchange PUBLIC nds_protocol Threads::Threads)
-target_compile_options(nds_peer_exchange PRIVATE -Wall -Wextra -Wpedantic -Werror)
+add_library(nds_protocol STATIC protocol.cc)
+target_include_directories(nds_protocol PUBLIC include)
+target_compile_options(nds_protocol PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 add_library(nds_logging STATIC logging.cc)
 target_include_directories(nds_logging PUBLIC include)

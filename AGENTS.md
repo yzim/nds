@@ -49,8 +49,9 @@ are defined in [architecture](docs/architecture.md).
 - Keep runtime loading, library names, symbol resolution, and ABI checks in the
   loader modules. Missing required symbols must fail closed with a useful error.
 - Preserve the endpoint-local dependency direction: application -> storage
-  protocol -> transport connection -> backend. Shared wire codecs belong in
-  `src/protocol`; generic support belongs in `src/common`. Backend and transport
+  protocol -> transport connection -> backend. `src/common/transport.*` owns
+  shared endpoint metadata, TCP bootstrap, and MTU policy;
+  `src/common/protocol.*` owns shared storage records. Backend and transport
   code must not depend on storage command semantics.
 - Keep the TCP peer exchange independent of RA/HCCP private objects. Exchange
   only NDS-owned versioned wire records with the CPU endpoint. Exchange QPN,

@@ -1,6 +1,6 @@
-#include "storage.hh"
+#include "protocol.hh"
 
-#include "nds/storage_protocol.h"
+#include "nds/protocol.h"
 
 namespace nds::cpu {
 namespace {

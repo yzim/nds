@@ -161,7 +161,7 @@ bool NpuRaQp::create(nds_ra_api *api, const NpuRaQpConfig &config) {
     return true;
 }
 
-bool NpuRaQp::make_endpoint(nds_rc_endpoint *endpoint) {
+bool NpuRaQp::make_endpoint(nds_transport_endpoint *endpoint) {
     if (endpoint == nullptr || !created()) {
         set_error("NPU RA QP has not been created");
         return false;
@@ -358,7 +358,7 @@ int NpuRaQp::poll_send_completions(nds_ra_completion *completions, std::uint32_t
     return result;
 }
 
-bool NpuRaQp::connect(const nds_rc_endpoint &peer) {
+bool NpuRaQp::connect(const nds_transport_endpoint &peer) {
     nds_ra_typical_qp local_qp{};
     nds_ra_qp_attr peer_attributes{};
     nds_ra_typical_qp remote_qp{};

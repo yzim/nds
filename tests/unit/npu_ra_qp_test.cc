@@ -263,8 +263,8 @@ void test_create_advertise_connect_and_reset() {
     nds_ra_api api = make_fake_api();
     nds::NpuRaQp qp;
     nds::NpuRaQpConfig config{};
-    nds_rc_endpoint local{};
-    nds_rc_endpoint peer{};
+    nds_transport_endpoint local{};
+    nds_transport_endpoint peer{};
 
     config.local_ipv4 = "192.0.2.10";
     config.port_num = 1;
@@ -344,8 +344,8 @@ void test_aicpu_qp_creation_and_connection() {
     nds_ra_api api = make_fake_api();
     nds::NpuRaQp qp;
     nds::NpuRaQpConfig config{};
-    nds_rc_endpoint local{};
-    nds_rc_endpoint peer{};
+    nds_transport_endpoint local{};
+    nds_transport_endpoint peer{};
 
     config.local_ipv4 = "192.0.2.10";
     config.backend = nds::NpuBackendMode::Aicpu;
@@ -438,7 +438,7 @@ void test_send_wr_and_polling() {
     nds_ra_api api = make_fake_api();
     nds::NpuRaQp qp;
     nds::NpuRaQpConfig config{};
-    nds_rc_endpoint peer{};
+    nds_transport_endpoint peer{};
     nds_ra_send_response response{};
     nds_ra_completion completion{};
 
@@ -500,8 +500,8 @@ void test_rejects_invalid_configuration_and_endpoint() {
     nds_ra_api api = make_fake_api();
     nds::NpuRaQp qp;
     nds::NpuRaQpConfig config{};
-    nds_rc_endpoint endpoint{};
-    nds_rc_endpoint invalid_peer{};
+    nds_transport_endpoint endpoint{};
+    nds_transport_endpoint invalid_peer{};
 
     assert(!qp.create(&api, config));
     assert(!qp.error().empty());

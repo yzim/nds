@@ -1,4 +1,4 @@
-#include "nds/peer_exchange.hh"
+#include "nds/transport.hh"
 
 #include <sys/socket.h>
 #include <unistd.h>
@@ -9,8 +9,8 @@
 
 namespace {
 
-nds_rc_endpoint make_endpoint(std::uint32_t qpn, std::uint32_t psn) {
-    nds_rc_endpoint endpoint{};
+nds_transport_endpoint make_endpoint(std::uint32_t qpn, std::uint32_t psn) {
+    nds_transport_endpoint endpoint{};
     endpoint.qp_num = qpn;
     endpoint.psn = psn;
     endpoint.port_num = 1;

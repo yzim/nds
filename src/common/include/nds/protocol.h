@@ -1,5 +1,5 @@
-#ifndef NDS_STORAGE_PROTOCOL_H
-#define NDS_STORAGE_PROTOCOL_H
+#ifndef NDS_PROTOCOL_H
+#define NDS_PROTOCOL_H
 
 #include <stdint.h>
 

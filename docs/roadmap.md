@@ -44,8 +44,9 @@ The implementation is organized by responsibility:
 
 The current source tree implements these boundaries independently in
 `src/npu_client` and `src/cpu_server`. Each endpoint contains `backend`,
-`transport`, `protocol`, and `application` directories. Shared wire records and
-codecs live in `src/protocol`; protocol-neutral support lives in `src/common`.
+`transport.*`, `protocol.*`, and a `main.cc` application entry point. Shared
+endpoint metadata and TCP bootstrap live in `src/common/transport.*`, and
+shared storage records live in `src/common/protocol.*`.
 See [architecture](architecture.md) for concrete ownership rules.
 
 The selected NPU backend posts the protocol command with RDMA Send. The CPU

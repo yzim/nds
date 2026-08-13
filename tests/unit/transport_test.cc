@@ -1,5 +1,5 @@
-#include "nds/rdma_wire_codec.h"
-#include "nds/storage_protocol.h"
+#include "nds/transport.h"
+#include "nds/protocol.h"
 
 #include <arpa/inet.h>
 #include <stdio.h>
@@ -14,7 +14,7 @@ static int expect(int condition, const char *message) {
 }
 
 int main(void) {
-    nds_rc_endpoint source = {
+    nds_transport_endpoint source = {
         .qp_num = UINT32_C(0x00abcd),
         .psn = UINT32_C(0x00123456),
         .port_num = 1,
@@ -26,16 +26,16 @@ int main(void) {
         .retry_timeout = 14,
         .gid = {0xfe, 0x80, 0, 0, 0, 0, 0, 0, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88},
     };
-    nds_rc_endpoint decoded = {};
-    nds_rc_endpoint_wire wire = {};
-    char error[NDS_WIRE_ERROR_CAPACITY] = {};
+    nds_transport_endpoint decoded = {};
+    nds_transport_endpoint_wire wire = {};
+    char error[NDS_TRANSPORT_ERROR_CAPACITY] = {};
 
-    if (nds_rc_endpoint_encode(&source, &wire, error) != 0 ||
-        expect(ntohl(wire.magic) == NDS_RC_WIRE_MAGIC, "wire magic") != 0 ||
-        expect(ntohs(wire.version) == NDS_RC_WIRE_VERSION, "wire version") != 0 ||
+    if (nds_transport_endpoint_encode(&source, &wire, error) != 0 ||
+        expect(ntohl(wire.magic) == NDS_TRANSPORT_WIRE_MAGIC, "wire magic") != 0 ||
+        expect(ntohs(wire.version) == NDS_TRANSPORT_WIRE_VERSION, "wire version") != 0 ||
         expect(ntohl(wire.qp_num) == source.qp_num, "QP number encoding") != 0 ||
         expect(memcmp(wire.gid, source.gid, NDS_GID_BYTES) == 0, "GID encoding") != 0 ||
-        nds_rc_endpoint_decode(&wire, &decoded, error) != 0 ||
+        nds_transport_endpoint_decode(&wire, &decoded, error) != 0 ||
         expect(memcmp(&source, &decoded, sizeof(source)) == 0, "round trip") != 0) {
         (void)fprintf(stderr, "codec error: %s\n", error);
         return 1;
@@ -117,9 +117,9 @@ int main(void) {
     }
 
     wire.magic = 0;
-    if (expect(nds_rc_endpoint_decode(&wire, &decoded, error) != 0, "bad magic rejected") != 0) {
+    if (expect(nds_transport_endpoint_decode(&wire, &decoded, error) != 0, "bad magic rejected") != 0) {
         return 1;
     }
-    (void)puts("rdma wire codec tests passed");
+    (void)puts("transport endpoint codec tests passed");
     return 0;
 }

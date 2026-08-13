@@ -1,7 +1,7 @@
-#ifndef NDS_CPU_STORAGE_PROTOCOL_HH
-#define NDS_CPU_STORAGE_PROTOCOL_HH
+#ifndef NDS_CPU_PROTOCOL_HH
+#define NDS_CPU_PROTOCOL_HH
 
-#include "transport/connection.hh"
+#include "transport.hh"
 
 #include <cstdint>
 #include <string>

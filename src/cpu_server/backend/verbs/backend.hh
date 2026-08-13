@@ -1,7 +1,7 @@
 #ifndef NDS_CPU_VERBS_BACKEND_HH
 #define NDS_CPU_VERBS_BACKEND_HH
 
-#include "nds/rdma_wire_codec.h"
+#include "nds/transport.h"
 
 #include <infiniband/verbs.h>
 
@@ -41,7 +41,7 @@ public:
     VerbsBackend &operator=(const VerbsBackend &) = delete;
 
     bool open(const BackendConfig &config, std::string *error);
-    bool connect(const nds_rc_endpoint &peer, std::string *error);
+    bool connect(const nds_transport_endpoint &peer, std::string *error);
     bool register_memory(void *address, std::size_t length, int access, RegisteredRegion *region, std::string *error);
     bool post_receive(const RegisteredRegion &region, std::string *error);
     bool wait_receive(std::uint32_t timeout_ms, std::string *error);
@@ -49,7 +49,7 @@ public:
               std::uint32_t length, std::string *error);
     bool write(const RegisteredRegion &local, std::uint64_t remote_address, std::uint32_t remote_key,
                std::uint32_t length, std::string *error);
-    const nds_rc_endpoint &local_endpoint() const noexcept;
+    const nds_transport_endpoint &local_endpoint() const noexcept;
 
 private:
     bool transfer(ibv_wr_opcode opcode, const RegisteredRegion &local, std::uint64_t remote_address,
@@ -60,7 +60,7 @@ private:
     ibv_pd *pd_{};
     ibv_cq *cq_{};
     ibv_qp *qp_{};
-    nds_rc_endpoint local_{};
+    nds_transport_endpoint local_{};
     BackendConfig config_{};
 };
 

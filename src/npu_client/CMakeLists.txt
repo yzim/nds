@@ -28,7 +28,7 @@ target_compile_options(nds_npu_ra_context PRIVATE -Wall -Wextra -Wpedantic -Werr
 
 add_library(nds_npu_ra_qp STATIC backend/support/core/npu_ra_qp.cc)
 target_include_directories(nds_npu_ra_qp PUBLIC backend/support/include)
-target_link_libraries(nds_npu_ra_qp PUBLIC nds_ra_loader nds_protocol)
+target_link_libraries(nds_npu_ra_qp PUBLIC nds_ra_loader nds_transport)
 target_compile_options(nds_npu_ra_qp PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 add_library(nds_host_ra STATIC backend/host_ra/backend.cc)
@@ -51,15 +51,15 @@ target_include_directories(nds_npu_backend PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(nds_npu_backend PUBLIC nds_npu_ra_context nds_npu_ra_qp nds_host_ra nds_aiv_roce nds_aicpu_roce)
 target_compile_options(nds_npu_backend PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
-add_library(nds_npu_transport STATIC transport/connection.cc)
+add_library(nds_npu_transport STATIC transport.cc)
 target_include_directories(nds_npu_transport PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(nds_npu_transport PUBLIC nds_npu_backend nds_peer_exchange nds_protocol)
+target_link_libraries(nds_npu_transport PUBLIC nds_npu_backend nds_transport)
 target_compile_options(nds_npu_transport PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
-add_library(nds_npu_storage_protocol STATIC protocol/storage.cc)
-target_include_directories(nds_npu_storage_protocol PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(nds_npu_storage_protocol PUBLIC nds_npu_transport nds_protocol)
-target_compile_options(nds_npu_storage_protocol PRIVATE -Wall -Wextra -Wpedantic -Werror)
+add_library(nds_npu_protocol STATIC protocol.cc)
+target_include_directories(nds_npu_protocol PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(nds_npu_protocol PUBLIC nds_npu_transport nds_protocol)
+target_compile_options(nds_npu_protocol PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 if(NDS_BUILD_AIV_KERNEL)
     if(NOT CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
@@ -136,15 +136,15 @@ if(NDS_BUILD_AICPU_KERNEL)
         "${NDS_AICPU_STANDARD_CONFIG}" "${NDS_AICPU_STANDARD_PACKAGE}")
 endif()
 
-add_executable(nds_npu_qp_client application/main.cc)
+add_executable(nds_npu_qp_client main.cc)
 target_link_libraries(nds_npu_qp_client PRIVATE
     CLI11::CLI11
     nds_npu_ra_context
     nds_npu_ra_qp
-    nds_peer_exchange
+    nds_transport
     nds_logging
     nds_host_ra
     nds_aiv_roce
     nds_aicpu_roce
-    nds_npu_storage_protocol)
+    nds_npu_protocol)
 target_compile_options(nds_npu_qp_client PRIVATE -Wall -Wextra -Wpedantic -Werror)

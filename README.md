@@ -65,10 +65,9 @@ application owns CLI configuration, buffers, and workload verification. See
 ## Repository layout
 
 ```text
-src/npu_client/   NPU endpoint: application, protocol, transport, and backends
-src/cpu_server/   CPU endpoint: application, protocol, transport, and verbs backend
-src/protocol/     Shared, versioned wire records and codecs
-src/common/       Logging, TCP peer exchange, and generic support
+src/npu_client/   NPU endpoint: main, protocol, transport, and backends
+src/cpu_server/   CPU endpoint: main, protocol, transport, and verbs backend
+src/common/       Shared transport bootstrap/metadata, storage ABI, and logging
 tests/            Unit tests and a test-only runtime fixture
 docs/             Resource lifecycle, modes, linkage, and implementation guides
 ```

@@ -1,8 +1,8 @@
-#ifndef NDS_CPU_CONNECTION_HH
-#define NDS_CPU_CONNECTION_HH
+#ifndef NDS_CPU_TRANSPORT_HH
+#define NDS_CPU_TRANSPORT_HH
 
 #include "backend/verbs/backend.hh"
-#include "nds/peer_exchange.hh"
+#include "nds/transport.hh"
 
 #include <cstdint>
 #include <string>
@@ -37,7 +37,7 @@ public:
 private:
     VerbsBackend backend_;
     TcpPeerExchange bootstrap_;
-    nds_rc_endpoint_wire local_wire_{};
+    nds_transport_endpoint_wire local_wire_{};
 };
 
 }  // namespace nds::cpu

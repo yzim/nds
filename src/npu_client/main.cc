@@ -1,7 +1,7 @@
 #include "nds/logging.hh"
-#include "nds/storage_protocol.h"
-#include "protocol/storage.hh"
-#include "transport/connection.hh"
+#include "nds/protocol.h"
+#include "protocol.hh"
+#include "transport.hh"
 
 #include <CLI/CLI.hpp>
 
@@ -115,7 +115,7 @@ int main(int argc, char **argv) {
     }
 
     const std::uint16_t operation = config.operation == "read" ? NDS_STORAGE_READ : NDS_STORAGE_WRITE;
-    const nds_rc_endpoint &local = connection.local_endpoint();
+    const nds_transport_endpoint &local = connection.local_endpoint();
     const std::uint64_t request_id = (static_cast<std::uint64_t>(local.qp_num) << 32U) | local.psn;
     if (!nds::npu::execute_storage_request(&connection, {request_id, operation, config.offset, config.bytes, &data},
                                            &error)) {

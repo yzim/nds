@@ -1,4 +1,4 @@
-#include "connection.hh"
+#include "transport.hh"
 
 namespace nds::npu {
 
@@ -116,7 +116,7 @@ TcpPeerExchange *Connection::bootstrap() noexcept {
     return &bootstrap_;
 }
 
-const nds_rc_endpoint &Connection::local_endpoint() const noexcept {
+const nds_transport_endpoint &Connection::local_endpoint() const noexcept {
     return local_;
 }
 

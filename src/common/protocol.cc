@@ -1,4 +1,4 @@
-#include "nds/storage_protocol.h"
+#include "nds/protocol.h"
 
 #include <arpa/inet.h>
 #include <stdarg.h>

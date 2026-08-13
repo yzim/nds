@@ -12,17 +12,19 @@ Application -> Storage protocol -> Transport connection -> Backend
 ```text
 src/
   npu_client/
-    application/   CLI, application buffers, and workload verification
-    protocol/      NPU side of the storage command and completion flow
-    transport/     one connected NPU-to-CPU transport session
+    main.cc        CLI, application buffers, and workload verification
+    protocol.*     NPU side of the storage command and completion flow
+    transport.*    one connected NPU-to-CPU transport session
     backend/       host_ra, aiv, aicpu, and their shared RA support
   cpu_server/
-    application/   CLI and memory-backed namespace ownership
-    protocol/      command decode, range checks, data movement, completion
-    transport/     one connected CPU-to-NPU transport session
+    main.cc        CLI and memory-backed namespace ownership
+    protocol.*     command decode, range checks, data movement, completion
+    transport.*    one connected CPU-to-NPU transport session
     backend/       libibverbs QP, MR, work request, and CQ operations
-  protocol/        shared versioned wire records and codecs
-  common/          logging, raw TCP peer exchange, and generic support
+  common/
+    transport.*    endpoint metadata, TCP bootstrap, and MTU policy
+    protocol.*     shared versioned storage records and codecs
+    logging.*      replaceable process logging
 ```
 
 ## Backend
@@ -39,7 +41,7 @@ not encode storage commands or make namespace decisions.
 
 ## Transport
 
-`transport/connection.hh` defines each endpoint's `Connection`. A connection
+`transport.hh` defines each endpoint's `Connection`. A connection
 owns the backend resources, one RC QP, registered-region lifetimes, and the raw
 TCP bootstrap session. It exposes endpoint-appropriate operations: the NPU
 sends a registered buffer; the CPU receives, reads, and writes registered
@@ -65,7 +67,7 @@ not manipulate QPs, MRs, work requests, CQs, or wire codecs.
 
 ## Shared Boundaries
 
-`src/protocol` contains C-compatible wire ABI headers because records cross
-process and device boundaries. `src/common` contains only protocol-neutral
-support. Neither endpoint exchanges HCCP handles, verbs objects, AI-QP
+`src/common/transport.*` contains shared endpoint metadata, TCP bootstrap, and
+MTU policy. `src/common/protocol.*` contains the C-compatible storage record
+ABI and codecs. Neither endpoint exchanges HCCP handles, verbs objects, AI-QP
 descriptors, queue addresses, or doorbell addresses.

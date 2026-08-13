@@ -1,10 +1,10 @@
-#ifndef NDS_NPU_CONNECTION_HH
-#define NDS_NPU_CONNECTION_HH
+#ifndef NDS_NPU_TRANSPORT_HH
+#define NDS_NPU_TRANSPORT_HH
 
 #include "backend/backend.hh"
 #include "nds/npu_ra_context.hh"
 #include "nds/npu_ra_qp.hh"
-#include "nds/peer_exchange.hh"
+#include "nds/transport.hh"
 
 #include <cstddef>
 #include <cstdint>
@@ -72,7 +72,7 @@ public:
     bool remote_region(const RegisteredRegion &region, RemoteRegion *remote, std::string *error) const;
     TcpPeerExchange *bootstrap() noexcept;
 
-    const nds_rc_endpoint &local_endpoint() const noexcept;
+    const nds_transport_endpoint &local_endpoint() const noexcept;
     bool ready(std::string *error);
 
 private:
@@ -80,7 +80,7 @@ private:
     NpuRaContext context_;
     NpuRaQp qp_;
     TcpPeerExchange bootstrap_;
-    nds_rc_endpoint local_{};
+    nds_transport_endpoint local_{};
 };
 
 }  // namespace nds::npu

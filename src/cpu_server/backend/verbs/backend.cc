@@ -1,6 +1,6 @@
 #include "backend.hh"
 
-#include "nds/rdma_path_mtu.h"
+#include "nds/transport.h"
 
 #include <arpa/inet.h>
 #include <cerrno>
@@ -148,9 +148,9 @@ bool VerbsBackend::open(const BackendConfig &config, std::string *error) {
     return true;
 }
 
-bool VerbsBackend::connect(const nds_rc_endpoint &peer, std::string *error) {
+bool VerbsBackend::connect(const nds_transport_endpoint &peer, std::string *error) {
     ibv_mtu mtu{};
-    if (error == nullptr || !mtu_value(nds_cpu_qp_path_mtu_select(local_.path_mtu, peer.path_mtu), &mtu))
+    if (error == nullptr || !mtu_value(nds_transport_mtu_select(local_.path_mtu, peer.path_mtu), &mtu))
         return false;
     ibv_qp_attr attr{};
     attr.qp_state = IBV_QPS_RTR;
@@ -264,7 +264,7 @@ bool VerbsBackend::write(const RegisteredRegion &local, std::uint64_t remote_add
     return transfer(IBV_WR_RDMA_WRITE, local, remote_address, remote_key, length, error);
 }
 
-const nds_rc_endpoint &VerbsBackend::local_endpoint() const noexcept {
+const nds_transport_endpoint &VerbsBackend::local_endpoint() const noexcept {
     return local_;
 }
 

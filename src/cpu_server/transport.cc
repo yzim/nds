@@ -1,6 +1,6 @@
-#include "connection.hh"
+#include "transport.hh"
 
-#include "nds/rdma_wire_codec.h"
+#include "nds/transport.h"
 
 #include <arpa/inet.h>
 #include <cerrno>
@@ -13,8 +13,8 @@ namespace nds::cpu {
 bool Connection::open(const ConnectionConfig &config, std::string *error) {
     if (error == nullptr || !backend_.open(config.backend, error))
         return false;
-    char codec_error[NDS_WIRE_ERROR_CAPACITY]{};
-    if (nds_rc_endpoint_encode(&backend_.local_endpoint(), &local_wire_, codec_error) != 0) {
+    char codec_error[NDS_TRANSPORT_ERROR_CAPACITY]{};
+    if (nds_transport_endpoint_encode(&backend_.local_endpoint(), &local_wire_, codec_error) != 0) {
         *error = codec_error;
         return false;
     }
@@ -42,10 +42,10 @@ bool Connection::open(const ConnectionConfig &config, std::string *error) {
         (void)close(peer_fd);
         return false;
     }
-    nds_rc_endpoint_wire peer_wire{};
-    nds_rc_endpoint peer{};
+    nds_transport_endpoint_wire peer_wire{};
+    nds_transport_endpoint peer{};
     if (!bootstrap_.receive_bytes(&peer_wire, sizeof(peer_wire), error) ||
-        nds_rc_endpoint_decode(&peer_wire, &peer, codec_error) != 0 || !backend_.connect(peer, error)) {
+        nds_transport_endpoint_decode(&peer_wire, &peer, codec_error) != 0 || !backend_.connect(peer, error)) {
         if (error->empty())
             *error = codec_error;
         return false;
