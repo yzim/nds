@@ -43,11 +43,19 @@ The implementation is organized by responsibility:
    protocol or transport responsibility.
 
 The current source tree implements these boundaries independently in
-`src/npu_client` and `src/cpu_server`. Each endpoint contains `backend`,
-`transport.*`, `protocol.*`, and a `main.cc` application entry point. Shared
-endpoint metadata and TCP bootstrap live in `src/common/transport.*`, and
-shared storage records live in `src/common/protocol.*`.
+`src/npu_client` and `src/cpu_server`. Each endpoint has `transport.*`,
+`protocol.*`, and a `main.cc` application entry point. The NPU's selectable
+implementations remain under `npu_client/backend/`; the CPU has one verbs
+implementation in `cpu_server/backend.*`. Shared endpoint metadata and TCP
+bootstrap live in `src/common/transport.*`, and shared storage records live in
+`src/common/protocol.*`.
 See [architecture](architecture.md) for concrete ownership rules.
+
+`src/common/include/nds/` is an internal shared-header boundary. Its `nds/`
+prefix prevents generic names such as `protocol.h` and `transport.h` from
+colliding across targets. It is not yet an installed or versioned external
+NDS SDK; any public-library surface will be designed separately when NDS needs
+one.
 
 The selected NPU backend posts the protocol command with RDMA Send. The CPU
 uses ordinary `libibverbs` for its command Receive, storage-data RDMA
