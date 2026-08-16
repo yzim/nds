@@ -26,13 +26,13 @@ The C-compatible shared ABI is split by responsibility:
 - `device_operations.h`: the narrow host-launch dispatch record. It is an
   adapter into the connection layer, not the device API itself.
 
-These headers live in `src/client/device/include/nds/`. The QP and connection
+These headers live in `src/client/data_plane/abi/nds/`. The QP and connection
 records remain local to the NPU endpoint and are never exchanged with the CPU.
 
 ## Verbs APIs
 
 AIV exposes the following AICore-callable functions in
-`src/client/device/aiv/device/include/nds/aiv_device_api.h`:
+`src/client/data_plane/aiv/device/include/nds/aiv_device_api.h`:
 
 ```text
 NdsAivPostSend(qp, send_wr, scratch, result)
@@ -40,13 +40,16 @@ NdsAivPostRecv(qp, recv_wr, scratch, result)
 NdsAivPollCq(qp, poll_request, scratch, result)
 ```
 
-Their implementation is in `src/client/device/aiv/device/nds_aiv_dataplane.cc`.
+Their implementation is in `src/client/data_plane/aiv/device/qp.cc` and
+`src/client/data_plane/aiv/device/connection.cc`. Storage Read/Write is in
+`src/client/data_plane/aiv/device/storage.cc`.
 Another AIV operator includes the API header and compiles that implementation
 into its AICore translation unit. CANN 9.0.0 rejects the otherwise valid
 multi-object AIV image at ACL load time, so NDS deliberately builds the
 loadable entry and dataplane as one translation unit. A standalone
-`aiv/nds_aiv_dataplane.o` is still emitted for compile and symbol verification,
-but is not presented as a separately loadable kernel.
+`aiv/nds_aiv_qp.o`, `aiv/nds_aiv_connection.o`, and `aiv/nds_aiv_storage.o`
+are still emitted for compile and symbol verification, but are not presented
+as a separately loadable kernel.
 
 AICPU exports these symbols from `libnds_aicpu_standard.so`:
 
@@ -81,8 +84,19 @@ must choose SCQ or RCQ and consume explicit work completions.
 
 The loaded entry points `NdsAivConnectionOp` and `NdsAicpuConnectionOp` only
 validate and dispatch the versioned host-launch record into these connection
-or verbs functions. Other device operators do not need to call the entry
+or qp functions. Other device operators do not need to call the entry
 points.
+
+## Storage APIs
+
+AIV and AICPU also implement the storage layer. They encode the command
+record, Send it, and wait for the CPU-written completion record in device
+memory:
+
+```text
+NdsAivStorageRead / NdsAivStorageWrite
+NdsAicpuStorageRead / NdsAicpuStorageWrite
+```
 
 RNIC work completions are not NDS storage completion. Storage completion
 remains the terminal protocol record written by the CPU endpoint.

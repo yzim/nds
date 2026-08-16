@@ -1,9 +1,10 @@
 find_package(Threads REQUIRED)
 
-add_library(nds_transport STATIC transport.cc)
-target_include_directories(nds_transport PUBLIC include)
-target_link_libraries(nds_transport PUBLIC Threads::Threads tl::expected)
-target_compile_options(nds_transport PRIVATE -Wall -Wextra -Wpedantic -Werror)
+add_library(nds_connection STATIC connection.cc)
+add_library(nds_transport ALIAS nds_connection)
+target_include_directories(nds_connection PUBLIC include)
+target_link_libraries(nds_connection PUBLIC Threads::Threads tl::expected)
+target_compile_options(nds_connection PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 add_library(nds_protocol STATIC protocol.cc)
 target_include_directories(nds_protocol PUBLIC include)

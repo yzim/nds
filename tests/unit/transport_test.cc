@@ -1,5 +1,5 @@
 #include "nds/protocol.h"
-#include "nds/transport.h"
+#include "nds/connection.h"
 
 #include <arpa/inet.h>
 
@@ -16,8 +16,8 @@ int expect(bool condition, const char *message) {
     return 0;
 }
 
-nds_transport_endpoint endpoint() {
-    nds_transport_endpoint value{};
+nds_qp_info endpoint() {
+    nds_qp_info value{};
     value.qp_num = 0x00abcdU;
     value.psn = 0x00123456U;
     value.port_num = 1U;
@@ -35,13 +35,13 @@ nds_transport_endpoint endpoint() {
 }  // namespace
 
 int main() {
-    const nds_transport_endpoint source = endpoint();
-    nds_transport_endpoint decoded{};
-    nds_transport_endpoint_wire wire{};
-    if (nds_transport_endpoint_encode(&source, &wire) != NDS_TRANSPORT_RESULT_OK ||
-        expect(ntohl(wire.magic) == NDS_TRANSPORT_WIRE_MAGIC, "transport magic") != 0 ||
-        expect(ntohs(wire.version) == NDS_TRANSPORT_WIRE_VERSION, "transport version") != 0 ||
-        expect(nds_transport_endpoint_decode(&wire, &decoded) == NDS_TRANSPORT_RESULT_OK, "transport decode") != 0 ||
+    const nds_qp_info source = endpoint();
+    nds_qp_info decoded{};
+    nds_qp_info_wire wire{};
+    if (nds_qp_info_encode(&source, &wire) != NDS_QP_INFO_RESULT_OK ||
+        expect(ntohl(wire.magic) == NDS_QP_INFO_WIRE_MAGIC, "transport magic") != 0 ||
+        expect(ntohs(wire.version) == NDS_QP_INFO_WIRE_VERSION, "transport version") != 0 ||
+        expect(nds_qp_info_decode(&wire, &decoded) == NDS_QP_INFO_RESULT_OK, "transport decode") != 0 ||
         expect(std::memcmp(&source, &decoded, sizeof(source)) == 0, "transport round trip") != 0) {
         return 1;
     }
@@ -96,6 +96,6 @@ int main() {
     }
 
     wire.magic = 0U;
-    return expect(nds_transport_endpoint_decode(&wire, &decoded) != NDS_TRANSPORT_RESULT_OK,
+    return expect(nds_qp_info_decode(&wire, &decoded) != NDS_QP_INFO_RESULT_OK,
                   "invalid transport magic rejected");
 }

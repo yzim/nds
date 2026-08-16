@@ -75,7 +75,7 @@ and a host-RA local CQE are not this protocol completion.
 ## Repository layout
 
 ```text
-src/client/       NPU client: StorageClient, Transport, and RMA
+src/client/       NPU client: control plane plus Host RA / AIV / AICPU data planes
 src/server/       CPU machine acting as server: protocol, transport, and verbs backend
 src/common/       Shared transport bootstrap/metadata, storage ABI, and logging
 tests/            Unit/integration tests and opt-in hardware probes

@@ -1,6 +1,6 @@
 #include "transport.hh"
 
-#include "nds/transport.h"
+#include "nds/connection.h"
 
 #include <arpa/inet.h>
 #include <cerrno>
@@ -13,7 +13,7 @@ namespace nds::server {
 Result<void> Connection::open(const ConnectionConfig &config) {
     if (!backend_.open(config.backend))
         return unexpected(ErrorCode::kVerbs, backend_.error());
-    if (nds_transport_endpoint_encode(&backend_.local_endpoint(), &local_wire_) != 0) {
+    if (nds_qp_info_encode(&backend_.local_qp_info(), &local_wire_) != 0) {
         return unexpected(ErrorCode::kTransport, "invalid transport endpoint record");
     }
     const int listener = socket(AF_INET, SOCK_STREAM, 0);
@@ -38,11 +38,11 @@ Result<void> Connection::open(const ConnectionConfig &config) {
         (void)close(peer_fd);
         return unexpected(adopted.error());
     }
-    nds_transport_endpoint_wire peer_wire{};
-    nds_transport_endpoint peer{};
+    nds_qp_info_wire peer_wire{};
+    nds_qp_info peer{};
     if (const auto received = bootstrap_.receive_bytes(&peer_wire, sizeof(peer_wire)); !received)
         return unexpected(received.error());
-    if (nds_transport_endpoint_decode(&peer_wire, &peer) != 0) {
+    if (nds_qp_info_decode(&peer_wire, &peer) != 0) {
         return unexpected(ErrorCode::kTransport, "invalid transport endpoint record");
     }
     if (!backend_.connect(peer))

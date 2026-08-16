@@ -44,15 +44,15 @@ The implementation is organized by responsibility:
 The current source tree implements these boundaries independently in
 `src/client` and `src/server`. The NPU-attached client has `storage.*`,
 `transport.*`, `rma.*`, and a `main.cc` application entry point. Its
-execution-specific work-request implementations remain under `client/rma.*`,
-`client/backend/host_ra/`, and `client/device/`.
+execution-specific work-request implementations remain under
+`client/data_plane/`.
 The server keeps its protocol, transport, and verbs implementation. Shared
-endpoint metadata and TCP bootstrap live in `src/common/transport.*`, and
+QP identity and TCP bootstrap live in `src/common/connection.*`, and
 shared storage records live in `src/common/protocol.*`.
 See [architecture](architecture.md) for concrete ownership rules.
 
 `src/common/include/nds/` is an internal shared-header boundary. Its `nds/`
-prefix prevents generic names such as `protocol.h` and `transport.h` from
+prefix prevents generic names such as `protocol.h` and `connection.h` from
 colliding across targets. It is not yet an installed or versioned external
 NDS SDK; any public-library surface will be designed separately when NDS needs
 one.
@@ -127,7 +127,8 @@ HCCP-managed AI-QP CQ is an NDS completion API.
   first.
 - [x] Validate the host StorageClient with AIV and AICPU command-Send RMA paths.
 - [ ] Implement device-callable AIV and AICPU Transport APIs.
-- [ ] Implement device-callable AIV and AICPU StorageClient Read and Write APIs.
+- [x] Add device-callable AIV and AICPU storage Read and Write operators.
+- [ ] Switch the host validation executable to launch those storage operators.
 - [x] Validate a deterministic storage Write with Host RA, AIV, and AICPU.
 - [x] Validate a Host RA Read of an untouched range.
 - [ ] Validate an AIV and AICPU Read of an untouched range.

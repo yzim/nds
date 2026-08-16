@@ -10,15 +10,19 @@ target_link_libraries(nds_transport_test PRIVATE nds_transport nds_protocol)
 nds_add_unit_test(nds_transport_mtu_test transport_mtu_test.cc)
 target_link_libraries(nds_transport_mtu_test PRIVATE nds_transport)
 nds_add_unit_test(nds_npu_ra_qp_test npu_ra_qp_test.cc)
-target_link_libraries(nds_npu_ra_qp_test PRIVATE nds_npu_ra_qp)
+target_link_libraries(nds_npu_ra_qp_test PRIVATE nds_npu_ra_qp nds_host_ra)
 nds_add_unit_test(nds_client_rma_test client_rma_test.cc)
-target_link_libraries(nds_client_rma_test PRIVATE nds_client_rma)
+target_link_libraries(nds_client_rma_test PRIVATE nds_client_launch)
 nds_add_unit_test(nds_device_hns_codec_test device_hns_codec_test.cc)
 target_include_directories(nds_device_hns_codec_test PRIVATE
-    ${PROJECT_SOURCE_DIR}/src/client/device/include)
+    ${PROJECT_SOURCE_DIR}/src/client/data_plane/abi)
 nds_add_unit_test(nds_device_connection_test device_connection_test.cc)
 target_include_directories(nds_device_connection_test PRIVATE
-    ${PROJECT_SOURCE_DIR}/src/client/device/include)
+    ${PROJECT_SOURCE_DIR}/src/client/data_plane/abi)
+nds_add_unit_test(nds_device_storage_test device_storage_test.cc)
+target_include_directories(nds_device_storage_test PRIVATE
+    ${PROJECT_SOURCE_DIR}/src/client/data_plane/abi
+    ${PROJECT_SOURCE_DIR}/src/common/include)
 nds_add_unit_test(nds_logging_test logging_test.cc)
 target_link_libraries(nds_logging_test PRIVATE nds_logging)
 
@@ -39,7 +43,7 @@ if(TARGET nds_aiv_kernel)
     add_test(NAME toolchain.aiv_device_api_symbols
         COMMAND ${CMAKE_COMMAND}
             -DNDS_DEVICE_KIND=aiv
-            -DNDS_ARTIFACT=${CMAKE_BINARY_DIR}/aiv/nds_aiv_dataplane.o
+            "-DNDS_ARTIFACTS=${CMAKE_BINARY_DIR}/aiv/nds_aiv_qp.o;${CMAKE_BINARY_DIR}/aiv/nds_aiv_connection.o;${CMAKE_BINARY_DIR}/aiv/nds_aiv_storage.o"
             -DNDS_NM=${CMAKE_NM}
             -P ${CMAKE_CURRENT_SOURCE_DIR}/integration/device_api_symbols.cmake)
     set_tests_properties(toolchain.aiv_device_api_symbols PROPERTIES LABELS "device-toolchain")

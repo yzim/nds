@@ -1,6 +1,6 @@
 #include "backend.hh"
 
-#include "nds/transport.h"
+#include "nds/connection.h"
 
 #include <arpa/inet.h>
 #include <cerrno>
@@ -150,9 +150,9 @@ bool VerbsBackend::open(const BackendConfig &config) {
     return true;
 }
 
-bool VerbsBackend::connect(const nds_transport_endpoint &peer) {
+bool VerbsBackend::connect(const nds_qp_info &peer) {
     ibv_mtu mtu{};
-    if (!mtu_value(nds_transport_mtu_select(local_.path_mtu, peer.path_mtu), &mtu)) {
+    if (!mtu_value(nds_qp_mtu_select(local_.path_mtu, peer.path_mtu), &mtu)) {
         set_error("unsupported local path MTU");
         return false;
     }
@@ -289,7 +289,7 @@ bool VerbsBackend::write(const RegisteredRegion &local, std::uint64_t remote_add
     return transfer(IBV_WR_RDMA_WRITE, local, remote_address, remote_key, length);
 }
 
-const nds_transport_endpoint &VerbsBackend::local_endpoint() const noexcept {
+const nds_qp_info &VerbsBackend::local_qp_info() const noexcept {
     return local_;
 }
 

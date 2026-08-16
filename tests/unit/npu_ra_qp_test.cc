@@ -1,3 +1,4 @@
+#include "nds/host_ra.hh"
 #include "nds/npu_ra_qp.hh"
 
 #include <cassert>
@@ -36,6 +37,7 @@ struct FakeRaState {
     int poll_cq_calls{};
     int poll_result{};
     nds_ra_send_wr send_wr{};
+    nds_ra_sge send_sge{};
     nds_ra_mr_info mr{};
     nds_ra_rdev rdev{};
     nds_ra_rdev_init_info rdev_init{};
@@ -233,6 +235,10 @@ int fake_send_wr(void *handle, nds_ra_send_wr *wr, nds_ra_send_response *respons
     assert(wr != nullptr && response != nullptr);
     ++state->send_wr_calls;
     state->send_wr = *wr;
+    if (wr->buffers != nullptr) {
+        state->send_sge = *wr->buffers;
+        state->send_wr.buffers = &state->send_sge;
+    }
     response->wqe.sq_index = 17U;
     response->wqe.wqe_index = 23U;
     return 0;
@@ -280,8 +286,8 @@ void test_create_advertise_connect_and_reset() {
     nds_ra_api api = make_fake_api();
     nds::NpuRaQp qp;
     nds::NpuRaQpConfig config{};
-    nds_transport_endpoint local{};
-    nds_transport_endpoint peer{};
+    nds_qp_info local{};
+    nds_qp_info peer{};
 
     config.local_ipv4 = "192.0.2.10";
     config.port_num = 1;
@@ -311,7 +317,7 @@ void test_create_advertise_connect_and_reset() {
     assert(fake.qp_create_calls == 1);
     assert(fake.get_attributes_calls == 1);
 
-    assert(qp.make_endpoint(&local));
+    assert(qp.make_qp_info(&local));
     assert(local.qp_num == 0x1234U);
     assert(local.psn == 0x4567U);
     assert(local.gid_index == 3U);
@@ -361,8 +367,8 @@ void test_aicpu_qp_creation_and_connection() {
     nds_ra_api api = make_fake_api();
     nds::NpuRaQp qp;
     nds::NpuRaQpConfig config{};
-    nds_transport_endpoint local{};
-    nds_transport_endpoint peer{};
+    nds_qp_info local{};
+    nds_qp_info peer{};
     nds_ra_send_response response{};
     nds_ra_completion completion{};
 
@@ -406,7 +412,7 @@ void test_aicpu_qp_creation_and_connection() {
     assert(connection->qp.receive_queue.doorbell_address == 0x23000U);
     assert(connection->qp.send_cq.doorbell_address == 0x33000U);
 
-    assert(qp.make_endpoint(&local));
+    assert(qp.make_qp_info(&local));
     peer.qp_num = 0x2000U;
     peer.psn = 0x3000U;
     peer.port_num = 1U;
@@ -416,8 +422,8 @@ void test_aicpu_qp_creation_and_connection() {
     peer.retry_timeout = 14U;
     assert(qp.connect(peer));
     assert(fake.modify_calls == 1);
-    assert(!qp.post_send({0x1000U, 64U, 0x99U}, NDS_RA_WR_SEND, 0U, 0U, true, &response));
-    assert(qp.poll_send_completions(&completion, 1U) < 0);
+    assert(!nds::post_host_ra_wr(&qp, {{0x1000U, 64U, 0x99U}, NDS_RA_WR_SEND, 0U, 0U}, true, &response));
+    assert(!nds::poll_host_ra_cq(&qp, &completion, 1U));
     assert(fake.send_wr_calls == 0);
     assert(fake.poll_cq_calls == 0);
     qp.reset();
@@ -520,13 +526,14 @@ void test_send_wr_and_polling() {
     nds_ra_api api = make_fake_api();
     nds::NpuRaQp qp;
     nds::NpuRaQpConfig config{};
-    nds_transport_endpoint peer{};
+    nds_qp_info peer{};
     nds_ra_send_response response{};
     nds_ra_completion completion{};
 
     config.local_ipv4 = "192.0.2.10";
     assert(qp.create(&api, config));
-    assert(!qp.post_send({0x1000U, 64U, 0x99U}, NDS_RA_WR_RDMA_WRITE, 0x2000U, 0x88U, true, &response));
+    assert(!nds::post_host_ra_wr(&qp, {{0x1000U, 64U, 0x99U}, NDS_RA_WR_RDMA_WRITE, 0x2000U, 0x88U}, true,
+                                 &response));
     peer.qp_num = 0x2000U;
     peer.psn = 0x3000U;
     peer.port_num = 1U;
@@ -535,7 +542,7 @@ void test_send_wr_and_polling() {
     peer.retry_count = 7U;
     peer.retry_timeout = 14U;
     assert(qp.connect(peer));
-    assert(qp.post_send({0x1000U, 64U, 0x99U}, NDS_RA_WR_RDMA_WRITE, 0x2000U, 0x88U, true, &response));
+    assert(nds::post_host_ra_wr(&qp, {{0x1000U, 64U, 0x99U}, NDS_RA_WR_RDMA_WRITE, 0x2000U, 0x88U}, true, &response));
     assert(fake.send_wr_calls == 1);
     assert(fake.send_wr.buffers != nullptr);
     assert(fake.send_wr.buffers->address == 0x1000U);
@@ -546,21 +553,22 @@ void test_send_wr_and_polling() {
     assert(fake.send_wr.opcode == NDS_RA_WR_RDMA_WRITE);
     assert(fake.send_wr.send_flags == NDS_RA_SEND_SIGNALED);
     assert(response.wqe.sq_index == 17U && response.wqe.wqe_index == 23U);
-    assert(!qp.post_send({0x1000U, 64U, 0x99U}, NDS_RA_WR_SEND, 0x2000U, 0x88U, true, &response));
-    assert(qp.post_send({0x1000U, 64U, 0x99U}, NDS_RA_WR_SEND, 0U, 0U, true, &response));
+    assert(!nds::post_host_ra_wr(&qp, {{0x1000U, 64U, 0x99U}, NDS_RA_WR_SEND, 0x2000U, 0x88U}, true, &response));
+    assert(nds::post_host_ra_wr(&qp, {{0x1000U, 64U, 0x99U}, NDS_RA_WR_SEND, 0U, 0U}, true, &response));
     assert(fake.send_wr_calls == 2);
     assert(fake.send_wr.remote_address == 0U);
     assert(fake.send_wr.remote_key == 0U);
     assert(fake.send_wr.opcode == NDS_RA_WR_SEND);
     fake.poll_result = 0;
-    assert(qp.poll_send_completions(&completion, 1U) == 0);
+    const auto empty = nds::poll_host_ra_cq(&qp, &completion, 1U);
+    assert(empty && *empty == 0U);
     fake.poll_result = 1;
-    assert(qp.poll_send_completions(&completion, 1U) == 1);
+    const auto one = nds::poll_host_ra_cq(&qp, &completion, 1U);
+    assert(one && *one == 1U);
     fake.poll_result = 100007;
-    assert(qp.poll_send_completions(&completion, 1U) < 0);
-    assert(!qp.error().empty());
+    assert(!nds::poll_host_ra_cq(&qp, &completion, 1U));
     fake.poll_result = -7;
-    assert(qp.poll_send_completions(&completion, 1U) < 0);
+    assert(!nds::poll_host_ra_cq(&qp, &completion, 1U));
     fake.cqe_error_count = 1U;
     fake.cqe_errors[0].status = 12U;
     fake.cqe_errors[0].qp_number = 0x1234U;
@@ -582,8 +590,8 @@ void test_rejects_invalid_configuration_and_endpoint() {
     nds_ra_api api = make_fake_api();
     nds::NpuRaQp qp;
     nds::NpuRaQpConfig config{};
-    nds_transport_endpoint endpoint{};
-    nds_transport_endpoint invalid_peer{};
+    nds_qp_info endpoint{};
+    nds_qp_info invalid_peer{};
 
     assert(!qp.create(&api, config));
     assert(!qp.error().empty());
@@ -623,7 +631,7 @@ void test_rejects_invalid_configuration_and_endpoint() {
     fake.get_status_result = -9;
     assert(!qp.query_status(&status));
     assert(!qp.error().empty());
-    assert(qp.make_endpoint(&endpoint));
+    assert(qp.make_qp_info(&endpoint));
     assert(!qp.connect(invalid_peer));
     qp.reset();
 }

@@ -18,13 +18,13 @@ The current capability matrix is:
 |---|---|---|---|
 | RMA | Send, RDMA Read/Write, send-CQ poll | Send/Receive, RDMA Read/Write, SCQ/RCQ polling | Send/Receive, RDMA Read/Write, SCQ/RCQ polling |
 | Transport | Host `Transport` | Planned device API | Planned device API |
-| Storage | Host `StorageClient` | Planned device API | Planned device API |
+| Storage | Host `StorageClient` | `StorageRead` / `StorageWrite` | `StorageRead` / `StorageWrite` |
 
 The current host executable can run an NDS storage Read or Write with any of
-the three RMA execution modes. For AIV and AICPU, however, the host
-`StorageClient` still constructs the command and observes the completion; only
-the command work request executes on the NPU device. Device-callable transport
-and storage APIs remain implementation work.
+the three RMA execution modes. For AIV and AICPU, the host `StorageClient`
+still constructs the command and observes the completion in the validation
+executable; the device also exposes callable storage Read/Write operators for
+other NPU operators.
 
 ## Host CPU Scope
 
@@ -90,11 +90,11 @@ CQE is not protocol completion.
 
 Key implementation paths:
 
-- `src/client/storage.cc`: host StorageClient command and completion flow.
-- `src/client/rma.cc`: execution-mode RMA implementation.
-- `src/client/backend/host_ra/backend.cc`: RA post and runtime doorbell.
-- `src/client/backend/support/core/npu_ra_qp.cc`: QP and MR calls.
-- `src/client/backend/support/core/npu_ra_context.cc`: runtime lifecycle,
+- `src/client/data_plane/storage.cc`: host StorageClient command and completion flow.
+- `src/client/data_plane/launch.cc`: host-example adapter into Host RA or a device operator.
+- `src/client/data_plane/host_ra/qp.cc`: RA post and runtime doorbell.
+- `src/client/control_plane/npu_ra_qp.cc`: QP and MR calls.
+- `src/client/control_plane/npu_ra_context.cc`: runtime lifecycle,
   doorbell, and device-to-host completion copy.
 - `src/server/protocol.cc` and `src/server/backend.cc`: CPU sequencing and
   CQ polling.
@@ -142,11 +142,11 @@ functions. `NdsAivRdmaSend`, `NdsAivRdmaRecv`, `NdsAivRdmaRead`, and
 `NdsAivRdmaWrite` form the connection layer above them. The loaded
 `NdsAivConnectionOp` kernel is only a host-launch adapter.
 
-- Shared ABI: `src/client/device/include/nds/`.
-- Device API: `src/client/device/aiv/device/include/nds/aiv_device_api.h`.
-- Verbs/connection implementation: `src/client/device/aiv/device/nds_aiv_dataplane.cc`.
-- Entry kernel: `src/client/device/aiv/kernel/nds_aiv_kernel.cc`.
-- Host launcher: `src/client/device/aiv/launcher.cc`.
+- Shared ABI: `src/client/data_plane/abi/nds/`.
+- Device API: `src/client/data_plane/aiv/device/include/nds/aiv_device_api.h`.
+- qp/connection/storage: `src/client/data_plane/aiv/device/{qp,connection,storage}.cc`.
+- Entry kernel: `src/client/data_plane/aiv/device/kernel/nds_aiv_kernel.cc`.
+- Host launcher: `src/client/data_plane/aiv/host/launcher.cc`.
 
 ```sh
 cmake -S . -B build-aiv -DNDS_CANN_ROOT=<cann-root> -DNDS_BUILD_AIV_KERNEL=ON
@@ -187,11 +187,11 @@ Standard `ibv_post_recv` and `ibv_poll_cq` are commonly inline rather than
 exported symbols, so the operator falls back to the descriptor's RQ and CQ
 addresses when lookup fails.
 
-- Shared ABI: `src/client/device/include/nds/`.
-- Device API: `src/client/device/aicpu/device/include/nds_aicpu_device_api.h`.
-- Verbs/connection implementation: `src/client/device/aicpu/device/nds_aicpu_dataplane.cc`.
+- Shared ABI: `src/client/data_plane/abi/nds/`.
+- Device API: `src/client/data_plane/aicpu/device/include/nds_aicpu_device_api.h`.
+- qp/connection/storage: `src/client/data_plane/aicpu/device/{qp,connection,storage}.cc`.
 - Entry point: `NdsAicpuConnectionOp` (a connection-dispatch adapter).
-- Package: `src/client/device/aicpu/device/package/nds_aicpu_standard.json.in`.
+- Package: `src/client/data_plane/aicpu/device/package/nds_aicpu_standard.json.in`.
 
 ```sh
 cmake -S . -B build-aicpu -DNDS_CANN_ROOT=<cann-root> -DNDS_BUILD_AICPU_KERNEL=ON

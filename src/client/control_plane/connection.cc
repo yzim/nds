@@ -1,0 +1,159 @@
+#include "connection.hh"
+
+namespace nds::client {
+
+DeviceBuffer::~DeviceBuffer() {
+    if (context_ != nullptr && data_ != nullptr)
+        (void)context_->free_device_memory(data_);
+}
+
+void *DeviceBuffer::data() const noexcept {
+    return data_;
+}
+std::size_t DeviceBuffer::size() const noexcept {
+    return size_;
+}
+
+RegisteredRegion::~RegisteredRegion() {
+    if (qp_ != nullptr && handle_ != nullptr)
+        (void)qp_->deregister_memory(handle_);
+}
+
+std::uint64_t RegisteredRegion::address() const noexcept {
+    return reinterpret_cast<std::uint64_t>(info_.address);
+}
+std::uint64_t RegisteredRegion::length() const noexcept {
+    return info_.size;
+}
+std::uint32_t RegisteredRegion::local_key() const noexcept {
+    return info_.local_key;
+}
+std::uint32_t RegisteredRegion::remote_key() const noexcept {
+    return info_.remote_key;
+}
+bool RegisteredRegion::belongs_to(const NpuRaQp *qp) const noexcept {
+    return qp_ == qp && handle_ != nullptr;
+}
+
+Result<void> Connection::open(const ConnectionConfig &config) {
+    config_ = config;
+    if (!context_.initialize(config_.context)) {
+        return unexpected(ErrorCode::kRuntime, context_.error());
+    }
+    if (!qp_.create(&context_.ra_api(), config_.qp, config.execution) || !qp_.make_qp_info(&local_)) {
+        return unexpected(ErrorCode::kRa, qp_.error());
+    }
+    if (config.execution != NpuExecutionMode::HostRa) {
+        if (const auto allocated = allocate(config_.qp.send_queue_depth * sizeof(std::uint64_t), &send_wr_ids_);
+            !allocated)
+            return unexpected(allocated.error());
+        if (const auto allocated =
+                allocate(config_.qp.receive_queue_depth * sizeof(std::uint64_t), &receive_wr_ids_);
+            !allocated)
+            return unexpected(allocated.error());
+        if (const auto storage = qp_.set_device_wr_id_storage(
+                reinterpret_cast<std::uint64_t>(send_wr_ids_.data()),
+                reinterpret_cast<std::uint64_t>(receive_wr_ids_.data()));
+            !storage)
+            return unexpected(storage.error());
+    }
+    if (const auto connected =
+            TcpPeerExchange::connect(config.cpu_ipv4, config.tcp_port, config.tcp_timeout_ms, &bootstrap_);
+        !connected) {
+        return unexpected(connected.error());
+    }
+    const auto peer = bootstrap_.exchange_as_client(local_);
+    if (!peer) {
+        return unexpected(peer.error());
+    }
+    if (!qp_.connect(*peer)) {
+        return unexpected(ErrorCode::kRa, qp_.error());
+    }
+    return ready();
+}
+
+Result<void> Connection::allocate(std::size_t size, DeviceBuffer *buffer) {
+    if (buffer == nullptr || buffer->context_ != nullptr || buffer->data_ != nullptr || size == 0U)
+        return unexpected(ErrorCode::kInvalidArgument, "transport allocation requires an empty device buffer");
+    if (!context_.allocate_device_memory(size, &buffer->data_)) {
+        return unexpected(ErrorCode::kRuntime,
+                          context_.error().empty() ? "invalid device allocation" : context_.error());
+    }
+    buffer->context_ = &context_;
+    buffer->size_ = size;
+    return {};
+}
+
+Result<void> Connection::register_memory(DeviceBuffer *buffer, RegisteredRegion *region) {
+    if (buffer == nullptr || buffer->context_ != &context_ || buffer->data_ == nullptr || region == nullptr ||
+        region->qp_ != nullptr || region->handle_ != nullptr) {
+        return unexpected(ErrorCode::kInvalidArgument,
+                          "memory registration requires a device buffer owned by this transport and an empty region");
+    }
+    if (!qp_.register_memory(buffer->data_, buffer->size_, NDS_RA_ACCESS_DIRECT_NPU, &region->info_,
+                             &region->handle_)) {
+        return unexpected(ErrorCode::kRa, qp_.error().empty() ? "invalid memory registration" : qp_.error());
+    }
+    region->qp_ = &qp_;
+    return {};
+}
+
+Result<void> Connection::copy_to_device(DeviceBuffer *buffer, const void *source, std::size_t size) {
+    if (buffer == nullptr || buffer->context_ != &context_ || source == nullptr || size > buffer->size_)
+        return unexpected(ErrorCode::kInvalidArgument, "host-to-device copy requires a buffer from this transport");
+    if (!context_.copy_host_to_device(buffer->data_, source, size)) {
+        return unexpected(ErrorCode::kRuntime,
+                          context_.error().empty() ? "invalid host-to-device copy" : context_.error());
+    }
+    return {};
+}
+
+Result<void> Connection::copy_from_device(void *destination, const DeviceBuffer &buffer, std::size_t size) {
+    if (destination == nullptr || buffer.context_ != &context_ || size > buffer.size_)
+        return unexpected(ErrorCode::kInvalidArgument, "device-to-host copy requires a buffer from this transport");
+    if (!context_.copy_device_to_host(destination, buffer.data_, size)) {
+        return unexpected(ErrorCode::kRuntime,
+                          context_.error().empty() ? "invalid device-to-host copy" : context_.error());
+    }
+    return {};
+}
+
+Result<RemoteRegion> Connection::remote_region(const RegisteredRegion &region) const {
+    if (!region.belongs_to(&qp_))
+        return unexpected(ErrorCode::kInvalidArgument, "registered region does not belong to this transport");
+    return RemoteRegion{region.address(), region.length(), region.remote_key()};
+}
+
+TcpPeerExchange *Connection::bootstrap() noexcept {
+    return &bootstrap_;
+}
+
+const nds_qp_info &Connection::local_qp_info() const noexcept {
+    return local_;
+}
+
+NpuRaContext *Connection::context() noexcept {
+    return &context_;
+}
+
+NpuRaQp *Connection::qp() noexcept {
+    return &qp_;
+}
+
+const ConnectionConfig &Connection::config() const noexcept {
+    return config_;
+}
+
+Result<void> Connection::ready() {
+    int port = -1;
+    int qp_status = -1;
+    int lite = -1;
+    if (!qp_.query_port_status(&port) || !qp_.query_status(&qp_status) || !qp_.query_support_lite(&lite) ||
+        port != NDS_RA_PORT_STATUS_ACTIVE || qp_status != NDS_RA_QP_STATUS_CONNECTED ||
+        lite == NDS_RA_LITE_NOT_SUPPORTED) {
+        return unexpected(ErrorCode::kRa, qp_.error().empty() ? "client transport is not ready" : qp_.error());
+    }
+    return {};
+}
+
+}  // namespace nds::client

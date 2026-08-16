@@ -6,11 +6,11 @@ registration; the independent CPU verbs resources; the NDS transport bootstrap;
 and teardown. Mode-specific posting and CQ handling are described in
 [NPU execution modes](npu-backends.md).
 
-In the source tree, HCCP lifecycle code is shared implementation support under
-`src/client/backend/support`; Host RA posting remains under
-`src/client/backend/host_ra`, while AIV and AICPU code lives under
-`src/client/device`. `Transport` uses those resources without exposing HCCP
-handles to `StorageClient`.
+In the source tree, HCCP lifecycle code is the shared control plane under
+`src/client/control_plane`; Host RA posting remains under
+`src/client/data_plane/host_ra`, while AIV and AICPU code lives under
+`src/client/data_plane`. Connection control uses those resources without
+exposing HCCP handles to `StorageClient`.
 
 ## Ownership model
 

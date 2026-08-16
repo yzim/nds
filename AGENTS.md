@@ -50,7 +50,7 @@ are defined in [architecture](docs/architecture.md).
   loader modules. Missing required symbols must fail closed with a useful error.
 - Preserve the endpoint-local dependency direction: application -> storage
   protocol -> transport connection -> backend. `src/common/transport.*` owns
-  shared endpoint metadata, TCP bootstrap, and MTU policy;
+  shared QP identity, TCP bootstrap, and MTU policy;
   `src/common/protocol.*` owns shared storage records. Backend and transport
   code must not depend on storage command semantics.
 - Keep the TCP transport bootstrap independent of RA/HCCP private objects. Exchange

@@ -13,18 +13,21 @@ Application -> StorageClient -> Transport -> RMA -> protocol resources
 src/
   client/         NPU-attached endpoint
     main.cc        CLI, application buffers, and workload verification
-    storage.*      host StorageClient and storage command/completion state
-    transport.*    connected QP path and registered-buffer operations
-    rma.*          protocol-neutral post and completion API by execution mode
-    backend/       Host RA plus shared RA/HCCP control-plane support
-    device/        shared device ABI plus reusable AIV and AICPU data planes
+    control_plane/ shared RA/HCCP control plane: loaders, context, QP/MR, TCP session
+    data_plane/    host example storage plus Host RA / AIV / AICPU data planes
+      abi/         shared device-safe QP, WR, CQ, and connection records
+      host_ra/     host CPU qp post and doorbell
+      aiv/         AIV host launcher and device operators
+      aicpu/       AICPU host launcher and device operators
+      launch.*     host-example adapter into Host RA or a device operator
+      storage.*    host StorageClient used by the validation executable
   server/         CPU-side endpoint
     main.cc        CLI and memory-backed namespace ownership
     protocol.*     command decode, range checks, data movement, completion
     transport.*    one connected CPU-to-NPU transport session
     backend.*      libibverbs QP, MR, work request, and CQ operations
   common/
-    transport.*    endpoint metadata, TCP bootstrap, and MTU policy
+    connection.*   QP identity, TCP bootstrap, and MTU policy
     protocol.*     shared versioned storage records and codecs
     logging.*      replaceable process logging
 ```
@@ -39,7 +42,7 @@ storage are API layers. They are separate axes:
 | Verbs | Host RA QP post and CQ API | `PostSend`, `PostRecv`, `PollCq` over device QP addresses | Exported provider/fallback `PostSend`, `PostRecv`, `PollCq` |
 | Connection/RDMA | Host work-request dispatch | Device `RdmaSend`, `RdmaRecv`, `RdmaRead`, `RdmaWrite` | Device `RdmaSend`, `RdmaRecv`, `RdmaRead`, `RdmaWrite` |
 | Transport | Host `Transport` | Device transport/session API planned | Device transport/session API planned |
-| Storage | Host `StorageClient` | Device storage API planned | Device storage API planned |
+| Storage | Host `StorageClient` | Device `StorageRead` / `StorageWrite` | Device `StorageRead` / `StorageWrite` |
 
 The current executable is a host control and validation path. For AIV and
 AICPU it constructs the storage command on the host, then launches the device
@@ -48,15 +51,15 @@ path, but it is not yet the planned device `StorageClient` API.
 
 ## Device Verbs And Connections
 
-`src/client/device/include/nds/` owns the device-safe QP, WR, CQ, and
+`src/client/data_plane/abi/nds/` owns the device-safe QP, WR, CQ, and
 connection ABIs. The QP contains only addresses and queue metadata needed by
-device code. Verbs accept a QP and WR/CQ request. The connection layer accepts
-a connection and transfer, then constructs the verbs WR for Send, Recv, Read,
-or Write.
+device code. The qp layer accepts a QP and WR/CQ request. The connection layer
+accepts a connection and transfer, then constructs the qp WR for Send, Recv,
+Read, or Write.
 
-`rma.hh` is the host adapter that selects Host RA, AIV, or AICPU and launches
-the device connection entry when required. It is not the implementation of the
-AIV/AICPU verbs or connection APIs.
+`data_plane/launch.*` is the host-example adapter that selects Host RA, AIV, or
+AICPU and launches the device connection entry when required. It is not the
+implementation of the AIV/AICPU qp or connection APIs.
 
 RMA is the umbrella used by HCOMM for RoCE and UB connections. The protocols
 have different native resources: RoCE uses QPs and CQs, while UB uses Jetties
@@ -108,12 +111,12 @@ codecs.
 
 ## Shared Boundaries
 
-`src/common/transport.*` contains shared endpoint metadata, TCP bootstrap, and
-MTU policy. `src/common/protocol.*` contains the C-compatible storage record
-ABI and codecs. Neither endpoint exchanges HCCP handles, verbs objects, AI-QP
-descriptors, queue addresses, or doorbell addresses.
+`src/common/connection.*` contains shared QP identity (`nds_qp_info`), TCP
+bootstrap, and MTU policy. `src/common/protocol.*` contains the C-compatible
+storage record ABI and codecs. Neither side exchanges HCCP handles, verbs
+objects, AI-QP descriptors, queue addresses, or doorbell addresses.
 
 The corresponding headers live in `src/common/include/nds/`. They are shared
-between NDS targets, not an installed public SDK: `transport.h` is the C ABI
-for endpoint metadata and MTU policy, `transport.hh` owns the C++ TCP
-bootstrap object, and `protocol.h` is the C ABI for storage records.
+between NDS targets, not an installed public SDK: `connection.h` is the C ABI
+for QP identity and MTU policy, `connection.hh` owns the C++ TCP bootstrap
+object, and `protocol.h` is the C ABI for storage records.
