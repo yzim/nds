@@ -12,10 +12,10 @@ flowchart LR
   subgraph client["NPU machine (acts as client)"]
     direction TB
     CA["Application<br/>configuration and verification"]
-    CP["Storage protocol<br/>command and completion sequencing"]
-    CT["Transport connection<br/>NPU machine endpoint metadata and one RC QP"]
-    CB["Backend<br/>host-ra, aiv, or aicpu"]
-    CA --> CP --> CT --> CB
+    CS["StorageClient<br/>Read/Write and protocol sequencing"]
+    CT["Transport<br/>registered buffers and one RC QP"]
+    CW["RMA<br/>post and completion operations"]
+    CA --> CS --> CT --> CW
   end
 
   subgraph server["CPU machine (acts as server)"]
@@ -28,58 +28,57 @@ flowchart LR
   end
 
   R["RoCE RC QP"]
-  CB -->|"1. RDMA Send: storage command"| R --> SB
-  SB -->|"2. RDMA Read or Write: application data"| R --> CB
-  SB -->|"3. RDMA Write: terminal completion record"| R --> CB
+  CW -->|"1. RDMA Send: storage command"| R --> SB
+  SB -->|"2. RDMA Read or Write: application data"| R --> CS
+  SB -->|"3. RDMA Write: terminal completion record"| R --> CS
 ```
 
-Both machines use the same four-layer dependency direction: application to
-storage protocol to transport connection to backend. The CPU machine owns the
-namespace and data movement. The NPU machine's backend owns the mode-specific
-command post. See [architecture](docs/architecture.md).
+The NPU client uses one dependency direction: application to `StorageClient`
+to `Transport` to RMA. The current RMA binding is RoCE QP/CQ; the CPU machine owns the
+namespace and data movement. See [architecture](docs/architecture.md).
 
-## NPU machine backends
+## NPU execution modes
 
-NDS provides three backends for the NPU machine.
+NDS provides three execution modes for NPU-side work requests.
 
 Here, **NPU device** means the Ascend accelerator in the NPU machine, and
 **host CPU** means the CPU in that machine.
 
-| Backend | RDMA-post execution site | Local completion | Guide |
+| Execution mode | RDMA-post execution site | Local completion | Guide |
 |---|---|---|---|
 | `host-ra` | Host CPU: RA Send plus runtime doorbell | Host RA CQ is available | [Host RA](docs/npu-backends.md#host-ra) |
-| `aiv` | NPU device AIV kernel: writes one Send WQE and doorbell | HCCP internal AI-QP handling; future AIV backend handling | [AIV](docs/npu-backends.md#aiv) |
-| `aicpu` | NPU device standard-CP1 operator: provider `post_send` | HCCP internal AI-QP handling; future AICPU backend handling | [AICPU](docs/npu-backends.md#aicpu) |
+| `aiv` | NPU AIV: direct SQ/RQ/CQ and doorbell access | Caller-owned SCQ/RCQ polling | [AIV](docs/npu-backends.md#aiv) |
+| `aicpu` | NPU CP1: provider symbols first, queue-address fallback | Caller-owned SCQ/RCQ polling | [AICPU](docs/npu-backends.md#aicpu) |
 
 The table identifies where the RDMA post executes, not where it is invoked.
 An AIV or AICPU operator may be invoked from the host CPU or from another
 operator on the NPU device.
 
-The current executable uses the host CPU for lifecycle, QP/MR setup, operator
-launch, and completion observation. Its host launchers provide one runnable
-invocation path; they are not requirements of the AIV or AICPU backends and
-are not part of the device-side RDMA-post operation.
+The current executable uses the host CPU for lifecycle, QP/MR setup, storage
+command construction, operator launch, and completion observation. AIV and
+AICPU currently implement the work-request layer; device-callable Transport
+and StorageClient APIs are planned.
 
-The backends share the same HCCP rdev/QP connection and
-memory-registration lifecycle. Their QP types, post paths, CQ ownership, and
-current limitations differ; see [HCCP QP and MR lifecycle](docs/hccp-resources.md)
-and [NPU machine backends](docs/npu-backends.md).
+The execution modes share the same host HCCP rdev/QP and memory-registration
+control path. Their QP types, post paths, CQ ownership, and current limitations
+differ; see [HCCP QP and MR lifecycle](docs/hccp-resources.md) and
+[NPU execution modes](docs/npu-backends.md).
 
 The CPU actively polls its verbs CQ for both the command Receive and its
 signaled completion Write. For a storage Write, arrow 2 is an RDMA Read issued
 by the CPU machine from the application buffer on the NPU device; for a storage
 Read, it is an RDMA Write issued by the CPU machine to that buffer. The NPU
 machine treats arrow 3's completion record, also written by the CPU machine,
-as the command result. A backend launch, HCCP internal AI-QP CQ processing,
+as the command result. An operator launch, HCCP internal AI-QP CQ processing,
 and a host-RA local CQE are not this protocol completion.
 
 ## Repository layout
 
 ```text
-src/client/       NPU machine acting as client: protocol, transport, and backends
+src/client/       NPU client: StorageClient, Transport, and RMA
 src/server/       CPU machine acting as server: protocol, transport, and verbs backend
 src/common/       Shared transport bootstrap/metadata, storage ABI, and logging
-tests/            Unit tests and a test-only runtime fixture
+tests/            Unit/integration tests and opt-in hardware probes
 docs/             Resource lifecycle, modes, linkage, and implementation guides
 ```
 
@@ -88,7 +87,7 @@ with an `nds/` prefix to avoid collisions. NDS does not currently install an
 external SDK.
 
 Host C++ operations return `nds::Result<T>`. NDS uses this for expected
-runtime, RA, verbs, transport, and protocol failures rather than exceptions or
+runtime, RA, RMA, transport, and protocol failures rather than exceptions or
 a separate boolean and error-output parameter.
 
 ## Build
@@ -119,7 +118,7 @@ specific sources and limits.
   protocol.
 - [HCCP QP and MR lifecycle](docs/hccp-resources.md): resource ownership,
   bootstrap, and teardown.
-- [NPU machine backends](docs/npu-backends.md): Host RA, AIV, and AICPU posting paths.
+- [NPU execution modes](docs/npu-backends.md): Host RA, AIV, and AICPU posting paths.
 
 **Runtime and evidence**
 

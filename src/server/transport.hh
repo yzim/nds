@@ -13,6 +13,8 @@ namespace nds::server {
 enum class MemoryAccess {
     LocalRead,
     LocalWrite,
+    RemoteRead,
+    RemoteWrite,
 };
 
 struct ConnectionConfig {
@@ -27,6 +29,7 @@ public:
     Result<void> prepare_receive(void *buffer, std::size_t length, RegisteredRegion *region);
     Result<void> activate();
     Result<void> receive(std::uint32_t timeout_ms);
+    Result<void> send(const RegisteredRegion &local, std::uint32_t length);
     Result<void> register_memory(void *buffer, std::size_t length, MemoryAccess access, RegisteredRegion *region);
     Result<void> read(const RegisteredRegion &local, std::uint64_t remote_address, std::uint32_t remote_key,
                       std::uint32_t length);

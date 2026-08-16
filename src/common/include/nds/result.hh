@@ -10,6 +10,7 @@ namespace nds {
 
 enum class ErrorCode {
     kInvalidArgument,
+    kUnsupported,
     kRuntime,
     kRa,
     kVerbs,

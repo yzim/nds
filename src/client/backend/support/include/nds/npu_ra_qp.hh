@@ -1,7 +1,9 @@
 #ifndef NDS_NPU_RA_QP_HPP
 #define NDS_NPU_RA_QP_HPP
 
+#include "nds/device_connection.h"
 #include "nds/ra_loader.h"
+#include "nds/result.hh"
 #include "nds/transport.h"
 
 #include <cstdint>
@@ -9,10 +11,14 @@
 
 namespace nds {
 
-enum class NpuBackendMode {
+enum class NpuExecutionMode {
     HostRa,
     Aicpu,
     Aiv,
+};
+
+enum NpuRaQpControlFlag : std::uint32_t {
+    NpuRaQpCallerPollsCq = 1U << 0,
 };
 
 /*
@@ -31,7 +37,10 @@ struct NpuRaQpConfig {
     std::uint32_t service_level{0};
     std::uint32_t retry_count{7};
     std::uint32_t retry_timeout{14};
-    NpuBackendMode backend{NpuBackendMode::HostRa};
+    int ai_qp_mode{-1};
+    std::uint32_t send_queue_depth{32768};
+    std::uint32_t receive_queue_depth{128};
+    std::uint32_t control_flags{NpuRaQpCallerPollsCq};
 };
 
 /*
@@ -47,14 +56,13 @@ public:
     NpuRaQp(NpuRaQp &&) = delete;
     NpuRaQp &operator=(NpuRaQp &&) = delete;
 
-    bool create(nds_ra_api *api, const NpuRaQpConfig &config);
+    bool create(nds_ra_api *api, const NpuRaQpConfig &config,
+                NpuExecutionMode execution = NpuExecutionMode::HostRa);
     bool make_endpoint(nds_transport_endpoint *endpoint);
     bool register_memory(void *address, std::uint64_t size, int access, nds_ra_mr_info *info, void **mr_handle);
     bool deregister_memory(void *mr_handle);
     bool post_send(const nds_ra_sge &source, std::uint32_t opcode, std::uint64_t remote_address,
                    std::uint32_t remote_key, bool signaled, nds_ra_send_response *response);
-    bool post_rdma_write(const nds_ra_sge &source, std::uint64_t remote_address, std::uint32_t remote_key,
-                         bool signaled, nds_ra_send_response *response);
     int poll_send_completions(nds_ra_completion *completions, std::uint32_t max_entries);
     bool query_port_status(int *status);
     bool query_support_lite(int *support_lite);
@@ -68,7 +76,11 @@ public:
     const nds_ra_qp_attr &local_attributes() const noexcept;
     bool has_ai_qp_info() const noexcept;
     const nds_ra_ai_qp_info &ai_qp_info() const noexcept;
+    Result<void> set_device_wr_id_storage(std::uint64_t send_address,
+                                          std::uint64_t receive_address);
+    Result<nds_device_connection> make_device_connection() const;
     const NpuRaQpConfig &config() const noexcept;
+    NpuExecutionMode execution_mode() const noexcept;
     const std::string &error() const noexcept;
 
 private:
@@ -78,10 +90,13 @@ private:
 
     nds_ra_api *api_{nullptr};
     NpuRaQpConfig config_{};
+    NpuExecutionMode execution_{NpuExecutionMode::HostRa};
     void *rdev_handle_{nullptr};
     void *qp_handle_{nullptr};
     nds_ra_qp_attr local_attributes_{};
     nds_ra_ai_qp_info ai_qp_info_{};
+    std::uint64_t send_wr_ids_{};
+    std::uint64_t receive_wr_ids_{};
     bool connected_{false};
     std::string error_;
 };

@@ -64,9 +64,20 @@ Result<void> Connection::receive(std::uint32_t timeout_ms) {
         return unexpected(ErrorCode::kVerbs, backend_.error());
     return {};
 }
+Result<void> Connection::send(const RegisteredRegion &local, std::uint32_t length) {
+    if (!backend_.send(local, length))
+        return unexpected(ErrorCode::kVerbs, backend_.error());
+    return {};
+}
 Result<void> Connection::register_memory(void *buffer, std::size_t length, MemoryAccess access,
                                          RegisteredRegion *region) {
-    const int backend_access = access == MemoryAccess::LocalWrite ? IBV_ACCESS_LOCAL_WRITE : 0;
+    int backend_access = 0;
+    if (access == MemoryAccess::LocalWrite)
+        backend_access = IBV_ACCESS_LOCAL_WRITE;
+    else if (access == MemoryAccess::RemoteRead)
+        backend_access = IBV_ACCESS_REMOTE_READ;
+    else if (access == MemoryAccess::RemoteWrite)
+        backend_access = IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE;
     if (!backend_.register_memory(buffer, length, backend_access, region))
         return unexpected(ErrorCode::kVerbs, backend_.error());
     return {};

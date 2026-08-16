@@ -1,10 +1,10 @@
 # Architecture
 
-NDS has two top-level endpoints: an NPU client and a CPU server. Each endpoint
-uses four layers with one dependency direction:
+NDS has two top-level endpoints: an NPU client and a CPU server. The NPU client
+uses one dependency direction:
 
 ```text
-Application -> Storage protocol -> Transport connection -> Backend
+Application -> StorageClient -> Transport -> RMA -> protocol resources
 ```
 
 ## Source Tree
@@ -13,9 +13,11 @@ Application -> Storage protocol -> Transport connection -> Backend
 src/
   client/         NPU-attached endpoint
     main.cc        CLI, application buffers, and workload verification
-    protocol.*     NPU side of the storage command and completion flow
-    transport.*    one connected NPU-to-CPU transport session
-    backend/       host_ra, aiv, aicpu, and their shared RA support
+    storage.*      host StorageClient and storage command/completion state
+    transport.*    connected QP path and registered-buffer operations
+    rma.*          protocol-neutral post and completion API by execution mode
+    backend/       Host RA plus shared RA/HCCP control-plane support
+    device/        shared device ABI plus reusable AIV and AICPU data planes
   server/         CPU-side endpoint
     main.cc        CLI and memory-backed namespace ownership
     protocol.*     command decode, range checks, data movement, completion
@@ -27,43 +29,82 @@ src/
     logging.*      replaceable process logging
 ```
 
-## Backend
+## API Matrix
 
-Backends own resource and work-request mechanics. The NPU backend creates and
-registers resources through the dynamically loaded CANN RA boundary, then
-posts Send through exactly one selected implementation: `host_ra`, `aiv`, or
-`aicpu`. RA contexts, QPs, and runtime loaders are implementation support under
-`client/backend/support`; they are not a fourth mode.
+Host RA, AIV, and AICPU are execution modes. Work-request, transport, and
+storage are API layers. They are separate axes:
 
-The CPU backend owns `libibverbs` context, PD, CQ, RC QP, MR registration,
-Receive posting, RDMA Read/Write posting, and CQ polling. Backend interfaces do
-not encode storage commands or make namespace decisions.
+| Layer | Host RA | AIV | AICPU |
+|---|---|---|---|
+| Verbs | Host RA QP post and CQ API | `PostSend`, `PostRecv`, `PollCq` over device QP addresses | Exported provider/fallback `PostSend`, `PostRecv`, `PollCq` |
+| Connection/RDMA | Host work-request dispatch | Device `RdmaSend`, `RdmaRecv`, `RdmaRead`, `RdmaWrite` | Device `RdmaSend`, `RdmaRecv`, `RdmaRead`, `RdmaWrite` |
+| Transport | Host `Transport` | Device transport/session API planned | Device transport/session API planned |
+| Storage | Host `StorageClient` | Device storage API planned | Device storage API planned |
+
+The current executable is a host control and validation path. For AIV and
+AICPU it constructs the storage command on the host, then launches the device
+work-request implementation to post that command. This proves the device Send
+path, but it is not yet the planned device `StorageClient` API.
+
+## Device Verbs And Connections
+
+`src/client/device/include/nds/` owns the device-safe QP, WR, CQ, and
+connection ABIs. The QP contains only addresses and queue metadata needed by
+device code. Verbs accept a QP and WR/CQ request. The connection layer accepts
+a connection and transfer, then constructs the verbs WR for Send, Recv, Read,
+or Write.
+
+`rma.hh` is the host adapter that selects Host RA, AIV, or AICPU and launches
+the device connection entry when required. It is not the implementation of the
+AIV/AICPU verbs or connection APIs.
+
+RMA is the umbrella used by HCOMM for RoCE and UB connections. The protocols
+have different native resources: RoCE uses QPs and CQs, while UB uses Jetties
+and JFCs. NDS currently implements only the RoCE binding through CANN RA and
+must not present its QP/CQ types as a future UB API.
+
+Host RA submits through `RaTypicalSendWr` and `rtRDMADBSend`. AIV and AICPU
+provide device Send, Recv, RDMA Read, RDMA Write, SCQ poll, and RCQ poll paths.
+The host control path can launch those operations for validation, while another
+device operator can invoke the lower device APIs directly.
+
+The host CPU owns the shared control path for every execution mode: CANN/RA
+lifecycle, QP creation and connection, MR registration, TCP negotiation, and
+resource lifetime. Device APIs must receive only NDS-owned device-safe views,
+never host C++ objects or HCCP MR/QP handles.
+
+The CPU server's verbs implementation owns its `libibverbs` context, PD, CQ,
+RC QP, MR registration, Receive posting, RDMA Read/Write posting, and CQ
+polling. It does not encode storage commands or make namespace decisions.
 
 ## Transport
 
-`transport.hh` defines each endpoint's `Connection`. A connection
-owns the backend resources, one RC QP, registered-region lifetimes, and the raw
-TCP bootstrap session. It exposes endpoint-appropriate operations: the NPU
-sends a registered buffer; the CPU receives, reads, and writes registered
-buffers. Protocol records and storage access flags do not belong here.
+The NPU `Transport` owns its RA context, one RC QP, registered-region
+lifetimes, peer metadata, and TCP bootstrap object. It exposes Send, RDMA Read,
+and RDMA Write over registered buffers, and lowers them to QP work requests.
+Protocol records and namespace decisions do not belong here.
 
-One QP per connection is an initial constraint, not the final model. A future
-connection may own multiple QPs with command and data roles without changing
-application ownership.
+One QP per transport is an initial constraint. A future transport may select
+from multiple QPs without changing the storage API.
 
-## Storage Protocol
+## Storage Client
 
-The protocol layer owns the storage flow. It encodes and decodes bootstrap,
-namespace, command, and completion records; validates command ranges; sends the
-command; selects CPU RDMA Read for storage Write or CPU RDMA Write for storage
-Read; and publishes the terminal completion record. TCP carries only session
-bootstrap records. The command, payload, and completion use the RoCE path.
+`StorageClient` is the public NDS storage layer. It owns the command and
+completion buffers, namespace capacity, request sequencing, record encoding,
+command Send, and terminal completion validation. It exposes storage Read and
+storage Write without exposing QPs or work requests.
+
+The host implementation provides the current one-command baseline. Planned AIV
+and AICPU implementations will expose the same storage semantics in their
+device environments and use a device-safe transport/QP view produced by the
+host control path.
 
 ## Application
 
-Applications own process configuration, namespace or data buffers, request
-selection, and workload verification. They call the storage protocol and do
-not manipulate QPs, MRs, work requests, CQs, or wire codecs.
+Applications own process configuration, data buffers, request selection, and
+workload verification. They call `StorageClient::read` or
+`StorageClient::write` and do not manipulate QPs, work requests, CQs, or wire
+codecs.
 
 ## Shared Boundaries
 

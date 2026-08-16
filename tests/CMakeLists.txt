@@ -11,10 +11,14 @@ nds_add_unit_test(nds_transport_mtu_test transport_mtu_test.cc)
 target_link_libraries(nds_transport_mtu_test PRIVATE nds_transport)
 nds_add_unit_test(nds_npu_ra_qp_test npu_ra_qp_test.cc)
 target_link_libraries(nds_npu_ra_qp_test PRIVATE nds_npu_ra_qp)
-nds_add_unit_test(nds_aicpu_roce_abi_test aicpu_roce_abi_test.cc)
-target_link_libraries(nds_aicpu_roce_abi_test PRIVATE nds_aicpu_roce)
-nds_add_unit_test(nds_aiv_roce_abi_test aiv_roce_abi_test.cc)
-target_link_libraries(nds_aiv_roce_abi_test PRIVATE nds_aiv_roce)
+nds_add_unit_test(nds_client_rma_test client_rma_test.cc)
+target_link_libraries(nds_client_rma_test PRIVATE nds_client_rma)
+nds_add_unit_test(nds_device_hns_codec_test device_hns_codec_test.cc)
+target_include_directories(nds_device_hns_codec_test PRIVATE
+    ${PROJECT_SOURCE_DIR}/src/client/device/include)
+nds_add_unit_test(nds_device_connection_test device_connection_test.cc)
+target_include_directories(nds_device_connection_test PRIVATE
+    ${PROJECT_SOURCE_DIR}/src/client/device/include)
 nds_add_unit_test(nds_logging_test logging_test.cc)
 target_link_libraries(nds_logging_test PRIVATE nds_logging)
 
@@ -31,14 +35,66 @@ target_compile_options(nds_transport_exchange_test PRIVATE -Wall -Wextra -Wpedan
 add_test(NAME integration.nds_transport_exchange_test COMMAND nds_transport_exchange_test)
 set_tests_properties(integration.nds_transport_exchange_test PROPERTIES LABELS "integration")
 
+if(TARGET nds_aiv_kernel)
+    add_test(NAME toolchain.aiv_device_api_symbols
+        COMMAND ${CMAKE_COMMAND}
+            -DNDS_DEVICE_KIND=aiv
+            -DNDS_ARTIFACT=${CMAKE_BINARY_DIR}/aiv/nds_aiv_dataplane.o
+            -DNDS_NM=${CMAKE_NM}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/integration/device_api_symbols.cmake)
+    set_tests_properties(toolchain.aiv_device_api_symbols PROPERTIES LABELS "device-toolchain")
+endif()
+if(TARGET nds_aicpu_kernel)
+    add_test(NAME toolchain.aicpu_device_api_symbols
+        COMMAND ${CMAKE_COMMAND}
+            -DNDS_DEVICE_KIND=aicpu
+            -DNDS_ARTIFACT=${CMAKE_BINARY_DIR}/aicpu/libnds_aicpu_standard.so
+            -DNDS_NM=${CMAKE_NM}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/integration/device_api_symbols.cmake)
+    set_tests_properties(toolchain.aicpu_device_api_symbols PROPERTIES LABELS "device-toolchain")
+endif()
+
 option(NDS_ENABLE_E2E_TESTS "Register hardware end-to-end tests that require an Ascend NPU and CPU RNIC" OFF)
+if(NDS_BUILD_HARDWARE_PROBES)
+    if(NOT TARGET nds_client_transport OR NOT TARGET nds_server_transport)
+        message(FATAL_ERROR "NDS hardware probes require both client and server transports")
+    endif()
+    add_executable(nds_device_ops_client e2e/device_ops_client.cc)
+    target_link_libraries(nds_device_ops_client PRIVATE CLI11::CLI11 nds_logging nds_client_transport nds_protocol)
+    target_compile_options(nds_device_ops_client PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    add_executable(nds_device_ops_server e2e/device_ops_server.cc)
+    target_link_libraries(nds_device_ops_server PRIVATE CLI11::CLI11 nds_logging nds_server_transport nds_protocol)
+    target_compile_options(nds_device_ops_server PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+
 if(NDS_ENABLE_E2E_TESTS)
     if(NOT TARGET nds_client OR NOT TARGET nds_server)
         message(FATAL_ERROR "NDS E2E tests require both nds_client and nds_server")
     endif()
-    if(NOT DEFINED NDS_E2E_COMMAND OR NDS_E2E_COMMAND STREQUAL "")
-        message(FATAL_ERROR "NDS_E2E_COMMAND must run one bounded real-NPU end-to-end case")
+    function(nds_add_e2e_case name command_variable mode operation)
+        if(DEFINED ${command_variable} AND NOT "${${command_variable}}" STREQUAL "")
+            add_test(NAME e2e.${name} COMMAND ${${command_variable}})
+            set_tests_properties(e2e.${name} PROPERTIES
+                LABELS "e2e;requires-ascend-npu;requires-rdma;mode-${mode};operation-${operation}"
+                TIMEOUT 120
+                RESOURCE_LOCK ascend_npu0)
+            set(NDS_E2E_CASE_REGISTERED TRUE PARENT_SCOPE)
+        endif()
+    endfunction()
+
+    set(NDS_E2E_CASE_REGISTERED FALSE)
+    nds_add_e2e_case(host_ra_storage_write NDS_E2E_HOST_RA_STORAGE_WRITE_COMMAND host-ra storage-write)
+    nds_add_e2e_case(aiv_storage_write NDS_E2E_AIV_STORAGE_WRITE_COMMAND aiv storage-write)
+    nds_add_e2e_case(aicpu_storage_write NDS_E2E_AICPU_STORAGE_WRITE_COMMAND aicpu storage-write)
+    nds_add_e2e_case(aiv_send_cq NDS_E2E_AIV_SEND_CQ_COMMAND aiv send-cq)
+    nds_add_e2e_case(aicpu_send_cq NDS_E2E_AICPU_SEND_CQ_COMMAND aicpu send-cq)
+    nds_add_e2e_case(aiv_receive_cq NDS_E2E_AIV_RECEIVE_CQ_COMMAND aiv receive-cq)
+    nds_add_e2e_case(aicpu_receive_cq NDS_E2E_AICPU_RECEIVE_CQ_COMMAND aicpu receive-cq)
+    nds_add_e2e_case(aiv_rdma_read NDS_E2E_AIV_RDMA_READ_COMMAND aiv rdma-read)
+    nds_add_e2e_case(aicpu_rdma_read NDS_E2E_AICPU_RDMA_READ_COMMAND aicpu rdma-read)
+    nds_add_e2e_case(aiv_rdma_write NDS_E2E_AIV_RDMA_WRITE_COMMAND aiv rdma-write)
+    nds_add_e2e_case(aicpu_rdma_write NDS_E2E_AICPU_RDMA_WRITE_COMMAND aicpu rdma-write)
+    if(NOT NDS_E2E_CASE_REGISTERED)
+        message(FATAL_ERROR "NDS_ENABLE_E2E_TESTS requires at least one named NDS_E2E_*_COMMAND")
     endif()
-    add_test(NAME e2e.npu_to_cpu_write COMMAND ${NDS_E2E_COMMAND})
-    set_tests_properties(e2e.npu_to_cpu_write PROPERTIES LABELS "e2e;requires-ascend-npu;requires-rdma" TIMEOUT 120)
 endif()

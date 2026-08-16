@@ -1,15 +1,16 @@
 # HCCP QP and MR Lifecycle
 
-This guide describes the common resource model used before any NDS backend
-posts a request. It covers the NPU HCCP/RA rdev, QP, and memory
+This guide describes the common resource model used before any NDS execution
+mode posts a request. It covers the NPU HCCP/RA rdev, QP, and memory
 registration; the independent CPU verbs resources; the NDS transport bootstrap;
 and teardown. Mode-specific posting and CQ handling are described in
-[NPU backends](npu-backends.md).
+[NPU execution modes](npu-backends.md).
 
-In the source tree, HCCP lifecycle code is backend support under
-`src/client/backend/support`; mode-specific posting remains under
-`src/client/backend/host_ra`, `aiv`, and `aicpu`. The transport connection
-uses those resources without exposing HCCP handles to the storage protocol.
+In the source tree, HCCP lifecycle code is shared implementation support under
+`src/client/backend/support`; Host RA posting remains under
+`src/client/backend/host_ra`, while AIV and AICPU code lives under
+`src/client/device`. `Transport` uses those resources without exposing HCCP
+handles to `StorageClient`.
 
 ## Ownership model
 
@@ -51,14 +52,15 @@ HCCP creation entry point and requested QP mode:
 | Mode | HCCP creation | Requested QP mode | Resource purpose |
 |---|---|---|---|
 | `host-ra` | `RaTypicalQpCreate` | OPBASE (`2`) | Host RA post returns runtime doorbell information. |
-| `aiv` | `RaAiQpCreate` | OPBASE_EXT (`4`) | HCCP returns AI send-WQ data used by the AIV kernel. |
-| `aicpu` | `RaAiQpCreate` | NORMAL (`0`) | Standard CP1 provider post rings the normal-QP doorbell. |
+| `aiv` | `RaAiQpCreate` | Configurable; OPBASE_EXT (`4`) by default | HCCP returns caller-owned SQ/RQ/SCQ/RCQ dataplane data. |
+| `aicpu` | `RaAiQpCreate` | Configurable; NORMAL (`0`) by default | CP1 probes provider symbols first and uses the same dataplane record for fallbacks. |
 
 For AI QPs, NDS supplies an RC QP shape with one SGE per work request and
 applies traffic class, service level, retry timeout, and retry count after
-creation. HCCP returns AI-QP information. AICPU uses its opaque AI-QP address;
-AIV uses its send-WQ queue and doorbell descriptors. These remain local to the
-NPU execution environment.
+creation. With caller CQ polling enabled, HCCP returns provider addresses and
+SQ/RQ/SCQ/RCQ dataplane information. NDS converts these into one versioned
+descriptor containing queue geometry, producer/consumer state, and
+record/MMIO doorbell addresses. It remains local to the NPU environment.
 
 ## Peer connection
 
@@ -85,9 +87,10 @@ direction.
 
 ## Lifetime and teardown
 
-Posting a command does not permit either endpoint to release its resources. The QPs,
-MRs, and NPU allocations remain valid until the CPU completes its data and
-terminal completion Write, and the NPU observes that completion record.
+Posting a command does not permit either endpoint to release its resources.
+The QPs, MRs, queue WR-ID sidecars, and NPU allocations remain valid until the
+NPU consumes its signaled send CQE, the CPU completes its data and terminal
+completion Write, and the NPU observes that completion record.
 
 NDS tears down in reverse ownership order:
 

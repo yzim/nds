@@ -33,22 +33,22 @@ to the NPU.
 
 The implementation is organized by responsibility:
 
-1. Backend: host RA, AIV, and AICPU own NPU-specific Send posting and their
-   local completion behavior.
-2. Transport: NPU and CPU connections own QPs, MRs, buffers, and CQ handling,
-   but expose connection-level operations rather than QP/CQ internals.
-3. Protocol: defines session bootstrap, command records, data-placement
-   descriptors, responses, sequencing, and errors.
-4. Application: chooses workloads and validates transferred data. It is not a
-   protocol or transport responsibility.
+1. RMA: Host RA, AIV, and AICPU submit opcodes on a selected protocol resource and
+   own their local completion capabilities.
+2. Transport: owns connected QPs, MRs, buffers, and peer metadata and exposes
+   Send and one-sided data operations.
+3. StorageClient: owns storage bootstrap, command records, request sequencing,
+   namespace bounds, and protocol completion.
+4. Application: chooses workloads and validates transferred data.
 
 The current source tree implements these boundaries independently in
-`src/client` and `src/server`. The NPU-attached client and CPU-side server each
-have `transport.*`, `protocol.*`, and a `main.cc` application entry point. The
-client's selectable NPU implementations remain under `client/backend/`; the
-server has one verbs implementation in `server/backend.*`. Shared endpoint
-metadata and TCP bootstrap live in `src/common/transport.*`, and shared storage
-records live in `src/common/protocol.*`.
+`src/client` and `src/server`. The NPU-attached client has `storage.*`,
+`transport.*`, `rma.*`, and a `main.cc` application entry point. Its
+execution-specific work-request implementations remain under `client/rma.*`,
+`client/backend/host_ra/`, and `client/device/`.
+The server keeps its protocol, transport, and verbs implementation. Shared
+endpoint metadata and TCP bootstrap live in `src/common/transport.*`, and
+shared storage records live in `src/common/protocol.*`.
 See [architecture](architecture.md) for concrete ownership rules.
 
 `src/common/include/nds/` is an internal shared-header boundary. Its `nds/`
@@ -57,10 +57,10 @@ colliding across targets. It is not yet an installed or versioned external
 NDS SDK; any public-library surface will be designed separately when NDS needs
 one.
 
-The selected NPU backend posts the protocol command with RDMA Send. The CPU
+The selected NPU execution mode posts the protocol command with RDMA Send. The CPU
 uses ordinary `libibverbs` for its command Receive, storage-data RDMA
 Read/Write, completion-flag RDMA Write, and explicit CQ polling. CPU completion
-ownership is therefore uniform across NPU backends.
+ownership is therefore uniform across NPU execution modes.
 
 ## Completion Model
 
@@ -74,9 +74,9 @@ the command or data buffer.
 This deliberately avoids an NPU Receive WR and receive-CQ dependency in the
 first storage path. It is not an RNIC CQ completion: CPU must still actively
 poll its send CQ before writing the terminal completion flag, and the NPU must
-not treat backend launch or HCCP background processing as command completion.
-The NPU backend contract must state how NDS safely observes the completion
-record for Host RA, AIV, and AICPU.
+not treat operator launch or HCCP background processing as command completion.
+Each storage implementation must state how it safely observes the completion
+record in its execution environment.
 
 NDS owns separate internal NPU allocations and MRs for command records and
 completion records. The completion-flag MR descriptor is exchanged once during
@@ -106,26 +106,31 @@ transport failure, not success.
 
 The CPU uses one verbs CQ for the initial QP, pre-posts one command Receive WR
 before the NPU can submit, and actively polls that CQ for command receive and
-CPU RDMA send completion. The NPU initially waits for the completion record
-with a bounded backend-appropriate device-memory poll and stream/device
-synchronization before host inspection. AIV and AICPU must not pretend that an
+CPU RDMA send completion. The current host StorageClient observes the NPU
+completion allocation through a bounded device-to-host copy loop. Future AIV
+and AICPU StorageClient implementations must poll the record in device memory
+with correct cache and ordering semantics. They must not pretend that an
 HCCP-managed AI-QP CQ is an NDS completion API.
 
 ## Delivery Order
 
-- [x] Introduce the backend, transport, protocol, and application boundaries.
+- [x] Introduce the work-request, transport, StorageClient, and application
+  boundaries.
 - [x] Implement a memory-backed CPU namespace with offset-and-length Read and
   Write commands.
 - [x] Implement NPU Send and CPU Receive for command and completion records.
 - [x] Implement CPU-initiated RDMA Read for storage Write data movement.
 - [x] Implement CPU-initiated RDMA Write for storage Read data movement.
-- [x] Define the initial project-facing completion contract for each NPU backend.
+- [x] Define the initial project-facing completion contract for each NPU
+  execution mode.
 - [x] Implement and validate the common storage protocol contract with Host RA
   first.
-- [x] Implement and validate that same storage protocol contract for AICPU and
-  AIV. All three backends are required; Host RA is only the implementation
-  starting point.
-- [x] Validate a Read of an untouched range and a deterministic storage Write.
+- [x] Validate the host StorageClient with AIV and AICPU command-Send RMA paths.
+- [ ] Implement device-callable AIV and AICPU Transport APIs.
+- [ ] Implement device-callable AIV and AICPU StorageClient Read and Write APIs.
+- [x] Validate a deterministic storage Write with Host RA, AIV, and AICPU.
+- [x] Validate a Host RA Read of an untouched range.
+- [ ] Validate an AIV and AICPU Read of an untouched range.
 - [ ] Add a multi-command application workflow that writes a deterministic
   payload and reads it back in the same session.
 - [ ] Add an optional two-sided completion mode: NPU pre-posts Receive WRs and

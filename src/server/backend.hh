@@ -26,6 +26,7 @@ public:
 
     void *address() const noexcept;
     std::size_t length() const noexcept;
+    std::uint32_t remote_key() const noexcept;
 
 private:
     friend class VerbsBackend;
@@ -45,6 +46,7 @@ public:
     bool register_memory(void *address, std::size_t length, int access, RegisteredRegion *region);
     bool post_receive(const RegisteredRegion &region);
     bool wait_receive(std::uint32_t timeout_ms);
+    bool send(const RegisteredRegion &local, std::uint32_t length);
     bool read(const RegisteredRegion &local, std::uint64_t remote_address, std::uint32_t remote_key,
               std::uint32_t length);
     bool write(const RegisteredRegion &local, std::uint64_t remote_address, std::uint32_t remote_key,

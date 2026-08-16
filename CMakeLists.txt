@@ -30,6 +30,7 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 option(NDS_LINK_PUBLIC_ACL "Link the public AscendCL API instead of resolving it at runtime" OFF)
 option(NDS_BUILD_AICPU_KERNEL "Build the NDS-owned AICPU RoCE package (aarch64 CANN host only)" OFF)
 option(NDS_BUILD_AIV_KERNEL "Build the NDS-owned AIV RoCE binary (aarch64 CANN host only)" OFF)
+option(NDS_BUILD_HARDWARE_PROBES "Build opt-in NPU/RNIC dataplane probes" OFF)
 set(NDS_CANN_ROOT "" CACHE PATH "CANN root required by public ACL or device-kernel builds")
 
 add_subdirectory(src/common)

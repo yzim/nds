@@ -1,0 +1,9 @@
+{
+  "NdsAicpuConnectionOp": {
+    "opInfo": {
+      "functionName": "NdsAicpuConnectionOp",
+      "kernelSo": "@NDS_AICPU_STANDARD_KERNEL_SO@",
+      "opKernelLib": "AICPUKernel"
+    }
+  }
+}

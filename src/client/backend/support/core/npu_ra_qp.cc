@@ -49,7 +49,7 @@ bool NpuRaQp::build_typical_qp(const nds_ra_qp_attr &attributes, std::uint32_t t
     return true;
 }
 
-bool NpuRaQp::create(nds_ra_api *api, const NpuRaQpConfig &config) {
+bool NpuRaQp::create(nds_ra_api *api, const NpuRaQpConfig &config, NpuExecutionMode execution) {
     nds_ra_rdev rdev{};
     nds_ra_rdev_init_info rdev_init{};
     nds_ra_typical_qp initial_qp{};
@@ -64,17 +64,26 @@ bool NpuRaQp::create(nds_ra_api *api, const NpuRaQpConfig &config) {
         set_error("NPU RA QP is already created");
         return false;
     }
-    if (config.local_ipv4.empty() || config.port_num == 0U || config.path_mtu == 0U) {
-        set_error("NPU RA QP requires a local IPv4 address, nonzero port, and nonzero path MTU");
+    const auto is_power_of_two = [](std::uint32_t value) {
+        return value >= 2U && (value & (value - 1U)) == 0U;
+    };
+    if (config.local_ipv4.empty() || config.port_num == 0U || config.path_mtu == 0U ||
+        !is_power_of_two(config.send_queue_depth) || !is_power_of_two(config.receive_queue_depth)) {
+        set_error("NPU RA QP requires valid network settings and power-of-two queue depths of at least two");
+        return false;
+    }
+    if (execution != NpuExecutionMode::HostRa && execution != NpuExecutionMode::Aicpu &&
+        execution != NpuExecutionMode::Aiv) {
+        set_error("NPU RA QP execution mode is invalid");
         return false;
     }
     if (api->ra_rdev_init_v2 == nullptr || api->ra_rdev_deinit == nullptr || api->ra_qp_destroy == nullptr ||
         api->ra_get_qp_attr == nullptr || api->ra_typical_qp_modify == nullptr ||
-        (config.backend == NpuBackendMode::HostRa && api->ra_typical_qp_create == nullptr) ||
-        ((config.backend == NpuBackendMode::Aicpu || config.backend == NpuBackendMode::Aiv) &&
+        (execution == NpuExecutionMode::HostRa && api->ra_typical_qp_create == nullptr) ||
+        ((execution == NpuExecutionMode::Aicpu || execution == NpuExecutionMode::Aiv) &&
          (api->ra_ai_qp_create == nullptr || api->ra_set_qp_attr_qos == nullptr ||
           api->ra_set_qp_attr_timeout == nullptr || api->ra_set_qp_attr_retry_count == nullptr))) {
-        set_error("RA API is missing a required rdev/QP/query operation for the selected backend");
+        set_error("RA API is missing a required rdev/QP/query operation for the selected execution mode");
         return false;
     }
 
@@ -87,6 +96,11 @@ bool NpuRaQp::create(nds_ra_api *api, const NpuRaQpConfig &config) {
 
     api_ = api;
     config_ = config;
+    if (config_.ai_qp_mode < 0) {
+        config_.ai_qp_mode = execution == NpuExecutionMode::Aicpu ?
+                                 NDS_RA_QP_MODE_NORMAL : NDS_RA_QP_MODE_OPBASE_EXT;
+    }
+    execution_ = execution;
     rdev_init.mode = NDS_RA_NETWORK_OFFLINE;
     rdev_init.notify_type = NDS_RA_NOTIFY;
     rdev_init.enabled_910a_lite = false;
@@ -99,7 +113,7 @@ bool NpuRaQp::create(nds_ra_api *api, const NpuRaQpConfig &config) {
         reset();
         return false;
     }
-    if (config_.backend == NpuBackendMode::HostRa) {
+    if (execution_ == NpuExecutionMode::HostRa) {
         result = api_->ra_typical_qp_create(rdev_handle_, NDS_RA_QP_FLAG_RC, NDS_RA_QP_MODE_OPBASE, &initial_qp,
                                             &qp_handle_);
         if (result != 0 || qp_handle_ == nullptr) {
@@ -109,19 +123,21 @@ bool NpuRaQp::create(nds_ra_api *api, const NpuRaQpConfig &config) {
         }
     } else {
         /* Normal AI mode lets CP1's provider post ring sq.db_reg directly. AIV needs OPBASE_EXT metadata. */
-        ai_attrs.qp_mode = config_.backend == NpuBackendMode::Aicpu ? NDS_RA_QP_MODE_NORMAL : NDS_RA_QP_MODE_OPBASE_EXT;
-        ai_attrs.cq_attr.send_cq_depth = 32768;
-        ai_attrs.cq_attr.recv_cq_depth = 128;
-        ai_attrs.qp_attr.cap.max_send_wr = 32768;
-        ai_attrs.qp_attr.cap.max_recv_wr = 128;
+        ai_attrs.qp_mode = config_.ai_qp_mode;
+        ai_attrs.cq_attr.send_cq_depth = static_cast<int>(config_.send_queue_depth);
+        ai_attrs.cq_attr.recv_cq_depth = static_cast<int>(config_.receive_queue_depth);
+        ai_attrs.qp_attr.cap.max_send_wr = config_.send_queue_depth;
+        ai_attrs.qp_attr.cap.max_recv_wr = config_.receive_queue_depth;
         ai_attrs.qp_attr.cap.max_send_sge = 1;
         ai_attrs.qp_attr.cap.max_recv_sge = 1;
         ai_attrs.qp_attr.cap.max_inline_data = 32;
         ai_attrs.qp_attr.qp_type = NDS_RA_QP_TYPE_RC;
         ai_attrs.version = NDS_RA_QP_CREATE_WITH_ATTR_VERSION;
+        ai_attrs.data_plane_flag = (config_.control_flags & NpuRaQpCallerPollsCq) != 0U ?
+                                       static_cast<std::uint32_t>(NDS_RA_AI_CALLER_POLLS_CQ) : 0U;
         result = api_->ra_ai_qp_create(rdev_handle_, &ai_attrs, &ai_qp_info_, &qp_handle_);
         if (result != 0 || qp_handle_ == nullptr || ai_qp_info_.ai_qp_address == 0U) {
-            set_error("RaAiQpCreate(AI backend) failed: " + std::to_string(result));
+            set_error("RaAiQpCreate(AI execution mode) failed: " + std::to_string(result));
             reset();
             return false;
         }
@@ -225,12 +241,13 @@ bool NpuRaQp::post_send(const nds_ra_sge &source, std::uint32_t opcode, std::uin
     nds_ra_send_wr wr{};
     int result;
 
-    if (response == nullptr || !connected_ || local.address == 0U || local.length == 0U || local.local_key == 0U ||
+    if (response == nullptr || execution_ != NpuExecutionMode::HostRa || !connected_ || local.address == 0U ||
+        local.length == 0U || local.local_key == 0U ||
         (opcode != NDS_RA_WR_SEND && opcode != NDS_RA_WR_RDMA_WRITE && opcode != NDS_RA_WR_RDMA_READ) ||
         (opcode != NDS_RA_WR_SEND && (remote_address == 0U || remote_key == 0U)) ||
         (opcode == NDS_RA_WR_SEND && (remote_address != 0U || remote_key != 0U))) {
-        set_error(
-            "post requires a connected QP, valid local SGE, supported opcode, and matching remote-memory metadata");
+        set_error("post requires a connected Host RA QP, valid local SGE, supported opcode, and matching "
+                  "remote-memory metadata");
         return false;
     }
     wr.buffers = &local;
@@ -247,11 +264,6 @@ bool NpuRaQp::post_send(const nds_ra_sge &source, std::uint32_t opcode, std::uin
     }
     error_.clear();
     return true;
-}
-
-bool NpuRaQp::post_rdma_write(const nds_ra_sge &source, std::uint64_t remote_address, std::uint32_t remote_key,
-                              bool signaled, nds_ra_send_response *response) {
-    return post_send(source, NDS_RA_WR_RDMA_WRITE, remote_address, remote_key, signaled, response);
 }
 
 bool NpuRaQp::query_cqe_errors(nds_ra_cqe_error *errors, std::uint32_t *count) {
@@ -344,8 +356,8 @@ bool NpuRaQp::query_status(int *status) {
 int NpuRaQp::poll_send_completions(nds_ra_completion *completions, std::uint32_t max_entries) {
     int result;
 
-    if (!created() || completions == nullptr || max_entries == 0U) {
-        set_error("send-CQ polling requires a created QP, output completion storage, and nonzero entry count");
+    if (!created() || execution_ != NpuExecutionMode::HostRa || completions == nullptr || max_entries == 0U) {
+        set_error("send-CQ polling requires a Host RA QP, output completion storage, and nonzero entry count");
         return -1;
     }
     result = api_->ra_poll_cq(qp_handle_, true, max_entries, completions);
@@ -414,8 +426,11 @@ void NpuRaQp::reset() noexcept {
     rdev_handle_ = nullptr;
     api_ = nullptr;
     config_ = {};
+    execution_ = NpuExecutionMode::HostRa;
     local_attributes_ = {};
     ai_qp_info_ = {};
+    send_wr_ids_ = 0U;
+    receive_wr_ids_ = 0U;
     connected_ = false;
 }
 
@@ -432,7 +447,7 @@ const nds_ra_qp_attr &NpuRaQp::local_attributes() const noexcept {
 }
 
 bool NpuRaQp::has_ai_qp_info() const noexcept {
-    return (config_.backend == NpuBackendMode::Aicpu || config_.backend == NpuBackendMode::Aiv) &&
+    return (execution_ == NpuExecutionMode::Aicpu || execution_ == NpuExecutionMode::Aiv) &&
            ai_qp_info_.ai_qp_address != 0U;
 }
 
@@ -440,8 +455,80 @@ const nds_ra_ai_qp_info &NpuRaQp::ai_qp_info() const noexcept {
     return ai_qp_info_;
 }
 
+Result<void> NpuRaQp::set_device_wr_id_storage(std::uint64_t send_address,
+                                               std::uint64_t receive_address) {
+    if (!has_ai_qp_info() || send_address == 0U || receive_address == 0U)
+        return unexpected(ErrorCode::kInvalidArgument,
+                          "device WR-ID storage requires an AI QP and two device addresses");
+    send_wr_ids_ = send_address;
+    receive_wr_ids_ = receive_address;
+    return {};
+}
+
+Result<nds_device_connection> NpuRaQp::make_device_connection() const {
+    if (!has_ai_qp_info() || send_wr_ids_ == 0U || receive_wr_ids_ == 0U)
+        return unexpected(ErrorCode::kInvalidArgument,
+                          "device connection requires an AI QP and WR-ID storage");
+    const auto *source = reinterpret_cast<const nds_ra_ai_data_plane_info *>(ai_qp_info_.data_plane_info);
+    if (source->send_wq.buffer_address == 0U || source->receive_wq.buffer_address == 0U)
+        return unexpected(ErrorCode::kRa, "HCCP did not return SQ/RQ dataplane information");
+    if ((config_.control_flags & NpuRaQpCallerPollsCq) != 0U &&
+        (source->send_cq.buffer_address == 0U || source->receive_cq.buffer_address == 0U ||
+         ai_qp_info_.ai_scq_address == 0U || ai_qp_info_.ai_rcq_address == 0U)) {
+        return unexpected(ErrorCode::kRa, "HCCP did not return caller-owned CQ dataplane information");
+    }
+
+    const auto copy_wq = [](const nds_ra_ai_data_plane_wq &input, std::uint64_t wr_ids,
+                            bool send) {
+        nds_device_work_queue output{};
+        output.number = input.wqn;
+        output.depth = input.depth;
+        output.entry_size = input.wqebb_size;
+        output.buffer_address = input.buffer_address;
+        output.head_address = input.head_address;
+        output.tail_address = input.tail_address;
+        output.wr_id_address = wr_ids;
+        output.doorbell_mode = send ? NDS_DEVICE_DOORBELL_MMIO : NDS_DEVICE_DOORBELL_RECORD;
+        output.doorbell_address = send ? input.doorbell_register_address : input.software_doorbell_address;
+        return output;
+    };
+    const auto copy_cq = [](const nds_ra_ai_data_plane_cq &input) {
+        nds_device_completion_queue output{};
+        output.number = input.cqn;
+        output.depth = input.depth;
+        output.entry_size = input.cqe_size;
+        output.buffer_address = input.buffer_address;
+        output.consumer_address = input.tail_address;
+        output.doorbell_mode = NDS_DEVICE_DOORBELL_RECORD;
+        output.doorbell_address = input.software_doorbell_address;
+        return output;
+    };
+
+    nds_device_connection output{};
+    output.abi_version = NDS_DEVICE_CONNECTION_ABI_VERSION;
+    output.size = sizeof(output);
+    output.qp.abi_version = NDS_DEVICE_QP_ABI_VERSION;
+    output.qp.size = sizeof(output.qp);
+    output.qp.flags = (config_.control_flags & NpuRaQpCallerPollsCq) != 0U ?
+                          static_cast<std::uint32_t>(NDS_DEVICE_QP_CALLER_POLLS_CQ) : 0U;
+    output.qp.qp_mode = config_.ai_qp_mode;
+    output.qp.service_level = config_.service_level;
+    output.qp.provider_qp_address = ai_qp_info_.ai_qp_address;
+    output.qp.provider_send_cq_address = ai_qp_info_.ai_scq_address;
+    output.qp.provider_receive_cq_address = ai_qp_info_.ai_rcq_address;
+    output.qp.send_queue = copy_wq(source->send_wq, send_wr_ids_, true);
+    output.qp.receive_queue = copy_wq(source->receive_wq, receive_wr_ids_, false);
+    output.qp.send_cq = copy_cq(source->send_cq);
+    output.qp.receive_cq = copy_cq(source->receive_cq);
+    return output;
+}
+
 const NpuRaQpConfig &NpuRaQp::config() const noexcept {
     return config_;
+}
+
+NpuExecutionMode NpuRaQp::execution_mode() const noexcept {
+    return execution_;
 }
 
 const std::string &NpuRaQp::error() const noexcept {

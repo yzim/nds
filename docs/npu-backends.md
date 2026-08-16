@@ -1,15 +1,53 @@
-# NPU Backends
+# NPU Execution Modes
 
-NDS has three NPU backends. They share the HCCP rdev/QP and MR lifecycle in
-[HCCP QP and MR lifecycle](hccp-resources.md). A backend changes only how the
-NPU posts its storage-command Send and manages its local work. CPU storage
-execution and NDS protocol completion are the same in every mode.
+NDS has three execution modes: Host RA, AIV, and AICPU. They share the host
+HCCP rdev/QP and MR control path described in
+[HCCP QP and MR lifecycle](hccp-resources.md). Execution mode identifies where
+a work request runs; it is independent from the work-request, transport, and
+storage API layers.
 
-| Backend | Command post | QP mode | Local completion | Protocol completion |
-|---|---|---|---|---|
-| [`host-ra`](#host-ra) | Host calls `RaTypicalSendWr`, then `rtRDMADBSend` | OPBASE | Host RA CQ is available | CPU writes the NDS completion record; host copies and polls it |
-| [`aiv`](#aiv) | AIV writes a Send WQE and SQ doorbell | OPBASE_EXT/provider OP | HCCP internal today | CPU writes the NDS completion record; host copies and polls it |
-| [`aicpu`](#aicpu) | Standard CP1 calls provider `ibv_exp_post_send` | NORMAL | HCCP internal today | CPU writes the NDS completion record; host copies and polls it |
+For a storage Write, the CPU server RDMA Reads application data from the
+NPU-advertised buffer into its namespace. For a storage Read, the CPU server
+RDMA Writes namespace data into that buffer. AIV and AICPU post the command
+Send; they do not issue the RDMA Read or RDMA Write that moves application
+data.
+
+The current capability matrix is:
+
+| Layer | Host RA | AIV | AICPU |
+|---|---|---|---|
+| RMA | Send, RDMA Read/Write, send-CQ poll | Send/Receive, RDMA Read/Write, SCQ/RCQ polling | Send/Receive, RDMA Read/Write, SCQ/RCQ polling |
+| Transport | Host `Transport` | Planned device API | Planned device API |
+| Storage | Host `StorageClient` | Planned device API | Planned device API |
+
+The current host executable can run an NDS storage Read or Write with any of
+the three RMA execution modes. For AIV and AICPU, however, the host
+`StorageClient` still constructs the command and observes the completion; only
+the command work request executes on the NPU device. Device-callable transport
+and storage APIs remain implementation work.
+
+## Host CPU Scope
+
+All modes use the NPU-attached host CPU for client lifecycle, QP/MR setup, and
+the current operator-launch and completion-observation flow. That is control
+and orchestration work. The question that distinguishes the modes is where a
+work request executes:
+
+- `host-ra`: the host CPU executes the RA Send and runtime doorbell calls.
+- `aiv`: an AIV operator executing on the NPU writes the WQE and rings the SQ
+  doorbell.
+- `aicpu`: a standard-CP1 operator executing in the NPU environment calls the
+  device-side provider to post the Send.
+
+Thus an AIV or AICPU launch originates on the host, but the host CPU does not
+execute its RDMA post. The host launchers are adapters for the current
+validation executable, not the eventual AIV/AICPU storage API.
+
+| Execution mode | RDMA-post execution site | Host role for a request | QP mode | Local completion | Protocol completion |
+|---|---|---|---|---|---|
+| [`host-ra`](#host-ra) | Host CPU: `RaTypicalSendWr`, then `rtRDMADBSend` | Executes the post | OPBASE | Host RA CQ is available | CPU writes the NDS completion record; host copies and polls it |
+| [`aiv`](#aiv) | NPU AIV: direct SQ/RQ/CQ and doorbell access | Creates and launches the device request | Configurable; OPBASE_EXT by default | Caller-owned SCQ/RCQ | CPU writes the NDS completion record; host copies and polls it |
+| [`aicpu`](#aicpu) | NPU CP1: provider symbols first, address fallback | Creates and launches the device request | Configurable; NORMAL by default | Caller-owned SCQ/RCQ | CPU writes the NDS completion record; host copies and polls it |
 
 The CPU polls its one `libibverbs` CQ for the command Receive and its signaled
 terminal completion Write. HCCP AI-QP CQ handling, an AIV/AICPU launch, and a
@@ -19,9 +57,13 @@ completion record is authoritative.
 Use `host-ra` first because it has the smallest hardware-specific surface.
 Use `aiv` for direct vector-core WQE/doorbell posting and `aicpu` for a
 provider-owned post from standard CP1. These are implementation choices, not
-performance rankings. NDS has validated one bounded storage Write in all three
-modes and a Host RA Read from a fresh zeroed namespace; it has not published
-throughput or latency results.
+performance rankings. The host validation executable supports storage Read and
+Write with all three work-request modes. Recorded hardware validation covers
+one bounded storage Write in all three modes, a Host RA Read from a fresh
+zeroed namespace, device Send/Receive with SCQ/RCQ polling in AIV and AICPU,
+and direct device RDMA Read/Write with SCQ polling in both modes. It does not
+yet cover an AIV or AICPU storage Read. NDS has not published throughput or
+latency results.
 
 The initial protocol permits one command in flight on one RC QP. Queueing,
 multi-QP sessions, and an NPU Receive-based completion option are tracked in
@@ -29,8 +71,9 @@ multi-QP sessions, and an NPU Receive-based completion option are tracked in
 
 ## Host RA
 
-Host RA is the NPU-host-CPU baseline. It uses the CANN RA and runtime boundary
-without a device kernel.
+Host RA is the NPU-host-CPU baseline. The host CPU itself executes the command
+post through the CANN RA and runtime boundary; it does not launch a device
+operator for that action.
 
 ```text
 NPU host: RaTypicalSendWr(SEND) -> rtRDMADBSend
@@ -47,6 +90,8 @@ CQE is not protocol completion.
 
 Key implementation paths:
 
+- `src/client/storage.cc`: host StorageClient command and completion flow.
+- `src/client/rma.cc`: execution-mode RMA implementation.
 - `src/client/backend/host_ra/backend.cc`: RA post and runtime doorbell.
 - `src/client/backend/support/core/npu_ra_qp.cc`: QP and MR calls.
 - `src/client/backend/support/core/npu_ra_context.cc`: runtime lifecycle,
@@ -62,7 +107,7 @@ build/nds_server --device <cpu-rdma-device> --gid-index <gid-index> \
 ```
 
 ```sh
-build/nds_client --backend host-ra \
+build/nds_client --execution host-ra \
   --ascendcl <cann-root>/aarch64-linux/lib64/libascendcl.so \
   --runtime <cann-root>/aarch64-linux/lib64/libruntime.so \
   --ra <cann-root>/aarch64-linux/lib64/libra.so \
@@ -80,60 +125,73 @@ implementation.
 
 ## AIV
 
-The AIV backend posts the storage-command Send from an Ascend vector-core
-kernel. The host still creates and connects the AI QP and registers all NPU
-memory.
+The AIV execution mode currently implements the work-request layer through an
+Ascend vector-core operator. The host creates and connects the AI QP, registers
+NPU memory, and launches the operator, but the operator executes the
+WQE/doorbell post.
 
 ```text
-Host: RaAiQpCreate(OPBASE_EXT) -> copy AI SQ descriptor and post request
-AIV:  write one HNS RC Send WQE -> clean cache -> ring SQ doorbell
+Host: RaAiQpCreate(OPBASE_EXT) -> package NDS device QP and connection
+AIV:  connection API -> verbs API -> HNS WQE/doorbell or CQ consumption
 CPU:  Receive command -> RDMA Read/Write data -> RDMA Write completion record
 Host: poll copied NPU completion record
 ```
 
-`NdsAivRdmaPost` owns only the direct WQE/doorbell action. Opcode `0` is Send
-with zero remote address/key; the ABI retains opcode `3` for its narrow
-one-sided Write primitive. The storage path posts one command.
+`NdsAivPostSend`, `NdsAivPostRecv`, and `NdsAivPollCq` are reusable verbs
+functions. `NdsAivRdmaSend`, `NdsAivRdmaRecv`, `NdsAivRdmaRead`, and
+`NdsAivRdmaWrite` form the connection layer above them. The loaded
+`NdsAivConnectionOp` kernel is only a host-launch adapter.
 
-- ABI: `src/client/backend/aiv/include/nds/aiv_roce_abi.h`.
-- Kernel: `src/client/backend/aiv/kernel/nds_aiv_roce.cc`.
-- Host launcher: `src/client/backend/aiv/launcher.cc`.
+- Shared ABI: `src/client/device/include/nds/`.
+- Device API: `src/client/device/aiv/device/include/nds/aiv_device_api.h`.
+- Verbs/connection implementation: `src/client/device/aiv/device/nds_aiv_dataplane.cc`.
+- Entry kernel: `src/client/device/aiv/kernel/nds_aiv_kernel.cc`.
+- Host launcher: `src/client/device/aiv/launcher.cc`.
 
 ```sh
 cmake -S . -B build-aiv -DNDS_CANN_ROOT=<cann-root> -DNDS_BUILD_AIV_KERNEL=ON
 cmake --build build-aiv --parallel
 ```
 
-Run the normal client arguments with `--backend aiv` and
-`--aiv-kernel <absolute-path>/aiv/nds_aiv_roce.o`.
+Run the normal client arguments with `--execution aiv` and
+`--aiv-kernel <absolute-path>/aiv/nds_aiv_kernel.o`. Select either
+`--operation write` or `--operation read`; both use the AIV command-Send path,
+and the CPU server selects the corresponding data-transfer direction.
 
 SQ layout, cache maintenance, and doorbell encoding were learned from
 open-source HCOMM AIV code and its patched HNS rdma-core provider source. NDS
 ports one WQE form only, not HCOMM flags, collective state, or dispatchers.
+The HNS hardware SQE opcode mapping is Send `0x0`, RDMA Write `0x3`, and RDMA
+Read `0x5`; it is not the ibverbs work-request enum numbering.
 The layout is CANN/provider specific and must be revalidated when that ABI
 changes.
 
 ## AICPU
 
-The AICPU backend launches an NDS-owned standard CP1 kernel that posts one
-storage-command Send through the CANN-matched HNS provider.
+The AICPU execution mode currently implements the work-request layer through
+an NDS-owned standard-CP1 operator and the CANN-matched HNS provider. The host
+launches the operator but does not execute the provider post.
 
 ```text
-Host: RaAiQpCreate(NORMAL) -> launch NdsAicpuRdmaPost
-CP1:  dlopen(libhns-rdmav25.so) -> dlsym(ibv_exp_post_send) -> post Send
+Host: RaAiQpCreate(NORMAL) -> package NDS device QP and connection
+CP1:  connection API -> exported verbs -> provider or direct RQ/CQ fallback
 CPU:  Receive command -> RDMA Read/Write data -> RDMA Write completion record
 Host: poll copied NPU completion record
 ```
 
 The host process does not load `libhns-rdmav25.so`; standard CP1 resolves it
-in the NPU execution environment. A NORMAL AI QP is required because the
-provider rings its normal-QP doorbell. Provider-OP mode returns doorbell
-metadata and needs a separate dispatcher to ring it.
+in the NPU execution environment. The default NORMAL AI QP lets the provider
+ring its normal-QP doorbell. Provider-OP mode may instead return doorbell
+metadata, which the operator writes to the descriptor's SQ doorbell address.
+Standard `ibv_post_recv` and `ibv_poll_cq` are commonly inline rather than
+exported symbols, so the operator falls back to the descriptor's RQ and CQ
+addresses when lookup fails.
 
-- Request ABI: `src/client/backend/aicpu/include/nds/aicpu_roce_abi.h`.
-- CP1 source: `src/client/backend/aicpu/device/nds_aicpu_rdma_post.aicpu`.
-- Entry point: `NdsAicpuRdmaPost`.
-- Package: `src/client/backend/aicpu/device/package/nds_aicpu_standard.json.in`.
+- Shared ABI: `src/client/device/include/nds/`.
+- Device API: `src/client/device/aicpu/device/include/nds_aicpu_device_api.h`.
+- Verbs/connection implementation: `src/client/device/aicpu/device/nds_aicpu_dataplane.cc`.
+- Entry point: `NdsAicpuConnectionOp` (a connection-dispatch adapter).
+- Package: `src/client/device/aicpu/device/package/nds_aicpu_standard.json.in`.
 
 ```sh
 cmake -S . -B build-aicpu -DNDS_CANN_ROOT=<cann-root> -DNDS_BUILD_AICPU_KERNEL=ON
@@ -141,11 +199,14 @@ cmake --build build-aicpu --parallel
 ```
 
 Install the generated package through CANN's supported customer-AICPU process,
-then use `--backend aicpu` and
-`--aicpu-kernel-config <path>/nds_aicpu_standard.json`.
+then use `--execution aicpu` and
+`--aicpu-kernel-config <path>/nds_aicpu_standard.json`. Select either
+`--operation write` or `--operation read`; both use the AICPU command-Send
+path, and the CPU server selects the corresponding data-transfer direction.
 
-The device provider-loader pattern, AI-QP creation, and provider ABI were
+The AICPU shared object exports the three verbs functions and four connection
+functions for use by other standard-CP1 operators. The device provider-loader pattern, AI-QP creation, and provider ABI were
 learned from open-source HCOMM. NDS ports one provider post and does not wrap
 HCOMM's transport kernel, reciprocal flags, synchronization, communicator,
-batching, or collective logic. CP1 launch completion and internal AI-QP CQ
-handling are not NDS command completion.
+batching, or collective logic. CP1 launch completion and RNIC CQEs are not NDS
+storage command completion.

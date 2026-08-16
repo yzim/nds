@@ -74,6 +74,9 @@ void *RegisteredRegion::address() const noexcept {
 std::size_t RegisteredRegion::length() const noexcept {
     return mr_ == nullptr ? 0U : mr_->length;
 }
+std::uint32_t RegisteredRegion::remote_key() const noexcept {
+    return mr_ == nullptr ? 0U : mr_->rkey;
+}
 std::uint32_t RegisteredRegion::local_key() const noexcept {
     return mr_ == nullptr ? 0U : mr_->lkey;
 }
@@ -235,6 +238,26 @@ bool VerbsBackend::poll(ibv_wc_opcode opcode, std::uint32_t timeout_ms) {
 
 bool VerbsBackend::wait_receive(std::uint32_t timeout_ms) {
     return poll(IBV_WC_RECV, timeout_ms);
+}
+
+bool VerbsBackend::send(const RegisteredRegion &local, std::uint32_t length) {
+    if (length == 0U || length > local.length()) {
+        set_error("invalid send length");
+        return false;
+    }
+    ibv_sge sge{reinterpret_cast<std::uintptr_t>(local.address()), length, local.local_key()};
+    ibv_send_wr wr{};
+    ibv_send_wr *bad = nullptr;
+    wr.wr_id = 3U;
+    wr.sg_list = &sge;
+    wr.num_sge = 1;
+    wr.opcode = IBV_WR_SEND;
+    wr.send_flags = IBV_SEND_SIGNALED;
+    if (ibv_post_send(qp_, &wr, &bad) != 0) {
+        set_error(std::strerror(errno));
+        return false;
+    }
+    return poll(IBV_WC_SEND, 5000U);
 }
 
 bool VerbsBackend::transfer(ibv_wr_opcode opcode, const RegisteredRegion &local, std::uint64_t remote_address,

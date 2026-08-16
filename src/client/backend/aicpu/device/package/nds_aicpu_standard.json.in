@@ -1,9 +1,0 @@
-{
-  "NdsAicpuRdmaPost": {
-    "opInfo": {
-      "functionName": "NdsAicpuRdmaPost",
-      "kernelSo": "@NDS_AICPU_STANDARD_KERNEL_SO@",
-      "opKernelLib": "AICPUKernel"
-    }
-  }
-}

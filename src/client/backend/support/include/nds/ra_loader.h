@@ -24,6 +24,7 @@ enum {
     NDS_RA_QP_MODE_NORMAL = 0,
     NDS_RA_QP_MODE_OPBASE = 2,
     NDS_RA_QP_MODE_OPBASE_EXT = 4,
+    NDS_RA_AI_CALLER_POLLS_CQ = 1U << 0,
     NDS_RA_QP_CREATE_WITH_ATTR_VERSION = 1,
     NDS_RA_QP_TYPE_RC = 2,
     NDS_RA_ACCESS_LOCAL_WRITE = 1,
@@ -211,7 +212,8 @@ typedef struct nds_ra_ai_qp_info {
     uint8_t data_plane_info[336];
 } nds_ra_ai_qp_info;
 
-/* HCCP v9.0.0 AiDataPlaneWq. This is copied into NDS's AIV-only descriptor. */
+/* HCCP v9.0.0 AI-QP dataplane records. They are copied into NDS-owned
+ * device records and are never sent to the CPU peer. */
 typedef struct nds_ra_ai_data_plane_wq {
     uint32_t wqn;
     uint32_t compatibility_padding;
@@ -225,16 +227,34 @@ typedef struct nds_ra_ai_data_plane_wq {
     uint32_t reserved[8];
 } nds_ra_ai_data_plane_wq;
 
+typedef struct nds_ra_ai_data_plane_cq {
+    uint32_t cqn;
+    uint32_t compatibility_padding;
+    uint64_t buffer_address;
+    uint32_t cqe_size;
+    uint32_t depth;
+    uint64_t head_address;
+    uint64_t tail_address;
+    uint64_t software_doorbell_address;
+    uint64_t doorbell_register_address;
+    uint32_t reserved[2];
+} nds_ra_ai_data_plane_cq;
+
 typedef struct nds_ra_ai_data_plane_info {
     nds_ra_ai_data_plane_wq send_wq;
-    uint8_t remaining[248];
+    nds_ra_ai_data_plane_wq receive_wq;
+    nds_ra_ai_data_plane_cq send_cq;
+    nds_ra_ai_data_plane_cq receive_cq;
+    uint32_t reserved[8];
 } nds_ra_ai_data_plane_info;
 
 #if defined(__cplusplus)
 static_assert(sizeof(nds_ra_ai_data_plane_wq) == 88, "HCCP AiDataPlaneWq ABI must remain 88 bytes");
+static_assert(sizeof(nds_ra_ai_data_plane_cq) == 64, "HCCP AiDataPlaneCq ABI must remain 64 bytes");
 static_assert(sizeof(nds_ra_ai_data_plane_info) == 336, "HCCP AiDataPlaneInfo ABI must remain 336 bytes");
 #else
 _Static_assert(sizeof(nds_ra_ai_data_plane_wq) == 88, "HCCP AiDataPlaneWq ABI must remain 88 bytes");
+_Static_assert(sizeof(nds_ra_ai_data_plane_cq) == 64, "HCCP AiDataPlaneCq ABI must remain 64 bytes");
 _Static_assert(sizeof(nds_ra_ai_data_plane_info) == 336, "HCCP AiDataPlaneInfo ABI must remain 336 bytes");
 #endif
 

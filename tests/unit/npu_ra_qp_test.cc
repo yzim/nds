@@ -48,6 +48,8 @@ struct FakeRaState {
     nds_ra_qos_attr qos{};
     uint32_t timeout{};
     uint32_t retry_count{};
+    bool omit_work_queues{};
+    bool omit_completion_queues{};
 };
 
 FakeRaState *state = nullptr;
@@ -101,6 +103,21 @@ int fake_ai_qp_create(void *handle, nds_ra_qp_ext_attrs *attrs, nds_ra_ai_qp_inf
     info->ai_qp_address = UINT64_C(0x123456789abcdef0);
     info->sq_index = 17U;
     info->db_index = 19U;
+    info->ai_scq_address = UINT64_C(0x3000);
+    info->ai_rcq_address = UINT64_C(0x4000);
+    auto *plane = reinterpret_cast<nds_ra_ai_data_plane_info *>(info->data_plane_info);
+    if (!state->omit_work_queues) {
+        plane->send_wq = {1U, 0U, 0x10000U, 64U, 32768U, 0x11000U, 0x12000U,
+                          0x13000U, 0x14000U, {}};
+        plane->receive_wq = {1U, 0U, 0x20000U, 16U, 128U, 0x21000U, 0x22000U,
+                             0x23000U, 0x24000U, {}};
+    }
+    if (!state->omit_completion_queues) {
+        plane->send_cq = {2U, 0U, 0x30000U, 64U, 32768U, 0U, 0x32000U, 0x33000U,
+                          0x34000U, {}};
+        plane->receive_cq = {3U, 0U, 0x40000U, 64U, 128U, 0U, 0x42000U, 0x43000U,
+                             0x44000U, {}};
+    }
     state->ai_qp_info = *info;
     *qp = &fake_qp;
     return 0;
@@ -346,10 +363,12 @@ void test_aicpu_qp_creation_and_connection() {
     nds::NpuRaQpConfig config{};
     nds_transport_endpoint local{};
     nds_transport_endpoint peer{};
+    nds_ra_send_response response{};
+    nds_ra_completion completion{};
 
     config.local_ipv4 = "192.0.2.10";
-    config.backend = nds::NpuBackendMode::Aicpu;
-    assert(qp.create(&api, config));
+    assert(qp.create(&api, config, nds::NpuExecutionMode::Aicpu));
+    assert(qp.execution_mode() == nds::NpuExecutionMode::Aicpu);
     assert(!fake.rdev_init.disabled_lite_thread);
     assert(fake.qp_create_calls == 0);
     assert(fake.ai_qp_create_calls == 1);
@@ -363,6 +382,7 @@ void test_aicpu_qp_creation_and_connection() {
     assert(fake.ai_qp_attrs.qp_attr.cap.max_inline_data == 32U);
     assert(fake.ai_qp_attrs.qp_attr.qp_type == NDS_RA_QP_TYPE_RC);
     assert(fake.ai_qp_attrs.version == NDS_RA_QP_CREATE_WITH_ATTR_VERSION);
+    assert(fake.ai_qp_attrs.data_plane_flag == NDS_RA_AI_CALLER_POLLS_CQ);
     assert(fake.set_qos_calls == 1);
     assert(fake.qos.traffic_class == 0U);
     assert(fake.qos.service_level == 0U);
@@ -374,6 +394,17 @@ void test_aicpu_qp_creation_and_connection() {
     assert(qp.ai_qp_info().ai_qp_address == UINT64_C(0x123456789abcdef0));
     assert(qp.ai_qp_info().sq_index == 17U);
     assert(qp.ai_qp_info().db_index == 19U);
+    assert(qp.set_device_wr_id_storage(0x50000U, 0x60000U));
+    const auto connection = qp.make_device_connection();
+    assert(connection);
+    assert(connection->abi_version == NDS_DEVICE_CONNECTION_ABI_VERSION);
+    assert(connection->qp.provider_qp_address == UINT64_C(0x123456789abcdef0));
+    assert(connection->qp.qp_mode == NDS_RA_QP_MODE_NORMAL);
+    assert(connection->qp.send_queue.doorbell_mode == NDS_DEVICE_DOORBELL_MMIO);
+    assert(connection->qp.send_queue.doorbell_address == 0x14000U);
+    assert(connection->qp.receive_queue.doorbell_mode == NDS_DEVICE_DOORBELL_RECORD);
+    assert(connection->qp.receive_queue.doorbell_address == 0x23000U);
+    assert(connection->qp.send_cq.doorbell_address == 0x33000U);
 
     assert(qp.make_endpoint(&local));
     peer.qp_num = 0x2000U;
@@ -385,7 +416,12 @@ void test_aicpu_qp_creation_and_connection() {
     peer.retry_timeout = 14U;
     assert(qp.connect(peer));
     assert(fake.modify_calls == 1);
+    assert(!qp.post_send({0x1000U, 64U, 0x99U}, NDS_RA_WR_SEND, 0U, 0U, true, &response));
+    assert(qp.poll_send_completions(&completion, 1U) < 0);
+    assert(fake.send_wr_calls == 0);
+    assert(fake.poll_cq_calls == 0);
     qp.reset();
+    assert(qp.execution_mode() == nds::NpuExecutionMode::HostRa);
     assert(!qp.has_ai_qp_info());
     assert(qp.ai_qp_info().ai_qp_address == 0U);
     assert(fake.qp_destroy_calls == 1);
@@ -400,11 +436,57 @@ void test_aiv_uses_opbase_ext_qp() {
     nds::NpuRaQpConfig config{};
 
     config.local_ipv4 = "192.0.2.10";
-    config.backend = nds::NpuBackendMode::Aiv;
-    assert(qp.create(&api, config));
+    assert(qp.create(&api, config, nds::NpuExecutionMode::Aiv));
     assert(fake.ai_qp_create_calls == 1);
     assert(fake.ai_qp_attrs.qp_mode == NDS_RA_QP_MODE_OPBASE_EXT);
     qp.reset();
+}
+
+void test_ai_qp_mode_override_and_hccp_owned_cq() {
+    FakeRaState fake{};
+    fake.omit_completion_queues = true;
+    state = &fake;
+    nds_ra_api api = make_fake_api();
+    nds::NpuRaQp qp;
+    nds::NpuRaQpConfig config{};
+    config.local_ipv4 = "192.0.2.10";
+    config.ai_qp_mode = NDS_RA_QP_MODE_OPBASE_EXT;
+    config.send_queue_depth = 64U;
+    config.receive_queue_depth = 32U;
+    config.control_flags = 0U;
+    assert(qp.create(&api, config, nds::NpuExecutionMode::Aicpu));
+    assert(fake.ai_qp_attrs.qp_mode == NDS_RA_QP_MODE_OPBASE_EXT);
+    assert(fake.ai_qp_attrs.cq_attr.send_cq_depth == 64);
+    assert(fake.ai_qp_attrs.cq_attr.recv_cq_depth == 32);
+    assert(fake.ai_qp_attrs.data_plane_flag == 0U);
+    assert(qp.set_device_wr_id_storage(0x50000U, 0x60000U));
+    const auto connection = qp.make_device_connection();
+    assert(connection);
+    assert(connection->qp.flags == 0U);
+    assert(connection->qp.send_cq.buffer_address == 0U);
+    assert(connection->qp.receive_cq.buffer_address == 0U);
+}
+
+void test_rejects_incomplete_ai_connection() {
+    FakeRaState fake{};
+    fake.omit_work_queues = true;
+    state = &fake;
+    nds_ra_api api = make_fake_api();
+    nds::NpuRaQp qp;
+    nds::NpuRaQpConfig config{};
+    config.local_ipv4 = "192.0.2.10";
+    assert(qp.create(&api, config, nds::NpuExecutionMode::Aiv));
+    assert(qp.set_device_wr_id_storage(0x50000U, 0x60000U));
+    assert(!qp.make_device_connection());
+    qp.reset();
+
+    fake = {};
+    fake.omit_completion_queues = true;
+    state = &fake;
+    api = make_fake_api();
+    assert(qp.create(&api, config, nds::NpuExecutionMode::Aiv));
+    assert(qp.set_device_wr_id_storage(0x50000U, 0x60000U));
+    assert(!qp.make_device_connection());
 }
 
 void test_memory_registration_lifecycle() {
@@ -444,7 +526,7 @@ void test_send_wr_and_polling() {
 
     config.local_ipv4 = "192.0.2.10";
     assert(qp.create(&api, config));
-    assert(!qp.post_rdma_write({0x1000U, 64U, 0x99U}, 0x2000U, 0x88U, true, &response));
+    assert(!qp.post_send({0x1000U, 64U, 0x99U}, NDS_RA_WR_RDMA_WRITE, 0x2000U, 0x88U, true, &response));
     peer.qp_num = 0x2000U;
     peer.psn = 0x3000U;
     peer.port_num = 1U;
@@ -453,7 +535,7 @@ void test_send_wr_and_polling() {
     peer.retry_count = 7U;
     peer.retry_timeout = 14U;
     assert(qp.connect(peer));
-    assert(qp.post_rdma_write({0x1000U, 64U, 0x99U}, 0x2000U, 0x88U, true, &response));
+    assert(qp.post_send({0x1000U, 64U, 0x99U}, NDS_RA_WR_RDMA_WRITE, 0x2000U, 0x88U, true, &response));
     assert(fake.send_wr_calls == 1);
     assert(fake.send_wr.buffers != nullptr);
     assert(fake.send_wr.buffers->address == 0x1000U);
@@ -506,6 +588,14 @@ void test_rejects_invalid_configuration_and_endpoint() {
     assert(!qp.create(&api, config));
     assert(!qp.error().empty());
     config.local_ipv4 = "192.0.2.10";
+    config.send_queue_depth = 3U;
+    assert(!qp.create(&api, config));
+    config.send_queue_depth = 32768U;
+    config.receive_queue_depth = 1U;
+    assert(!qp.create(&api, config));
+    config.receive_queue_depth = 128U;
+    assert(!qp.create(&api, config, static_cast<nds::NpuExecutionMode>(99)));
+    assert(!qp.error().empty());
     assert(qp.create(&api, config));
     int status = -1;
     assert(qp.query_status(&status));
@@ -544,6 +634,8 @@ int main() {
     test_create_advertise_connect_and_reset();
     test_aicpu_qp_creation_and_connection();
     test_aiv_uses_opbase_ext_qp();
+    test_ai_qp_mode_override_and_hccp_owned_cq();
+    test_rejects_incomplete_ai_connection();
     test_memory_registration_lifecycle();
     test_send_wr_and_polling();
     test_rejects_invalid_configuration_and_endpoint();
