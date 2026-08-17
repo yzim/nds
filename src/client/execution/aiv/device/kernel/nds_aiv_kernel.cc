@@ -1,7 +1,7 @@
 #define NDS_AIV_DEVICE_API_LINKAGE static
 
 #include "kernel_operator.h"
-#include "nds/aiv_device_api.h"
+#include "../aiv_device_api.h"
 
 #include "../qp.cc"
 #include "../connection.cc"

@@ -1,5 +1,5 @@
-#include "nds/aiv_device_api.h"
-#include "nds/aiv_device_internal.h"
+#include "aiv_device_api.h"
+#include "aiv_device_internal.h"
 #include "nds/device_hns_codec.h"
 
 namespace {

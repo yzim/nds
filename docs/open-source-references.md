@@ -113,6 +113,5 @@ They do not publish the private HCCP/RA or device-side RNIC mapping contract.
 
 ## Related NDS documents
 
-- [HCCP QP and MR lifecycle](hccp-resources.md)
-- [Runtime libraries and ABI](runtime-abi.md)
+- [HCCP QP, MR, and runtime ABI](hccp-resources.md)
 - [NPU execution modes](npu-backends.md)

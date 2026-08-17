@@ -82,7 +82,7 @@ tests/            Unit/integration tests and opt-in hardware probes
 docs/             Resource lifecycle, modes, linkage, and implementation guides
 ```
 
-The headers in `src/common/include/nds/` are shared internal interfaces, named
+The headers in `src/include/nds/` are shared internal interfaces, named
 with an `nds/` prefix to avoid collisions. NDS does not currently install an
 external SDK.
 
@@ -116,14 +116,12 @@ specific sources and limits.
 
 - [Architecture](docs/architecture.md): ownership boundaries and the storage
   protocol.
-- [HCCP QP and MR lifecycle](docs/hccp-resources.md): resource ownership,
-  bootstrap, and teardown.
+- [HCCP QP, MR, and runtime ABI](docs/hccp-resources.md): resource ownership,
+  bootstrap, teardown, and the runtime library boundary.
 - [NPU execution modes](docs/npu-backends.md): Host RA, AIV, and AICPU posting paths.
 
 **Runtime and evidence**
 
-- [Runtime libraries and ABI](docs/runtime-abi.md): linked libraries, dynamic
-  loaders, provider boundary, and runtime invariants.
 - [Open-source reference basis](docs/open-source-references.md): public source
   material that informed NDS, with its limits.
 

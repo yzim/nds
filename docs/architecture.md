@@ -13,14 +13,17 @@ Application -> StorageClient -> Transport -> RMA -> protocol resources
 src/
   client/         NPU-attached endpoint
     main.cc        CLI, application buffers, and workload verification
-    control_plane/ shared RA/HCCP control plane: loaders, context, QP/MR, TCP session
-    data_plane/    host example storage plus Host RA / AIV / AICPU data planes
-      abi/         shared device-safe QP, WR, CQ, and connection records
-      host_ra/     host CPU qp post and doorbell
-      aiv/         AIV host launcher and device operators
-      aicpu/       AICPU host launcher and device operators
-      launch.*     host-example adapter into Host RA or a device operator
-      storage.*    host StorageClient used by the validation executable
+    include/      shared device-safe QP, WR, CQ, and connection records
+    resource/     shared RA/HCCP resource lifecycle: loaders, context, QP/MR, TCP session
+    execution/    host-example storage plus Host RA / AIV / AICPU execution modes
+      include/    public APIs of the execution modes (host_ra, aiv_launcher, aicpu_launcher)
+      host_ra/    host CPU qp post and doorbell
+      aiv/        AIV host launcher and device operators
+        device/   AIV device kernels plus their local device headers
+      aicpu/      AICPU host launcher and device operators
+        device/   AICPU device kernels plus their local device headers
+      launch.*    host-example adapter into Host RA or a device operator
+      storage.*   host StorageClient used by the validation executable
   server/         CPU-side endpoint
     main.cc        CLI and memory-backed namespace ownership
     protocol.*     command decode, range checks, data movement, completion
@@ -30,6 +33,8 @@ src/
     connection.*   QP identity, TCP bootstrap, and MTU policy
     protocol.*     shared versioned storage records and codecs
     logging.*      replaceable process logging
+  include/        shared client/server header boundary
+    nds/          protocol.h, connection.h, connection.hh, result.hh, logging.hh
 ```
 
 ## API Matrix
@@ -51,13 +56,13 @@ path, but it is not yet the planned device `StorageClient` API.
 
 ## Device Verbs And Connections
 
-`src/client/data_plane/abi/nds/` owns the device-safe QP, WR, CQ, and
+`src/client/include/nds/` owns the device-safe QP, WR, CQ, and
 connection ABIs. The QP contains only addresses and queue metadata needed by
 device code. The qp layer accepts a QP and WR/CQ request. The connection layer
 accepts a connection and transfer, then constructs the qp WR for Send, Recv,
 Read, or Write.
 
-`data_plane/launch.*` is the host-example adapter that selects Host RA, AIV, or
+`execution/launch.*` is the host-example adapter that selects Host RA, AIV, or
 AICPU and launches the device connection entry when required. It is not the
 implementation of the AIV/AICPU qp or connection APIs.
 
@@ -116,7 +121,7 @@ bootstrap, and MTU policy. `src/common/protocol.*` contains the C-compatible
 storage record ABI and codecs. Neither side exchanges HCCP handles, verbs
 objects, AI-QP descriptors, queue addresses, or doorbell addresses.
 
-The corresponding headers live in `src/common/include/nds/`. They are shared
+The corresponding headers live in `src/include/nds/`. They are shared
 between NDS targets, not an installed public SDK: `connection.h` is the C ABI
 for QP identity and MTU policy, `connection.hh` owns the C++ TCP bootstrap
 object, and `protocol.h` is the C ABI for storage records.

@@ -139,7 +139,7 @@ No corresponding HCOMM AICPU wrapper for `post_recv` or `poll_cq` was found in
 that path. Host HCCP and `rdma_lite` do have receive-post and CQ-poll
 operations, but those are separate interfaces and execution environments.
 
-Additional matching source can be materialized remotely on `node200` for
+Additional matching source can be materialized remotely on the target host for
 research. It should remain outside the NDS build. Useful next references are
 the HCOMM-patched HNS provider, matching HNS kernel driver, HCCP sources, and
 URMA sources. Source observations must still be checked against installed

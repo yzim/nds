@@ -45,13 +45,13 @@ The current source tree implements these boundaries independently in
 `src/client` and `src/server`. The NPU-attached client has `storage.*`,
 `transport.*`, `rma.*`, and a `main.cc` application entry point. Its
 execution-specific work-request implementations remain under
-`client/data_plane/`.
+`client/execution/`.
 The server keeps its protocol, transport, and verbs implementation. Shared
 QP identity and TCP bootstrap live in `src/common/connection.*`, and
 shared storage records live in `src/common/protocol.*`.
 See [architecture](architecture.md) for concrete ownership rules.
 
-`src/common/include/nds/` is an internal shared-header boundary. Its `nds/`
+`src/include/nds/` is an internal shared-header boundary. Its `nds/`
 prefix prevents generic names such as `protocol.h` and `connection.h` from
 colliding across targets. It is not yet an installed or versioned external
 NDS SDK; any public-library surface will be designed separately when NDS needs

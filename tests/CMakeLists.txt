@@ -15,14 +15,14 @@ nds_add_unit_test(nds_client_rma_test client_rma_test.cc)
 target_link_libraries(nds_client_rma_test PRIVATE nds_client_launch)
 nds_add_unit_test(nds_device_hns_codec_test device_hns_codec_test.cc)
 target_include_directories(nds_device_hns_codec_test PRIVATE
-    ${PROJECT_SOURCE_DIR}/src/client/data_plane/abi)
+    ${PROJECT_SOURCE_DIR}/src/client/include)
 nds_add_unit_test(nds_device_connection_test device_connection_test.cc)
 target_include_directories(nds_device_connection_test PRIVATE
-    ${PROJECT_SOURCE_DIR}/src/client/data_plane/abi)
+    ${PROJECT_SOURCE_DIR}/src/client/include)
 nds_add_unit_test(nds_device_storage_test device_storage_test.cc)
 target_include_directories(nds_device_storage_test PRIVATE
-    ${PROJECT_SOURCE_DIR}/src/client/data_plane/abi
-    ${PROJECT_SOURCE_DIR}/src/common/include)
+    ${PROJECT_SOURCE_DIR}/src/client/include
+    ${PROJECT_SOURCE_DIR}/src/include)
 nds_add_unit_test(nds_logging_test logging_test.cc)
 target_link_libraries(nds_logging_test PRIVATE nds_logging)
 

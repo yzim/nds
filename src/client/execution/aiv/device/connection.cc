@@ -1,5 +1,5 @@
-#include "nds/aiv_device_api.h"
-#include "nds/aiv_device_internal.h"
+#include "aiv_device_api.h"
+#include "aiv_device_internal.h"
 
 NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaSend(__gm__ const nds_device_connection *connection,
                                            __gm__ const nds_device_transfer *transfer, TBuf<> *scratch,

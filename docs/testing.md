@@ -90,7 +90,7 @@ send CQ, and verify the payload at the destination. The executables contain no
 target addresses and are not registered with CTest; target-specific bounded
 launch commands remain under `.local/`.
 
-On the CANN 9.0.0 `node200` target, bounded probes have directly validated AIV
+On the CANN 9.0.0 target host, bounded probes have directly validated AIV
 and AICPU Send posting with SCQ polling and CPU-side payload verification, plus
 receive posting with RCQ polling and NPU-side payload verification. Direct
 RDMA Read and RDMA Write with SCQ polling and destination-side payload checks

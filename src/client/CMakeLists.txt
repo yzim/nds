@@ -1,8 +1,8 @@
 add_library(nds_ra_loader STATIC
-    control_plane/loaders/ra_loader.cc
-    control_plane/loaders/runtime_loader.cc
-    control_plane/loaders/acl_loader.cc)
-target_include_directories(nds_ra_loader PUBLIC control_plane/include)
+    resource/loaders/ra_loader.cc
+    resource/loaders/runtime_loader.cc
+    resource/loaders/acl_loader.cc)
+target_include_directories(nds_ra_loader PUBLIC resource/include)
 target_compile_options(nds_ra_loader PRIVATE -Wall -Wextra -Wpedantic -Werror)
 target_link_libraries(nds_ra_loader PUBLIC ${CMAKE_DL_LIBS})
 
@@ -21,45 +21,45 @@ if(NDS_LINK_PUBLIC_ACL)
     endif()
 endif()
 
-add_library(nds_npu_ra_context STATIC control_plane/npu_ra_context.cc)
-target_include_directories(nds_npu_ra_context PUBLIC control_plane/include)
+add_library(nds_npu_ra_context STATIC resource/npu_ra_context.cc)
+target_include_directories(nds_npu_ra_context PUBLIC resource/include)
 target_link_libraries(nds_npu_ra_context PUBLIC nds_ra_loader)
 target_compile_options(nds_npu_ra_context PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
-add_library(nds_npu_ra_qp STATIC control_plane/npu_ra_qp.cc)
-target_include_directories(nds_npu_ra_qp PUBLIC control_plane/include)
-target_include_directories(nds_npu_ra_qp PUBLIC data_plane/abi)
+add_library(nds_npu_ra_qp STATIC resource/npu_ra_qp.cc)
+target_include_directories(nds_npu_ra_qp PUBLIC resource/include)
+target_include_directories(nds_npu_ra_qp PUBLIC include)
 target_link_libraries(nds_npu_ra_qp PUBLIC nds_ra_loader nds_transport)
 target_compile_options(nds_npu_ra_qp PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
-add_library(nds_host_ra STATIC data_plane/host_ra/qp.cc)
-target_include_directories(nds_host_ra PUBLIC data_plane/host_ra/include)
+add_library(nds_host_ra STATIC execution/host_ra/qp.cc)
+target_include_directories(nds_host_ra PUBLIC execution/include)
 target_link_libraries(nds_host_ra PUBLIC nds_npu_ra_context nds_npu_ra_qp nds_logging)
 target_compile_options(nds_host_ra PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
-add_library(nds_aiv_launcher STATIC data_plane/aiv/host/launcher.cc)
+add_library(nds_aiv_launcher STATIC execution/aiv/host/launcher.cc)
 target_include_directories(nds_aiv_launcher PUBLIC
-    data_plane/aiv/host/include data_plane/abi control_plane/include)
+    execution/include include resource/include)
 target_link_libraries(nds_aiv_launcher PUBLIC nds_ra_loader)
 target_compile_options(nds_aiv_launcher PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
-add_library(nds_aicpu_launcher STATIC data_plane/aicpu/host/launcher.cc)
+add_library(nds_aicpu_launcher STATIC execution/aicpu/host/launcher.cc)
 target_include_directories(nds_aicpu_launcher PUBLIC
-    data_plane/aicpu/host/include data_plane/abi control_plane/include)
+    execution/include include resource/include)
 target_link_libraries(nds_aicpu_launcher PUBLIC nds_ra_loader)
 target_compile_options(nds_aicpu_launcher PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
-add_library(nds_client_control STATIC control_plane/connection.cc)
+add_library(nds_client_control STATIC resource/connection.cc)
 target_include_directories(nds_client_control PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/control_plane
-    ${CMAKE_CURRENT_SOURCE_DIR}/data_plane)
+    ${CMAKE_CURRENT_SOURCE_DIR}/resource
+    ${CMAKE_CURRENT_SOURCE_DIR}/execution)
 target_link_libraries(nds_client_control PUBLIC nds_npu_ra_context nds_npu_ra_qp nds_transport)
 target_compile_options(nds_client_control PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
-add_library(nds_client_launch STATIC data_plane/launch.cc)
+add_library(nds_client_launch STATIC execution/launch.cc)
 target_include_directories(nds_client_launch PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/data_plane
-    ${CMAKE_CURRENT_SOURCE_DIR}/control_plane)
+    ${CMAKE_CURRENT_SOURCE_DIR}/execution
+    ${CMAKE_CURRENT_SOURCE_DIR}/resource)
 target_link_libraries(nds_client_launch PUBLIC
     nds_client_control
     nds_host_ra
@@ -67,10 +67,10 @@ target_link_libraries(nds_client_launch PUBLIC
     nds_aicpu_launcher)
 target_compile_options(nds_client_launch PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
-add_library(nds_client_storage STATIC data_plane/storage.cc)
+add_library(nds_client_storage STATIC execution/storage.cc)
 target_include_directories(nds_client_storage PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/data_plane
-    ${CMAKE_CURRENT_SOURCE_DIR}/control_plane)
+    ${CMAKE_CURRENT_SOURCE_DIR}/execution
+    ${CMAKE_CURRENT_SOURCE_DIR}/resource)
 target_link_libraries(nds_client_storage PUBLIC nds_client_launch nds_protocol)
 target_compile_options(nds_client_storage PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
@@ -92,8 +92,8 @@ if(NDS_BUILD_AIV_KERNEL)
         message(FATAL_ERROR "CANN AIV CCEC/ld.lld tools were not found below ${NDS_CANN_ROOT}/aarch64-linux/bin")
     endif()
 
-    set(NDS_AIV_KERNEL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/data_plane/aiv/device/kernel")
-    set(NDS_AIV_DEVICE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/data_plane/aiv/device")
+    set(NDS_AIV_KERNEL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/execution/aiv/device/kernel")
+    set(NDS_AIV_DEVICE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/execution/aiv/device")
     set(NDS_AIV_OUTPUT_DIR "${CMAKE_BINARY_DIR}/aiv")
     set(NDS_AIV_OBJECT "${NDS_AIV_OUTPUT_DIR}/nds_aiv_kernel.o")
     set(NDS_AIV_QP_OBJECT "${NDS_AIV_OUTPUT_DIR}/nds_aiv_qp.o")
@@ -106,9 +106,9 @@ if(NDS_BUILD_AIV_KERNEL)
             -I${NDS_CANN_ROOT}/aarch64-linux/asc/include/micro_api -I${NDS_CANN_ROOT}/aarch64-linux/asc/impl
             -I${NDS_CANN_ROOT}/aarch64-linux/asc/impl/basic_api -I${NDS_CANN_ROOT}/aarch64-linux/asc/impl/micro_api
             -I${NDS_CANN_ROOT}/aarch64-linux/ascendc/include -I${NDS_CANN_ROOT}/aarch64-linux/ascendc/include/highlevel_api
-            -I${CMAKE_CURRENT_SOURCE_DIR}/data_plane/aiv/host/include -I${NDS_AIV_DEVICE_DIR}/include
-            -I${CMAKE_CURRENT_SOURCE_DIR}/data_plane/abi
-            -I${PROJECT_SOURCE_DIR}/src/common/include)
+            -I${NDS_AIV_DEVICE_DIR} -I${CMAKE_CURRENT_SOURCE_DIR}/execution/include
+            -I${CMAKE_CURRENT_SOURCE_DIR}/include
+            -I${PROJECT_SOURCE_DIR}/src/include)
     add_custom_command(
         OUTPUT "${NDS_AIV_OBJECT}"
         BYPRODUCTS "${NDS_AIV_QP_OBJECT}" "${NDS_AIV_CONNECTION_OBJECT}" "${NDS_AIV_STORAGE_OBJECT}"
@@ -131,14 +131,14 @@ if(NDS_BUILD_AIV_KERNEL)
             "${NDS_AIV_DEVICE_DIR}/qp.cc"
             "${NDS_AIV_DEVICE_DIR}/connection.cc"
             "${NDS_AIV_DEVICE_DIR}/storage.cc"
-            "${NDS_AIV_DEVICE_DIR}/include/nds/aiv_device_api.h"
-            "${NDS_AIV_DEVICE_DIR}/include/nds/aiv_device_internal.h"
-            "${CMAKE_CURRENT_SOURCE_DIR}/data_plane/abi/nds/device_operations.h"
-            "${CMAKE_CURRENT_SOURCE_DIR}/data_plane/abi/nds/device_connection.h"
-            "${CMAKE_CURRENT_SOURCE_DIR}/data_plane/abi/nds/device_verbs.h"
-            "${CMAKE_CURRENT_SOURCE_DIR}/data_plane/abi/nds/device_qp.h"
-            "${CMAKE_CURRENT_SOURCE_DIR}/data_plane/abi/nds/device_hns_codec.h"
-            "${CMAKE_CURRENT_SOURCE_DIR}/data_plane/abi/nds/device_storage.h"
+            "${NDS_AIV_DEVICE_DIR}/aiv_device_api.h"
+            "${NDS_AIV_DEVICE_DIR}/aiv_device_internal.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_operations.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_connection.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_verbs.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_qp.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_hns_codec.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_storage.h"
         VERBATIM)
     add_custom_target(nds_aiv_kernel ALL DEPENDS "${NDS_AIV_OBJECT}")
 endif()
@@ -151,7 +151,7 @@ if(NDS_BUILD_AICPU_KERNEL)
         message(FATAL_ERROR "NDS_BUILD_AICPU_KERNEL requires -DNDS_CANN_ROOT=<CANN root>")
     endif()
 
-    set(NDS_AICPU_DEVICE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/data_plane/aicpu/device")
+    set(NDS_AICPU_DEVICE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/execution/aicpu/device")
     set(NDS_AICPU_COMPILER "${NDS_CANN_ROOT}/tools/hcc/bin/aarch64-target-linux-gnu-g++")
     if(NOT EXISTS "${NDS_AICPU_COMPILER}")
         message(FATAL_ERROR "CANN AICPU shared-library compiler not found: ${NDS_AICPU_COMPILER}")
@@ -166,10 +166,10 @@ if(NDS_BUILD_AICPU_KERNEL)
         COMMAND "${CMAKE_COMMAND}" -E make_directory "${NDS_AICPU_OUTPUT_DIR}"
         COMMAND "${NDS_AICPU_COMPILER}" -x c++ -shared -fPIC -O2 -std=c++17
             -D_GLIBCXX_USE_CXX11_ABI=1 -D_FORTIFY_SOURCE=2 -D_GNU_SOURCE -fvisibility=hidden -fstack-protector-strong
-            -fno-common -fno-strict-aliasing -Wall -Wextra -Werror -I${NDS_AICPU_DEVICE_DIR}/include
-            -I${CMAKE_CURRENT_SOURCE_DIR}/data_plane/aicpu/host/include
-            -I${CMAKE_CURRENT_SOURCE_DIR}/data_plane/abi
-            -I${PROJECT_SOURCE_DIR}/src/common/include
+            -fno-common -fno-strict-aliasing -Wall -Wextra -Werror -I${NDS_AICPU_DEVICE_DIR}
+            -I${CMAKE_CURRENT_SOURCE_DIR}/execution/include
+            -I${CMAKE_CURRENT_SOURCE_DIR}/include
+            -I${PROJECT_SOURCE_DIR}/src/include
             ${NDS_AICPU_DEVICE_DIR}/nds_aicpu_kernel.cc
             ${NDS_AICPU_DEVICE_DIR}/qp.cc
             ${NDS_AICPU_DEVICE_DIR}/connection.cc
@@ -179,15 +179,15 @@ if(NDS_BUILD_AICPU_KERNEL)
             "${NDS_AICPU_DEVICE_DIR}/qp.cc"
             "${NDS_AICPU_DEVICE_DIR}/connection.cc"
             "${NDS_AICPU_DEVICE_DIR}/storage.cc"
-            "${NDS_AICPU_DEVICE_DIR}/include/nds_aicpu_device_api.h"
-            "${NDS_AICPU_DEVICE_DIR}/include/nds_aicpu_device_internal.h"
-            "${NDS_AICPU_DEVICE_DIR}/include/nds_aicpu_hns_abi.h"
-            "${CMAKE_CURRENT_SOURCE_DIR}/data_plane/abi/nds/device_operations.h"
-            "${CMAKE_CURRENT_SOURCE_DIR}/data_plane/abi/nds/device_connection.h"
-            "${CMAKE_CURRENT_SOURCE_DIR}/data_plane/abi/nds/device_verbs.h"
-            "${CMAKE_CURRENT_SOURCE_DIR}/data_plane/abi/nds/device_qp.h"
-            "${CMAKE_CURRENT_SOURCE_DIR}/data_plane/abi/nds/device_hns_codec.h"
-            "${CMAKE_CURRENT_SOURCE_DIR}/data_plane/abi/nds/device_storage.h"
+            "${NDS_AICPU_DEVICE_DIR}/nds_aicpu_device_api.h"
+            "${NDS_AICPU_DEVICE_DIR}/nds_aicpu_device_internal.h"
+            "${NDS_AICPU_DEVICE_DIR}/nds_aicpu_hns_abi.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_operations.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_connection.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_verbs.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_qp.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_hns_codec.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_storage.h"
         VERBATIM)
     configure_file(${NDS_AICPU_DEVICE_DIR}/package/nds_aicpu_standard.json.in "${NDS_AICPU_STANDARD_CONFIG}" @ONLY)
     add_custom_command(

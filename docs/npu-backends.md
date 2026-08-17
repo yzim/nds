@@ -69,6 +69,109 @@ The initial protocol permits one command in flight on one RC QP. Queueing,
 multi-QP sessions, and an NPU Receive-based completion option are tracked in
 [the roadmap](roadmap.md).
 
+## Device Data Plane
+
+AIV and AICPU operate on an NDS-owned device QP and connection without
+receiving an HCCP handle or host C++ object. The host creates and connects the
+QP, registers memory, and packages device-visible addresses into the shared
+ABI below. This is the reusable device data plane that both execution modes
+compile.
+
+```text
+Storage API
+    -> device transport/session protocol (future)
+        -> device connection: RDMA Send, Recv, Read, Write
+            -> device verbs: post_send, post_recv, poll_cq
+                -> provider symbols or SQ/RQ/CQ and doorbells
+```
+
+### Shared ABI
+
+The C-compatible shared ABI lives in `src/client/include/nds/` and is split by
+responsibility:
+
+- `device_qp.h`: `nds_device_qp`, SQ/RQ/SCQ/RCQ descriptors, provider QP/CQ
+  addresses, doorbell modes, and WR-ID sidecars.
+- `device_verbs.h`: SGE, send WR, receive WR, CQ-poll request, completion, and
+  operation result types.
+- `device_connection.h`: a versioned `nds_device_connection` containing one QP
+  and the transfer description used by connection operations.
+- `device_operations.h`: the narrow host-launch dispatch record. It is an
+  adapter into the connection layer, not the device API itself.
+
+The QP and connection records remain local to the NPU endpoint and are never
+exchanged with the CPU.
+
+### Verbs APIs
+
+AIV exposes the following AICore-callable functions in
+`src/client/execution/aiv/device/aiv_device_api.h`:
+
+```text
+NdsAivPostSend(qp, send_wr, scratch, result)
+NdsAivPostRecv(qp, recv_wr, scratch, result)
+NdsAivPollCq(qp, poll_request, scratch, result)
+```
+
+Their implementation is in `src/client/execution/aiv/device/qp.cc` and
+`src/client/execution/aiv/device/connection.cc`. Storage Read/Write is in
+`src/client/execution/aiv/device/storage.cc`. Another AIV operator includes
+the API header and compiles that implementation into its AICore translation
+unit. CANN 9.0.0 rejects the otherwise valid multi-object AIV image at ACL load
+time, so NDS deliberately builds the loadable entry and dataplane as one
+translation unit. Standalone `nds_aiv_qp.o`, `nds_aiv_connection.o`, and
+`nds_aiv_storage.o` are still emitted for compile and symbol verification, but
+are not presented as a separately loadable kernel.
+
+AICPU exports these symbols from `libnds_aicpu_standard.so`:
+
+```text
+NdsAicpuPostSend(qp, send_wr, result)
+NdsAicpuPostRecv(qp, recv_wr, result)
+NdsAicpuPollCq(qp, poll_request, result)
+```
+
+`PostSend` resolves the installed HNS provider's `ibv_exp_post_send` inside
+standard CP1. `PostRecv` and `PollCq` try provider/verbs symbols first and use
+the NDS queue-address implementation when those inline verbs operations are
+not exported.
+
+### Connection APIs
+
+The connection layer accepts `nds_device_connection` plus an
+`nds_device_transfer` and constructs the appropriate verbs WR. Both execution
+environments expose:
+
+```text
+RdmaSend(connection, transfer, result)
+RdmaRecv(connection, transfer, result)
+RdmaRead(connection, transfer, result)
+RdmaWrite(connection, transfer, result)
+```
+
+The concrete symbols are prefixed `NdsAiv` or `NdsAicpu`. Send, Read, and
+Write lower to `PostSend` with distinct logical WR opcodes. Recv lowers to
+`PostRecv`. CQ polling intentionally remains a verbs operation because callers
+must choose SCQ or RCQ and consume explicit work completions.
+
+The loaded entry points `NdsAivConnectionOp` and `NdsAicpuConnectionOp` only
+validate and dispatch the versioned host-launch record into these connection
+or qp functions. Other device operators do not need to call the entry points.
+
+### Storage APIs
+
+AIV and AICPU also implement the storage layer. They encode the command
+record, Send it, and wait for the CPU-written completion record in device
+memory:
+
+```text
+NdsAivStorageRead / NdsAivStorageWrite
+NdsAicpuStorageRead / NdsAicpuStorageWrite
+```
+
+RNIC work completions are not NDS storage completion. Storage completion
+remains the terminal protocol record written by the CPU endpoint.
+
 ## Host RA
 
 Host RA is the NPU-host-CPU baseline. The host CPU itself executes the command
@@ -90,11 +193,11 @@ CQE is not protocol completion.
 
 Key implementation paths:
 
-- `src/client/data_plane/storage.cc`: host StorageClient command and completion flow.
-- `src/client/data_plane/launch.cc`: host-example adapter into Host RA or a device operator.
-- `src/client/data_plane/host_ra/qp.cc`: RA post and runtime doorbell.
-- `src/client/control_plane/npu_ra_qp.cc`: QP and MR calls.
-- `src/client/control_plane/npu_ra_context.cc`: runtime lifecycle,
+- `src/client/execution/storage.cc`: host StorageClient command and completion flow.
+- `src/client/execution/launch.cc`: host-example adapter into Host RA or a device operator.
+- `src/client/execution/host_ra/qp.cc`: RA post and runtime doorbell.
+- `src/client/resource/npu_ra_qp.cc`: QP and MR calls.
+- `src/client/resource/npu_ra_context.cc`: runtime lifecycle,
   doorbell, and device-to-host completion copy.
 - `src/server/protocol.cc` and `src/server/backend.cc`: CPU sequencing and
   CQ polling.
@@ -137,16 +240,17 @@ CPU:  Receive command -> RDMA Read/Write data -> RDMA Write completion record
 Host: poll copied NPU completion record
 ```
 
-`NdsAivPostSend`, `NdsAivPostRecv`, and `NdsAivPollCq` are reusable verbs
-functions. `NdsAivRdmaSend`, `NdsAivRdmaRecv`, `NdsAivRdmaRead`, and
-`NdsAivRdmaWrite` form the connection layer above them. The loaded
-`NdsAivConnectionOp` kernel is only a host-launch adapter.
+The device verbs, connection, and storage APIs for AIV are the ones described
+in [Device Data Plane](#device-data-plane): `NdsAivPostSend`, `NdsAivPostRecv`,
+`NdsAivPollCq` form the verbs layer, and `NdsAivRdmaSend`, `NdsAivRdmaRecv`,
+`NdsAivRdmaRead`, and `NdsAivRdmaWrite` form the connection layer above them.
+The loaded `NdsAivConnectionOp` kernel is only a host-launch adapter.
 
-- Shared ABI: `src/client/data_plane/abi/nds/`.
-- Device API: `src/client/data_plane/aiv/device/include/nds/aiv_device_api.h`.
-- qp/connection/storage: `src/client/data_plane/aiv/device/{qp,connection,storage}.cc`.
-- Entry kernel: `src/client/data_plane/aiv/device/kernel/nds_aiv_kernel.cc`.
-- Host launcher: `src/client/data_plane/aiv/host/launcher.cc`.
+- Shared ABI: `src/client/include/nds/`.
+- Device API: `src/client/execution/aiv/device/aiv_device_api.h`.
+- qp/connection/storage: `src/client/execution/aiv/device/{qp,connection,storage}.cc`.
+- Entry kernel: `src/client/execution/aiv/device/kernel/nds_aiv_kernel.cc`.
+- Host launcher: `src/client/execution/aiv/host/launcher.cc`.
 
 ```sh
 cmake -S . -B build-aiv -DNDS_CANN_ROOT=<cann-root> -DNDS_BUILD_AIV_KERNEL=ON
@@ -179,6 +283,12 @@ CPU:  Receive command -> RDMA Read/Write data -> RDMA Write completion record
 Host: poll copied NPU completion record
 ```
 
+The device verbs, connection, and storage APIs for AICPU are the ones described
+in [Device Data Plane](#device-data-plane): the three exported verbs functions
+(`NdsAicpuPostSend`, `NdsAicpuPostRecv`, `NdsAicpuPollCq`) and the four
+connection functions (`NdsAicpuRdmaSend`, `NdsAicpuRdmaRecv`, `NdsAicpuRdmaRead`,
+`NdsAicpuRdmaWrite`).
+
 The host process does not load `libhns-rdmav25.so`; standard CP1 resolves it
 in the NPU execution environment. The default NORMAL AI QP lets the provider
 ring its normal-QP doorbell. Provider-OP mode may instead return doorbell
@@ -187,11 +297,11 @@ Standard `ibv_post_recv` and `ibv_poll_cq` are commonly inline rather than
 exported symbols, so the operator falls back to the descriptor's RQ and CQ
 addresses when lookup fails.
 
-- Shared ABI: `src/client/data_plane/abi/nds/`.
-- Device API: `src/client/data_plane/aicpu/device/include/nds_aicpu_device_api.h`.
-- qp/connection/storage: `src/client/data_plane/aicpu/device/{qp,connection,storage}.cc`.
+- Shared ABI: `src/client/include/nds/`.
+- Device API: `src/client/execution/aicpu/device/nds_aicpu_device_api.h`.
+- qp/connection/storage: `src/client/execution/aicpu/device/{qp,connection,storage}.cc`.
 - Entry point: `NdsAicpuConnectionOp` (a connection-dispatch adapter).
-- Package: `src/client/data_plane/aicpu/device/package/nds_aicpu_standard.json.in`.
+- Package: `src/client/execution/aicpu/device/package/nds_aicpu_standard.json.in`.
 
 ```sh
 cmake -S . -B build-aicpu -DNDS_CANN_ROOT=<cann-root> -DNDS_BUILD_AICPU_KERNEL=ON

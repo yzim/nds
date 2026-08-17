@@ -14,10 +14,9 @@ The endpoint roles are fixed:
   second NPU.
 
 Start with [README.md](README.md) for the runnable baseline. Technical choices
-belong in `docs/`: [HCCP QP and MR lifecycle](docs/hccp-resources.md),
-[mode overview](docs/modes.md), [host RA](docs/host-ra.md), [AIV](docs/aiv.md),
-[AICPU](docs/aicpu.md), and
-[linkage policy](docs/linkage.md), [testing](docs/testing.md), and the
+belong in `docs/`: [HCCP QP, MR, and runtime ABI](docs/hccp-resources.md),
+[execution modes](docs/npu-backends.md),
+[architecture](docs/architecture.md), [testing](docs/testing.md), and the
 [protocol roadmap](docs/roadmap.md). Source ownership and dependency direction
 are defined in [architecture](docs/architecture.md).
 
@@ -25,7 +24,7 @@ are defined in [architecture](docs/architecture.md).
 
 - Never build or test NDS on this Mac. The Mac is the source and Git authority
   only. Build, inspect CANN/HCOMM/HCCL sources, and run hardware validation on
-  `node200`.
+  the remote target host.
 - Synchronize source without `.git`, `.local`, or build output. Keep target
   paths, addresses, logs, and operational commands under ignored `.local/`.
 - Use one NPU, `sudo -n`, a whole-process timeout, and no blind retry for a
@@ -97,5 +96,5 @@ network configuration system and verify connectivity in both directions.
 
 Do not represent a package build, stream synchronization, provider resolution,
 or HCCP internal AI-QP CQ handling as an NDS command completion. Completion
-ownership is mode-specific and documented in `docs/modes.md`. Keep claims of
+ownership is mode-specific and documented in `docs/npu-backends.md`. Keep claims of
 hardware validation tied to recorded, bounded target experiments.
