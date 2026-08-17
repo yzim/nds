@@ -12,7 +12,7 @@
 namespace nds {
 
 enum class NpuExecutionMode {
-    HostRa,
+    Ra,
     Aicpu,
     Aiv,
 };
@@ -57,7 +57,7 @@ public:
     NpuRaQp &operator=(NpuRaQp &&) = delete;
 
     bool create(nds_ra_api *api, const NpuRaQpConfig &config,
-                NpuExecutionMode execution = NpuExecutionMode::HostRa);
+                NpuExecutionMode execution = NpuExecutionMode::Ra);
     bool make_qp_info(nds_qp_info *info);
     bool register_memory(void *address, std::uint64_t size, int access, nds_ra_mr_info *info, void **mr_handle);
     bool deregister_memory(void *mr_handle);
@@ -90,7 +90,7 @@ private:
 
     nds_ra_api *api_{nullptr};
     NpuRaQpConfig config_{};
-    NpuExecutionMode execution_{NpuExecutionMode::HostRa};
+    NpuExecutionMode execution_{NpuExecutionMode::Ra};
     void *rdev_handle_{nullptr};
     void *qp_handle_{nullptr};
     nds_ra_qp_attr local_attributes_{};

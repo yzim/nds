@@ -32,20 +32,23 @@ target_include_directories(nds_npu_ra_qp PUBLIC include)
 target_link_libraries(nds_npu_ra_qp PUBLIC nds_ra_loader nds_transport)
 target_compile_options(nds_npu_ra_qp PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
-add_library(nds_host_ra STATIC execution/host_ra/qp.cc)
-target_include_directories(nds_host_ra PUBLIC execution/include)
-target_link_libraries(nds_host_ra PUBLIC nds_npu_ra_context nds_npu_ra_qp nds_logging)
-target_compile_options(nds_host_ra PRIVATE -Wall -Wextra -Wpedantic -Werror)
+add_library(nds_ra STATIC
+    execution/ra/verbs.cc
+    execution/ra/connection.cc
+    execution/ra/storage.cc)
+target_include_directories(nds_ra PUBLIC execution/ra)
+target_link_libraries(nds_ra PUBLIC nds_npu_ra_context nds_npu_ra_qp nds_logging)
+target_compile_options(nds_ra PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 add_library(nds_aiv_launcher STATIC execution/aiv/host/launcher.cc)
 target_include_directories(nds_aiv_launcher PUBLIC
-    execution/include include resource/include)
+    execution include resource/include)
 target_link_libraries(nds_aiv_launcher PUBLIC nds_ra_loader)
 target_compile_options(nds_aiv_launcher PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 add_library(nds_aicpu_launcher STATIC execution/aicpu/host/launcher.cc)
 target_include_directories(nds_aicpu_launcher PUBLIC
-    execution/include include resource/include)
+    execution include resource/include)
 target_link_libraries(nds_aicpu_launcher PUBLIC nds_ra_loader)
 target_compile_options(nds_aicpu_launcher PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
@@ -56,27 +59,17 @@ target_include_directories(nds_client_control PUBLIC
 target_link_libraries(nds_client_control PUBLIC nds_npu_ra_context nds_npu_ra_qp nds_transport)
 target_compile_options(nds_client_control PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
-add_library(nds_client_launch STATIC execution/launch.cc)
-target_include_directories(nds_client_launch PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/execution
-    ${CMAKE_CURRENT_SOURCE_DIR}/resource)
-target_link_libraries(nds_client_launch PUBLIC
-    nds_client_control
-    nds_host_ra
-    nds_aiv_launcher
-    nds_aicpu_launcher)
-target_compile_options(nds_client_launch PRIVATE -Wall -Wextra -Wpedantic -Werror)
-
-add_library(nds_client_storage STATIC execution/storage.cc)
+add_library(nds_client_storage STATIC resource/storage.cc)
 target_include_directories(nds_client_storage PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/execution
     ${CMAKE_CURRENT_SOURCE_DIR}/resource)
-target_link_libraries(nds_client_storage PUBLIC nds_client_launch nds_protocol)
+target_link_libraries(nds_client_storage PUBLIC
+    nds_client_control
+    nds_ra
+    nds_aiv_launcher
+    nds_aicpu_launcher
+    nds_protocol)
 target_compile_options(nds_client_storage PRIVATE -Wall -Wextra -Wpedantic -Werror)
-
-# Compatibility names used by tests and hardware probes.
-add_library(nds_client_rma ALIAS nds_client_launch)
-add_library(nds_client_transport ALIAS nds_client_launch)
 
 if(NDS_BUILD_AIV_KERNEL)
     if(NOT CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
@@ -92,13 +85,9 @@ if(NDS_BUILD_AIV_KERNEL)
         message(FATAL_ERROR "CANN AIV CCEC/ld.lld tools were not found below ${NDS_CANN_ROOT}/aarch64-linux/bin")
     endif()
 
-    set(NDS_AIV_KERNEL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/execution/aiv/device/kernel")
     set(NDS_AIV_DEVICE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/execution/aiv/device")
     set(NDS_AIV_OUTPUT_DIR "${CMAKE_BINARY_DIR}/aiv")
     set(NDS_AIV_OBJECT "${NDS_AIV_OUTPUT_DIR}/nds_aiv_kernel.o")
-    set(NDS_AIV_QP_OBJECT "${NDS_AIV_OUTPUT_DIR}/nds_aiv_qp.o")
-    set(NDS_AIV_CONNECTION_OBJECT "${NDS_AIV_OUTPUT_DIR}/nds_aiv_connection.o")
-    set(NDS_AIV_STORAGE_OBJECT "${NDS_AIV_OUTPUT_DIR}/nds_aiv_storage.o")
     set(NDS_AIV_ENTRY_OBJECT "${NDS_AIV_OUTPUT_DIR}/nds_aiv_entry.o")
     set(NDS_AIV_CCEC_INCLUDES
             -I${NDS_CANN_ROOT}/aarch64-linux/asc/include -I${NDS_CANN_ROOT}/aarch64-linux/asc
@@ -106,34 +95,25 @@ if(NDS_BUILD_AIV_KERNEL)
             -I${NDS_CANN_ROOT}/aarch64-linux/asc/include/micro_api -I${NDS_CANN_ROOT}/aarch64-linux/asc/impl
             -I${NDS_CANN_ROOT}/aarch64-linux/asc/impl/basic_api -I${NDS_CANN_ROOT}/aarch64-linux/asc/impl/micro_api
             -I${NDS_CANN_ROOT}/aarch64-linux/ascendc/include -I${NDS_CANN_ROOT}/aarch64-linux/ascendc/include/highlevel_api
-            -I${NDS_AIV_DEVICE_DIR} -I${CMAKE_CURRENT_SOURCE_DIR}/execution/include
+            -I${NDS_AIV_DEVICE_DIR}
             -I${CMAKE_CURRENT_SOURCE_DIR}/include
             -I${PROJECT_SOURCE_DIR}/src/include)
     add_custom_command(
         OUTPUT "${NDS_AIV_OBJECT}"
-        BYPRODUCTS "${NDS_AIV_QP_OBJECT}" "${NDS_AIV_CONNECTION_OBJECT}" "${NDS_AIV_STORAGE_OBJECT}"
-            "${NDS_AIV_ENTRY_OBJECT}"
+        BYPRODUCTS "${NDS_AIV_ENTRY_OBJECT}"
         COMMAND "${CMAKE_COMMAND}" -E make_directory "${NDS_AIV_OUTPUT_DIR}"
         COMMAND "${NDS_CCEC}" -c -x cce -O2 --cce-aicore-arch=dav-c220-vec --cce-aicore-only -std=c++17
-            -DTILING_KEY_VAR=0 ${NDS_AIV_CCEC_INCLUDES}
-            ${NDS_AIV_DEVICE_DIR}/qp.cc -o ${NDS_AIV_QP_OBJECT}
-        COMMAND "${NDS_CCEC}" -c -x cce -O2 --cce-aicore-arch=dav-c220-vec --cce-aicore-only -std=c++17
             ${NDS_AIV_CCEC_INCLUDES}
-            ${NDS_AIV_DEVICE_DIR}/connection.cc -o ${NDS_AIV_CONNECTION_OBJECT}
-        COMMAND "${NDS_CCEC}" -c -x cce -O2 --cce-aicore-arch=dav-c220-vec --cce-aicore-only -std=c++17
-            ${NDS_AIV_CCEC_INCLUDES}
-            ${NDS_AIV_DEVICE_DIR}/storage.cc -o ${NDS_AIV_STORAGE_OBJECT}
-        COMMAND "${NDS_CCEC}" -c -x cce -O2 --cce-aicore-arch=dav-c220-vec --cce-aicore-only -std=c++17
-            ${NDS_AIV_CCEC_INCLUDES}
-            ${NDS_AIV_KERNEL_DIR}/nds_aiv_kernel.cc -o ${NDS_AIV_ENTRY_OBJECT}
+            ${NDS_AIV_DEVICE_DIR}/entrypoints.cc -o ${NDS_AIV_ENTRY_OBJECT}
         COMMAND "${NDS_AIV_LD}" -m aicorelinux -Ttext=0 "${NDS_AIV_ENTRY_OBJECT}" -static -o "${NDS_AIV_OBJECT}"
-        DEPENDS "${NDS_AIV_KERNEL_DIR}/nds_aiv_kernel.cc"
-            "${NDS_AIV_DEVICE_DIR}/qp.cc"
+        DEPENDS "${NDS_AIV_DEVICE_DIR}/entrypoints.cc"
+            "${NDS_AIV_DEVICE_DIR}/verbs.cc"
             "${NDS_AIV_DEVICE_DIR}/connection.cc"
             "${NDS_AIV_DEVICE_DIR}/storage.cc"
-            "${NDS_AIV_DEVICE_DIR}/aiv_device_api.h"
-            "${NDS_AIV_DEVICE_DIR}/aiv_device_internal.h"
+            "${NDS_AIV_DEVICE_DIR}/api.h"
+            "${NDS_AIV_DEVICE_DIR}/internal.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_operations.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_operator_args.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_connection.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_verbs.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_qp.h"
@@ -167,22 +147,22 @@ if(NDS_BUILD_AICPU_KERNEL)
         COMMAND "${NDS_AICPU_COMPILER}" -x c++ -shared -fPIC -O2 -std=c++17
             -D_GLIBCXX_USE_CXX11_ABI=1 -D_FORTIFY_SOURCE=2 -D_GNU_SOURCE -fvisibility=hidden -fstack-protector-strong
             -fno-common -fno-strict-aliasing -Wall -Wextra -Werror -I${NDS_AICPU_DEVICE_DIR}
-            -I${CMAKE_CURRENT_SOURCE_DIR}/execution/include
             -I${CMAKE_CURRENT_SOURCE_DIR}/include
             -I${PROJECT_SOURCE_DIR}/src/include
-            ${NDS_AICPU_DEVICE_DIR}/nds_aicpu_kernel.cc
-            ${NDS_AICPU_DEVICE_DIR}/qp.cc
+            ${NDS_AICPU_DEVICE_DIR}/entrypoints.cc
+            ${NDS_AICPU_DEVICE_DIR}/verbs.cc
             ${NDS_AICPU_DEVICE_DIR}/connection.cc
             ${NDS_AICPU_DEVICE_DIR}/storage.cc
             -ldl -Wl,-Bsymbolic-functions,-z,relro,-z,now,-z,noexecstack -o ${NDS_AICPU_STANDARD_KERNEL}
-        DEPENDS "${NDS_AICPU_DEVICE_DIR}/nds_aicpu_kernel.cc"
-            "${NDS_AICPU_DEVICE_DIR}/qp.cc"
+        DEPENDS "${NDS_AICPU_DEVICE_DIR}/entrypoints.cc"
+            "${NDS_AICPU_DEVICE_DIR}/verbs.cc"
             "${NDS_AICPU_DEVICE_DIR}/connection.cc"
             "${NDS_AICPU_DEVICE_DIR}/storage.cc"
-            "${NDS_AICPU_DEVICE_DIR}/nds_aicpu_device_api.h"
-            "${NDS_AICPU_DEVICE_DIR}/nds_aicpu_device_internal.h"
-            "${NDS_AICPU_DEVICE_DIR}/nds_aicpu_hns_abi.h"
+            "${NDS_AICPU_DEVICE_DIR}/api.h"
+            "${NDS_AICPU_DEVICE_DIR}/internal.h"
+            "${NDS_AICPU_DEVICE_DIR}/hns_abi.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_operations.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_operator_args.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_connection.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_verbs.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_qp.h"

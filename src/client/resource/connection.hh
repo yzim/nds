@@ -19,7 +19,7 @@ struct RmaConfig {
 };
 
 struct ConnectionConfig {
-    NpuExecutionMode execution{NpuExecutionMode::HostRa};
+    NpuExecutionMode execution{NpuExecutionMode::Ra};
     NpuRaContextConfig context;
     NpuRaQpConfig qp;
     RmaConfig rma;

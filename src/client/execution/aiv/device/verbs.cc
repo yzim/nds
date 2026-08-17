@@ -1,5 +1,5 @@
-#include "aiv_device_api.h"
-#include "aiv_device_internal.h"
+#include "api.h"
+#include "internal.h"
 #include "nds/device_hns_codec.h"
 
 namespace {
@@ -35,7 +35,7 @@ __aicore__ inline void StoreU32(uint64_t address, uint32_t value) {
 }
 }  // namespace
 
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPostSend(__gm__ const nds_device_qp *qp,
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPostSendImpl(__gm__ const nds_device_qp *qp,
                                            const nds_device_send_wr *wr, TBuf<> *scratch,
                                            __gm__ nds_device_operation_result *result) {
     if (result == nullptr) return;
@@ -84,7 +84,7 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPostSend(__gm__ const nds_devic
     NdsAivSetResult(result, NDS_DEVICE_OPERATION_SUCCESS);
 }
 
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPostRecv(__gm__ const nds_device_qp *qp,
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPostRecvImpl(__gm__ const nds_device_qp *qp,
                                            const nds_device_recv_wr *wr, TBuf<> *scratch,
                                            __gm__ nds_device_operation_result *result) {
     (void)scratch;
@@ -119,7 +119,7 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPostRecv(__gm__ const nds_devic
     NdsAivSetResult(result, NDS_DEVICE_OPERATION_SUCCESS);
 }
 
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPollCq(__gm__ const nds_device_qp *qp,
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPollCqImpl(__gm__ const nds_device_qp *qp,
                                          __gm__ const nds_device_poll_cq_request *request, TBuf<> *scratch,
                                          __gm__ nds_device_operation_result *result) {
     (void)scratch;

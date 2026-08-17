@@ -33,7 +33,7 @@ to the NPU.
 
 The implementation is organized by responsibility:
 
-1. RMA: Host RA, AIV, and AICPU submit opcodes on a selected protocol resource and
+1. RMA: RA, AIV, and AICPU submit opcodes on a selected protocol resource and
    own their local completion capabilities.
 2. Transport: owns connected QPs, MRs, buffers, and peer metadata and exposes
    Send and one-sided data operations.
@@ -123,14 +123,14 @@ HCCP-managed AI-QP CQ is an NDS completion API.
 - [x] Implement CPU-initiated RDMA Write for storage Read data movement.
 - [x] Define the initial project-facing completion contract for each NPU
   execution mode.
-- [x] Implement and validate the common storage protocol contract with Host RA
+- [x] Implement and validate the common storage protocol contract with RA
   first.
 - [x] Validate the host StorageClient with AIV and AICPU command-Send RMA paths.
 - [ ] Implement device-callable AIV and AICPU Transport APIs.
 - [x] Add device-callable AIV and AICPU storage Read and Write operators.
 - [ ] Switch the host validation executable to launch those storage operators.
-- [x] Validate a deterministic storage Write with Host RA, AIV, and AICPU.
-- [x] Validate a Host RA Read of an untouched range.
+- [x] Validate a deterministic storage Write with RA, AIV, and AICPU.
+- [x] Validate an RA Read of an untouched range.
 - [ ] Validate an AIV and AICPU Read of an untouched range.
 - [ ] Add a multi-command application workflow that writes a deterministic
   payload and reads it back in the same session.

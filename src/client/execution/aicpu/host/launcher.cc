@@ -1,10 +1,19 @@
-#include "nds/aicpu_launcher.hh"
+#include "launcher.hh"
 
 #include <utility>
 
 namespace nds {
 namespace {
-constexpr const char *kNdsAicpuConnectionOp = "NdsAicpuConnectionOp";
+const char *aicpu_operator_name(std::uint32_t operation) {
+    switch (operation) {
+    case NDS_DEVICE_RDMA_SEND: return "NdsAicpuRdmaSend";
+    case NDS_DEVICE_RDMA_RECV: return "NdsAicpuRdmaRecv";
+    case NDS_DEVICE_RDMA_READ: return "NdsAicpuRdmaRead";
+    case NDS_DEVICE_RDMA_WRITE: return "NdsAicpuRdmaWrite";
+    case NDS_DEVICE_POLL_CQ: return "NdsAicpuPollCq";
+    default: return nullptr;
+    }
+}
 }
 
 AicpuConnectionLauncher::~AicpuConnectionLauncher() {
@@ -52,12 +61,6 @@ bool AicpuConnectionLauncher::load(nds_acl_api *acl, const std::string &kernel_c
         reset();
         return false;
     }
-    result = acl_->binary_get_function(binary_, kNdsAicpuConnectionOp, &function_);
-    if (result != 0 || function_ == nullptr) {
-        set_error("NDS AICPU package does not expose NdsAicpuConnectionOp: " + std::to_string(result));
-        reset();
-        return false;
-    }
     result = acl_->create_stream_with_config(&stream_, 0U, NDS_ACL_STREAM_FAST_LAUNCH | NDS_ACL_STREAM_FAST_SYNC);
     if (result != 0 || stream_ == nullptr) {
         set_error("aclrtCreateStreamWithConfig for NDS AICPU RDMA post failed: " + std::to_string(result));
@@ -80,7 +83,8 @@ bool AicpuConnectionLauncher::launch_and_wait(nds_device_operation_request *requ
         set_error("NDS AICPU request launch requires a loaded launcher");
         return false;
     }
-    if (request == nullptr || completion_timeout_ms <= 0 ||
+    const char *operator_name = request == nullptr ? nullptr : aicpu_operator_name(request->operation);
+    if (request == nullptr || completion_timeout_ms <= 0 || operator_name == nullptr ||
         request->connection.abi_version != NDS_DEVICE_CONNECTION_ABI_VERSION ||
         request->connection.qp.abi_version != NDS_DEVICE_QP_ABI_VERSION) {
         set_error("NDS AICPU request has invalid device connection metadata");
@@ -88,6 +92,11 @@ bool AicpuConnectionLauncher::launch_and_wait(nds_device_operation_request *requ
     }
     request->abi_version = NDS_DEVICE_OPERATIONS_ABI_VERSION;
     request->size = sizeof(*request);
+    result = acl_->binary_get_function(binary_, operator_name, &function_);
+    if (result != 0 || function_ == nullptr) {
+        set_error("NDS AICPU package does not expose " + std::string(operator_name) + ": " + std::to_string(result));
+        return false;
+    }
 
     result = acl_->kernel_args_init(function_, &arguments);
     if (result != 0 || arguments == nullptr) {
@@ -112,12 +121,12 @@ bool AicpuConnectionLauncher::launch_and_wait(nds_device_operation_request *requ
     config.attrs = &attribute;
     result = acl_->launch_kernel_with_config(function_, 1U, stream_, &config, arguments, nullptr);
     if (result != 0) {
-        set_error("aclrtLaunchKernelWithConfig(NdsAicpuConnectionOp) failed: " + std::to_string(result));
+        set_error("aclrtLaunchKernelWithConfig(" + std::string(operator_name) + ") failed: " + std::to_string(result));
         return false;
     }
     result = acl_->synchronize_stream_with_timeout(stream_, completion_timeout_ms);
     if (result != 0) {
-        set_error("aclrtSynchronizeStreamWithTimeout after NdsAicpuConnectionOp failed: " + std::to_string(result));
+        set_error("aclrtSynchronizeStreamWithTimeout after " + std::string(operator_name) + " failed: " + std::to_string(result));
         return false;
     }
     error_.clear();
@@ -138,7 +147,7 @@ void AicpuConnectionLauncher::reset() noexcept {
 }
 
 bool AicpuConnectionLauncher::loaded() const noexcept {
-    return acl_ != nullptr && binary_ != nullptr && function_ != nullptr && stream_ != nullptr;
+    return acl_ != nullptr && binary_ != nullptr && stream_ != nullptr;
 }
 
 const std::string &AicpuConnectionLauncher::error() const noexcept {

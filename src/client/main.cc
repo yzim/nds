@@ -30,9 +30,9 @@ nds::Result<int> parse_args(int argc, char **argv, ClientConfig *config, bool *e
     app.add_option("--ascendcl", config->connection.context.ascendcl_library, "AscendCL shared library")->required();
     app.add_option("--runtime", config->connection.context.runtime_library, "CANN runtime shared library")->required();
     app.add_option("--ra", config->connection.context.ra_library, "CANN RA shared library")->required();
-    std::string execution{"host-ra"};
+    std::string execution{"ra"};
     app.add_option("--execution", execution, "Storage execution mode")
-        ->check(CLI::IsMember({"host-ra", "aicpu", "aiv"}));
+        ->check(CLI::IsMember({"ra", "aicpu", "aiv"}));
     app.add_option("--aicpu-kernel-config", config->connection.rma.aicpu_kernel_config,
                    "AICPU kernel package configuration");
     app.add_option("--aiv-kernel", config->connection.rma.aiv_kernel, "AIV kernel binary");

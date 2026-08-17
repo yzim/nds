@@ -1,6 +1,6 @@
-#include "nds_aicpu_device_api.h"
-#include "nds_aicpu_device_internal.h"
-#include "nds_aicpu_hns_abi.h"
+#include "api.h"
+#include "internal.h"
+#include "hns_abi.h"
 #include "nds/device_hns_codec.h"
 
 namespace {
@@ -12,7 +12,7 @@ int32_t provider_opcode(uint32_t opcode) {
 }
 }  // namespace
 
-extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuPostSend(
+extern "C" uint32_t NdsAicpuPostSendImpl(
     const nds_device_qp *qp, const nds_device_send_wr *wr, nds_device_operation_result *result) {
     if (!NdsAicpuValidQp(qp) || wr == nullptr || result == nullptr) return kNdsAicpuInvalidArgument;
     const int32_t opcode = provider_opcode(wr->opcode);
@@ -48,7 +48,7 @@ extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuPostSend(
     return kNdsAicpuSuccess;
 }
 
-extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuPostRecv(
+extern "C" uint32_t NdsAicpuPostRecvImpl(
     const nds_device_qp *qp, const nds_device_recv_wr *wr, nds_device_operation_result *result) {
     if (!NdsAicpuValidQp(qp) || wr == nullptr || result == nullptr) return kNdsAicpuInvalidArgument;
     auto post = reinterpret_cast<nds_hns_post_recv_fn>(NdsAicpuResolveSymbol("ibv_post_recv"));
@@ -82,7 +82,7 @@ extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuPostRecv(
     return kNdsAicpuSuccess;
 }
 
-extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuPollCq(
+extern "C" uint32_t NdsAicpuPollCqImpl(
     const nds_device_qp *qp, const nds_device_poll_cq_request *request,
     nds_device_operation_result *result) {
     if (!NdsAicpuValidQp(qp) || request == nullptr || result == nullptr ||

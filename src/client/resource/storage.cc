@@ -1,15 +1,96 @@
 #include "storage.hh"
 
-#include "launch.hh"
+#include "aicpu/host/launcher.hh"
+#include "aiv/host/launcher.hh"
+#include "ra.hh"
 #include "nds/protocol.h"
 
 #include <chrono>
+#include <cstddef>
+#include <string>
 #include <thread>
 
 namespace nds::client {
 namespace {
 
 constexpr std::uint32_t kCompletionTimeoutMs = 5000U;
+
+class DeviceAllocation {
+public:
+    explicit DeviceAllocation(NpuRaContext *context) : context_(context) {}
+    ~DeviceAllocation() {
+        if (context_ != nullptr && address_ != nullptr)
+            (void)context_->free_device_memory(address_);
+    }
+    DeviceAllocation(const DeviceAllocation &) = delete;
+    DeviceAllocation &operator=(const DeviceAllocation &) = delete;
+
+    bool allocate(std::size_t size) {
+        return context_ != nullptr && address_ == nullptr && context_->allocate_device_memory(size, &address_);
+    }
+    void *get() const noexcept { return address_; }
+
+private:
+    NpuRaContext *context_{};
+    void *address_{};
+};
+
+Result<void> submit_device_storage_command(Connection *connection, const RegisteredRegion &command,
+                                           std::uint32_t length) {
+    if (connection == nullptr || connection->context() == nullptr || connection->qp() == nullptr ||
+        !command.belongs_to(connection->qp()) || length == 0U || length > command.length()) {
+        return unexpected(ErrorCode::kInvalidArgument, "storage command requires a registered command buffer");
+    }
+    const auto device_connection = connection->qp()->make_device_connection();
+    if (!device_connection)
+        return unexpected(device_connection.error());
+
+    nds_device_operation_request request{};
+    request.operation = NDS_DEVICE_RDMA_SEND;
+    request.connection = *device_connection;
+    request.parameters.transfer = {1U, {command.address(), length, command.local_key()}, 0U, 0U, 0U};
+
+    DeviceAllocation result(connection->context());
+    if (!result.allocate(sizeof(nds_device_operation_result)))
+        return unexpected(ErrorCode::kRuntime, connection->context()->error());
+    const nds_device_operation_result pending{NDS_DEVICE_OPERATION_INVALID_ARGUMENT, NDS_DEVICE_OPERATION_PATH_NONE,
+                                              0, 0U};
+    if (!connection->context()->copy_host_to_device(result.get(), &pending, sizeof(pending)))
+        return unexpected(ErrorCode::kRuntime, connection->context()->error());
+    request.operation_result_address = reinterpret_cast<std::uint64_t>(result.get());
+
+    std::string launch_error;
+    if (connection->config().execution == NpuExecutionMode::Aicpu) {
+        AicpuConnectionLauncher launcher;
+        if (!launcher.load(&connection->context()->acl_api(), connection->config().rma.aicpu_kernel_config) ||
+            !launcher.launch_and_wait(&request, kCompletionTimeoutMs)) {
+            launch_error = launcher.error();
+        }
+    } else {
+        AivConnectionLauncher launcher;
+        if (!launcher.load(&connection->context()->acl_api(), connection->config().rma.aiv_kernel) ||
+            !launcher.make_device_request(request, &request)) {
+            launch_error = launcher.error();
+        } else {
+            DeviceAllocation device_request(connection->context());
+            if (!device_request.allocate(sizeof(request)) ||
+                !connection->context()->copy_host_to_device(device_request.get(), &request, sizeof(request)) ||
+                !launcher.launch_and_wait(reinterpret_cast<std::uint64_t>(device_request.get()), request.operation,
+                                          kCompletionTimeoutMs)) {
+                launch_error = launcher.error().empty() ? connection->context()->error() : launcher.error();
+            }
+        }
+    }
+    if (!launch_error.empty())
+        return unexpected(ErrorCode::kRuntime, launch_error);
+
+    nds_device_operation_result completed{};
+    if (!connection->context()->copy_device_to_host(&completed, result.get(), sizeof(completed)))
+        return unexpected(ErrorCode::kRuntime, connection->context()->error());
+    if (completed.status != NDS_DEVICE_OPERATION_SUCCESS)
+        return unexpected(ErrorCode::kRuntime, "device storage command submission failed");
+    return {};
+}
 
 }  // namespace
 
@@ -85,6 +166,19 @@ Result<void> StorageClient::execute(std::uint16_t operation, std::uint64_t offse
         return unexpected(data_remote.error());
 
     const std::uint64_t request_id = next_request_id_++;
+    const std::uint32_t remote_access =
+        operation == NDS_PROTOCOL_READ ? NDS_PROTOCOL_ACCESS_REMOTE_WRITE : NDS_PROTOCOL_ACCESS_REMOTE_READ;
+    if (const auto result = connection_.ready(); !result)
+        return unexpected(result.error());
+    if (connection_.config().execution == NpuExecutionMode::Ra) {
+        request_submitted_ = true;
+        return execute_ra_storage({connection_.context(), connection_.qp(), command_buffer_.data(),
+                                        {command_region_.address(), static_cast<std::uint32_t>(command_region_.length()), command_region_.local_key()},
+                                        completion_buffer_.data(),
+                                        {completion_region_.address(), static_cast<std::uint32_t>(completion_region_.length()), completion_region_.local_key()},
+                                        {data_remote->address, data_remote->length, data_remote->key, remote_access}, operation,
+                                        offset, length, capacity_, request_id});
+    }
     nds_protocol_completion_wire completion_wire{};
     const nds_protocol_completion pending{request_id, NDS_PROTOCOL_COMPLETION_PENDING, NDS_PROTOCOL_SUCCESS, 0U};
     if (nds_protocol_completion_encode(&pending, &completion_wire) != NDS_PROTOCOL_RESULT_OK)
@@ -95,8 +189,6 @@ Result<void> StorageClient::execute(std::uint16_t operation, std::uint64_t offse
         return unexpected(result.error());
     }
 
-    const std::uint32_t remote_access =
-        operation == NDS_PROTOCOL_READ ? NDS_PROTOCOL_ACCESS_REMOTE_WRITE : NDS_PROTOCOL_ACCESS_REMOTE_READ;
     const nds_protocol_memory remote_data{data_remote->address, data_remote->length, data_remote->key, remote_access};
     const nds_protocol_command command{request_id, operation, offset, length, remote_data};
     nds_protocol_command_wire command_wire{};
@@ -104,11 +196,8 @@ Result<void> StorageClient::execute(std::uint16_t operation, std::uint64_t offse
         return unexpected(ErrorCode::kProtocol, "invalid storage command record");
     if (const auto result = connection_.copy_to_device(&command_buffer_, &command_wire, sizeof(command_wire)); !result)
         return unexpected(result.error());
-    if (const auto result = connection_.ready(); !result)
-        return unexpected(result.error());
-
     request_submitted_ = true;
-    if (const auto result = send(&connection_, command_region_, sizeof(command_wire)); !result)
+    if (const auto result = submit_device_storage_command(&connection_, command_region_, sizeof(command_wire)); !result)
         return unexpected(result.error());
     return wait_for_completion(request_id, length);
 }

@@ -1,6 +1,6 @@
 # NPU Execution Modes
 
-NDS has three execution modes: Host RA, AIV, and AICPU. They share the host
+NDS has three execution modes: RA, AIV, and AICPU. They share the host
 HCCP rdev/QP and MR control path described in
 [HCCP QP and MR lifecycle](hccp-resources.md). Execution mode identifies where
 a work request runs; it is independent from the work-request, transport, and
@@ -14,7 +14,7 @@ data.
 
 The current capability matrix is:
 
-| Layer | Host RA | AIV | AICPU |
+| Layer | RA | AIV | AICPU |
 |---|---|---|---|
 | RMA | Send, RDMA Read/Write, send-CQ poll | Send/Receive, RDMA Read/Write, SCQ/RCQ polling | Send/Receive, RDMA Read/Write, SCQ/RCQ polling |
 | Transport | Host `Transport` | Planned device API | Planned device API |
@@ -33,7 +33,7 @@ the current operator-launch and completion-observation flow. That is control
 and orchestration work. The question that distinguishes the modes is where a
 work request executes:
 
-- `host-ra`: the host CPU executes the RA Send and runtime doorbell calls.
+- `ra`: the host CPU executes the RA Send and runtime doorbell calls.
 - `aiv`: an AIV operator executing on the NPU writes the WQE and rings the SQ
   doorbell.
 - `aicpu`: a standard-CP1 operator executing in the NPU environment calls the
@@ -45,21 +45,21 @@ validation executable, not the eventual AIV/AICPU storage API.
 
 | Execution mode | RDMA-post execution site | Host role for a request | QP mode | Local completion | Protocol completion |
 |---|---|---|---|---|---|
-| [`host-ra`](#host-ra) | Host CPU: `RaTypicalSendWr`, then `rtRDMADBSend` | Executes the post | OPBASE | Host RA CQ is available | CPU writes the NDS completion record; host copies and polls it |
+| [`ra`](#ra) | Host CPU: `RaTypicalSendWr`, then `rtRDMADBSend` | Executes the post | OPBASE | RA CQ is available | CPU writes the NDS completion record; host copies and polls it |
 | [`aiv`](#aiv) | NPU AIV: direct SQ/RQ/CQ and doorbell access | Creates and launches the device request | Configurable; OPBASE_EXT by default | Caller-owned SCQ/RCQ | CPU writes the NDS completion record; host copies and polls it |
 | [`aicpu`](#aicpu) | NPU CP1: provider symbols first, address fallback | Creates and launches the device request | Configurable; NORMAL by default | Caller-owned SCQ/RCQ | CPU writes the NDS completion record; host copies and polls it |
 
 The CPU polls its one `libibverbs` CQ for the command Receive and its signaled
 terminal completion Write. HCCP AI-QP CQ handling, an AIV/AICPU launch, and a
-host-RA local CQE are not NDS storage completion. The CPU-written NDS
+RA local CQE are not NDS storage completion. The CPU-written NDS
 completion record is authoritative.
 
-Use `host-ra` first because it has the smallest hardware-specific surface.
+Use `ra` first because it has the smallest hardware-specific surface.
 Use `aiv` for direct vector-core WQE/doorbell posting and `aicpu` for a
 provider-owned post from standard CP1. These are implementation choices, not
 performance rankings. The host validation executable supports storage Read and
 Write with all three work-request modes. Recorded hardware validation covers
-one bounded storage Write in all three modes, a Host RA Read from a fresh
+one bounded storage Write in all three modes, an RA Read from a fresh
 zeroed namespace, device Send/Receive with SCQ/RCQ polling in AIV and AICPU,
 and direct device RDMA Read/Write with SCQ polling in both modes. It does not
 yet cover an AIV or AICPU storage Read. NDS has not published throughput or
@@ -105,7 +105,7 @@ exchanged with the CPU.
 ### Verbs APIs
 
 AIV exposes the following AICore-callable functions in
-`src/client/execution/aiv/device/aiv_device_api.h`:
+`src/client/execution/aiv/device/api.h`:
 
 ```text
 NdsAivPostSend(qp, send_wr, scratch, result)
@@ -113,13 +113,13 @@ NdsAivPostRecv(qp, recv_wr, scratch, result)
 NdsAivPollCq(qp, poll_request, scratch, result)
 ```
 
-Their implementation is in `src/client/execution/aiv/device/qp.cc` and
+Their implementation is in `src/client/execution/aiv/device/verbs.cc` and
 `src/client/execution/aiv/device/connection.cc`. Storage Read/Write is in
 `src/client/execution/aiv/device/storage.cc`. Another AIV operator includes
 the API header and compiles that implementation into its AICore translation
 unit. CANN 9.0.0 rejects the otherwise valid multi-object AIV image at ACL load
 time, so NDS deliberately builds the loadable entry and dataplane as one
-translation unit. Standalone `nds_aiv_qp.o`, `nds_aiv_connection.o`, and
+translation unit. Standalone `nds_aiv_verbs.o`, `nds_aiv_connection.o`, and
 `nds_aiv_storage.o` are still emitted for compile and symbol verification, but
 are not presented as a separately loadable kernel.
 
@@ -154,9 +154,9 @@ Write lower to `PostSend` with distinct logical WR opcodes. Recv lowers to
 `PostRecv`. CQ polling intentionally remains a verbs operation because callers
 must choose SCQ or RCQ and consume explicit work completions.
 
-The loaded entry points `NdsAivConnectionOp` and `NdsAicpuConnectionOp` only
-validate and dispatch the versioned host-launch record into these connection
-or qp functions. Other device operators do not need to call the entry points.
+Each layer function has a direct, separately loadable operator entry. The
+entries use the versioned NDS request records and call exactly one private
+`*Impl` dataplane helper; they do not perform operation dispatch.
 
 ### Storage APIs
 
@@ -172,9 +172,9 @@ NdsAicpuStorageRead / NdsAicpuStorageWrite
 RNIC work completions are not NDS storage completion. Storage completion
 remains the terminal protocol record written by the CPU endpoint.
 
-## Host RA
+## RA
 
-Host RA is the NPU-host-CPU baseline. The host CPU itself executes the command
+RA is the NPU-host-CPU baseline. The host CPU itself executes the command
 post through the CANN RA and runtime boundary; it does not launch a device
 operator for that action.
 
@@ -193,9 +193,9 @@ CQE is not protocol completion.
 
 Key implementation paths:
 
-- `src/client/execution/storage.cc`: host StorageClient command and completion flow.
-- `src/client/execution/launch.cc`: host-example adapter into Host RA or a device operator.
-- `src/client/execution/host_ra/qp.cc`: RA post and runtime doorbell.
+- `src/client/resource/storage.cc`: stateful StorageClient command and completion flow.
+- `src/client/resource/storage.cc`: stateful storage session and backend selection.
+- `src/client/execution/ra/verbs.cc`: RA post and runtime doorbell.
 - `src/client/resource/npu_ra_qp.cc`: QP and MR calls.
 - `src/client/resource/npu_ra_context.cc`: runtime lifecycle,
   doorbell, and device-to-host completion copy.
@@ -210,7 +210,7 @@ build/nds_server --device <cpu-rdma-device> --gid-index <gid-index> \
 ```
 
 ```sh
-build/nds_client --execution host-ra \
+build/nds_client --execution ra \
   --ascendcl <cann-root>/aarch64-linux/lib64/libascendcl.so \
   --runtime <cann-root>/aarch64-linux/lib64/libruntime.so \
   --ra <cann-root>/aarch64-linux/lib64/libra.so \
@@ -244,12 +244,13 @@ The device verbs, connection, and storage APIs for AIV are the ones described
 in [Device Data Plane](#device-data-plane): `NdsAivPostSend`, `NdsAivPostRecv`,
 `NdsAivPollCq` form the verbs layer, and `NdsAivRdmaSend`, `NdsAivRdmaRecv`,
 `NdsAivRdmaRead`, and `NdsAivRdmaWrite` form the connection layer above them.
-The loaded `NdsAivConnectionOp` kernel is only a host-launch adapter.
+Each public AIV function has a corresponding `*Op` kernel entry, including
+`NdsAivPostSend`, `NdsAivRdmaSend`, and `NdsAivStorageRead`.
 
 - Shared ABI: `src/client/include/nds/`.
-- Device API: `src/client/execution/aiv/device/aiv_device_api.h`.
-- qp/connection/storage: `src/client/execution/aiv/device/{qp,connection,storage}.cc`.
-- Entry kernel: `src/client/execution/aiv/device/kernel/nds_aiv_kernel.cc`.
+- Device API: `src/client/execution/aiv/device/api.h`.
+- verbs/connection/storage: `src/client/execution/aiv/device/{verbs,connection,storage}.cc`.
+- Operator entries: `src/client/execution/aiv/device/entrypoints.cc`.
 - Host launcher: `src/client/execution/aiv/host/launcher.cc`.
 
 ```sh
@@ -298,9 +299,9 @@ exported symbols, so the operator falls back to the descriptor's RQ and CQ
 addresses when lookup fails.
 
 - Shared ABI: `src/client/include/nds/`.
-- Device API: `src/client/execution/aicpu/device/nds_aicpu_device_api.h`.
-- qp/connection/storage: `src/client/execution/aicpu/device/{qp,connection,storage}.cc`.
-- Entry point: `NdsAicpuConnectionOp` (a connection-dispatch adapter).
+- Device API: `src/client/execution/aicpu/device/api.h`.
+- verbs/connection/storage: `src/client/execution/aicpu/device/{verbs,connection,storage}.cc`.
+- Operator entries: `src/client/execution/aicpu/device/entrypoints.cc`.
 - Package: `src/client/execution/aicpu/device/package/nds_aicpu_standard.json.in`.
 
 ```sh
@@ -314,8 +315,8 @@ then use `--execution aicpu` and
 `--operation write` or `--operation read`; both use the AICPU command-Send
 path, and the CPU server selects the corresponding data-transfer direction.
 
-The AICPU shared object exports the three verbs functions and four connection
-functions for use by other standard-CP1 operators. The device provider-loader pattern, AI-QP creation, and provider ABI were
+The AICPU package registers direct `*Op` entries for all verbs, connection,
+and storage functions. The device provider-loader pattern, AI-QP creation, and provider ABI were
 learned from open-source HCOMM. NDS ports one provider post and does not wrap
 HCOMM's transport kernel, reciprocal flags, synchronization, communicator,
 batching, or collective logic. CP1 launch completion and RNIC CQEs are not NDS

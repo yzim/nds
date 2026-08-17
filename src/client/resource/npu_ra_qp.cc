@@ -72,14 +72,14 @@ bool NpuRaQp::create(nds_ra_api *api, const NpuRaQpConfig &config, NpuExecutionM
         set_error("NPU RA QP requires valid network settings and power-of-two queue depths of at least two");
         return false;
     }
-    if (execution != NpuExecutionMode::HostRa && execution != NpuExecutionMode::Aicpu &&
+    if (execution != NpuExecutionMode::Ra && execution != NpuExecutionMode::Aicpu &&
         execution != NpuExecutionMode::Aiv) {
         set_error("NPU RA QP execution mode is invalid");
         return false;
     }
     if (api->ra_rdev_init_v2 == nullptr || api->ra_rdev_deinit == nullptr || api->ra_qp_destroy == nullptr ||
         api->ra_get_qp_attr == nullptr || api->ra_typical_qp_modify == nullptr ||
-        (execution == NpuExecutionMode::HostRa && api->ra_typical_qp_create == nullptr) ||
+        (execution == NpuExecutionMode::Ra && api->ra_typical_qp_create == nullptr) ||
         ((execution == NpuExecutionMode::Aicpu || execution == NpuExecutionMode::Aiv) &&
          (api->ra_ai_qp_create == nullptr || api->ra_set_qp_attr_qos == nullptr ||
           api->ra_set_qp_attr_timeout == nullptr || api->ra_set_qp_attr_retry_count == nullptr))) {
@@ -113,7 +113,7 @@ bool NpuRaQp::create(nds_ra_api *api, const NpuRaQpConfig &config, NpuExecutionM
         reset();
         return false;
     }
-    if (execution_ == NpuExecutionMode::HostRa) {
+    if (execution_ == NpuExecutionMode::Ra) {
         result = api_->ra_typical_qp_create(rdev_handle_, NDS_RA_QP_FLAG_RC, NDS_RA_QP_MODE_OPBASE, &initial_qp,
                                             &qp_handle_);
         if (result != 0 || qp_handle_ == nullptr) {
@@ -378,7 +378,7 @@ void NpuRaQp::reset() noexcept {
     rdev_handle_ = nullptr;
     api_ = nullptr;
     config_ = {};
-    execution_ = NpuExecutionMode::HostRa;
+    execution_ = NpuExecutionMode::Ra;
     local_attributes_ = {};
     ai_qp_info_ = {};
     send_wr_ids_ = 0U;

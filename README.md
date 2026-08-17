@@ -46,7 +46,7 @@ Here, **NPU device** means the Ascend accelerator in the NPU machine, and
 
 | Execution mode | RDMA-post execution site | Local completion | Guide |
 |---|---|---|---|
-| `host-ra` | Host CPU: RA Send plus runtime doorbell | Host RA CQ is available | [Host RA](docs/npu-backends.md#host-ra) |
+| `ra` | Host CPU: RA Send plus runtime doorbell | RA CQ is available | [RA](docs/npu-backends.md#ra) |
 | `aiv` | NPU AIV: direct SQ/RQ/CQ and doorbell access | Caller-owned SCQ/RCQ polling | [AIV](docs/npu-backends.md#aiv) |
 | `aicpu` | NPU CP1: provider symbols first, queue-address fallback | Caller-owned SCQ/RCQ polling | [AICPU](docs/npu-backends.md#aicpu) |
 
@@ -70,12 +70,12 @@ by the CPU machine from the application buffer on the NPU device; for a storage
 Read, it is an RDMA Write issued by the CPU machine to that buffer. The NPU
 machine treats arrow 3's completion record, also written by the CPU machine,
 as the command result. An operator launch, HCCP internal AI-QP CQ processing,
-and a host-RA local CQE are not this protocol completion.
+and an RA local CQE are not this protocol completion.
 
 ## Repository layout
 
 ```text
-src/client/       NPU client: control plane plus Host RA / AIV / AICPU data planes
+src/client/       NPU client: control plane plus RA / AIV / AICPU data planes
 src/server/       CPU machine acting as server: protocol, transport, and verbs backend
 src/common/       Shared transport bootstrap/metadata, storage ABI, and logging
 tests/            Unit/integration tests and opt-in hardware probes
@@ -118,7 +118,7 @@ specific sources and limits.
   protocol.
 - [HCCP QP, MR, and runtime ABI](docs/hccp-resources.md): resource ownership,
   bootstrap, teardown, and the runtime library boundary.
-- [NPU execution modes](docs/npu-backends.md): Host RA, AIV, and AICPU posting paths.
+- [NPU execution modes](docs/npu-backends.md): RA, AIV, and AICPU posting paths.
 
 **Runtime and evidence**
 

@@ -1,5 +1,5 @@
-#include "aiv_device_api.h"
-#include "aiv_device_internal.h"
+#include "api.h"
+#include "internal.h"
 #include "nds/device_storage.h"
 
 namespace {
@@ -122,7 +122,7 @@ __aicore__ inline void Execute(__gm__ const nds_device_storage *storage, __gm__ 
     wr.local.address = command_address;
     wr.local.length = sizeof(command);
     wr.local.local_key = command_lkey;
-    NdsAivPostSend(&storage->connection.qp, &wr, scratch, result);
+    NdsAivPostSendImpl(&storage->connection.qp, &wr, scratch, result);
     if (result->status != NDS_DEVICE_OPERATION_SUCCESS) return;
     __gm__ const uint8_t *completion = reinterpret_cast<__gm__ const uint8_t *>(completion_address);
     for (;;) {
@@ -135,13 +135,13 @@ __aicore__ inline void Execute(__gm__ const nds_device_storage *storage, __gm__ 
 }
 }  // namespace
 
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivStorageRead(__gm__ const nds_device_storage *storage,
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivStorageReadImpl(__gm__ const nds_device_storage *storage,
                                               __gm__ const nds_device_storage_io *io, TBuf<> *scratch,
                                               __gm__ nds_device_operation_result *result) {
     Execute(storage, io, scratch, result);
 }
 
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivStorageWrite(__gm__ const nds_device_storage *storage,
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivStorageWriteImpl(__gm__ const nds_device_storage *storage,
                                                __gm__ const nds_device_storage_io *io, TBuf<> *scratch,
                                                __gm__ nds_device_operation_result *result) {
     Execute(storage, io, scratch, result);

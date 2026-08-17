@@ -14,16 +14,13 @@ src/
   client/         NPU-attached endpoint
     main.cc        CLI, application buffers, and workload verification
     include/      shared device-safe QP, WR, CQ, and connection records
-    resource/     shared RA/HCCP resource lifecycle: loaders, context, QP/MR, TCP session
-    execution/    host-example storage plus Host RA / AIV / AICPU execution modes
-      include/    public APIs of the execution modes (host_ra, aiv_launcher, aicpu_launcher)
-      host_ra/    host CPU qp post and doorbell
+    resource/     stateful RA/HCCP resources, storage session, and storage dispatch
+    execution/    RA / AIV / AICPU execution backends
+      ra/         host CPU verbs post and doorbell
       aiv/        AIV host launcher and device operators
         device/   AIV device kernels plus their local device headers
       aicpu/      AICPU host launcher and device operators
         device/   AICPU device kernels plus their local device headers
-      launch.*    host-example adapter into Host RA or a device operator
-      storage.*   host StorageClient used by the validation executable
   server/         CPU-side endpoint
     main.cc        CLI and memory-backed namespace ownership
     protocol.*     command decode, range checks, data movement, completion
@@ -39,12 +36,12 @@ src/
 
 ## API Matrix
 
-Host RA, AIV, and AICPU are execution modes. Work-request, transport, and
+RA, AIV, and AICPU are execution modes. Work-request, transport, and
 storage are API layers. They are separate axes:
 
-| Layer | Host RA | AIV | AICPU |
+| Layer | RA | AIV | AICPU |
 |---|---|---|---|
-| Verbs | Host RA QP post and CQ API | `PostSend`, `PostRecv`, `PollCq` over device QP addresses | Exported provider/fallback `PostSend`, `PostRecv`, `PollCq` |
+| Verbs | RA QP post and CQ API | `PostSend`, `PostRecv`, `PollCq` over device QP addresses | Exported provider/fallback `PostSend`, `PostRecv`, `PollCq` |
 | Connection/RDMA | Host work-request dispatch | Device `RdmaSend`, `RdmaRecv`, `RdmaRead`, `RdmaWrite` | Device `RdmaSend`, `RdmaRecv`, `RdmaRead`, `RdmaWrite` |
 | Transport | Host `Transport` | Device transport/session API planned | Device transport/session API planned |
 | Storage | Host `StorageClient` | Device `StorageRead` / `StorageWrite` | Device `StorageRead` / `StorageWrite` |
@@ -58,20 +55,20 @@ path, but it is not yet the planned device `StorageClient` API.
 
 `src/client/include/nds/` owns the device-safe QP, WR, CQ, and
 connection ABIs. The QP contains only addresses and queue metadata needed by
-device code. The qp layer accepts a QP and WR/CQ request. The connection layer
-accepts a connection and transfer, then constructs the qp WR for Send, Recv,
+device code. The verbs layer accepts a QP and WR/CQ request. The connection layer
+accepts a connection and transfer, then constructs the verbs WR for Send, Recv,
 Read, or Write.
 
-`execution/launch.*` is the host-example adapter that selects Host RA, AIV, or
-AICPU and launches the device connection entry when required. It is not the
-implementation of the AIV/AICPU qp or connection APIs.
+`resource/storage.cc` owns storage request state and selects the RA, AIV, or
+AICPU backend for a storage command. It is not the implementation of the
+AIV/AICPU verbs or connection APIs.
 
 RMA is the umbrella used by HCOMM for RoCE and UB connections. The protocols
 have different native resources: RoCE uses QPs and CQs, while UB uses Jetties
 and JFCs. NDS currently implements only the RoCE binding through CANN RA and
 must not present its QP/CQ types as a future UB API.
 
-Host RA submits through `RaTypicalSendWr` and `rtRDMADBSend`. AIV and AICPU
+RA submits through `RaTypicalSendWr` and `rtRDMADBSend`. AIV and AICPU
 provide device Send, Recv, RDMA Read, RDMA Write, SCQ poll, and RCQ poll paths.
 The host control path can launch those operations for validation, while another
 device operator can invoke the lower device APIs directly.

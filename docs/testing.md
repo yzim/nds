@@ -58,7 +58,7 @@ ctest --test-dir build-e2e --output-on-failure --label-regex '^e2e$'
 
 The supported variables and registered test names are:
 
-- `NDS_E2E_HOST_RA_STORAGE_WRITE_COMMAND`: `e2e.host_ra_storage_write`
+- `NDS_E2E_RA_STORAGE_WRITE_COMMAND`: `e2e.ra_storage_write`
 - `NDS_E2E_AIV_STORAGE_WRITE_COMMAND`: `e2e.aiv_storage_write`
 - `NDS_E2E_AICPU_STORAGE_WRITE_COMMAND`: `e2e.aicpu_storage_write`
 - `NDS_E2E_AIV_SEND_CQ_COMMAND`: `e2e.aiv_send_cq`
@@ -77,18 +77,6 @@ registered tests have a 120-second CTest timeout, share the
 `ascend_npu0` resource lock, and carry `e2e`, `requires-ascend-npu`,
 `requires-rdma`, `mode-*`, and `operation-*` labels. This permits selecting one
 mode or operation while preventing concurrent use of the single NPU.
-
-Configure `NDS_BUILD_HARDWARE_PROBES=ON` to build
-`nds_device_ops_client` and `nds_device_ops_server`. This opt-in pair accepts
-`--operation send`, `receive`, `read`, or `write`. The send case makes the CPU
-post a verbs receive, then validates device `post_send`, send-CQ polling, and the
-payload received by the CPU. The receive case makes the NPU post a receive, the
-CPU issue one verbs Send, and the NPU validate receive-CQ polling, the CQE WR
-ID, and the payload. The read and write cases exchange a test MR descriptor,
-invoke the device connection-layer one-sided operation, explicitly poll the
-send CQ, and verify the payload at the destination. The executables contain no
-target addresses and are not registered with CTest; target-specific bounded
-launch commands remain under `.local/`.
 
 On the CANN 9.0.0 target host, bounded probes have directly validated AIV
 and AICPU Send posting with SCQ polling and CPU-side payload verification, plus

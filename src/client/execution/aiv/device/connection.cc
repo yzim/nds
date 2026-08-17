@@ -1,7 +1,7 @@
-#include "aiv_device_api.h"
-#include "aiv_device_internal.h"
+#include "api.h"
+#include "internal.h"
 
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaSend(__gm__ const nds_device_connection *connection,
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaSendImpl(__gm__ const nds_device_connection *connection,
                                            __gm__ const nds_device_transfer *transfer, TBuf<> *scratch,
                                            __gm__ nds_device_operation_result *result) {
     if (result == nullptr) return;
@@ -18,10 +18,10 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaSend(__gm__ const nds_devic
     wr.local.address = transfer->local.address;
     wr.local.length = transfer->local.length;
     wr.local.local_key = transfer->local.local_key;
-    NdsAivPostSend(&connection->qp, &wr, scratch, result);
+    NdsAivPostSendImpl(&connection->qp, &wr, scratch, result);
 }
 
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaRecv(__gm__ const nds_device_connection *connection,
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaRecvImpl(__gm__ const nds_device_connection *connection,
                                            __gm__ const nds_device_transfer *transfer, TBuf<> *scratch,
                                            __gm__ nds_device_operation_result *result) {
     if (result == nullptr) return;
@@ -36,10 +36,10 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaRecv(__gm__ const nds_devic
     wr.local.address = transfer->local.address;
     wr.local.length = transfer->local.length;
     wr.local.local_key = transfer->local.local_key;
-    NdsAivPostRecv(&connection->qp, &wr, scratch, result);
+    NdsAivPostRecvImpl(&connection->qp, &wr, scratch, result);
 }
 
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaRead(__gm__ const nds_device_connection *connection,
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaReadImpl(__gm__ const nds_device_connection *connection,
                                            __gm__ const nds_device_transfer *transfer, TBuf<> *scratch,
                                            __gm__ nds_device_operation_result *result) {
     if (result == nullptr) return;
@@ -58,10 +58,10 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaRead(__gm__ const nds_devic
     wr.local.local_key = transfer->local.local_key;
     wr.remote_address = transfer->remote_address;
     wr.remote_key = transfer->remote_key;
-    NdsAivPostSend(&connection->qp, &wr, scratch, result);
+    NdsAivPostSendImpl(&connection->qp, &wr, scratch, result);
 }
 
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaWrite(__gm__ const nds_device_connection *connection,
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaWriteImpl(__gm__ const nds_device_connection *connection,
                                             __gm__ const nds_device_transfer *transfer, TBuf<> *scratch,
                                             __gm__ nds_device_operation_result *result) {
     if (result == nullptr) return;
@@ -80,5 +80,5 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaWrite(__gm__ const nds_devi
     wr.local.local_key = transfer->local.local_key;
     wr.remote_address = transfer->remote_address;
     wr.remote_key = transfer->remote_key;
-    NdsAivPostSend(&connection->qp, &wr, scratch, result);
+    NdsAivPostSendImpl(&connection->qp, &wr, scratch, result);
 }

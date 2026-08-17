@@ -34,7 +34,7 @@ NDS derives the following from HCOMM source:
 
 - HCCP/RA rdev, QP, MR, and teardown ordering.
 - Offline rdev use of `NOTIFY`, QP peer fields, and CPU-side path-MTU policy.
-- Host RA's post-then-runtime-doorbell sequence and the distinction between a
+- RA's post-then-runtime-doorbell sequence and the distinction between a
   successful post, a local CQE, and NDS protocol completion.
 - AI-QP creation modes and the separation of HCCP internal CQ handling from an
   NDS completion interface.

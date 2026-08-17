@@ -21,9 +21,9 @@ The host CPU creates and connects communication resources. Device execution
 uses a device-visible subset of those resources; it does not recreate the
 control plane.
 
-## Host RA
+## RA
 
-Host RA is more than a set of names equivalent to `libibverbs`. RA/HCCP keeps
+RA is more than a set of names equivalent to `libibverbs`. RA/HCCP keeps
 state behind its QP handles and exposes lifecycle, post, doorbell, and CQ
 operations. The host handle is appropriate for host calls but is not the
 object an AIV operator should dereference.

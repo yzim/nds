@@ -8,8 +8,8 @@ decision; and teardown. Mode-specific posting and CQ handling are described in
 [NPU execution modes](npu-backends.md).
 
 In the source tree, HCCP lifecycle code is the shared resource layer under
-`src/client/resource`; Host RA posting remains under
-`src/client/execution/host_ra`, while AIV and AICPU code lives under
+`src/client/resource`; RA posting remains under
+`src/client/execution/ra`, while AIV and AICPU code lives under
 `src/client/execution`. Connection control uses those resources without
 exposing HCCP handles to `StorageClient`.
 
@@ -52,7 +52,7 @@ HCCP creation entry point and requested QP mode:
 
 | Mode | HCCP creation | Requested QP mode | Resource purpose |
 |---|---|---|---|
-| `host-ra` | `RaTypicalQpCreate` | OPBASE (`2`) | Host RA post returns runtime doorbell information. |
+| `ra` | `RaTypicalQpCreate` | OPBASE (`2`) | RA post returns runtime doorbell information. |
 | `aiv` | `RaAiQpCreate` | Configurable; OPBASE_EXT (`4`) by default | HCCP returns caller-owned SQ/RQ/SCQ/RCQ dataplane data. |
 | `aicpu` | `RaAiQpCreate` | Configurable; NORMAL (`0`) by default | CP1 probes provider symbols first and uses the same dataplane record for fallbacks. |
 
@@ -120,8 +120,8 @@ The production interoperability path does **not** use HCOMM, HCCL, TSD, a rank t
 | `libascendcl.so` | lifecycle plus AIV/AICPU binary, argument, kernel, and stream APIs when selected | Dynamic by default; optional version-pinned public-ACL link mode | Public lifecycle boundary; dynamic default preserves host build portability. |
 | `libruntime.so` | `rtOpenNetService`, `rtCloseNetService`, `rtRDMADBSend` | Runtime-load | Required by the direct NPU RA lifecycle and default OPBASE Lite doorbell ring; not exposed through a stable NDS-facing SDK contract. |
 | `libra.so` | `RaInit`, rdev/QP lifecycle, MR registration, send/CQ APIs | Runtime-load | Required ABI is private/version-coupled; NDS transcribes only the interfaces it uses, including optional `RaAiQpCreate` for CANN-9.0.0 AICPU mode. |
-| NDS AIV object | Verbs/connection functions plus `NdsAivConnectionOp` in `nds_aiv_kernel.o` | Built as one CCEC translation unit because CANN 9.0.0 rejects a multi-object AIV image; other operators compile the reusable dataplane source against its API header | Keeps the callable APIs separate in source while respecting the loader format. |
-| NDS AICPU package | Exported verbs/connection symbols plus the `NdsAicpuConnectionOp` dispatch entry | Built as a standard-CP1 shared object and loaded through ACL mode 0 | Lets other AICPU operators invoke the data plane without routing through the host-launch entry. |
+| NDS AIV object | Verbs, connection, and storage APIs plus a direct `*Op` kernel entry for each | Built as one CCEC translation unit because CANN 9.0.0 rejects a multi-object AIV image | Lets ACL select one concrete operation with no NDS-level dispatch. |
+| NDS AICPU package | Exported verbs, connection, and storage APIs plus a direct `*Op` entry for each | Built as a standard-CP1 shared object and loaded through ACL mode 0 | Lets ACL select one concrete operation with no NDS-level dispatch. |
 | `libhcomm.so`, HCCL | none | No loader or wrapper is built | Their communicator, bundled Tx/Rx kernels, rank state, and peer protocols are outside the direct CPU-peer topology. |
 
 ### Dynamic-loader invariants
@@ -133,8 +133,8 @@ The production interoperability path does **not** use HCOMM, HCCL, TSD, a rank t
    NDS-owned transport and storage records with the CPU process.
 5. The CPU verbs executable must never link or load CANN.
 6. `--execution aicpu` loads only the NDS-built standard-CP1 package. NDS does not build or expose a custom-process AICPU mode because CANN does not publish the RNIC mapping/import contract that it would require.
-7. CANN 9.0.0 provides an AICPU loader but no public device-side RNIC post API. The NDS-owned AICPU package is a normal aarch64 DYN shared object, not a `bisheng -x aicpu` relocatable object. It confines the version-coupled HNS provider ABI to `src/client/execution/aicpu/device/nds_aicpu_hns_abi.h` and dynamically resolves `libhns-rdmav25.so:ibv_exp_post_send` inside the AICPU environment. The host process never loads that provider.
-8. The CPU polls its verbs CQ for command Receive and terminal completion Write. The current host StorageClient observes the CPU-written completion record through an AscendCL device-to-host copy in every execution mode. ACL synchronization, HCCP AI-QP CQ handling, and a host-RA local CQE are not NDS storage completion.
+7. CANN 9.0.0 provides an AICPU loader but no public device-side RNIC post API. The NDS-owned AICPU package is a normal aarch64 DYN shared object, not a `bisheng -x aicpu` relocatable object. It confines the version-coupled HNS provider ABI to `src/client/execution/aicpu/device/hns_abi.h` and dynamically resolves `libhns-rdmav25.so:ibv_exp_post_send` inside the AICPU environment. The host process never loads that provider.
+8. The CPU polls its verbs CQ for command Receive and terminal completion Write. The current host StorageClient observes the CPU-written completion record through an AscendCL device-to-host copy in every execution mode. ACL synchronization, HCCP AI-QP CQ handling, and an RA local CQE are not NDS storage completion.
 9. HCOMM's bundled `RunTransportRoceTx` path is reference material, not a fallback. It depends on matching Rx-side transport logic, reciprocal flag buffers, and HCOMM synchronization semantics that the CPU verbs server does not implement. NDS therefore has no HCOMM loader, communicator bootstrap, or bundled-kernel wrapper.
 
 ### Validated RA subset
@@ -164,7 +164,7 @@ aclInit → aclrtSetDevice → rtOpenNetService → RaInit
 → RaRdevInitV2 → RaAiQpCreate(NORMAL)
 → endpoint exchange → RaTypicalQpModify → register application, command, and completion MRs
 → aclrtBinaryLoadFromFile(nds_aicpu_standard.json, CPU_KERNEL_MODE=0)
-→ NdsAicpuConnectionOp → NdsAicpuRdma* → NdsAicpuPost*/PollCq
+→ NdsAicpuRdma* → NdsAicpuRdma*Impl → NdsAicpuPost*/PollCqImpl
 → aclrtSynchronizeStreamWithTimeout
 → CPU writes terminal completion record → host polls completion record
 → unload package/destroy stream → deregister MR → teardown

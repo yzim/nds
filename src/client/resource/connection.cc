@@ -43,7 +43,7 @@ Result<void> Connection::open(const ConnectionConfig &config) {
     if (!qp_.create(&context_.ra_api(), config_.qp, config.execution) || !qp_.make_qp_info(&local_)) {
         return unexpected(ErrorCode::kRa, qp_.error());
     }
-    if (config.execution != NpuExecutionMode::HostRa) {
+    if (config.execution != NpuExecutionMode::Ra) {
         if (const auto allocated = allocate(config_.qp.send_queue_depth * sizeof(std::uint64_t), &send_wr_ids_);
             !allocated)
             return unexpected(allocated.error());

@@ -10,33 +10,33 @@
 extern "C" {
 #endif
 
-__attribute__((visibility("default"))) uint32_t NdsAicpuPostSend(
+uint32_t NdsAicpuPostSendImpl(
     const nds_device_qp *qp, const nds_device_send_wr *wr,
     nds_device_operation_result *result);
-__attribute__((visibility("default"))) uint32_t NdsAicpuPostRecv(
+uint32_t NdsAicpuPostRecvImpl(
     const nds_device_qp *qp, const nds_device_recv_wr *wr,
     nds_device_operation_result *result);
-__attribute__((visibility("default"))) uint32_t NdsAicpuPollCq(
+uint32_t NdsAicpuPollCqImpl(
     const nds_device_qp *qp, const nds_device_poll_cq_request *request,
     nds_device_operation_result *result);
 
-__attribute__((visibility("default"))) uint32_t NdsAicpuRdmaSend(
+uint32_t NdsAicpuRdmaSendImpl(
     const nds_device_connection *connection, const nds_device_transfer *transfer,
     nds_device_operation_result *result);
-__attribute__((visibility("default"))) uint32_t NdsAicpuRdmaRecv(
+uint32_t NdsAicpuRdmaRecvImpl(
     const nds_device_connection *connection, const nds_device_transfer *transfer,
     nds_device_operation_result *result);
-__attribute__((visibility("default"))) uint32_t NdsAicpuRdmaRead(
+uint32_t NdsAicpuRdmaReadImpl(
     const nds_device_connection *connection, const nds_device_transfer *transfer,
     nds_device_operation_result *result);
-__attribute__((visibility("default"))) uint32_t NdsAicpuRdmaWrite(
+uint32_t NdsAicpuRdmaWriteImpl(
     const nds_device_connection *connection, const nds_device_transfer *transfer,
     nds_device_operation_result *result);
 
-__attribute__((visibility("default"))) uint32_t NdsAicpuStorageRead(
+uint32_t NdsAicpuStorageReadImpl(
     const nds_device_storage *storage, const nds_device_storage_io *io,
     nds_device_operation_result *result);
-__attribute__((visibility("default"))) uint32_t NdsAicpuStorageWrite(
+uint32_t NdsAicpuStorageWriteImpl(
     const nds_device_storage *storage, const nds_device_storage_io *io,
     nds_device_operation_result *result);
 
