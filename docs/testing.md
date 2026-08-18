@@ -10,7 +10,8 @@ network configuration.
 Unit tests run without sockets, shared libraries, CANN, RDMA hardware, or an
 NPU. They cover the NDS transport and storage codecs, CPU path-MTU policy, RA
 QP lifecycle logic through an in-process fake RA API, RMA capabilities, the
-AICPU and AIV request ABI layouts, the device QP/WR/connection builders, and
+AICPU and AIV request ABI layouts, the AICPU mode-1 binary loader contract,
+the device QP/WR/connection builders, and
 the shared HNS queue/CQE codec used by the device kernels. The QP tests include invalid queue geometry, explicit
 QP-mode selection, HCCP-owned completion queues, and missing data-plane queue
 descriptors. The HNS codec tests cover receive-WQE layout, queue capacity and

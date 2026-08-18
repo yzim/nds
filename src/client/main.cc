@@ -31,10 +31,8 @@ nds::Result<int> parse_args(int argc, char **argv, ClientConfig *config, bool *e
     app.add_option("--runtime", config->connection.context.runtime_library, "CANN runtime shared library")->required();
     app.add_option("--ra", config->connection.context.ra_library, "CANN RA shared library")->required();
     std::string execution{"ra"};
-    app.add_option("--execution", execution, "Storage execution mode")
-        ->check(CLI::IsMember({"ra", "aicpu", "aiv"}));
-    app.add_option("--aicpu-kernel-config", config->connection.rma.aicpu_kernel_config,
-                   "AICPU kernel package configuration");
+    app.add_option("--execution", execution, "Storage execution mode")->check(CLI::IsMember({"ra", "aicpu", "aiv"}));
+    app.add_option("--aicpu-kernel", config->connection.rma.aicpu_kernel, "AICPU kernel shared object");
     app.add_option("--aiv-kernel", config->connection.rma.aiv_kernel, "AIV kernel binary");
     app.add_option("--operation", config->operation, "Storage operation")->check(CLI::IsMember({"read", "write"}));
     app.add_option("--offset", config->offset, "Namespace byte offset");
@@ -71,7 +69,7 @@ nds::Result<int> parse_args(int argc, char **argv, ClientConfig *config, bool *e
     if (execution == "aiv")
         config->connection.execution = nds::NpuExecutionMode::Aiv;
     config->connection.qp.physical_device_id = config->connection.context.physical_device_id;
-    if ((execution == "aicpu" && config->connection.rma.aicpu_kernel_config.empty()) ||
+    if ((execution == "aicpu" && config->connection.rma.aicpu_kernel.empty()) ||
         (execution == "aiv" && config->connection.rma.aiv_kernel.empty())) {
         return nds::unexpected(nds::ErrorCode::kInvalidArgument, "invalid option combination");
     }
@@ -121,7 +119,7 @@ int main(int argc, char **argv) {
     }
 
     const auto result = config.operation == "read" ? client.read(config.offset, &data, config.bytes)
-                                                    : client.write(config.offset, &data, config.bytes);
+                                                   : client.write(config.offset, &data, config.bytes);
     if (!result) {
         NDS_LOG_ERROR("npu-client", "storage {} failed: {}", config.operation, result.error().message);
         return EXIT_FAILURE;

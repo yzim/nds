@@ -26,7 +26,9 @@ public:
     bool allocate(std::size_t size) {
         return context_ != nullptr && address_ == nullptr && context_->allocate_device_memory(size, &address_);
     }
-    void *get() const noexcept { return address_; }
+    void *get() const noexcept {
+        return address_;
+    }
 
 private:
     NpuRaContext *context_{};
@@ -52,8 +54,8 @@ Result<void> submit_device_storage(Connection *connection, const RegisteredRegio
     request.storage.size = sizeof(request.storage);
     request.storage.connection = *device_connection;
     request.storage.command = {command.address(), static_cast<std::uint32_t>(command.length()), command.local_key()};
-    request.storage.completion =
-        {completion.address(), static_cast<std::uint32_t>(completion.length()), completion.local_key()};
+    request.storage.completion = {completion.address(), static_cast<std::uint32_t>(completion.length()),
+                                  completion.local_key()};
     request.storage.capacity = capacity;
     request.storage.request_id = request_id;
     request.io.operation = operation;
@@ -65,8 +67,8 @@ Result<void> submit_device_storage(Connection *connection, const RegisteredRegio
     DeviceAllocation result(connection->context());
     if (!result.allocate(sizeof(nds_device_operation_result)))
         return unexpected(ErrorCode::kRuntime, connection->context()->error());
-    const nds_device_operation_result pending{NDS_DEVICE_OPERATION_INVALID_ARGUMENT, NDS_DEVICE_OPERATION_PATH_NONE,
-                                              0, 0U};
+    const nds_device_operation_result pending{NDS_DEVICE_OPERATION_INVALID_ARGUMENT, NDS_DEVICE_OPERATION_PATH_NONE, 0,
+                                              0U};
     if (!connection->context()->copy_host_to_device(result.get(), &pending, sizeof(pending)))
         return unexpected(ErrorCode::kRuntime, connection->context()->error());
     request.operation_result_address = reinterpret_cast<std::uint64_t>(result.get());
@@ -74,7 +76,7 @@ Result<void> submit_device_storage(Connection *connection, const RegisteredRegio
     std::string launch_error;
     if (connection->config().execution == NpuExecutionMode::Aicpu) {
         AicpuEntrypointLauncher launcher;
-        if (!launcher.load(&connection->context()->acl_api(), connection->config().rma.aicpu_kernel_config) ||
+        if (!launcher.load(&connection->context()->acl_api(), connection->config().rma.aicpu_kernel) ||
             !launcher.launch_storage_and_wait(&request, kCompletionTimeoutMs)) {
             launch_error = launcher.error();
         }
@@ -181,20 +183,19 @@ Result<void> StorageClient::execute(std::uint16_t operation, std::uint64_t offse
         return unexpected(result.error());
     if (connection_.config().execution == NpuExecutionMode::Ra) {
         request_submitted_ = true;
-        const RaStorageRequest request{{connection_.context(), connection_.qp()},
-                                       command_buffer_.data(),
-                                       {command_region_.address(), static_cast<std::uint32_t>(command_region_.length()),
-                                        command_region_.local_key()},
-                                       completion_buffer_.data(),
-                                       {completion_region_.address(),
-                                        static_cast<std::uint32_t>(completion_region_.length()),
-                                        completion_region_.local_key()},
-                                       {data_region.address(), data_region.length(), data_region.remote_key(),
-                                        remote_access},
-                                       offset,
-                                       length,
-                                       capacity_,
-                                       request_id};
+        const RaStorageRequest request{
+            {connection_.context(), connection_.qp()},
+            command_buffer_.data(),
+            {command_region_.address(), static_cast<std::uint32_t>(command_region_.length()),
+             command_region_.local_key()},
+            completion_buffer_.data(),
+            {completion_region_.address(), static_cast<std::uint32_t>(completion_region_.length()),
+             completion_region_.local_key()},
+            {data_region.address(), data_region.length(), data_region.remote_key(), remote_access},
+            offset,
+            length,
+            capacity_,
+            request_id};
         return operation == NDS_PROTOCOL_READ ? NdsRaStorageRead(request) : NdsRaStorageWrite(request);
     }
     request_submitted_ = true;
@@ -218,7 +219,8 @@ Result<std::uint64_t> StorageClient::exchange_bootstrap() {
         return unexpected(ErrorCode::kProtocol, "invalid storage bootstrap record");
     if (const auto sent = connection_.bootstrap()->send_bytes(&bootstrap_wire, sizeof(bootstrap_wire)); !sent)
         return unexpected(sent.error());
-    if (const auto received = connection_.bootstrap()->receive_bytes(&namespace_wire, sizeof(namespace_wire)); !received)
+    if (const auto received = connection_.bootstrap()->receive_bytes(&namespace_wire, sizeof(namespace_wire));
+        !received)
         return unexpected(received.error());
     if (nds_protocol_namespace_decode(&namespace_wire, &namespace_record) != NDS_PROTOCOL_RESULT_OK)
         return unexpected(ErrorCode::kProtocol, "invalid storage namespace record");

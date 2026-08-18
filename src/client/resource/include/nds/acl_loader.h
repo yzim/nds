@@ -32,6 +32,11 @@ typedef enum nds_acl_binary_load_option_type {
     NDS_ACL_BINARY_LOAD_OPT_CPU_KERNEL_MODE = 3,
 } nds_acl_binary_load_option_type;
 
+typedef enum nds_acl_cpu_kernel_mode {
+    NDS_ACL_CPU_KERNEL_REGISTER_JSON = 0,
+    NDS_ACL_CPU_KERNEL_LOAD_SO_AND_JSON = 1,
+} nds_acl_cpu_kernel_mode;
+
 typedef union nds_acl_binary_load_option_value {
     uint32_t lazy_load;
     int32_t cpu_kernel_mode;

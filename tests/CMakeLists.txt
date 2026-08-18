@@ -21,6 +21,8 @@ nds_add_unit_test(nds_device_storage_test device_storage_test.cc)
 target_include_directories(nds_device_storage_test PRIVATE
     ${PROJECT_SOURCE_DIR}/src/client/include
     ${PROJECT_SOURCE_DIR}/src/include)
+nds_add_unit_test(nds_aicpu_launcher_test aicpu_launcher_test.cc)
+target_link_libraries(nds_aicpu_launcher_test PRIVATE nds_aicpu_launcher)
 nds_add_unit_test(nds_logging_test logging_test.cc)
 target_link_libraries(nds_logging_test PRIVATE nds_logging)
 

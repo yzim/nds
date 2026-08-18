@@ -59,10 +59,10 @@ Use `aiv` for direct vector-core WQE/doorbell posting and `aicpu` for a
 provider-owned post from standard CP1. These are implementation choices, not
 performance rankings. The host validation executable supports storage Read and
 Write with all three work-request modes. Recorded hardware validation covers
-one bounded storage Write in all three modes, an RA Read from a fresh
+one bounded storage Write in RA and AIV modes, an RA Read from a fresh
 zeroed namespace, device Send/Receive with SCQ/RCQ polling in AIV and AICPU,
 and direct device RDMA Read/Write with SCQ polling in both modes. It does not
-yet cover an AIV or AICPU storage Read. NDS has not published throughput or
+yet cover an AICPU storage Write or an AIV/AICPU storage Read. NDS has not published throughput or
 latency results.
 
 The initial protocol permits one command in flight on one RC QP. Queueing,
@@ -309,9 +309,10 @@ cmake -S . -B build-aicpu -DNDS_CANN_ROOT=<cann-root> -DNDS_BUILD_AICPU_KERNEL=O
 cmake --build build-aicpu --parallel
 ```
 
-Install the generated package through CANN's supported customer-AICPU process,
+Keep the generated `libnds_aicpu_standard.so` and same-basename JSON together,
 then use `--execution aicpu` and
-`--aicpu-kernel-config <path>/nds_aicpu_standard.json`. Select either
+`--aicpu-kernel <path>/libnds_aicpu_standard.so`. ACL CPU-kernel mode 1 transfers
+the shared object to the device and registers its companion JSON. Select either
 `--operation write` or `--operation read`; both use the AICPU command-Send
 path, and the CPU server selects the corresponding data-transfer direction.
 

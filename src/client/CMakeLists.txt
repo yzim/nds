@@ -139,8 +139,7 @@ if(NDS_BUILD_AICPU_KERNEL)
     set(NDS_AICPU_STANDARD_KERNEL_SO "libnds_aicpu_standard.so")
     set(NDS_AICPU_OUTPUT_DIR "${CMAKE_BINARY_DIR}/aicpu")
     set(NDS_AICPU_STANDARD_KERNEL "${NDS_AICPU_OUTPUT_DIR}/${NDS_AICPU_STANDARD_KERNEL_SO}")
-    set(NDS_AICPU_STANDARD_CONFIG "${NDS_AICPU_OUTPUT_DIR}/nds_aicpu_standard.json")
-    set(NDS_AICPU_STANDARD_PACKAGE "${NDS_AICPU_OUTPUT_DIR}/aicpu_nds.tar.gz")
+    set(NDS_AICPU_STANDARD_CONFIG "${NDS_AICPU_OUTPUT_DIR}/libnds_aicpu_standard.json")
     add_custom_command(
         OUTPUT "${NDS_AICPU_STANDARD_KERNEL}"
         COMMAND "${CMAKE_COMMAND}" -E make_directory "${NDS_AICPU_OUTPUT_DIR}"
@@ -170,15 +169,8 @@ if(NDS_BUILD_AICPU_KERNEL)
             "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_storage.h"
         VERBATIM)
     configure_file(${NDS_AICPU_DEVICE_DIR}/package/nds_aicpu_standard.json.in "${NDS_AICPU_STANDARD_CONFIG}" @ONLY)
-    add_custom_command(
-        OUTPUT "${NDS_AICPU_STANDARD_PACKAGE}"
-        COMMAND "${CMAKE_COMMAND}" -DINPUT_SO=${NDS_AICPU_STANDARD_KERNEL}
-            -DSTAGE_ROOT=${NDS_AICPU_OUTPUT_DIR}/standard_package -DOUTPUT_PACKAGE=${NDS_AICPU_STANDARD_PACKAGE}
-            -P ${NDS_AICPU_DEVICE_DIR}/package/build_standard_package.cmake
-        DEPENDS "${NDS_AICPU_STANDARD_KERNEL}"
-        VERBATIM)
     add_custom_target(nds_aicpu_kernel ALL DEPENDS "${NDS_AICPU_STANDARD_KERNEL}"
-        "${NDS_AICPU_STANDARD_CONFIG}" "${NDS_AICPU_STANDARD_PACKAGE}")
+        "${NDS_AICPU_STANDARD_CONFIG}")
 endif()
 
 add_executable(nds_client main.cc)

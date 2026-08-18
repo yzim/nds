@@ -121,7 +121,7 @@ The production interoperability path does **not** use HCOMM, HCCL, TSD, a rank t
 | `libruntime.so` | `rtOpenNetService`, `rtCloseNetService`, `rtRDMADBSend` | Runtime-load | Required by the direct NPU RA lifecycle and default OPBASE Lite doorbell ring; not exposed through a stable NDS-facing SDK contract. |
 | `libra.so` | `RaInit`, rdev/QP lifecycle, MR registration, send/CQ APIs | Runtime-load | Required ABI is private/version-coupled; NDS transcribes only the interfaces it uses, including optional `RaAiQpCreate` for CANN-9.0.0 AICPU mode. |
 | NDS AIV object | Verbs, connection, and storage APIs plus a direct `*Op` kernel entry for each | Built as one CCEC translation unit because CANN 9.0.0 rejects a multi-object AIV image | Lets ACL select one concrete operation with no NDS-level dispatch. |
-| NDS AICPU package | Exported verbs, connection, and storage APIs plus a direct `*Op` entry for each | Built as a standard-CP1 shared object and loaded through ACL mode 0 | Lets ACL select one concrete operation with no NDS-level dispatch. |
+| NDS AICPU package | Exported verbs, connection, and storage APIs plus a direct `*Op` entry for each | Built as a standard-CP1 shared object and loaded with its same-basename JSON through ACL mode 1 | Lets ACL select one concrete operation with no NDS-level dispatch. |
 | `libhcomm.so`, HCCL | none | No loader or wrapper is built | Their communicator, bundled Tx/Rx kernels, rank state, and peer protocols are outside the direct CPU-peer topology. |
 
 ### Dynamic-loader invariants
@@ -163,7 +163,7 @@ The NDS-owned optional AICPU Tx path has a deliberately narrow lifecycle:
 aclInit → aclrtSetDevice → rtOpenNetService → RaInit
 → RaRdevInitV2 → RaAiQpCreate(NORMAL)
 → endpoint exchange → RaTypicalQpModify → register application, command, and completion MRs
-→ aclrtBinaryLoadFromFile(nds_aicpu_standard.json, CPU_KERNEL_MODE=0)
+→ aclrtBinaryLoadFromFile(libnds_aicpu_standard.so, CPU_KERNEL_MODE=1)
 → NdsAicpuRdma* → NdsAicpuRdma*Impl → NdsAicpuPost*/PollCqImpl
 → aclrtSynchronizeStreamWithTimeout
 → CPU writes terminal completion record → host polls completion record

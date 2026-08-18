@@ -6,23 +6,32 @@ namespace nds {
 namespace {
 const char *aicpu_operator_name(std::uint32_t operation) {
     switch (operation) {
-    case NDS_DEVICE_RDMA_SEND: return "NdsAicpuRdmaSend";
-    case NDS_DEVICE_RDMA_RECV: return "NdsAicpuRdmaRecv";
-    case NDS_DEVICE_RDMA_READ: return "NdsAicpuRdmaRead";
-    case NDS_DEVICE_RDMA_WRITE: return "NdsAicpuRdmaWrite";
-    case NDS_DEVICE_POLL_CQ: return "NdsAicpuPollCq";
-    default: return nullptr;
+        case NDS_DEVICE_RDMA_SEND:
+            return "NdsAicpuRdmaSend";
+        case NDS_DEVICE_RDMA_RECV:
+            return "NdsAicpuRdmaRecv";
+        case NDS_DEVICE_RDMA_READ:
+            return "NdsAicpuRdmaRead";
+        case NDS_DEVICE_RDMA_WRITE:
+            return "NdsAicpuRdmaWrite";
+        case NDS_DEVICE_POLL_CQ:
+            return "NdsAicpuPollCq";
+        default:
+            return nullptr;
     }
 }
 
 const char *aicpu_storage_operator_name(std::uint16_t operation) {
     switch (operation) {
-    case NDS_PROTOCOL_READ: return "NdsAicpuStorageRead";
-    case NDS_PROTOCOL_WRITE: return "NdsAicpuStorageWrite";
-    default: return nullptr;
+        case NDS_PROTOCOL_READ:
+            return "NdsAicpuStorageRead";
+        case NDS_PROTOCOL_WRITE:
+            return "NdsAicpuStorageWrite";
+        default:
+            return nullptr;
     }
 }
-}
+}  // namespace
 
 AicpuEntrypointLauncher::~AicpuEntrypointLauncher() {
     reset();
@@ -32,7 +41,7 @@ void AicpuEntrypointLauncher::set_error(std::string message) {
     error_ = std::move(message);
 }
 
-bool AicpuEntrypointLauncher::load(nds_acl_api *acl, const std::string &kernel_config_path) {
+bool AicpuEntrypointLauncher::load(nds_acl_api *acl, const std::string &kernel_path) {
     nds_acl_binary_load_option option{};
     nds_acl_binary_load_options options{};
     int result;
@@ -45,8 +54,8 @@ bool AicpuEntrypointLauncher::load(nds_acl_api *acl, const std::string &kernel_c
         set_error("NDS AICPU RDMA post launcher is already loaded");
         return false;
     }
-    if (kernel_config_path.empty()) {
-        set_error("NDS AICPU RDMA post requires the NDS-built nds_aicpu_standard.json path");
+    if (kernel_path.empty()) {
+        set_error("NDS AICPU launch requires the NDS-built libnds_aicpu_standard.so path");
         return false;
     }
     if (acl->binary_load_from_file == nullptr || acl->binary_unload == nullptr || acl->binary_get_function == nullptr ||
@@ -60,12 +69,12 @@ bool AicpuEntrypointLauncher::load(nds_acl_api *acl, const std::string &kernel_c
 
     acl_ = acl;
     option.type = NDS_ACL_BINARY_LOAD_OPT_CPU_KERNEL_MODE;
-    option.value.cpu_kernel_mode = 0;
+    option.value.cpu_kernel_mode = NDS_ACL_CPU_KERNEL_LOAD_SO_AND_JSON;
     options.options = &option;
     options.num_options = 1U;
-    result = acl_->binary_load_from_file(kernel_config_path.c_str(), &options, &binary_);
+    result = acl_->binary_load_from_file(kernel_path.c_str(), &options, &binary_);
     if (result != 0 || binary_ == nullptr) {
-        set_error("aclrtBinaryLoadFromFile(NDS AICPU package) failed: " + std::to_string(result));
+        set_error("aclrtBinaryLoadFromFile(NDS AICPU shared object) failed: " + std::to_string(result));
         reset();
         return false;
     }
@@ -134,7 +143,8 @@ bool AicpuEntrypointLauncher::launch_and_wait(nds_device_operation_request *requ
     }
     result = acl_->synchronize_stream_with_timeout(stream_, completion_timeout_ms);
     if (result != 0) {
-        set_error("aclrtSynchronizeStreamWithTimeout after " + std::string(operator_name) + " failed: " + std::to_string(result));
+        set_error("aclrtSynchronizeStreamWithTimeout after " + std::string(operator_name) +
+                  " failed: " + std::to_string(result));
         return false;
     }
     error_.clear();
@@ -142,7 +152,7 @@ bool AicpuEntrypointLauncher::launch_and_wait(nds_device_operation_request *requ
 }
 
 bool AicpuEntrypointLauncher::launch_storage_and_wait(nds_device_storage_request *request,
-                                                       std::int32_t completion_timeout_ms) {
+                                                      std::int32_t completion_timeout_ms) {
     if (request == nullptr || request->storage.connection.abi_version != NDS_DEVICE_CONNECTION_ABI_VERSION ||
         request->storage.connection.qp.abi_version != NDS_DEVICE_QP_ABI_VERSION ||
         request->operation_result_address == 0U || completion_timeout_ms <= 0) {
@@ -192,8 +202,8 @@ bool AicpuEntrypointLauncher::launch_storage_and_wait(nds_device_storage_request
     }
     result = acl_->synchronize_stream_with_timeout(stream_, completion_timeout_ms);
     if (result != 0) {
-        set_error("aclrtSynchronizeStreamWithTimeout after " + std::string(operator_name) + " failed: " +
-                  std::to_string(result));
+        set_error("aclrtSynchronizeStreamWithTimeout after " + std::string(operator_name) +
+                  " failed: " + std::to_string(result));
         return false;
     }
     error_.clear();

@@ -14,7 +14,7 @@ namespace nds::client {
 
 /* Host-example paths used to invoke AIV/AICPU operators. Not qp control. */
 struct RmaConfig {
-    std::string aicpu_kernel_config;
+    std::string aicpu_kernel;
     std::string aiv_kernel;
 };
 
