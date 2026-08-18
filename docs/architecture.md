@@ -41,10 +41,10 @@ storage are API layers. They are separate axes:
 
 | Layer | RA | AIV | AICPU |
 |---|---|---|---|
-| Verbs | RA QP post and CQ API | `PostSend`, `PostRecv`, `PollCq` over device QP addresses | Exported provider/fallback `PostSend`, `PostRecv`, `PollCq` |
-| Connection/RDMA | Host work-request dispatch | Device `RdmaSend`, `RdmaRecv`, `RdmaRead`, `RdmaWrite` | Device `RdmaSend`, `RdmaRecv`, `RdmaRead`, `RdmaWrite` |
+| Verbs | `NdsRaPostSend`, `NdsRaPostRecv`, `NdsRaPollCq` | `PostSend`, `PostRecv`, `PollCq` over device QP addresses | Exported provider/fallback `PostSend`, `PostRecv`, `PollCq` |
+| Connection/RDMA | `NdsRaRdmaSend`, `NdsRaRdmaRecv`, `NdsRaRdmaRead`, `NdsRaRdmaWrite` | Device `RdmaSend`, `RdmaRecv`, `RdmaRead`, `RdmaWrite` | Device `RdmaSend`, `RdmaRecv`, `RdmaRead`, `RdmaWrite` |
 | Transport | Host `Transport` | Device transport/session API planned | Device transport/session API planned |
-| Storage | Host `StorageClient` | Device `StorageRead` / `StorageWrite` | Device `StorageRead` / `StorageWrite` |
+| Storage | `NdsRaStorageRead`, `NdsRaStorageWrite` | Device `StorageRead` / `StorageWrite` | Device `StorageRead` / `StorageWrite` |
 
 The current executable is a host control and validation path. For AIV and
 AICPU it constructs the storage command on the host, then launches the device

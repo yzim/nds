@@ -13,6 +13,8 @@ namespace {
 struct Config {
     nds::server::ConnectionConfig connection;
     std::uint32_t namespace_bytes{1024U * 1024U};
+    bool seed_pattern{};
+    std::uint32_t verify_write_bytes{};
     std::string log_sink{"stderr"};
     std::string log_level{"info"};
 };
@@ -25,6 +27,10 @@ int parse(int argc, char **argv, Config *config, bool *exit_requested) {
     app.add_option("--tcp-port", config->connection.tcp_port);
     app.add_option("--ib-port", config->connection.backend.port);
     app.add_option("--namespace-bytes", config->namespace_bytes)->check(CLI::Range(1U, 64U * 1024U * 1024U));
+    app.add_flag("--seed-pattern", config->seed_pattern, "Initialize the namespace with the NDS test pattern");
+    app.add_option("--verify-write-bytes", config->verify_write_bytes,
+                   "Verify this many leading namespace bytes against the NDS test pattern")
+        ->check(CLI::Range(0U, 64U * 1024U * 1024U));
     app.add_option("--log-sink", config->log_sink)->check(CLI::IsMember({"stderr", "stdout", "syslog", "none"}));
     app.add_option("--log-level", config->log_level)
         ->check(CLI::IsMember({"trace", "debug", "info", "warn", "error", "critical", "off"}));
@@ -55,9 +61,23 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
     std::vector<unsigned char> storage(config.namespace_bytes, 0U);
+    if (config.seed_pattern) {
+        for (std::size_t index = 0; index < storage.size(); ++index)
+            storage[index] = static_cast<unsigned char>(index ^ 0x5aU);
+    }
     if (const auto served = nds::server::serve_request(&connection, &storage, 5000U); !served) {
         NDS_LOG_ERROR("cpu-server", "protocol request failed: {}", served.error().message);
         return EXIT_FAILURE;
+    }
+    if (config.verify_write_bytes > storage.size()) {
+        NDS_LOG_ERROR("cpu-server", "write verification range exceeds the namespace");
+        return EXIT_FAILURE;
+    }
+    for (std::size_t index = 0; index < config.verify_write_bytes; ++index) {
+        if (storage[index] != static_cast<unsigned char>(index ^ 0x5aU)) {
+            NDS_LOG_ERROR("cpu-server", "storage Write verification failed at byte {}", index);
+            return EXIT_FAILURE;
+        }
     }
     NDS_LOG_INFO("cpu-server", "completed one NDS storage command");
     return EXIT_SUCCESS;

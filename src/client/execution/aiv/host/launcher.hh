@@ -3,6 +3,7 @@
 
 #include "nds/acl_loader.h"
 #include "nds/device_operations.h"
+#include "nds/device_storage.h"
 #include "nds/ra_loader.h"
 
 #include <cstdint>
@@ -10,19 +11,21 @@
 
 namespace nds {
 
-/* Loads the AIV dataplane binary and launches its connection-operation entry. */
-class AivConnectionLauncher {
+/* Loads the AIV binary and launches its typed operator entries. */
+class AivEntrypointLauncher {
 public:
-    AivConnectionLauncher() = default;
-    ~AivConnectionLauncher();
-    AivConnectionLauncher(const AivConnectionLauncher &) = delete;
-    AivConnectionLauncher &operator=(const AivConnectionLauncher &) = delete;
+    AivEntrypointLauncher() = default;
+    ~AivEntrypointLauncher();
+    AivEntrypointLauncher(const AivEntrypointLauncher &) = delete;
+    AivEntrypointLauncher &operator=(const AivEntrypointLauncher &) = delete;
 
     bool load(nds_acl_api *acl, const std::string &kernel_path);
     bool make_device_request(const nds_device_operation_request &request,
                              nds_device_operation_request *output);
     bool launch_and_wait(std::uint64_t device_request_address, std::uint32_t operation,
                          std::int32_t completion_timeout_ms);
+    bool launch_storage_and_wait(std::uint64_t device_request_address, std::uint16_t operation,
+                                 std::int32_t completion_timeout_ms);
     void reset() noexcept;
     bool loaded() const noexcept;
     const std::string &error() const noexcept;

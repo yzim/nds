@@ -23,8 +23,6 @@ public:
 private:
     Result<void> execute(std::uint16_t operation, std::uint64_t offset, DeviceBuffer *data, std::uint32_t length);
     Result<std::uint64_t> exchange_bootstrap();
-    Result<void> wait_for_completion(std::uint64_t request_id, std::uint64_t expected_bytes);
-
     Connection connection_;
     DeviceBuffer command_buffer_;
     DeviceBuffer completion_buffer_;

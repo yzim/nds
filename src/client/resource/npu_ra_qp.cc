@@ -109,7 +109,7 @@ bool NpuRaQp::create(nds_ra_api *api, const NpuRaQpConfig &config, NpuExecutionM
     rdev_init.enabled_2mb_lite = false;
     result = api_->ra_rdev_init_v2(rdev_init, rdev, &rdev_handle_);
     if (result != 0 || rdev_handle_ == nullptr) {
-        set_error("RaRdevInitV2(disabledLiteThread=true) failed: " + std::to_string(result));
+        set_error("RaRdevInitV2(disabledLiteThread=false) failed: " + std::to_string(result));
         reset();
         return false;
     }

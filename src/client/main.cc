@@ -132,7 +132,7 @@ int main(int argc, char **argv) {
             NDS_LOG_ERROR("npu-client", "client Read copy failed: {}", copied.error().message);
             return EXIT_FAILURE;
         }
-        if (result != std::vector<unsigned char>(result.size(), 0U)) {
+        if (result != payload) {
             NDS_LOG_ERROR("npu-client", "storage Read verification failed");
             return EXIT_FAILURE;
         }

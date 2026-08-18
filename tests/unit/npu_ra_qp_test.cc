@@ -34,10 +34,13 @@ struct FakeRaState {
     int register_mr_calls{};
     int deregister_mr_calls{};
     int send_wr_calls{};
+    int recv_wr_calls{};
     int poll_cq_calls{};
     int poll_result{};
+    bool poll_send_cq{};
     nds_ra_send_wr send_wr{};
     nds_ra_sge send_sge{};
+    nds_ra_recv_wr recv_wr{};
     nds_ra_mr_info mr{};
     nds_ra_rdev rdev{};
     nds_ra_rdev_init_info rdev_init{};
@@ -244,12 +247,21 @@ int fake_send_wr(void *handle, nds_ra_send_wr *wr, nds_ra_send_response *respons
     return 0;
 }
 
+int fake_recv_wrlist(void *handle, nds_ra_recv_wr *wr, unsigned int recv_num, unsigned int *complete_num) {
+    assert(handle == &fake_qp);
+    assert(wr != nullptr && recv_num == 1U && complete_num != nullptr);
+    ++state->recv_wr_calls;
+    state->recv_wr = *wr;
+    *complete_num = 1U;
+    return 0;
+}
+
 int fake_poll_cq(void *handle, bool is_send_cq, unsigned int max_entries, void *completions) {
     assert(handle == &fake_qp);
-    assert(is_send_cq);
-    assert(max_entries == 1U);
+    assert(max_entries == NDS_DEVICE_MAX_COMPLETIONS);
     assert(completions != nullptr);
     ++state->poll_cq_calls;
+    state->poll_send_cq = is_send_cq;
     if (state->poll_result > 0) {
         static_cast<nds_ra_completion *>(completions)->status = 0;
     }
@@ -276,6 +288,7 @@ nds_ra_api make_fake_api() {
     api.ra_register_mr = fake_register_mr;
     api.ra_deregister_mr = fake_deregister_mr;
     api.ra_typical_send_wr = fake_send_wr;
+    api.ra_recv_wrlist = fake_recv_wrlist;
     api.ra_poll_cq = fake_poll_cq;
     return api;
 }
@@ -369,8 +382,7 @@ void test_aicpu_qp_creation_and_connection() {
     nds::NpuRaQpConfig config{};
     nds_qp_info local{};
     nds_qp_info peer{};
-    nds_ra_send_response response{};
-    nds_ra_completion completion{};
+    nds_device_completion_output completions{};
 
     config.local_ipv4 = "192.0.2.10";
     assert(qp.create(&api, config, nds::NpuExecutionMode::Aicpu));
@@ -422,8 +434,9 @@ void test_aicpu_qp_creation_and_connection() {
     peer.retry_timeout = 14U;
     assert(qp.connect(peer));
     assert(fake.modify_calls == 1);
-    assert(!nds::post_ra_wr(&qp, {{0x1000U, 64U, 0x99U}, NDS_RA_WR_SEND, 0U, 0U}, true, &response));
-    assert(!nds::poll_ra_cq(&qp, &completion, 1U));
+    assert(!nds::NdsRaPostSend(&qp, {1U, NDS_DEVICE_WR_SEND, NDS_DEVICE_SEND_SIGNALED,
+                                     {0x1000U, 64U, 0x99U}, 0U, 0U, 0U}));
+    assert(!nds::NdsRaPollCq(&qp, NDS_DEVICE_SEND_QUEUE, &completions));
     assert(fake.send_wr_calls == 0);
     assert(fake.poll_cq_calls == 0);
     qp.reset();
@@ -527,13 +540,15 @@ void test_send_wr_and_polling() {
     nds::NpuRaQp qp;
     nds::NpuRaQpConfig config{};
     nds_qp_info peer{};
-    nds_ra_send_response response{};
-    nds_ra_completion completion{};
+    nds_device_completion_output completions{};
+    const nds_device_send_wr write{1U, NDS_DEVICE_WR_RDMA_WRITE, NDS_DEVICE_SEND_SIGNALED,
+                                   {0x1000U, 64U, 0x99U}, 0x2000U, 0x88U, 0U};
+    const nds_device_send_wr send{2U, NDS_DEVICE_WR_SEND, NDS_DEVICE_SEND_SIGNALED,
+                                  {0x1000U, 64U, 0x99U}, 0U, 0U, 0U};
 
     config.local_ipv4 = "192.0.2.10";
     assert(qp.create(&api, config));
-    assert(!nds::post_ra_wr(&qp, {{0x1000U, 64U, 0x99U}, NDS_RA_WR_RDMA_WRITE, 0x2000U, 0x88U}, true,
-                                 &response));
+    assert(!nds::NdsRaPostSend(&qp, write));
     peer.qp_num = 0x2000U;
     peer.psn = 0x3000U;
     peer.port_num = 1U;
@@ -542,7 +557,8 @@ void test_send_wr_and_polling() {
     peer.retry_count = 7U;
     peer.retry_timeout = 14U;
     assert(qp.connect(peer));
-    assert(nds::post_ra_wr(&qp, {{0x1000U, 64U, 0x99U}, NDS_RA_WR_RDMA_WRITE, 0x2000U, 0x88U}, true, &response));
+    const auto posted = nds::NdsRaPostSend(&qp, write);
+    assert(posted);
     assert(fake.send_wr_calls == 1);
     assert(fake.send_wr.buffers != nullptr);
     assert(fake.send_wr.buffers->address == 0x1000U);
@@ -552,23 +568,33 @@ void test_send_wr_and_polling() {
     assert(fake.send_wr.remote_key == 0x88U);
     assert(fake.send_wr.opcode == NDS_RA_WR_RDMA_WRITE);
     assert(fake.send_wr.send_flags == NDS_RA_SEND_SIGNALED);
-    assert(response.wqe.sq_index == 17U && response.wqe.wqe_index == 23U);
-    assert(!nds::post_ra_wr(&qp, {{0x1000U, 64U, 0x99U}, NDS_RA_WR_SEND, 0x2000U, 0x88U}, true, &response));
-    assert(nds::post_ra_wr(&qp, {{0x1000U, 64U, 0x99U}, NDS_RA_WR_SEND, 0U, 0U}, true, &response));
+    assert(posted->wqe.sq_index == 17U && posted->wqe.wqe_index == 23U);
+    assert(!nds::NdsRaPostSend(&qp, {2U, NDS_DEVICE_WR_SEND, NDS_DEVICE_SEND_SIGNALED,
+                                     {0x1000U, 64U, 0x99U}, 0x2000U, 0x88U, 0U}));
+    assert(nds::NdsRaPostSend(&qp, send));
     assert(fake.send_wr_calls == 2);
     assert(fake.send_wr.remote_address == 0U);
     assert(fake.send_wr.remote_key == 0U);
     assert(fake.send_wr.opcode == NDS_RA_WR_SEND);
+    assert(nds::NdsRaPostRecv(&qp, {3U, {0x3000U, 128U, 0x77U}}));
+    assert(fake.recv_wr_calls == 1);
+    assert(fake.recv_wr.wr_id == 3U);
+    assert(fake.recv_wr.memory.address == 0x3000U);
+    assert(fake.recv_wr.memory.length == 128U);
+    assert(fake.recv_wr.memory.local_key == 0x77U);
     fake.poll_result = 0;
-    const auto empty = nds::poll_ra_cq(&qp, &completion, 1U);
+    const auto empty = nds::NdsRaPollCq(&qp, NDS_DEVICE_SEND_QUEUE, &completions);
     assert(empty && *empty == 0U);
+    assert(fake.poll_send_cq);
     fake.poll_result = 1;
-    const auto one = nds::poll_ra_cq(&qp, &completion, 1U);
+    const auto one = nds::NdsRaPollCq(&qp, NDS_DEVICE_RECEIVE_QUEUE, &completions);
     assert(one && *one == 1U);
+    assert(!fake.poll_send_cq);
+    assert(completions.count == 1U);
     fake.poll_result = 100007;
-    assert(!nds::poll_ra_cq(&qp, &completion, 1U));
+    assert(!nds::NdsRaPollCq(&qp, NDS_DEVICE_SEND_QUEUE, &completions));
     fake.poll_result = -7;
-    assert(!nds::poll_ra_cq(&qp, &completion, 1U));
+    assert(!nds::NdsRaPollCq(&qp, NDS_DEVICE_SEND_QUEUE, &completions));
     fake.cqe_error_count = 1U;
     fake.cqe_errors[0].status = 12U;
     fake.cqe_errors[0].qp_number = 0x1234U;

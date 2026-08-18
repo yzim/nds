@@ -11,10 +11,6 @@
 
 using namespace AscendC;
 
-#define NDS_EXPORT_AIV_META_INFO(kernel_name)                                           \
-    static const struct FunLevelKType kernel_name##_kernel_type_section __attribute__(( \
-        used, section(".ascend.meta." #kernel_name))) = {{F_TYPE_KTYPE, sizeof(unsigned int), K_TYPE_AIV}}
-
 namespace {
 __aicore__ inline void SetInvalid(__gm__ nds_device_operation_result *result) {
     if (result == nullptr) return;
@@ -148,12 +144,21 @@ extern "C" __global__ __aicore__ void NdsAivStorageWrite(GM_ADDR request_address
     NdsAivStorageWriteImpl(&request->storage, &request->io, &scratch, result);
 }
 
-NDS_EXPORT_AIV_META_INFO(NdsAivPostSend);
-NDS_EXPORT_AIV_META_INFO(NdsAivPostRecv);
-NDS_EXPORT_AIV_META_INFO(NdsAivPollCq);
-NDS_EXPORT_AIV_META_INFO(NdsAivRdmaSend);
-NDS_EXPORT_AIV_META_INFO(NdsAivRdmaRecv);
-NDS_EXPORT_AIV_META_INFO(NdsAivRdmaRead);
-NDS_EXPORT_AIV_META_INFO(NdsAivRdmaWrite);
-NDS_EXPORT_AIV_META_INFO(NdsAivStorageRead);
-NDS_EXPORT_AIV_META_INFO(NdsAivStorageWrite);
+static const struct FunLevelKType NdsAivPostSend_kernel_type_section
+    __attribute__((used, section(".ascend.meta.NdsAivPostSend"))) = {{F_TYPE_KTYPE, sizeof(unsigned int), K_TYPE_AIV}};
+static const struct FunLevelKType NdsAivPostRecv_kernel_type_section
+    __attribute__((used, section(".ascend.meta.NdsAivPostRecv"))) = {{F_TYPE_KTYPE, sizeof(unsigned int), K_TYPE_AIV}};
+static const struct FunLevelKType NdsAivPollCq_kernel_type_section
+    __attribute__((used, section(".ascend.meta.NdsAivPollCq"))) = {{F_TYPE_KTYPE, sizeof(unsigned int), K_TYPE_AIV}};
+static const struct FunLevelKType NdsAivRdmaSend_kernel_type_section
+    __attribute__((used, section(".ascend.meta.NdsAivRdmaSend"))) = {{F_TYPE_KTYPE, sizeof(unsigned int), K_TYPE_AIV}};
+static const struct FunLevelKType NdsAivRdmaRecv_kernel_type_section
+    __attribute__((used, section(".ascend.meta.NdsAivRdmaRecv"))) = {{F_TYPE_KTYPE, sizeof(unsigned int), K_TYPE_AIV}};
+static const struct FunLevelKType NdsAivRdmaRead_kernel_type_section
+    __attribute__((used, section(".ascend.meta.NdsAivRdmaRead"))) = {{F_TYPE_KTYPE, sizeof(unsigned int), K_TYPE_AIV}};
+static const struct FunLevelKType NdsAivRdmaWrite_kernel_type_section
+    __attribute__((used, section(".ascend.meta.NdsAivRdmaWrite"))) = {{F_TYPE_KTYPE, sizeof(unsigned int), K_TYPE_AIV}};
+static const struct FunLevelKType NdsAivStorageRead_kernel_type_section
+    __attribute__((used, section(".ascend.meta.NdsAivStorageRead"))) = {{F_TYPE_KTYPE, sizeof(unsigned int), K_TYPE_AIV}};
+static const struct FunLevelKType NdsAivStorageWrite_kernel_type_section
+    __attribute__((used, section(".ascend.meta.NdsAivStorageWrite"))) = {{F_TYPE_KTYPE, sizeof(unsigned int), K_TYPE_AIV}};

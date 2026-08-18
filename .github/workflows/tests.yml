@@ -9,16 +9,20 @@ permissions:
 
 jobs:
   unit-and-integration:
+    name: unit-and-integration (${{ matrix.build_type }})
     runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        build_type: [Debug, Release]
     steps:
       - uses: actions/checkout@v4
       - name: Install build dependencies
         run: sudo apt-get update && sudo apt-get install --yes cmake g++ libcli11-dev libibverbs-dev libspdlog-dev pkg-config
       - name: Configure
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
       - name: Build
         run: cmake --build build --parallel
-      - name: Unit tests
-        run: ctest --test-dir build --output-on-failure --label-regex '^unit$'
-      - name: Integration tests
-        run: ctest --test-dir build --output-on-failure --label-regex '^integration$'
+      - name: Test
+        run: ctest --test-dir build --output-on-failure

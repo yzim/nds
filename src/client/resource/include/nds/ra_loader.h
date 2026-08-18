@@ -107,6 +107,11 @@ typedef struct nds_ra_send_wr {
     int send_flags;
 } nds_ra_send_wr;
 
+typedef struct nds_ra_recv_wr {
+    uint64_t wr_id;
+    nds_ra_sge memory;
+} nds_ra_recv_wr;
+
 typedef union nds_ra_send_response {
     struct {
         uint32_t sq_index;
@@ -299,6 +304,8 @@ typedef int (*nds_ra_rdev_get_cqe_error_list_fn)(void *rdma_handle, nds_ra_cqe_e
 typedef int (*nds_ra_register_mr_fn)(const void *rdma_handle, nds_ra_mr_info *info, void **mr_handle);
 typedef int (*nds_ra_deregister_mr_fn)(const void *rdma_handle, void *mr_handle);
 typedef int (*nds_ra_typical_send_wr_fn)(void *qp_handle, nds_ra_send_wr *wr, nds_ra_send_response *response);
+typedef int (*nds_ra_recv_wrlist_fn)(void *qp_handle, nds_ra_recv_wr *wr, unsigned int recv_num,
+                                     unsigned int *complete_num);
 typedef int (*nds_ra_poll_cq_fn)(void *qp_handle, bool is_send_cq, unsigned int max_entries, void *completions);
 
 /*
@@ -332,6 +339,7 @@ typedef struct nds_ra_api {
     nds_ra_register_mr_fn ra_register_mr;
     nds_ra_deregister_mr_fn ra_deregister_mr;
     nds_ra_typical_send_wr_fn ra_typical_send_wr;
+    nds_ra_recv_wrlist_fn ra_recv_wrlist;
     nds_ra_poll_cq_fn ra_poll_cq;
     char error[NDS_RA_ERROR_CAPACITY];
 } nds_ra_api;

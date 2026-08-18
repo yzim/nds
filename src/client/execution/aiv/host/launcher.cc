@@ -14,17 +14,25 @@ const char *aiv_operator_name(std::uint32_t operation) {
     default: return nullptr;
     }
 }
+
+const char *aiv_storage_operator_name(std::uint16_t operation) {
+    switch (operation) {
+    case NDS_PROTOCOL_READ: return "NdsAivStorageRead";
+    case NDS_PROTOCOL_WRITE: return "NdsAivStorageWrite";
+    default: return nullptr;
+    }
+}
 }
 
-AivConnectionLauncher::~AivConnectionLauncher() {
+AivEntrypointLauncher::~AivEntrypointLauncher() {
     reset();
 }
 
-void AivConnectionLauncher::set_error(std::string message) {
+void AivEntrypointLauncher::set_error(std::string message) {
     error_ = std::move(message);
 }
 
-bool AivConnectionLauncher::load(nds_acl_api *acl, const std::string &kernel_path) {
+bool AivEntrypointLauncher::load(nds_acl_api *acl, const std::string &kernel_path) {
     nds_acl_binary_load_option option{};
     nds_acl_binary_load_options options{};
     int result;
@@ -60,7 +68,7 @@ bool AivConnectionLauncher::load(nds_acl_api *acl, const std::string &kernel_pat
     return true;
 }
 
-bool AivConnectionLauncher::make_device_request(const nds_device_operation_request &request,
+bool AivEntrypointLauncher::make_device_request(const nds_device_operation_request &request,
                                                  nds_device_operation_request *output) {
     if (output == nullptr || request.connection.abi_version != NDS_DEVICE_CONNECTION_ABI_VERSION ||
         request.connection.size != sizeof(request.connection) ||
@@ -76,7 +84,7 @@ bool AivConnectionLauncher::make_device_request(const nds_device_operation_reque
     return true;
 }
 
-bool AivConnectionLauncher::launch_and_wait(std::uint64_t device_request_address, std::uint32_t operation,
+bool AivEntrypointLauncher::launch_and_wait(std::uint64_t device_request_address, std::uint32_t operation,
                                              std::int32_t completion_timeout_ms) {
     nds_acl_launch_kernel_attr attributes[2]{};
     nds_acl_launch_kernel_config config{};
@@ -113,7 +121,45 @@ bool AivConnectionLauncher::launch_and_wait(std::uint64_t device_request_address
     return true;
 }
 
-void AivConnectionLauncher::reset() noexcept {
+bool AivEntrypointLauncher::launch_storage_and_wait(std::uint64_t device_request_address, std::uint16_t operation,
+                                                     std::int32_t completion_timeout_ms) {
+    nds_acl_launch_kernel_attr attributes[2]{};
+    nds_acl_launch_kernel_config config{};
+    const char *operator_name = aiv_storage_operator_name(operation);
+    if (!loaded() || device_request_address == 0U || completion_timeout_ms <= 0 || operator_name == nullptr) {
+        set_error("NDS AIV storage launch requires a loaded binary, request address, and valid operation");
+        return false;
+    }
+    const int function_result = acl_->binary_get_function(binary_, operator_name, &function_);
+    if (function_result != 0 || function_ == nullptr) {
+        set_error("NDS AIV binary does not expose " + std::string(operator_name) + ": " + std::to_string(function_result));
+        return false;
+    }
+    attributes[0].id = NDS_ACL_LAUNCH_KERNEL_ATTR_SCHEM_MODE;
+    attributes[0].value.schem_mode = 1U;
+    attributes[1].id = NDS_ACL_LAUNCH_KERNEL_ATTR_ENGINE_TYPE;
+    attributes[1].value.engine_type = NDS_ACL_ENGINE_TYPE_AIV;
+    config.attrs = attributes;
+    config.num_attrs = 2U;
+    const int launch_result = acl_->launch_kernel_with_host_args(function_, 1U, stream_, &config,
+                                                                 &device_request_address, sizeof(device_request_address),
+                                                                 nullptr, 0U);
+    if (launch_result != 0) {
+        set_error("aclrtLaunchKernelWithHostArgs(" + std::string(operator_name) + ") failed: " +
+                  std::to_string(launch_result));
+        return false;
+    }
+    const int sync_result = acl_->synchronize_stream_with_timeout(stream_, completion_timeout_ms);
+    if (sync_result != 0) {
+        set_error("aclrtSynchronizeStreamWithTimeout after " + std::string(operator_name) + " failed: " +
+                  std::to_string(sync_result));
+        return false;
+    }
+    error_.clear();
+    return true;
+}
+
+void AivEntrypointLauncher::reset() noexcept {
     if (acl_ != nullptr && stream_ != nullptr && acl_->destroy_stream != nullptr)
         (void)acl_->destroy_stream(stream_);
     stream_ = nullptr;
@@ -124,10 +170,10 @@ void AivConnectionLauncher::reset() noexcept {
     acl_ = nullptr;
 }
 
-bool AivConnectionLauncher::loaded() const noexcept {
+bool AivEntrypointLauncher::loaded() const noexcept {
     return acl_ != nullptr && binary_ != nullptr && stream_ != nullptr;
 }
-const std::string &AivConnectionLauncher::error() const noexcept {
+const std::string &AivEntrypointLauncher::error() const noexcept {
     return error_;
 }
 

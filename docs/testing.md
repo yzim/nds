@@ -29,7 +29,7 @@ shared runtime, opens it with the NDS loader, resolves its C ABI symbols, and
 calls them.
 
 When the optional AIV/AICPU toolchains are enabled, `device-toolchain` tests
-inspect the generated artifacts and require all verbs and connection symbols.
+inspect the generated artifacts and require all verbs, connection, and storage symbols.
 This prevents the reusable APIs from accidentally becoming private entry-kernel
 helpers.
 
@@ -51,24 +51,20 @@ target-local wrapper command. For example:
 ```sh
 cmake -S . -B build-e2e \
   -DNDS_ENABLE_E2E_TESTS=ON \
-  '-DNDS_E2E_AIV_STORAGE_WRITE_COMMAND=/absolute/path/to/.local/run_aiv_write_once.sh' \
-  '-DNDS_E2E_AICPU_RECEIVE_CQ_COMMAND=/absolute/path/to/.local/run_aicpu_receive_once.sh'
+  '-DNDS_E2E_AIV_STORAGE_COMMAND=/absolute/path/to/.local/run_aiv_storage_once.sh' \
+  '-DNDS_E2E_AICPU_CONNECTION_COMMAND=/absolute/path/to/.local/run_aicpu_connection_once.sh'
 ctest --test-dir build-e2e --output-on-failure --label-regex '^e2e$'
 ```
 
 The supported variables and registered test names are:
 
-- `NDS_E2E_RA_STORAGE_WRITE_COMMAND`: `e2e.ra_storage_write`
-- `NDS_E2E_AIV_STORAGE_WRITE_COMMAND`: `e2e.aiv_storage_write`
-- `NDS_E2E_AICPU_STORAGE_WRITE_COMMAND`: `e2e.aicpu_storage_write`
-- `NDS_E2E_AIV_SEND_CQ_COMMAND`: `e2e.aiv_send_cq`
-- `NDS_E2E_AICPU_SEND_CQ_COMMAND`: `e2e.aicpu_send_cq`
-- `NDS_E2E_AIV_RECEIVE_CQ_COMMAND`: `e2e.aiv_receive_cq`
-- `NDS_E2E_AICPU_RECEIVE_CQ_COMMAND`: `e2e.aicpu_receive_cq`
-- `NDS_E2E_AIV_RDMA_READ_COMMAND`: `e2e.aiv_rdma_read`
-- `NDS_E2E_AICPU_RDMA_READ_COMMAND`: `e2e.aicpu_rdma_read`
-- `NDS_E2E_AIV_RDMA_WRITE_COMMAND`: `e2e.aiv_rdma_write`
-- `NDS_E2E_AICPU_RDMA_WRITE_COMMAND`: `e2e.aicpu_rdma_write`
+- `NDS_E2E_RA_VERBS_COMMAND`, `NDS_E2E_RA_CONNECTION_COMMAND`, `NDS_E2E_RA_STORAGE_COMMAND`
+- `NDS_E2E_AIV_VERBS_COMMAND`, `NDS_E2E_AIV_CONNECTION_COMMAND`, `NDS_E2E_AIV_STORAGE_COMMAND`
+- `NDS_E2E_AICPU_VERBS_COMMAND`, `NDS_E2E_AICPU_CONNECTION_COMMAND`, `NDS_E2E_AICPU_STORAGE_COMMAND`
+
+Each command registers `e2e.<backend>_<layer>`. A storage run is the full
+storage → connection → verbs composition. Verbs and connection commands are
+optional isolation probes and must use the matching typed device request ABI.
 
 The wrapper owns server startup, client invocation, timeout, cleanup, and
 validation for one selected mode. Create it locally when needed; it must not be
@@ -78,16 +74,15 @@ registered tests have a 120-second CTest timeout, share the
 `requires-rdma`, `mode-*`, and `operation-*` labels. This permits selecting one
 mode or operation while preventing concurrent use of the single NPU.
 
-On the CANN 9.0.0 target host, bounded probes have directly validated AIV
-and AICPU Send posting with SCQ polling and CPU-side payload verification, plus
-receive posting with RCQ polling and NPU-side payload verification. Direct
-RDMA Read and RDMA Write with SCQ polling and destination-side payload checks
-also pass in both modes. Bounded storage Writes have separately validated the
-storage command path. These observations do not claim AIV/AICPU storage Read,
-concurrency, performance, or another CANN/provider version.
+Hardware results are recorded per target experiment under `.local/`; a
+successful build or exported-symbol check is not an end-to-end completion.
+Storage tests exercise the composed storage → connection → verbs path, while
+verbs and connection probes remain independently selectable.
 
 ## CI
 
-GitHub Actions installs only standard Linux build dependencies, then runs the
-`unit` and `integration` labels. It does not configure device kernels, register
-the E2E test, or claim that a hosted runner can validate Ascend hardware.
+GitHub Actions installs only standard Linux build dependencies, then builds and
+runs every test registered by the default configuration in both Debug and
+Release modes. The default configuration includes all unit and non-hardware
+integration tests. It does not configure device kernels, register E2E tests, or
+claim that a hosted runner can validate Ascend hardware.
