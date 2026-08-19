@@ -137,12 +137,12 @@ HCCP-managed AI-QP CQ is an NDS completion API.
 - [x] Validate a deterministic storage Write with RA, AIV, and AICPU.
 - [x] Validate an RA Read of an untouched range.
 - [ ] Validate an AIV and AICPU Read of an untouched range.
-- [ ] Add a multi-command application workflow that writes a deterministic
+- [x] Add a multi-command application workflow that writes a deterministic
   payload and reads it back in the same session.
 - [ ] Add an optional two-sided completion mode: NPU pre-posts Receive WRs and
   actively polls its receive CQ for CPU completion Send records. This is the
   NVMe-oF-like direction for scalable command queues, but is not required for
-  the initial one-command storage path.
+  the initial serial storage path.
 
 ## Concurrency Roadmap
 

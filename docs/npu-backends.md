@@ -65,9 +65,10 @@ and direct device RDMA Read/Write with SCQ polling in both modes. It does not
 yet cover an AIV/AICPU storage Read. NDS has not published throughput or
 latency results.
 
-The initial protocol permits one command in flight on one RC QP. Queueing,
-multi-QP sessions, and an NPU Receive-based completion option are tracked in
-[the roadmap](roadmap.md).
+The protocol permits one command in flight on one RC QP. A storage session
+serializes successive commands on that connected QP. Queueing, multi-QP
+sessions, and an NPU Receive-based completion option are tracked in [the
+roadmap](roadmap.md).
 
 ## Device Data Plane
 

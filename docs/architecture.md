@@ -109,10 +109,10 @@ completion buffers, namespace capacity, request sequencing, record encoding,
 command Send, and terminal completion validation. It exposes storage Read and
 storage Write without exposing QPs or work requests.
 
-The host implementation provides the current one-command baseline. Planned AIV
-and AICPU implementations will expose the same storage semantics in their
-device environments and use a device-safe transport/QP view produced by the
-host control path.
+The host implementation serializes successive commands on one connected QP.
+Planned AIV and AICPU implementations expose the same storage semantics in
+their device environments and use a device-safe transport/QP view produced by
+the host control path.
 
 ## Application
 

@@ -159,8 +159,6 @@ Result<void> StorageClient::execute(std::uint16_t operation, std::uint64_t offse
                                     std::uint32_t length) {
     if (!opened_ || data == nullptr || length == 0U || length > data->size())
         return unexpected(ErrorCode::kInvalidArgument, "storage operation requires an open client and data buffer");
-    if (request_submitted_)
-        return unexpected(ErrorCode::kUnsupported, "the initial storage client supports one command per connection");
     if (offset > capacity_ || length > capacity_ - offset)
         return unexpected(ErrorCode::kProtocol, "requested storage range exceeds namespace capacity");
 
@@ -174,7 +172,6 @@ Result<void> StorageClient::execute(std::uint16_t operation, std::uint64_t offse
     if (const auto result = transport_->ready(); !result)
         return unexpected(result.error());
     if (transport_->execution().mode == NpuExecutionMode::Ra) {
-        request_submitted_ = true;
         const RaStorageRequest request{
             {runtime_, transport_->qp()},
             command_buffer_.data(),
@@ -190,7 +187,6 @@ Result<void> StorageClient::execute(std::uint16_t operation, std::uint64_t offse
             request_id};
         return operation == NDS_PROTOCOL_READ ? NdsRaStorageRead(request) : NdsRaStorageWrite(request);
     }
-    request_submitted_ = true;
     if (const auto result = submit_device_storage(runtime_, transport_, command_region_, completion_region_,
                                                   data_region, operation, offset, length, capacity_, request_id);
         !result)

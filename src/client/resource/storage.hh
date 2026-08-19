@@ -30,7 +30,6 @@ private:
     std::uint64_t capacity_{};
     std::uint64_t next_request_id_{};
     bool opened_{};
-    bool request_submitted_{};
 };
 
 }  // namespace nds::client

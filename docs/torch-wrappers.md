@@ -1,7 +1,7 @@
 # PyTorch Wrappers
 
-NDS provides an optional `nds_torch` Python extension. It wraps the three NDS
-operator layers while keeping runtime, endpoint, QP, registered-memory, and
+NDS provides an optional `nds_torch` Python extension for tensor-facing
+storage operations. It keeps runtime, endpoint, QP, registered-memory, and
 storage-session ownership in C++.
 
 The extension is built only on the target host. It requires a PyTorch and
@@ -30,29 +30,16 @@ import torch_npu
 
 session = nds_torch.Session("192.168.100.100:18615", backend="ra")
 
-storage = session.storage()
 payload = torch.full((4096,), 0x5A, dtype=torch.uint8)
-storage.write(payload, 0)
+session.write(payload, 0)
 ```
 
-## Layer API
+`Session` exposes `read_`, `write`, and a `capacity` property. It establishes
+one runtime, connected transport, and storage bootstrap during construction;
+calls execute serially on that same connection.
 
-`Session.verbs()` returns a `Verbs` wrapper with `post_send`, `post_receive`,
-`poll_send`, and `poll_receive`. `post_send` returns the RA doorbell index and
-doorbell value; it intentionally does not ring the doorbell.
-
-`Session.transport()` returns a `Transport` wrapper with `send`, which posts
-and rings the RA doorbell.
-
-`Session.storage()` returns a `Storage` wrapper with `read_`, `write`, and a
-`capacity` property. The current NDS storage protocol supports one command per
-connection, so each `Session` may create one storage wrapper and submit one
-storage operation.
-
-Storage accepts the NDS execution backend selected when the session is
-created: `ra`, `aiv`, or `aicpu`. Raw verbs and transport wrappers currently
-require `ra`, because NDS has no host-side completion and doorbell interface
-for raw AIV or AICPU operations.
+Session accepts the NDS execution backend selected at construction: `ra`,
+`aiv`, or `aicpu`.
 
 All wrappers currently accept nonempty, contiguous CPU tensors. They copy data
 through NDS-owned NPU allocations before registration. Direct `torch_npu`
