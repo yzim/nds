@@ -14,7 +14,8 @@ C++ with the repository `.clang-format` configuration.
   `Result<Request>`.
 - Use a pointer only when the caller intentionally provides mutable state that
   the function updates in place. Stored non-owning mutable dependencies are
-  pointers, not references.
+  pointers, not references. The sole exception is a C++ language-required
+  special member; prefer deleting it when it is unnecessary.
 - Prefer native C++ ownership. Keep resources alive through the completion
   point required by their execution mode, then tear them down in reverse
   initialization order.
@@ -36,6 +37,7 @@ C++ with the repository `.clang-format` configuration.
 ## Executables
 
 - Use `nds::log` for executable diagnostics; do not add direct standard-stream
-  or C stdio logging.
+  or C stdio logging. Use `npu-client` and `cpu-server` as component names;
+  applications may replace the spdlog sink with `nds::log::set_logger`.
 - Use CLI11 for command-line option declarations and cross-option validation
   at the executable boundary.

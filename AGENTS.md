@@ -62,29 +62,11 @@ are defined in [architecture](docs/architecture.md).
   runtime. Keep QPs, MRs, and NPU allocations alive until host CQ completion
   plus the current CPU test-harness check for host RA, or until that check for
   AI-QP modes. Do not describe the CPU check as a general completion API.
-- NDS is C++20. Use native C++ ownership and `nullptr` in compiled C++ code.
-  Use `.cc` for C++ sources and `.hh` for C++ headers. Keep `.h` headers
-  C-compatible only where a runtime or device boundary needs it.
-- Function parameters must be values, `const T&` inputs, or pointers. Do not
-  use non-const lvalue-reference parameters: expose output and in/out values
-  as `T*` so mutation is visible at the call site. Stored non-owning mutable
-  dependencies are pointers, not references. The only exception is a C++
-  language-required special member; prefer deleting it when it is unnecessary.
-- Use `nds::Result<T>` for C++ operations that can fail during normal runtime
-  execution. Return successful values directly and use `nds::unexpected(...)`
-  from `nds/result.hh` for errors. Return `nds::Error` with a category and
-  message. No NDS API
-  may accept a caller-owned diagnostic string or character buffer. C wire
-  codecs return typed result enums. Vendor loader structs may retain only their
-  embedded ABI error fields internally; translate those diagnostics at the NDS
-  C++ boundary.
-- Format C++ with the repository `.clang-format` configuration.
-- Use the `nds::log` facade backed by `spdlog` for executable diagnostics. Do
-  not add direct `stdout`, `stderr`, `printf`, or `perror` logging. Keep the
-  component names `npu-client` and `cpu-server`; applications may replace their
-  spdlog sink through `nds::log::set_logger`.
-- Use CLI11 for executable command-line parsing. Keep option declarations and
-  cross-option semantic validation at the executable boundary.
+- Follow [C++ code style](docs/code-style.md) for all C++ API, error,
+  ownership, formatting, logging, and CLI conventions. Those rules are
+  mandatory. C wire codecs return typed result enums; vendor loader structs may
+  retain only their embedded ABI error fields internally and must translate
+  diagnostics at the NDS C++ boundary.
 
 ## Network safety
 
