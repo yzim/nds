@@ -402,10 +402,9 @@ Endpoint::~Endpoint() {
 }
 
 Result<void> Endpoint::open(Runtime *runtime, const EndpointConfig &config) {
-    if (opened() || runtime == nullptr || !runtime->initialized() || config.ra_library.empty() ||
-        config.local_ipv4.empty()) {
+    if (opened() || runtime == nullptr || !runtime->initialized() || config.ra_library.empty()) {
         return unexpected(ErrorCode::kInvalidArgument,
-                          "endpoint open requires one runtime, RA library, physical device, and local IP");
+                          "endpoint open requires one runtime, RA library, and physical device");
     }
     runtime_ = runtime;
     config_ = config;
@@ -429,7 +428,7 @@ Result<void> Endpoint::open(Runtime *runtime, const EndpointConfig &config) {
     nds_ra_rdev rdev{};
     rdev.phy_id = config_.physical_device_id;
     rdev.family = AF_INET;
-    if (inet_pton(AF_INET, config_.local_ipv4.c_str(), &rdev.local_ip.ipv4) != 1) {
+    if (!config_.local_ipv4.empty() && inet_pton(AF_INET, config_.local_ipv4.c_str(), &rdev.local_ip.ipv4) != 1) {
         reset();
         return unexpected(ErrorCode::kInvalidArgument, "endpoint local IPv4 address is invalid");
     }

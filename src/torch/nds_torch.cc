@@ -91,8 +91,8 @@ private:
 
 class Session : public std::enable_shared_from_this<Session> {
 public:
-    Session(std::string ra_library, std::string npu_ip, std::string cpu_ip, std::int64_t tcp_port,
-            std::string backend, std::string aiv_kernel, std::string aicpu_kernel_config) {
+    Session(std::string cpu_ip, std::int64_t tcp_port, std::string backend, std::string aiv_kernel,
+            std::string aicpu_kernel_config) {
         TORCH_CHECK(tcp_port > 0 && tcp_port <= std::numeric_limits<std::uint16_t>::max(), "invalid TCP port");
         const auto device = c10_npu::current_device();
         TORCH_CHECK(device >= 0, "torch_npu has no active NPU device");
@@ -103,8 +103,7 @@ public:
         check(runtime_.open(runtime_config));
 
         client::TransportConfig transport_config;
-        transport_config.endpoint.ra_library = std::move(ra_library);
-        transport_config.endpoint.local_ipv4 = std::move(npu_ip);
+        transport_config.endpoint.ra_library = "libra.so";
         transport_config.endpoint.physical_device_id = static_cast<std::uint32_t>(device);
         transport_config.cpu_ipv4 = std::move(cpu_ip);
         transport_config.tcp_port = static_cast<std::uint16_t>(tcp_port);
@@ -164,14 +163,15 @@ private:
 std::vector<std::int64_t> Verbs::post_send(const ::torch::Tensor &input) {
     session_->require_ra("verbs");
     RegisteredTensor registered = session_->register_tensor(input);
-    const nds_device_send_wr request{1U,
-                                     NDS_DEVICE_WR_SEND,
-                                     NDS_DEVICE_SEND_SIGNALED,
-                                     {registered.region.address(), static_cast<std::uint32_t>(registered.region.length()),
-                                      registered.region.local_key()},
-                                     0U,
-                                     0U,
-                                     0U};
+    const nds_device_send_wr request{
+        1U,
+        NDS_DEVICE_WR_SEND,
+        NDS_DEVICE_SEND_SIGNALED,
+        {registered.region.address(), static_cast<std::uint32_t>(registered.region.length()),
+         registered.region.local_key()},
+        0U,
+        0U,
+        0U};
     const auto posted = value_or_throw(NdsRaPostSend(session_->transport_state()->qp(), request));
     sends_.push_back(std::move(registered));
     return {static_cast<std::int64_t>(posted.doorbell.db_index), static_cast<std::int64_t>(posted.doorbell.db_info)};
@@ -180,8 +180,10 @@ std::vector<std::int64_t> Verbs::post_send(const ::torch::Tensor &input) {
 void Verbs::post_receive(const ::torch::Tensor &output) {
     session_->require_ra("verbs");
     RegisteredTensor registered = session_->register_tensor(output);
-    const nds_device_recv_wr request{1U, {registered.region.address(), static_cast<std::uint32_t>(registered.region.length()),
-                                          registered.region.local_key()}};
+    const nds_device_recv_wr request{
+        1U,
+        {registered.region.address(), static_cast<std::uint32_t>(registered.region.length()),
+         registered.region.local_key()}};
     check(NdsRaPostRecv(session_->transport_state()->qp(), request));
     receives_.push_back(std::move(registered));
 }
@@ -189,17 +191,19 @@ void Verbs::post_receive(const ::torch::Tensor &output) {
 std::int64_t Verbs::poll_send() {
     session_->require_ra("verbs");
     nds_device_completion_output output{};
-    return static_cast<std::int64_t>(value_or_throw(
-        NdsRaPollCq(session_->transport_state()->qp(), NDS_DEVICE_SEND_QUEUE, &output)));
+    return static_cast<std::int64_t>(
+        value_or_throw(NdsRaPollCq(session_->transport_state()->qp(), NDS_DEVICE_SEND_QUEUE, &output)));
 }
 
 std::int64_t Verbs::poll_receive() {
     session_->require_ra("verbs");
     nds_device_completion_output output{};
-    const auto count = value_or_throw(NdsRaPollCq(session_->transport_state()->qp(), NDS_DEVICE_RECEIVE_QUEUE, &output));
+    const auto count =
+        value_or_throw(NdsRaPollCq(session_->transport_state()->qp(), NDS_DEVICE_RECEIVE_QUEUE, &output));
     if (count > 0U) {
         for (auto &received : receives_)
-            check(session_->runtime()->copy_from(received.tensor.data_ptr(), received.buffer, received.tensor.nbytes()));
+            check(
+                session_->runtime()->copy_from(received.tensor.data_ptr(), received.buffer, received.tensor.nbytes()));
         receives_.clear();
     }
     return static_cast<std::int64_t>(count);
@@ -208,12 +212,13 @@ std::int64_t Verbs::poll_receive() {
 void Transport::send(const ::torch::Tensor &input) {
     session_->require_ra("transport");
     RegisteredTensor registered = session_->register_tensor(input);
-    const nds_device_transfer transfer{1U,
-                                       {registered.region.address(), static_cast<std::uint32_t>(registered.region.length()),
-                                        registered.region.local_key()},
-                                       0U,
-                                       0U,
-                                       0U};
+    const nds_device_transfer transfer{
+        1U,
+        {registered.region.address(), static_cast<std::uint32_t>(registered.region.length()),
+         registered.region.local_key()},
+        0U,
+        0U,
+        0U};
     check(NdsRaRdmaSend({session_->runtime(), session_->transport_state()->qp()}, transfer));
     sends_.push_back(std::move(registered));
 }
@@ -246,10 +251,8 @@ std::int64_t Storage::capacity() const {
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, module) {
     namespace nds_torch = nds::torch;
     pybind11::class_<nds_torch::Session, std::shared_ptr<nds_torch::Session>>(module, "Session")
-        .def(pybind11::init<std::string, std::string, std::string, std::int64_t, std::string, std::string,
-                            std::string>(),
-             pybind11::arg("ra_library"), pybind11::arg("npu_ip"), pybind11::arg("cpu_ip"),
-             pybind11::arg("tcp_port"), pybind11::arg("backend") = "ra",
+        .def(pybind11::init<std::string, std::int64_t, std::string, std::string, std::string>(),
+             pybind11::arg("cpu_ip"), pybind11::arg("tcp_port"), pybind11::arg("backend") = "ra",
              pybind11::arg("aiv_kernel") = "", pybind11::arg("aicpu_kernel_config") = "")
         .def("verbs", &nds_torch::Session::verbs)
         .def("transport", &nds_torch::Session::transport)

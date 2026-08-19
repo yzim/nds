@@ -28,7 +28,7 @@ import nds_torch
 import torch
 import torch_npu
 
-session = nds_torch.Session(ra_library, npu_ip, cpu_ip, tcp_port, backend="ra")
+session = nds_torch.Session(cpu_ip, tcp_port, backend="ra")
 
 storage = session.storage()
 payload = torch.full((4096,), 0x5A, dtype=torch.uint8)
@@ -61,6 +61,6 @@ allocation lifetime and stream-synchronization contract with the PyTorch NPU
 allocator.
 
 `Session` adopts the active `torch_npu` context and current NPU device. It does
-not accept AscendCL or runtime library paths, or a logical or physical device
-ID. Import `torch_npu` and select its device before creating a session. The RA
-library remains NDS-specific and is therefore explicit.
+not accept AscendCL or runtime library paths, device IDs, or an NPU IP address.
+Import `torch_npu` and select its device before creating a session. Vendor
+libraries are resolved through the CANN environment.
