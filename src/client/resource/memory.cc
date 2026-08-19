@@ -1,84 +1,106 @@
 #include "memory.hh"
 
+#include "runtime.hh"
+
+#include <cstring>
+#include <new>
+#include <utility>
+
 namespace nds::client {
 
-DeviceBuffer::~DeviceBuffer() {
-    if (context_ != nullptr && data_ != nullptr)
-        (void)context_->free_device_memory(data_);
+MemoryBuffer::~MemoryBuffer() {
+    reset();
 }
 
-void *DeviceBuffer::data() const noexcept {
+MemoryBuffer::MemoryBuffer(MemoryBuffer &&other) noexcept
+    : runtime_(std::exchange(other.runtime_, nullptr)),
+      data_(std::exchange(other.data_, nullptr)),
+      size_(std::exchange(other.size_, 0U)),
+      location_(other.location_) {}
+
+MemoryBuffer &MemoryBuffer::operator=(MemoryBuffer &&other) noexcept {
+    if (this != &other) {
+        reset();
+        runtime_ = std::exchange(other.runtime_, nullptr);
+        data_ = std::exchange(other.data_, nullptr);
+        size_ = std::exchange(other.size_, 0U);
+        location_ = other.location_;
+    }
+    return *this;
+}
+
+void MemoryBuffer::reset() noexcept {
+    if (data_ != nullptr) {
+        if (location_ == MemoryLocation::Device && runtime_ != nullptr)
+            (void)runtime_->free_device_memory(data_);
+        if (location_ == MemoryLocation::Host)
+            delete[] static_cast<std::byte *>(data_);
+    }
+    runtime_ = nullptr;
+    data_ = nullptr;
+    size_ = 0U;
+    location_ = MemoryLocation::Device;
+}
+
+void *MemoryBuffer::data() const noexcept {
     return data_;
 }
-std::size_t DeviceBuffer::size() const noexcept {
+
+std::size_t MemoryBuffer::size() const noexcept {
     return size_;
 }
 
-RegisteredRegion::~RegisteredRegion() {
-    if (qp_ != nullptr && handle_ != nullptr)
-        (void)qp_->deregister_memory(handle_);
+MemoryLocation MemoryBuffer::location() const noexcept {
+    return location_;
 }
 
-LocalAddress RegisteredRegion::local_address() const noexcept {
-    return {reinterpret_cast<std::uint64_t>(info_.address), info_.local_key};
+Result<void> Memory::allocate(std::size_t size, MemoryBuffer *buffer) {
+    return allocate(size, MemoryLocation::Device, buffer);
 }
 
-RemoteAddress RegisteredRegion::remote_address() const noexcept {
-    return {reinterpret_cast<std::uint64_t>(info_.address), info_.remote_key};
-}
-
-std::uint64_t RegisteredRegion::length() const noexcept {
-    return info_.size;
-}
-bool RegisteredRegion::belongs_to(const NpuRaQp *qp) const noexcept {
-    return qp_ == qp && handle_ != nullptr;
-}
-
-Result<void> Memory::allocate(std::size_t size, DeviceBuffer *buffer) {
-    if (context_ == nullptr || buffer == nullptr || buffer->context_ != nullptr || buffer->data_ != nullptr ||
-        size == 0U)
+Result<void> Memory::allocate(std::size_t size, MemoryLocation location, MemoryBuffer *buffer) {
+    if (runtime_ == nullptr || !runtime_->initialized() || buffer == nullptr || buffer->data_ != nullptr || size == 0U)
         return unexpected(ErrorCode::kInvalidArgument, "memory allocation requires an open runtime and empty buffer");
-    if (!context_->allocate_device_memory(size, &buffer->data_))
-        return unexpected(ErrorCode::kRuntime,
-                          context_->error().empty() ? "invalid device allocation" : context_->error());
-    buffer->context_ = context_;
-    buffer->size_ = size;
-    return {};
-}
-
-Result<void> Memory::register_memory(NpuRaQp *qp, DeviceBuffer *buffer, RegisteredRegion *region) {
-    if (context_ == nullptr || qp == nullptr || buffer == nullptr || buffer->context_ != context_ ||
-        buffer->data_ == nullptr || region == nullptr || region->qp_ != nullptr || region->handle_ != nullptr) {
-        return unexpected(ErrorCode::kInvalidArgument,
-                          "memory registration requires a runtime buffer and empty region");
+    if (location == MemoryLocation::Device) {
+        if (const auto allocated = runtime_->allocate_device_memory(size, &buffer->data_); !allocated)
+            return unexpected(allocated.error());
+        buffer->runtime_ = runtime_;
+    } else {
+        buffer->data_ = new (std::nothrow) std::byte[size];
+        if (buffer->data_ == nullptr)
+            return unexpected(ErrorCode::kRuntime, "host memory allocation failed");
     }
-    if (!qp->register_memory(buffer->data_, buffer->size_, NDS_RA_ACCESS_DIRECT_NPU, &region->info_, &region->handle_))
-        return unexpected(ErrorCode::kRa, qp->error().empty() ? "invalid memory registration" : qp->error());
-    region->qp_ = qp;
+    buffer->size_ = size;
+    buffer->location_ = location;
     return {};
 }
 
-Result<void> Memory::copy_to_device(DeviceBuffer *buffer, const void *source, std::size_t size) {
-    if (context_ == nullptr || buffer == nullptr || buffer->context_ != context_ || source == nullptr ||
-        size > buffer->size_)
-        return unexpected(ErrorCode::kInvalidArgument, "host-to-device copy requires a runtime buffer");
-    if (!context_->copy_host_to_device(buffer->data_, source, size))
-        return unexpected(ErrorCode::kRuntime,
-                          context_->error().empty() ? "invalid host-to-device copy" : context_->error());
-    return {};
+Result<void> Memory::copy_to(MemoryBuffer *buffer, const void *source, std::size_t size) {
+    if (runtime_ == nullptr || buffer == nullptr || buffer->data_ == nullptr || source == nullptr ||
+        size > buffer->size_ || (buffer->location_ == MemoryLocation::Device && buffer->runtime_ != runtime_)) {
+        return unexpected(ErrorCode::kInvalidArgument, "memory copy requires a runtime buffer and valid source");
+    }
+    if (buffer->location_ == MemoryLocation::Host) {
+        std::memcpy(buffer->data_, source, size);
+        return {};
+    }
+    return runtime_->copy_host_to_device(buffer->data_, source, size);
 }
 
-Result<void> Memory::copy_from_device(void *destination, const DeviceBuffer &buffer, std::size_t size) {
-    if (context_ == nullptr || destination == nullptr || buffer.context_ != context_ || size > buffer.size_)
-        return unexpected(ErrorCode::kInvalidArgument, "device-to-host copy requires a runtime buffer");
-    if (!context_->copy_device_to_host(destination, buffer.data_, size))
-        return unexpected(ErrorCode::kRuntime,
-                          context_->error().empty() ? "invalid device-to-host copy" : context_->error());
-    return {};
+Result<void> Memory::copy_from(void *destination, const MemoryBuffer &buffer, std::size_t size) {
+    if (runtime_ == nullptr || destination == nullptr || buffer.data_ == nullptr || size > buffer.size_ ||
+        (buffer.location_ == MemoryLocation::Device && buffer.runtime_ != runtime_)) {
+        return unexpected(ErrorCode::kInvalidArgument, "memory copy requires a runtime buffer and valid destination");
+    }
+    if (buffer.location_ == MemoryLocation::Host) {
+        std::memcpy(destination, buffer.data_, size);
+        return {};
+    }
+    return runtime_->copy_device_to_host(destination, buffer.data_, size);
 }
 
-void Memory::attach(NpuRaContext *context) noexcept {
-    context_ = context;
+void Memory::attach(Runtime *runtime) noexcept {
+    runtime_ = runtime;
 }
 
 }  // namespace nds::client

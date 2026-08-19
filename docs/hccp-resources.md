@@ -36,16 +36,18 @@ in the execution environment that owns them.
 
 ## NPU rdev and QP
 
-`NpuRaContext` initializes AscendCL, the runtime network service, and RA once:
+`Runtime` initializes AscendCL and the runtime network service. `Endpoint`
+then loads and initializes RA before creating the rdev:
 
 ```text
-aclInit -> aclrtSetDevice -> rtOpenNetService(--hdcType=18) -> RaInit
+aclInit -> aclrtSetDevice -> rtOpenNetService(--hdcType=18)
+        -> RaInit -> RaRdevInitV2
 ```
 
-`NpuRaQp` creates the rdev with `RaRdevInitV2` using the selected physical NPU
-and NPU RNIC IPv4 address. NDS uses `NETWORK_OFFLINE`, `NOTIFY (1)`, and an
-enabled Lite context (`disabled_lite_thread=false`). `NO_USE (0)` is not valid
-for the offline rdev lifecycle used by this path.
+`Endpoint` creates the rdev using the selected physical NPU and NPU RNIC IPv4
+address. NDS uses `NETWORK_OFFLINE`, `NOTIFY (1)`, and an enabled Lite context
+(`disabled_lite_thread=false`). `NO_USE (0)` is not valid for the offline rdev
+lifecycle used by this path.
 
 NDS creates exactly one RC QP on that rdev. The selected mode determines the
 HCCP creation entry point and requested QP mode:
@@ -190,5 +192,5 @@ background event poller.
 
 The resource lifecycle is based on the CANN 9.0.0 HCCP implementation in the
 matching HCOMM source tree, particularly `src/platform/hccp`, and is implemented
-by `NpuRaContext` and `NpuRaQp`. NDS dynamically loads the required RA/runtime
-ABI and does not link or copy HCCP implementation code.
+by `Runtime`, `Endpoint`, `QueuePair`, and `MemoryRegion`. NDS dynamically loads
+the required RA/runtime ABI and does not link or copy HCCP implementation code.

@@ -21,23 +21,24 @@ if(NDS_LINK_PUBLIC_ACL)
     endif()
 endif()
 
-add_library(nds_npu_ra_context STATIC resource/npu_ra_context.cc)
-target_include_directories(nds_npu_ra_context PUBLIC resource/include)
-target_link_libraries(nds_npu_ra_context PUBLIC nds_ra_loader)
-target_compile_options(nds_npu_ra_context PRIVATE -Wall -Wextra -Wpedantic -Werror)
+add_library(nds_client_runtime STATIC
+    resource/runtime.cc
+    resource/memory.cc)
+target_include_directories(nds_client_runtime PUBLIC resource resource/include ${PROJECT_SOURCE_DIR}/src/include)
+target_link_libraries(nds_client_runtime PUBLIC nds_ra_loader tl::expected)
+target_compile_options(nds_client_runtime PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
-add_library(nds_npu_ra_qp STATIC resource/npu_ra_qp.cc)
-target_include_directories(nds_npu_ra_qp PUBLIC resource/include)
-target_include_directories(nds_npu_ra_qp PUBLIC include)
-target_link_libraries(nds_npu_ra_qp PUBLIC nds_ra_loader nds_transport)
-target_compile_options(nds_npu_ra_qp PRIVATE -Wall -Wextra -Wpedantic -Werror)
+add_library(nds_client_endpoint STATIC resource/endpoint.cc)
+target_include_directories(nds_client_endpoint PUBLIC resource resource/include include)
+target_link_libraries(nds_client_endpoint PUBLIC nds_client_runtime nds_ra_loader nds_transport)
+target_compile_options(nds_client_endpoint PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 add_library(nds_ra STATIC
     execution/ra/verbs.cc
     execution/ra/connection.cc
     execution/ra/storage.cc)
-target_include_directories(nds_ra PUBLIC execution/ra)
-target_link_libraries(nds_ra PUBLIC nds_npu_ra_context nds_npu_ra_qp nds_logging)
+target_include_directories(nds_ra PUBLIC execution/ra resource)
+target_link_libraries(nds_ra PUBLIC nds_client_runtime nds_client_endpoint nds_logging)
 target_compile_options(nds_ra PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 add_library(nds_aiv_launcher STATIC execution/aiv/host/launcher.cc)
@@ -53,13 +54,11 @@ target_link_libraries(nds_aicpu_launcher PUBLIC nds_ra_loader)
 target_compile_options(nds_aicpu_launcher PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 add_library(nds_client_control STATIC
-    resource/runtime.cc
-    resource/memory.cc
     resource/transport.cc)
 target_include_directories(nds_client_control PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/resource
     ${CMAKE_CURRENT_SOURCE_DIR}/execution)
-target_link_libraries(nds_client_control PUBLIC nds_npu_ra_context nds_npu_ra_qp nds_ra nds_transport)
+target_link_libraries(nds_client_control PUBLIC nds_client_runtime nds_client_endpoint nds_ra nds_transport)
 target_compile_options(nds_client_control PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 add_library(nds_client_storage STATIC resource/storage.cc)

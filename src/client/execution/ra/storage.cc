@@ -8,8 +8,8 @@ namespace {
 constexpr std::uint32_t kCompletionTimeoutMs = 5000U;
 
 Result<void> validate(const RaStorageRequest &request) {
-    if (request.connection.context == nullptr || request.connection.qp == nullptr ||
-        request.connection.qp->execution_mode() != NpuExecutionMode::Ra || request.command_device == nullptr ||
+    if (request.connection.runtime == nullptr || request.connection.qp == nullptr ||
+        request.connection.qp->execution_mode() != client::NpuExecutionMode::Ra || request.command_device == nullptr ||
         request.completion_device == nullptr || request.command.address == 0U || request.command.local_key == 0U ||
         request.command.length < sizeof(nds_protocol_command_wire) || request.completion.address == 0U ||
         request.completion.local_key == 0U || request.completion.length < sizeof(nds_protocol_completion_wire) ||
@@ -30,17 +30,20 @@ Result<void> execute(const RaStorageRequest &request, std::uint16_t operation) {
     nds_protocol_completion_wire pending_wire{};
     if (nds_protocol_completion_encode(&pending, &pending_wire) != NDS_PROTOCOL_RESULT_OK)
         return unexpected(ErrorCode::kProtocol, "invalid RA pending completion record");
-    if (!request.connection.context->copy_host_to_device(request.completion_device, &pending_wire,
-                                                         sizeof(pending_wire)))
-        return unexpected(ErrorCode::kRuntime, request.connection.context->error());
+    if (const auto copied = request.connection.runtime->copy_host_to_device(request.completion_device, &pending_wire,
+                                                                            sizeof(pending_wire));
+        !copied)
+        return unexpected(copied.error());
 
     const nds_protocol_command command{request.request_id, operation, request.offset, request.length,
                                        request.remote_data};
     nds_protocol_command_wire command_wire{};
     if (nds_protocol_command_encode(&command, &command_wire) != NDS_PROTOCOL_RESULT_OK)
         return unexpected(ErrorCode::kProtocol, "invalid RA storage command record");
-    if (!request.connection.context->copy_host_to_device(request.command_device, &command_wire, sizeof(command_wire)))
-        return unexpected(ErrorCode::kRuntime, request.connection.context->error());
+    if (const auto copied = request.connection.runtime->copy_host_to_device(request.command_device, &command_wire,
+                                                                            sizeof(command_wire));
+        !copied)
+        return unexpected(copied.error());
 
     const nds_device_transfer transfer{
         request.request_id, {request.command.address, request.command.length, request.command.local_key}, 0U, 0U, 0U};
@@ -51,8 +54,10 @@ Result<void> execute(const RaStorageRequest &request, std::uint16_t operation) {
     while (std::chrono::steady_clock::now() < deadline) {
         nds_protocol_completion_wire wire{};
         nds_protocol_completion completion{};
-        if (!request.connection.context->copy_device_to_host(&wire, request.completion_device, sizeof(wire)))
-            return unexpected(ErrorCode::kRuntime, request.connection.context->error());
+        if (const auto copied =
+                request.connection.runtime->copy_device_to_host(&wire, request.completion_device, sizeof(wire));
+            !copied)
+            return unexpected(copied.error());
         if (nds_protocol_completion_decode(&wire, &completion) != NDS_PROTOCOL_RESULT_OK)
             return unexpected(ErrorCode::kProtocol, "invalid RA storage completion record");
         if (completion.state == NDS_PROTOCOL_COMPLETION_COMPLETE) {

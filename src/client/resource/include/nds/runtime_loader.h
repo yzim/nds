@@ -30,6 +30,7 @@ typedef int (*nds_rt_close_net_service_fn)(void);
 typedef int (*nds_rt_rdma_db_send_fn)(uint32_t db_index, uint64_t db_info, void *stream);
 
 enum { NDS_RUNTIME_ERROR_CAPACITY = 512 };
+enum { NDS_RUNTIME_HDC_SERVICE_TYPE_RDMA_V2 = 18 };
 
 typedef struct nds_runtime_api {
     void *library;

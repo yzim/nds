@@ -32,7 +32,7 @@ nds::Result<int> parse_args(int argc, char **argv, ClientConfig *config, bool *e
     CLI::App app{"Send one NDS storage command from an NPU to a CPU memory namespace."};
     app.add_option("--ascendcl", config->runtime.ascendcl_library, "AscendCL shared library")->required();
     app.add_option("--runtime", config->runtime.runtime_library, "CANN runtime shared library")->required();
-    app.add_option("--ra", config->runtime.ra_library, "CANN RA shared library")->required();
+    app.add_option("--ra", config->transport.endpoint.ra_library, "CANN RA shared library")->required();
     std::string execution{"ra"};
     app.add_option("--execution", execution, "Storage execution mode")->check(CLI::IsMember({"ra", "aicpu", "aiv"}));
     app.add_option("--aicpu-kernel-config", config->execution.aicpu_kernel_config,
@@ -42,9 +42,10 @@ nds::Result<int> parse_args(int argc, char **argv, ClientConfig *config, bool *e
     app.add_option("--offset", config->offset, "Namespace byte offset");
     app.add_option("--bytes", config->bytes, "Storage transfer length")
         ->check(CLI::Range(std::uint32_t{1}, static_cast<std::uint32_t>(kMaxTransferBytes)));
-    app.add_option("--npu-ip", config->transport.qp.local_ipv4, "NPU RoCE IPv4 address")->required();
+    app.add_option("--npu-ip", config->transport.endpoint.local_ipv4, "NPU RoCE IPv4 address")->required();
     app.add_option("--logical-device", config->runtime.logical_device_id, "NPU logical device")->required();
-    app.add_option("--physical-device", config->runtime.physical_device_id, "NPU physical device")->required();
+    app.add_option("--physical-device", config->transport.endpoint.physical_device_id, "NPU physical device")
+        ->required();
     app.add_option("--port", config->transport.qp.port_num, "NPU RoCE port")
         ->check(CLI::Range(std::uint16_t{1}, std::numeric_limits<std::uint16_t>::max()));
     app.add_option("--path-mtu", config->transport.qp.path_mtu, "Path MTU")
@@ -68,10 +69,9 @@ nds::Result<int> parse_args(int argc, char **argv, ClientConfig *config, bool *e
     }
 
     if (execution == "aicpu")
-        config->execution.mode = nds::NpuExecutionMode::Aicpu;
+        config->execution.mode = nds::client::NpuExecutionMode::Aicpu;
     if (execution == "aiv")
-        config->execution.mode = nds::NpuExecutionMode::Aiv;
-    config->transport.qp.physical_device_id = config->runtime.physical_device_id;
+        config->execution.mode = nds::client::NpuExecutionMode::Aiv;
     if ((execution == "aicpu" && config->execution.aicpu_kernel_config.empty()) ||
         (execution == "aiv" && config->execution.aiv_kernel.empty())) {
         return nds::unexpected(nds::ErrorCode::kInvalidArgument, "invalid option combination");
@@ -100,7 +100,7 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
 
-    nds::client::NpuRuntime runtime;
+    nds::client::Runtime runtime;
     nds::client::Transport transport;
     nds::client::StorageClient client;
     if (const auto result = runtime.open(config.runtime); !result) {
@@ -119,13 +119,13 @@ int main(int argc, char **argv) {
     for (std::size_t index = 0; index < payload.size(); ++index) {
         payload[index] = static_cast<unsigned char>(index ^ 0x5aU);
     }
-    nds::client::DeviceBuffer data;
+    nds::client::MemoryBuffer data;
     if (const auto result = runtime.memory()->allocate(payload.size(), &data); !result) {
         NDS_LOG_ERROR("npu-client", "client application buffer allocation failed: {}", result.error().message);
         return EXIT_FAILURE;
     }
     if (config.operation == "write") {
-        if (const auto copied = runtime.memory()->copy_to_device(&data, payload.data(), payload.size()); !copied) {
+        if (const auto copied = runtime.memory()->copy_to(&data, payload.data(), payload.size()); !copied) {
             NDS_LOG_ERROR("npu-client", "client application buffer copy failed: {}", copied.error().message);
             return EXIT_FAILURE;
         }
@@ -139,7 +139,7 @@ int main(int argc, char **argv) {
     }
     if (config.operation == "read") {
         std::vector<unsigned char> result(payload.size());
-        if (const auto copied = runtime.memory()->copy_from_device(result.data(), data, result.size()); !copied) {
+        if (const auto copied = runtime.memory()->copy_from(result.data(), data, result.size()); !copied) {
             NDS_LOG_ERROR("npu-client", "client Read copy failed: {}", copied.error().message);
             return EXIT_FAILURE;
         }

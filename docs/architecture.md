@@ -42,8 +42,8 @@ storage are API layers. They are separate axes:
 | Layer | RA | AIV | AICPU |
 |---|---|---|---|
 | Verbs | `NdsRaPostSend`, `NdsRaPostRecv`, `NdsRaPollCq` | `PostSend`, `PostRecv`, `PollCq` over device QP addresses | Exported provider/fallback `PostSend`, `PostRecv`, `PollCq` |
-| Transport operations | Host `Transport` selects a QP and invokes verbs | Device `Transport` selects a device QP | Device `Transport` selects a device QP |
-| Transport | Host `Transport` | Device transport/session API planned | Device transport/session API planned |
+| Transport operations | RA execution view selects a QP and invokes verbs | Device `Transport` selects a device QP | Device `Transport` selects a device QP |
+| Transport control | Host `Transport` creates and connects resources | Device transport/session API planned | Device transport/session API planned |
 | Storage | `NdsRaStorageRead`, `NdsRaStorageWrite` | Device `StorageRead` / `StorageWrite` | Device `StorageRead` / `StorageWrite` |
 
 The current executable is a host control and validation path. For AIV and
@@ -84,16 +84,18 @@ polling. It does not encode storage commands or make namespace decisions.
 
 ## Transport
 
-The application owns `NpuRuntime`, `Transport`, and `StorageClient` in that
-order. `NpuRuntime` owns the CANN/RA context, runtime loaders, and its `Memory`
-service. `Transport` borrows the runtime and owns one RC QP, peer metadata, TCP
-bootstrap, and its private registered buffers. `StorageClient` borrows the
-runtime and transport; it owns protocol buffers and obtains direct-transfer
-allocations and registrations through `NpuRuntime::memory()`.
+The application owns `Runtime`, `Transport`, and `StorageClient` in that order.
+`Runtime` owns AscendCL, the CANN runtime/network-service lifecycle, device
+allocation and copy operations, and its `Memory` service. `Transport` borrows
+the runtime and owns an `Endpoint`, one `QueuePair`, peer metadata, the TCP
+bootstrap channel, and required AI-QP WR-ID storage. `Endpoint` owns the RA
+loader/lifecycle and rdev; QPs and MRs own their handles and must be destroyed
+before it. `StorageClient` borrows the runtime and transport, owns protocol
+buffers, and registers them through the endpoint.
 
-`Transport` exposes direct Read and Write using local and remote address/key
-values plus a length. It selects a QP and lowers the operation to verbs.
-Protocol records and namespace decisions do not belong here.
+`Transport` performs control-path orchestration only. RDMA Send, Read, and
+Write belong to execution backends operating on temporary non-owning resource
+views. Protocol records and namespace decisions belong to `StorageClient`.
 
 One QP per transport is an initial constraint. A future transport reserves a
 control QP and selects data QPs round-robin without changing the storage API.

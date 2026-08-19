@@ -194,12 +194,10 @@ CQE is not protocol completion.
 
 Key implementation paths:
 
-- `src/client/resource/storage.cc`: stateful StorageClient command and completion flow.
 - `src/client/resource/storage.cc`: stateful storage session and backend selection.
 - `src/client/execution/ra/verbs.cc`: RA post and runtime doorbell.
-- `src/client/resource/npu_ra_qp.cc`: QP and MR calls.
-- `src/client/resource/npu_ra_context.cc`: runtime lifecycle,
-  doorbell, and device-to-host completion copy.
+- `src/client/resource/endpoint.cc`: RA/rdev, QP, and MR lifecycle.
+- `src/client/resource/runtime.cc`: ACL/runtime lifecycle and device copies.
 - `src/server/protocol.cc` and `src/server/backend.cc`: CPU sequencing and
   CQ polling.
 

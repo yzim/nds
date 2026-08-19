@@ -1,62 +1,45 @@
 #ifndef NDS_CLIENT_MEMORY_HH
 #define NDS_CLIENT_MEMORY_HH
 
-#include "nds/npu_ra_context.hh"
-#include "nds/npu_ra_qp.hh"
 #include "nds/result.hh"
 
 #include <cstddef>
-#include <cstdint>
 
 namespace nds::client {
 
-struct LocalAddress {
-    std::uint64_t address{};
-    std::uint32_t key{};
+class Runtime;
+struct EndpointTestAccess;
+
+enum class MemoryLocation {
+    Host,
+    Device,
 };
 
-struct RemoteAddress {
-    std::uint64_t address{};
-    std::uint32_t key{};
-};
-
-class DeviceBuffer {
+class MemoryBuffer {
 public:
-    DeviceBuffer() = default;
-    ~DeviceBuffer();
-    DeviceBuffer(const DeviceBuffer &) = delete;
-    DeviceBuffer &operator=(const DeviceBuffer &) = delete;
+    MemoryBuffer() = default;
+    ~MemoryBuffer();
+    MemoryBuffer(const MemoryBuffer &) = delete;
+    MemoryBuffer &operator=(const MemoryBuffer &) = delete;
+    MemoryBuffer(MemoryBuffer &&other) noexcept;
+    MemoryBuffer &operator=(MemoryBuffer &&other) noexcept;
 
     void *data() const noexcept;
     std::size_t size() const noexcept;
+    MemoryLocation location() const noexcept;
 
 private:
     friend class Memory;
-    NpuRaContext *context_{};
+    friend struct EndpointTestAccess;
+    void reset() noexcept;
+
+    Runtime *runtime_{};
     void *data_{};
     std::size_t size_{};
+    MemoryLocation location_{MemoryLocation::Device};
 };
 
-class RegisteredRegion {
-public:
-    RegisteredRegion() = default;
-    ~RegisteredRegion();
-    RegisteredRegion(const RegisteredRegion &) = delete;
-    RegisteredRegion &operator=(const RegisteredRegion &) = delete;
-
-    LocalAddress local_address() const noexcept;
-    RemoteAddress remote_address() const noexcept;
-    std::uint64_t length() const noexcept;
-    bool belongs_to(const NpuRaQp *qp) const noexcept;
-
-private:
-    friend class Memory;
-    NpuRaQp *qp_{};
-    nds_ra_mr_info info_{};
-    void *handle_{};
-};
-
-/* Allocates, copies, and registers memory through one live NPU runtime. */
+/* Allocates and copies generic host or device buffers through one live runtime. */
 class Memory {
 public:
     Memory() = default;
@@ -64,16 +47,16 @@ public:
     Memory(const Memory &) = delete;
     Memory &operator=(const Memory &) = delete;
 
-    Result<void> allocate(std::size_t size, DeviceBuffer *buffer);
-    Result<void> register_memory(NpuRaQp *qp, DeviceBuffer *buffer, RegisteredRegion *region);
-    Result<void> copy_to_device(DeviceBuffer *buffer, const void *source, std::size_t size);
-    Result<void> copy_from_device(void *destination, const DeviceBuffer &buffer, std::size_t size);
+    Result<void> allocate(std::size_t size, MemoryBuffer *buffer);
+    Result<void> allocate(std::size_t size, MemoryLocation location, MemoryBuffer *buffer);
+    Result<void> copy_to(MemoryBuffer *buffer, const void *source, std::size_t size);
+    Result<void> copy_from(void *destination, const MemoryBuffer &buffer, std::size_t size);
 
 private:
-    friend class NpuRuntime;
-    void attach(NpuRaContext *context) noexcept;
+    friend class Runtime;
+    void attach(Runtime *runtime) noexcept;
 
-    NpuRaContext *context_{};
+    Runtime *runtime_{};
 };
 
 }  // namespace nds::client

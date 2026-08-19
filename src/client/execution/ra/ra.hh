@@ -3,8 +3,8 @@
 
 #include "nds/device_transport.h"
 #include "nds/device_storage.h"
-#include "nds/npu_ra_context.hh"
-#include "nds/npu_ra_qp.hh"
+#include "endpoint.hh"
+#include "runtime.hh"
 #include "nds/result.hh"
 
 #include <cstdint>
@@ -12,8 +12,8 @@
 namespace nds {
 
 struct RaConnection {
-    NpuRaContext *context{};
-    NpuRaQp *qp{};
+    client::Runtime *runtime{};
+    client::QueuePair *qp{};
 };
 
 struct RaStorageRequest {
@@ -30,9 +30,10 @@ struct RaStorageRequest {
 };
 
 /* Verbs layer. PostSend returns the RA doorbell metadata to its caller. */
-Result<nds_ra_send_response> NdsRaPostSend(NpuRaQp *qp, const nds_device_send_wr &wr);
-Result<void> NdsRaPostRecv(NpuRaQp *qp, const nds_device_recv_wr &wr);
-Result<std::uint32_t> NdsRaPollCq(NpuRaQp *qp, std::uint32_t queue_kind, nds_device_completion_output *output);
+Result<nds_ra_send_response> NdsRaPostSend(client::QueuePair *qp, const nds_device_send_wr &wr);
+Result<void> NdsRaPostRecv(client::QueuePair *qp, const nds_device_recv_wr &wr);
+Result<std::uint32_t> NdsRaPollCq(client::QueuePair *qp, std::uint32_t queue_kind,
+                                  nds_device_completion_output *output);
 
 /* Connection layer. Send/Read/Write post and ring the runtime doorbell. */
 Result<void> NdsRaRdmaSend(const RaConnection &connection, const nds_device_transfer &transfer);
