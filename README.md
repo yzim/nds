@@ -114,6 +114,8 @@ specific sources and limits.
 
 **System design**
 
+- [C++ code style](docs/code-style.md): API outputs, error propagation,
+  ownership, formatting, and executable conventions.
 - [Architecture](docs/architecture.md): ownership boundaries and the storage
   protocol.
 - [HCCP QP, MR, and runtime ABI](docs/hccp-resources.md): resource ownership,
