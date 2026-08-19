@@ -19,10 +19,10 @@ int binary_handle;
 int stream_handle;
 
 int load_binary(const char *path, nds_acl_binary_load_options *options, nds_acl_bin_handle *handle) {
-    assert(path != nullptr && std::strcmp(path, "/tmp/libnds_aicpu_standard.so") == 0);
+    assert(path != nullptr && std::strcmp(path, "/tmp/nds_aicpu_standard.json") == 0);
     assert(options != nullptr && options->num_options == 1U && options->options != nullptr);
     assert(options->options[0].type == NDS_ACL_BINARY_LOAD_OPT_CPU_KERNEL_MODE);
-    assert(options->options[0].value.cpu_kernel_mode == NDS_ACL_CPU_KERNEL_LOAD_SO_AND_JSON);
+    assert(options->options[0].value.cpu_kernel_mode == NDS_ACL_CPU_KERNEL_REGISTER_JSON);
     assert(handle != nullptr);
     state.binary_loaded = true;
     *handle = &binary_handle;
@@ -86,7 +86,7 @@ int main() {
 
     {
         nds::AicpuEntrypointLauncher launcher;
-        assert(launcher.load(&api, "/tmp/libnds_aicpu_standard.so"));
+        assert(launcher.load(&api, "/tmp/nds_aicpu_standard.json"));
         assert(launcher.loaded());
         assert(state.binary_loaded && state.stream_created);
     }

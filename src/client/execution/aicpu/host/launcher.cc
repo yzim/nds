@@ -41,7 +41,7 @@ void AicpuEntrypointLauncher::set_error(std::string message) {
     error_ = std::move(message);
 }
 
-bool AicpuEntrypointLauncher::load(nds_acl_api *acl, const std::string &kernel_path) {
+bool AicpuEntrypointLauncher::load(nds_acl_api *acl, const std::string &kernel_config_path) {
     nds_acl_binary_load_option option{};
     nds_acl_binary_load_options options{};
     int result;
@@ -54,8 +54,8 @@ bool AicpuEntrypointLauncher::load(nds_acl_api *acl, const std::string &kernel_p
         set_error("NDS AICPU RDMA post launcher is already loaded");
         return false;
     }
-    if (kernel_path.empty()) {
-        set_error("NDS AICPU launch requires the NDS-built libnds_aicpu_standard.so path");
+    if (kernel_config_path.empty()) {
+        set_error("NDS AICPU launch requires the NDS-built nds_aicpu_standard.json path");
         return false;
     }
     if (acl->binary_load_from_file == nullptr || acl->binary_unload == nullptr || acl->binary_get_function == nullptr ||
@@ -69,12 +69,12 @@ bool AicpuEntrypointLauncher::load(nds_acl_api *acl, const std::string &kernel_p
 
     acl_ = acl;
     option.type = NDS_ACL_BINARY_LOAD_OPT_CPU_KERNEL_MODE;
-    option.value.cpu_kernel_mode = NDS_ACL_CPU_KERNEL_LOAD_SO_AND_JSON;
+    option.value.cpu_kernel_mode = NDS_ACL_CPU_KERNEL_REGISTER_JSON;
     options.options = &option;
     options.num_options = 1U;
-    result = acl_->binary_load_from_file(kernel_path.c_str(), &options, &binary_);
+    result = acl_->binary_load_from_file(kernel_config_path.c_str(), &options, &binary_);
     if (result != 0 || binary_ == nullptr) {
-        set_error("aclrtBinaryLoadFromFile(NDS AICPU shared object) failed: " + std::to_string(result));
+        set_error("aclrtBinaryLoadFromFile(NDS AICPU package configuration) failed: " + std::to_string(result));
         reset();
         return false;
     }

@@ -5,6 +5,12 @@
 
 #define NDS_DEVICE_QP_ABI_VERSION UINT32_C(1)
 
+enum nds_device_qp_mode {
+    NDS_DEVICE_QP_MODE_NORMAL = 0,
+    NDS_DEVICE_QP_MODE_OPBASE = 2,
+    NDS_DEVICE_QP_MODE_OPBASE_EXT = 4,
+};
+
 enum nds_device_doorbell_mode {
     NDS_DEVICE_DOORBELL_NONE = 0U,
     NDS_DEVICE_DOORBELL_RECORD = 1U,

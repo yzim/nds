@@ -18,7 +18,7 @@ public:
     AicpuEntrypointLauncher(const AicpuEntrypointLauncher &) = delete;
     AicpuEntrypointLauncher &operator=(const AicpuEntrypointLauncher &) = delete;
 
-    bool load(nds_acl_api *acl, const std::string &kernel_path);
+    bool load(nds_acl_api *acl, const std::string &kernel_config_path);
     bool launch_and_wait(nds_device_operation_request *request, std::int32_t completion_timeout_ms);
     bool launch_post_send_and_wait(nds_device_post_send_request *request, std::int32_t completion_timeout_ms);
     bool launch_storage_and_wait(nds_device_storage_request *request, std::int32_t completion_timeout_ms);

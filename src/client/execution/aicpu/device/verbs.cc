@@ -20,6 +20,10 @@ extern "C" uint32_t NdsAicpuPostSendImpl(
         NdsAicpuSetResult(result, NDS_DEVICE_OPERATION_UNSUPPORTED, NDS_DEVICE_OPERATION_PATH_NONE, 0);
         return kNdsAicpuSuccess;
     }
+    if (qp->qp_mode != NDS_DEVICE_QP_MODE_NORMAL) {
+        NdsAicpuSetResult(result, NDS_DEVICE_OPERATION_UNSUPPORTED, NDS_DEVICE_OPERATION_PATH_NONE, 0);
+        return kNdsAicpuSuccess;
+    }
     auto post = reinterpret_cast<nds_hns_exp_post_send_fn>(NdsAicpuResolveSymbol("ibv_exp_post_send"));
     if (post == nullptr) {
         NdsAicpuSetResult(result, NDS_DEVICE_OPERATION_SYMBOL_UNAVAILABLE, NDS_DEVICE_OPERATION_PATH_PROVIDER, 0);
@@ -39,9 +43,6 @@ extern "C" uint32_t NdsAicpuPostSendImpl(
     nds_hns_post_send_response response{};
     const int provider_result = post(reinterpret_cast<void *>(qp->provider_qp_address),
                                      &provider_wr, &bad, &response);
-    if (provider_result == 0 && response.db_info != 0UL)
-        *reinterpret_cast<volatile uint64_t *>(qp->send_queue.doorbell_address) =
-            static_cast<uint64_t>(response.db_info);
     NdsAicpuSetResult(result,
                       provider_result == 0 ? NDS_DEVICE_OPERATION_SUCCESS : NDS_DEVICE_OPERATION_PROVIDER_FAILED,
                       NDS_DEVICE_OPERATION_PATH_PROVIDER, provider_result);

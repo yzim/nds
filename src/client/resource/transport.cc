@@ -84,7 +84,7 @@ Result<void> Transport::send_bytes(const void *source, std::size_t size) {
     std::string error;
     if (execution_.mode == NpuExecutionMode::Aicpu) {
         AicpuEntrypointLauncher launcher;
-        if (!launcher.load(&runtime_->context()->acl_api(), execution_.aicpu_kernel) ||
+        if (!launcher.load(&runtime_->context()->acl_api(), execution_.aicpu_kernel_config) ||
             !launcher.launch_and_wait(&request, 5000))
             error = launcher.error();
     } else {

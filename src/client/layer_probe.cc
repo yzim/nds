@@ -32,7 +32,7 @@ nds::Result<void> parse(int argc, char **argv, Config *config) {
     app.add_option("--runtime", config->runtime.runtime_library)->required();
     app.add_option("--ra", config->runtime.ra_library)->required();
     app.add_option("--aiv-kernel", config->execution.aiv_kernel);
-    app.add_option("--aicpu-kernel", config->execution.aicpu_kernel);
+    app.add_option("--aicpu-kernel-config", config->execution.aicpu_kernel_config);
     app.add_option("--npu-ip", config->transport.qp.local_ipv4)->required();
     app.add_option("--logical-device", config->runtime.logical_device_id)->required();
     app.add_option("--physical-device", config->runtime.physical_device_id)->required();
@@ -47,7 +47,7 @@ nds::Result<void> parse(int argc, char **argv, Config *config) {
     if (execution == "aiv") config->execution.mode = nds::NpuExecutionMode::Aiv;
     if (execution == "aicpu") config->execution.mode = nds::NpuExecutionMode::Aicpu;
     if ((config->execution.mode == nds::NpuExecutionMode::Aiv && config->execution.aiv_kernel.empty()) ||
-        (config->execution.mode == nds::NpuExecutionMode::Aicpu && config->execution.aicpu_kernel.empty())) {
+        (config->execution.mode == nds::NpuExecutionMode::Aicpu && config->execution.aicpu_kernel_config.empty())) {
         return nds::unexpected(nds::ErrorCode::kInvalidArgument, "device backend requires its kernel artifact");
     }
     return {};
@@ -85,7 +85,7 @@ nds::Result<void> post_verbs(nds::client::NpuRuntime *runtime, nds::client::Tran
     std::string error;
     if (transport->execution().mode == nds::NpuExecutionMode::Aicpu) {
         nds::AicpuEntrypointLauncher launcher;
-        if (!launcher.load(&runtime->context()->acl_api(), transport->execution().aicpu_kernel) ||
+        if (!launcher.load(&runtime->context()->acl_api(), transport->execution().aicpu_kernel_config) ||
             !launcher.launch_post_send_and_wait(&request, 5000)) error = launcher.error();
     } else {
         nds::AivEntrypointLauncher launcher;

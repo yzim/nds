@@ -35,7 +35,8 @@ nds::Result<int> parse_args(int argc, char **argv, ClientConfig *config, bool *e
     app.add_option("--ra", config->runtime.ra_library, "CANN RA shared library")->required();
     std::string execution{"ra"};
     app.add_option("--execution", execution, "Storage execution mode")->check(CLI::IsMember({"ra", "aicpu", "aiv"}));
-    app.add_option("--aicpu-kernel", config->execution.aicpu_kernel, "AICPU kernel shared object");
+    app.add_option("--aicpu-kernel-config", config->execution.aicpu_kernel_config,
+                   "AICPU standard-kernel package configuration");
     app.add_option("--aiv-kernel", config->execution.aiv_kernel, "AIV kernel binary");
     app.add_option("--operation", config->operation, "Storage operation")->check(CLI::IsMember({"read", "write"}));
     app.add_option("--offset", config->offset, "Namespace byte offset");
@@ -72,7 +73,7 @@ nds::Result<int> parse_args(int argc, char **argv, ClientConfig *config, bool *e
     if (execution == "aiv")
         config->execution.mode = nds::NpuExecutionMode::Aiv;
     config->transport.qp.physical_device_id = config->runtime.physical_device_id;
-    if ((execution == "aicpu" && config->execution.aicpu_kernel.empty()) ||
+    if ((execution == "aicpu" && config->execution.aicpu_kernel_config.empty()) ||
         (execution == "aiv" && config->execution.aiv_kernel.empty())) {
         return nds::unexpected(nds::ErrorCode::kInvalidArgument, "invalid option combination");
     }

@@ -23,7 +23,7 @@ struct TransportConfig {
 
 struct ExecutionConfig {
     NpuExecutionMode mode{NpuExecutionMode::Ra};
-    std::string aicpu_kernel;
+    std::string aicpu_kernel_config;
     std::string aiv_kernel;
 };
 

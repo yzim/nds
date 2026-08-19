@@ -77,6 +77,10 @@ bool NpuRaQp::create(nds_ra_api *api, const NpuRaQpConfig &config, NpuExecutionM
         set_error("NPU RA QP execution mode is invalid");
         return false;
     }
+    if (execution == NpuExecutionMode::Aicpu && config.ai_qp_mode >= 0 && config.ai_qp_mode != NDS_RA_QP_MODE_NORMAL) {
+        set_error("AICPU execution requires a NORMAL AI QP so the provider owns Send doorbell submission");
+        return false;
+    }
     if (api->ra_rdev_init_v2 == nullptr || api->ra_rdev_deinit == nullptr || api->ra_qp_destroy == nullptr ||
         api->ra_get_qp_attr == nullptr || api->ra_typical_qp_modify == nullptr ||
         (execution == NpuExecutionMode::Ra && api->ra_typical_qp_create == nullptr) ||

@@ -4,6 +4,7 @@
 #include <cassert>
 #include <cstdint>
 #include <cstring>
+#include <string>
 
 namespace {
 
@@ -461,7 +462,7 @@ void test_aiv_uses_opbase_ext_qp() {
     qp.reset();
 }
 
-void test_ai_qp_mode_override_and_hccp_owned_cq() {
+void test_aiv_qp_mode_override_and_hccp_owned_cq() {
     FakeRaState fake{};
     fake.omit_completion_queues = true;
     state = &fake;
@@ -473,7 +474,7 @@ void test_ai_qp_mode_override_and_hccp_owned_cq() {
     config.send_queue_depth = 64U;
     config.receive_queue_depth = 32U;
     config.control_flags = 0U;
-    assert(qp.create(&api, config, nds::NpuExecutionMode::Aicpu));
+    assert(qp.create(&api, config, nds::NpuExecutionMode::Aiv));
     assert(fake.ai_qp_attrs.qp_mode == NDS_RA_QP_MODE_OPBASE_EXT);
     assert(fake.ai_qp_attrs.cq_attr.send_cq_depth == 64);
     assert(fake.ai_qp_attrs.cq_attr.recv_cq_depth == 32);
@@ -484,6 +485,21 @@ void test_ai_qp_mode_override_and_hccp_owned_cq() {
     assert(transport->control_qp.flags == 0U);
     assert(transport->control_qp.send_cq.buffer_address == 0U);
     assert(transport->control_qp.receive_cq.buffer_address == 0U);
+}
+
+void test_aicpu_rejects_non_normal_qp() {
+    FakeRaState fake{};
+    state = &fake;
+    nds_ra_api api = make_fake_api();
+    nds::NpuRaQp qp;
+    nds::NpuRaQpConfig config{};
+    config.local_ipv4 = "192.0.2.10";
+    config.ai_qp_mode = NDS_RA_QP_MODE_OPBASE_EXT;
+
+    assert(!qp.create(&api, config, nds::NpuExecutionMode::Aicpu));
+    assert(qp.error().find("NORMAL AI QP") != std::string::npos);
+    assert(fake.rdev_init_calls == 0);
+    assert(fake.ai_qp_create_calls == 0);
 }
 
 void test_rejects_incomplete_ai_connection() {
@@ -668,7 +684,8 @@ int main() {
     test_create_advertise_connect_and_reset();
     test_aicpu_qp_creation_and_connection();
     test_aiv_uses_opbase_ext_qp();
-    test_ai_qp_mode_override_and_hccp_owned_cq();
+    test_aiv_qp_mode_override_and_hccp_owned_cq();
+    test_aicpu_rejects_non_normal_qp();
     test_rejects_incomplete_ai_connection();
     test_memory_registration_lifecycle();
     test_send_wr_and_polling();

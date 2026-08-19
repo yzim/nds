@@ -74,7 +74,7 @@ Result<void> submit_device_storage(NpuRuntime *runtime, Transport *transport, co
     std::string launch_error;
     if (transport->execution().mode == NpuExecutionMode::Aicpu) {
         AicpuEntrypointLauncher launcher;
-        if (!launcher.load(&runtime->context()->acl_api(), transport->execution().aicpu_kernel) ||
+        if (!launcher.load(&runtime->context()->acl_api(), transport->execution().aicpu_kernel_config) ||
             !launcher.launch_storage_and_wait(&request, kCompletionTimeoutMs)) {
             launch_error = launcher.error();
         }

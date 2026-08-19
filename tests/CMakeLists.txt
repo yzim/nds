@@ -26,6 +26,12 @@ target_link_libraries(nds_aicpu_launcher_test PRIVATE nds_aicpu_launcher)
 nds_add_unit_test(nds_logging_test logging_test.cc)
 target_link_libraries(nds_logging_test PRIVATE nds_logging)
 
+add_test(NAME integration.nds_aicpu_manifest_test
+    COMMAND ${CMAKE_COMMAND}
+        -DNDS_AICPU_MANIFEST=${PROJECT_SOURCE_DIR}/src/client/execution/aicpu/device/package/nds_aicpu_standard.json.in
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/integration/aicpu_manifest_test.cmake)
+set_tests_properties(integration.nds_aicpu_manifest_test PROPERTIES LABELS "integration")
+
 add_library(nds_fake_runtime SHARED integration/fake_runtime.cc)
 target_compile_options(nds_fake_runtime PRIVATE -Wall -Wextra -Wpedantic -Werror)
 add_executable(nds_runtime_loader_test integration/runtime_loader_test.cc)
@@ -56,6 +62,11 @@ if(TARGET nds_aicpu_kernel)
             -DNDS_NM=${CMAKE_NM}
             -P ${CMAKE_CURRENT_SOURCE_DIR}/integration/device_api_symbols.cmake)
     set_tests_properties(toolchain.aicpu_device_api_symbols PROPERTIES LABELS "device-toolchain")
+    add_test(NAME toolchain.aicpu_standard_package
+        COMMAND ${CMAKE_COMMAND}
+            -DNDS_AICPU_PACKAGE=${CMAKE_BINARY_DIR}/aicpu/aicpu_nds.tar.gz
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/integration/aicpu_package_test.cmake)
+    set_tests_properties(toolchain.aicpu_standard_package PROPERTIES LABELS "device-toolchain")
 endif()
 
 option(NDS_ENABLE_E2E_TESTS "Register hardware end-to-end tests that require an Ascend NPU and CPU RNIC" OFF)

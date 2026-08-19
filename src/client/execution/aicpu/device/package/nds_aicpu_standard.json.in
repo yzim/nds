@@ -3,63 +3,63 @@
     "opInfo": {
       "functionName": "NdsAicpuPostSend",
       "kernelSo": "@NDS_AICPU_STANDARD_KERNEL_SO@",
-      "opKernelLib": "CUSTAICPUKernel"
+      "opKernelLib": "AICPUKernel"
     }
   },
   "NdsAicpuPostRecv": {
     "opInfo": {
       "functionName": "NdsAicpuPostRecv",
       "kernelSo": "@NDS_AICPU_STANDARD_KERNEL_SO@",
-      "opKernelLib": "CUSTAICPUKernel"
+      "opKernelLib": "AICPUKernel"
     }
   },
   "NdsAicpuPollCq": {
     "opInfo": {
       "functionName": "NdsAicpuPollCq",
       "kernelSo": "@NDS_AICPU_STANDARD_KERNEL_SO@",
-      "opKernelLib": "CUSTAICPUKernel"
+      "opKernelLib": "AICPUKernel"
     }
   },
   "NdsAicpuRdmaSend": {
     "opInfo": {
       "functionName": "NdsAicpuRdmaSend",
       "kernelSo": "@NDS_AICPU_STANDARD_KERNEL_SO@",
-      "opKernelLib": "CUSTAICPUKernel"
+      "opKernelLib": "AICPUKernel"
     }
   },
   "NdsAicpuRdmaRecv": {
     "opInfo": {
       "functionName": "NdsAicpuRdmaRecv",
       "kernelSo": "@NDS_AICPU_STANDARD_KERNEL_SO@",
-      "opKernelLib": "CUSTAICPUKernel"
+      "opKernelLib": "AICPUKernel"
     }
   },
   "NdsAicpuRdmaRead": {
     "opInfo": {
       "functionName": "NdsAicpuRdmaRead",
       "kernelSo": "@NDS_AICPU_STANDARD_KERNEL_SO@",
-      "opKernelLib": "CUSTAICPUKernel"
+      "opKernelLib": "AICPUKernel"
     }
   },
   "NdsAicpuRdmaWrite": {
     "opInfo": {
       "functionName": "NdsAicpuRdmaWrite",
       "kernelSo": "@NDS_AICPU_STANDARD_KERNEL_SO@",
-      "opKernelLib": "CUSTAICPUKernel"
+      "opKernelLib": "AICPUKernel"
     }
   },
   "NdsAicpuStorageRead": {
     "opInfo": {
       "functionName": "NdsAicpuStorageRead",
       "kernelSo": "@NDS_AICPU_STANDARD_KERNEL_SO@",
-      "opKernelLib": "CUSTAICPUKernel"
+      "opKernelLib": "AICPUKernel"
     }
   },
   "NdsAicpuStorageWrite": {
     "opInfo": {
       "functionName": "NdsAicpuStorageWrite",
       "kernelSo": "@NDS_AICPU_STANDARD_KERNEL_SO@",
-      "opKernelLib": "CUSTAICPUKernel"
+      "opKernelLib": "AICPUKernel"
     }
   }
 }

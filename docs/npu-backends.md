@@ -47,7 +47,7 @@ validation executable, not the eventual AIV/AICPU storage API.
 |---|---|---|---|---|---|
 | [`ra`](#ra) | Host CPU: `RaTypicalSendWr`, then `rtRDMADBSend` | Executes the post | OPBASE | RA CQ is available | CPU writes the NDS completion record; host copies and polls it |
 | [`aiv`](#aiv) | NPU AIV: direct SQ/RQ/CQ and doorbell access | Creates and launches the device request | Configurable; OPBASE_EXT by default | Caller-owned SCQ/RCQ | CPU writes the NDS completion record; host copies and polls it |
-| [`aicpu`](#aicpu) | NPU CP1: provider symbols first, address fallback | Creates and launches the device request | Configurable; NORMAL by default | Caller-owned SCQ/RCQ | CPU writes the NDS completion record; host copies and polls it |
+| [`aicpu`](#aicpu) | NPU CP1: provider Send, address fallback for Receive/CQ | Creates and launches the device request | NORMAL | Caller-owned SCQ/RCQ | CPU writes the NDS completion record; host copies and polls it |
 
 The CPU polls its one `libibverbs` CQ for the command Receive and its signaled
 terminal completion Write. HCCP AI-QP CQ handling, an AIV/AICPU launch, and a
@@ -59,10 +59,10 @@ Use `aiv` for direct vector-core WQE/doorbell posting and `aicpu` for a
 provider-owned post from standard CP1. These are implementation choices, not
 performance rankings. The host validation executable supports storage Read and
 Write with all three work-request modes. Recorded hardware validation covers
-one bounded storage Write in RA and AIV modes, an RA Read from a fresh
+one bounded storage Write in RA, AIV, and AICPU modes, an RA Read from a fresh
 zeroed namespace, device Send/Receive with SCQ/RCQ polling in AIV and AICPU,
 and direct device RDMA Read/Write with SCQ polling in both modes. It does not
-yet cover an AICPU storage Write or an AIV/AICPU storage Read. NDS has not published throughput or
+yet cover an AIV/AICPU storage Read. NDS has not published throughput or
 latency results.
 
 The initial protocol permits one command in flight on one RC QP. Queueing,
@@ -131,10 +131,11 @@ NdsAicpuPostRecv(qp, recv_wr, result)
 NdsAicpuPollCq(qp, poll_request, result)
 ```
 
-`PostSend` resolves the installed HNS provider's `ibv_exp_post_send` inside
-standard CP1. `PostRecv` and `PollCq` try provider/verbs symbols first and use
-the NDS queue-address implementation when those inline verbs operations are
-not exported.
+`PostSend` requires a NORMAL AI QP and resolves the installed HNS provider's
+`ibv_exp_post_send` inside standard CP1. In this mode the provider writes the
+WQE and rings the SQ doorbell. `PostRecv` and `PollCq` try provider/verbs
+symbols first and use the NDS queue-address implementation when those inline
+verbs operations are not exported.
 
 ### Connection APIs
 
@@ -291,9 +292,9 @@ connection functions (`NdsAicpuRdmaSend`, `NdsAicpuRdmaRecv`, `NdsAicpuRdmaRead`
 `NdsAicpuRdmaWrite`).
 
 The host process does not load `libhns-rdmav25.so`; standard CP1 resolves it
-in the NPU execution environment. The default NORMAL AI QP lets the provider
-ring its normal-QP doorbell. Provider-OP mode may instead return doorbell
-metadata, which the operator writes to the descriptor's SQ doorbell address.
+in the NPU execution environment. AICPU requires a NORMAL AI QP, for which the
+provider post writes the WQE and rings the SQ doorbell. NDS rejects AICPU OP
+modes rather than consuming their private dispatcher doorbell metadata.
 Standard `ibv_post_recv` and `ibv_poll_cq` are commonly inline rather than
 exported symbols, so the operator falls back to the descriptor's RQ and CQ
 addresses when lookup fails.
@@ -309,12 +310,13 @@ cmake -S . -B build-aicpu -DNDS_CANN_ROOT=<cann-root> -DNDS_BUILD_AICPU_KERNEL=O
 cmake --build build-aicpu --parallel
 ```
 
-Keep the generated `libnds_aicpu_standard.so` and same-basename JSON together,
-then use `--execution aicpu` and
-`--aicpu-kernel <path>/libnds_aicpu_standard.so`. ACL CPU-kernel mode 1 transfers
-the shared object to the device and registers its companion JSON. Select either
-`--operation write` or `--operation read`; both use the AICPU command-Send
-path, and the CPU server selects the corresponding data-transfer direction.
+Install the generated `aicpu_nds.tar.gz` and `nds_aicpu_standard.json` through
+CANN's supported customer-AICPU package discovery process, then use
+`--execution aicpu --aicpu-kernel-config <path>/nds_aicpu_standard.json`.
+ACL CPU-kernel mode 0 registers the standard-CP1 operators from that package.
+Select either `--operation write` or `--operation read`; both use the AICPU
+command-Send path, and the CPU server selects the corresponding data-transfer
+direction.
 
 The AICPU package registers direct `*Op` entries for all verbs, connection,
 and storage functions. The device provider-loader pattern, AI-QP creation, and provider ABI were
