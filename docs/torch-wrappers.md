@@ -28,7 +28,7 @@ import nds_torch
 import torch
 import torch_npu
 
-session = nds_torch.Session(cpu_ip, tcp_port, backend="ra")
+session = nds_torch.Session("192.168.100.100:18615", backend="ra")
 
 storage = session.storage()
 payload = torch.full((4096,), 0x5A, dtype=torch.uint8)

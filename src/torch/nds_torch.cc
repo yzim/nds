@@ -6,6 +6,9 @@
 #include <torch/extension.h>
 #include <torch_npu/csrc/core/npu/NPUFunctions.h>
 
+#include <arpa/inet.h>
+
+#include <charconv>
 #include <cstdint>
 #include <limits>
 #include <memory>
@@ -41,6 +44,27 @@ client::NpuExecutionMode execution_mode(const std::string &backend) {
     if (backend == "aicpu")
         return client::NpuExecutionMode::Aicpu;
     TORCH_CHECK(false, "unsupported NDS backend: ", backend);
+}
+
+struct ServerEndpoint {
+    std::string ipv4;
+    std::uint16_t port;
+};
+
+ServerEndpoint parse_server_endpoint(const std::string &server) {
+    const auto separator = server.rfind(':');
+    TORCH_CHECK(separator != std::string::npos && separator > 0U && separator + 1U < server.size(),
+                "server must be an IPv4 address followed by ':' and a TCP port");
+
+    ServerEndpoint endpoint{server.substr(0U, separator), 0U};
+    in_addr address{};
+    TORCH_CHECK(inet_pton(AF_INET, endpoint.ipv4.c_str(), &address) == 1, "server IPv4 address is invalid");
+
+    const auto port = server.substr(separator + 1U);
+    const auto [last, error] = std::from_chars(port.data(), port.data() + port.size(), endpoint.port);
+    TORCH_CHECK(error == std::errc{} && last == port.data() + port.size() && endpoint.port != 0U,
+                "server TCP port is invalid");
+    return endpoint;
 }
 
 struct RegisteredTensor {
@@ -91,9 +115,8 @@ private:
 
 class Session : public std::enable_shared_from_this<Session> {
 public:
-    Session(std::string cpu_ip, std::int64_t tcp_port, std::string backend, std::string aiv_kernel,
-            std::string aicpu_kernel_config) {
-        TORCH_CHECK(tcp_port > 0 && tcp_port <= std::numeric_limits<std::uint16_t>::max(), "invalid TCP port");
+    Session(std::string server, std::string backend, std::string aiv_kernel, std::string aicpu_kernel_config) {
+        auto endpoint = parse_server_endpoint(server);
         const auto device = c10_npu::current_device();
         TORCH_CHECK(device >= 0, "torch_npu has no active NPU device");
 
@@ -105,8 +128,8 @@ public:
         client::TransportConfig transport_config;
         transport_config.endpoint.ra_library = "libra.so";
         transport_config.endpoint.physical_device_id = static_cast<std::uint32_t>(device);
-        transport_config.cpu_ipv4 = std::move(cpu_ip);
-        transport_config.tcp_port = static_cast<std::uint16_t>(tcp_port);
+        transport_config.cpu_ipv4 = std::move(endpoint.ipv4);
+        transport_config.tcp_port = endpoint.port;
 
         client::ExecutionConfig execution;
         execution.mode = execution_mode(backend);
@@ -251,9 +274,9 @@ std::int64_t Storage::capacity() const {
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, module) {
     namespace nds_torch = nds::torch;
     pybind11::class_<nds_torch::Session, std::shared_ptr<nds_torch::Session>>(module, "Session")
-        .def(pybind11::init<std::string, std::int64_t, std::string, std::string, std::string>(),
-             pybind11::arg("cpu_ip"), pybind11::arg("tcp_port"), pybind11::arg("backend") = "ra",
-             pybind11::arg("aiv_kernel") = "", pybind11::arg("aicpu_kernel_config") = "")
+        .def(pybind11::init<std::string, std::string, std::string, std::string>(), pybind11::arg("server"),
+             pybind11::arg("backend") = "ra", pybind11::arg("aiv_kernel") = "",
+             pybind11::arg("aicpu_kernel_config") = "")
         .def("verbs", &nds_torch::Session::verbs)
         .def("transport", &nds_torch::Session::transport)
         .def("storage", &nds_torch::Session::storage);
