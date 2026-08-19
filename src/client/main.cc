@@ -44,8 +44,7 @@ nds::Result<int> parse_args(int argc, char **argv, ClientConfig *config, bool *e
         ->check(CLI::Range(std::uint32_t{1}, static_cast<std::uint32_t>(kMaxTransferBytes)));
     app.add_option("--npu-ip", config->transport.qp.local_ipv4, "NPU RoCE IPv4 address")->required();
     app.add_option("--logical-device", config->runtime.logical_device_id, "NPU logical device")->required();
-    app.add_option("--physical-device", config->runtime.physical_device_id, "NPU physical device")
-        ->required();
+    app.add_option("--physical-device", config->runtime.physical_device_id, "NPU physical device")->required();
     app.add_option("--port", config->transport.qp.port_num, "NPU RoCE port")
         ->check(CLI::Range(std::uint16_t{1}, std::numeric_limits<std::uint16_t>::max()));
     app.add_option("--path-mtu", config->transport.qp.path_mtu, "Path MTU")

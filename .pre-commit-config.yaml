@@ -1,0 +1,18 @@
+repos:
+  - repo: https://github.com/pre-commit/mirrors-clang-format
+    rev: v18.1.8
+    hooks:
+      - id: clang-format
+        name: clang-format 18 check
+        entry: clang-format
+        args: [--dry-run, --Werror]
+        files: ^(src|tests)/.*\.(c|cc|h|hh)$
+        types_or: [c, c++]
+      - id: clang-format
+        alias: clang-format-apply
+        name: clang-format 18 apply
+        entry: clang-format
+        args: [-i]
+        files: ^(src|tests)/.*\.(c|cc|h|hh)$
+        types_or: [c, c++]
+        stages: [manual]

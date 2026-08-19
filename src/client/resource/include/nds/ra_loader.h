@@ -287,20 +287,19 @@ typedef int (*nds_ra_rdev_get_port_status_fn)(void *rdma_handle, int *status);
 typedef int (*nds_ra_rdev_get_support_lite_fn)(void *rdma_handle, int *support_lite);
 typedef int (*nds_ra_qp_create_fn)(void *rdma_handle, int flag, int qp_mode, void **qp_handle);
 typedef int (*nds_ra_qp_connect_async_fn)(void *qp_handle, const void *fd_handle);
-typedef int (*nds_ra_typical_qp_create_fn)(void *rdma_handle, int flag, int qp_mode,
-                                            nds_ra_typical_qp *typical_qp_info, void **qp_handle);
-typedef int (*nds_ra_ai_qp_create_fn)(void *rdma_handle, nds_ra_qp_ext_attrs *attrs,
-                                      nds_ra_ai_qp_info *info, void **qp_handle);
+typedef int (*nds_ra_typical_qp_create_fn)(void *rdma_handle, int flag, int qp_mode, nds_ra_typical_qp *typical_qp_info,
+                                           void **qp_handle);
+typedef int (*nds_ra_ai_qp_create_fn)(void *rdma_handle, nds_ra_qp_ext_attrs *attrs, nds_ra_ai_qp_info *info,
+                                      void **qp_handle);
 typedef int (*nds_ra_set_qp_attr_qos_fn)(void *qp_handle, nds_ra_qos_attr *attr);
 typedef int (*nds_ra_set_qp_attr_timeout_fn)(void *qp_handle, uint32_t *timeout);
 typedef int (*nds_ra_set_qp_attr_retry_count_fn)(void *qp_handle, uint32_t *retry_count);
 typedef int (*nds_ra_typical_qp_modify_fn)(void *qp_handle, nds_ra_typical_qp *local_qp_info,
-                                            nds_ra_typical_qp *remote_qp_info);
+                                           nds_ra_typical_qp *remote_qp_info);
 typedef int (*nds_ra_qp_destroy_fn)(void *qp_handle);
 typedef int (*nds_ra_get_qp_attr_fn)(void *qp_handle, nds_ra_qp_attr *attributes);
 typedef int (*nds_ra_get_qp_status_fn)(void *qp_handle, int *status);
-typedef int (*nds_ra_rdev_get_cqe_error_list_fn)(void *rdma_handle, nds_ra_cqe_error *errors,
-                                                  unsigned int *count);
+typedef int (*nds_ra_rdev_get_cqe_error_list_fn)(void *rdma_handle, nds_ra_cqe_error *errors, unsigned int *count);
 typedef int (*nds_ra_register_mr_fn)(const void *rdma_handle, nds_ra_mr_info *info, void **mr_handle);
 typedef int (*nds_ra_deregister_mr_fn)(const void *rdma_handle, void *mr_handle);
 typedef int (*nds_ra_typical_send_wr_fn)(void *qp_handle, nds_ra_send_wr *wr, nds_ra_send_response *response);

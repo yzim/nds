@@ -6,23 +6,32 @@ namespace nds {
 namespace {
 const char *aiv_operator_name(std::uint32_t operation) {
     switch (operation) {
-    case NDS_DEVICE_RDMA_SEND: return "NdsAivRdmaSend";
-    case NDS_DEVICE_RDMA_RECV: return "NdsAivRdmaRecv";
-    case NDS_DEVICE_RDMA_READ: return "NdsAivRdmaRead";
-    case NDS_DEVICE_RDMA_WRITE: return "NdsAivRdmaWrite";
-    case NDS_DEVICE_POLL_CQ: return "NdsAivPollCq";
-    default: return nullptr;
+        case NDS_DEVICE_RDMA_SEND:
+            return "NdsAivRdmaSend";
+        case NDS_DEVICE_RDMA_RECV:
+            return "NdsAivRdmaRecv";
+        case NDS_DEVICE_RDMA_READ:
+            return "NdsAivRdmaRead";
+        case NDS_DEVICE_RDMA_WRITE:
+            return "NdsAivRdmaWrite";
+        case NDS_DEVICE_POLL_CQ:
+            return "NdsAivPollCq";
+        default:
+            return nullptr;
     }
 }
 
 const char *aiv_storage_operator_name(std::uint16_t operation) {
     switch (operation) {
-    case NDS_PROTOCOL_READ: return "NdsAivStorageRead";
-    case NDS_PROTOCOL_WRITE: return "NdsAivStorageWrite";
-    default: return nullptr;
+        case NDS_PROTOCOL_READ:
+            return "NdsAivStorageRead";
+        case NDS_PROTOCOL_WRITE:
+            return "NdsAivStorageWrite";
+        default:
+            return nullptr;
     }
 }
-}
+}  // namespace
 
 AivEntrypointLauncher::~AivEntrypointLauncher() {
     reset();
@@ -69,7 +78,7 @@ bool AivEntrypointLauncher::load(nds_acl_api *acl, const std::string &kernel_pat
 }
 
 bool AivEntrypointLauncher::make_device_request(const nds_device_operation_request &request,
-                                                 nds_device_operation_request *output) {
+                                                nds_device_operation_request *output) {
     if (output == nullptr || request.transport.abi_version != NDS_DEVICE_TRANSPORT_ABI_VERSION ||
         request.transport.size != sizeof(request.transport) ||
         request.transport.control_qp.abi_version != NDS_DEVICE_QP_ABI_VERSION ||
@@ -85,7 +94,7 @@ bool AivEntrypointLauncher::make_device_request(const nds_device_operation_reque
 }
 
 bool AivEntrypointLauncher::launch_and_wait(std::uint64_t device_request_address, std::uint32_t operation,
-                                             std::int32_t completion_timeout_ms) {
+                                            std::int32_t completion_timeout_ms) {
     nds_acl_launch_kernel_attr attributes[2]{};
     nds_acl_launch_kernel_config config{};
     int result;
@@ -109,12 +118,14 @@ bool AivEntrypointLauncher::launch_and_wait(std::uint64_t device_request_address
     result = acl_->launch_kernel_with_host_args(function_, 1U, stream_, &config, &device_request_address,
                                                 sizeof(device_request_address), nullptr, 0U);
     if (result != 0) {
-        set_error("aclrtLaunchKernelWithHostArgs(" + std::string(operator_name) + ") failed: " + std::to_string(result));
+        set_error("aclrtLaunchKernelWithHostArgs(" + std::string(operator_name) +
+                  ") failed: " + std::to_string(result));
         return false;
     }
     result = acl_->synchronize_stream_with_timeout(stream_, completion_timeout_ms);
     if (result != 0) {
-        set_error("aclrtSynchronizeStreamWithTimeout after " + std::string(operator_name) + " failed: " + std::to_string(result));
+        set_error("aclrtSynchronizeStreamWithTimeout after " + std::string(operator_name) +
+                  " failed: " + std::to_string(result));
         return false;
     }
     error_.clear();
@@ -122,7 +133,7 @@ bool AivEntrypointLauncher::launch_and_wait(std::uint64_t device_request_address
 }
 
 bool AivEntrypointLauncher::launch_post_send_and_wait(std::uint64_t device_request_address,
-                                                       std::int32_t completion_timeout_ms) {
+                                                      std::int32_t completion_timeout_ms) {
     if (!loaded() || device_request_address == 0U || completion_timeout_ms <= 0) {
         set_error("NDS AIV PostSend launch requires a loaded binary, request address, and positive timeout");
         return false;
@@ -138,7 +149,7 @@ bool AivEntrypointLauncher::launch_post_send_and_wait(std::uint64_t device_reque
     attributes[1].value.engine_type = NDS_ACL_ENGINE_TYPE_AIV;
     nds_acl_launch_kernel_config config{attributes, 2U};
     if (const int result = acl_->launch_kernel_with_host_args(function_, 1U, stream_, &config, &device_request_address,
-                                                               sizeof(device_request_address), nullptr, 0U);
+                                                              sizeof(device_request_address), nullptr, 0U);
         result != 0) {
         set_error("aclrtLaunchKernelWithHostArgs(NdsAivPostSend) failed: " + std::to_string(result));
         return false;
@@ -152,7 +163,7 @@ bool AivEntrypointLauncher::launch_post_send_and_wait(std::uint64_t device_reque
 }
 
 bool AivEntrypointLauncher::launch_storage_and_wait(std::uint64_t device_request_address, std::uint16_t operation,
-                                                     std::int32_t completion_timeout_ms) {
+                                                    std::int32_t completion_timeout_ms) {
     nds_acl_launch_kernel_attr attributes[2]{};
     nds_acl_launch_kernel_config config{};
     const char *operator_name = aiv_storage_operator_name(operation);
@@ -162,7 +173,8 @@ bool AivEntrypointLauncher::launch_storage_and_wait(std::uint64_t device_request
     }
     const int function_result = acl_->binary_get_function(binary_, operator_name, &function_);
     if (function_result != 0 || function_ == nullptr) {
-        set_error("NDS AIV binary does not expose " + std::string(operator_name) + ": " + std::to_string(function_result));
+        set_error("NDS AIV binary does not expose " + std::string(operator_name) + ": " +
+                  std::to_string(function_result));
         return false;
     }
     attributes[0].id = NDS_ACL_LAUNCH_KERNEL_ATTR_SCHEM_MODE;
@@ -171,18 +183,17 @@ bool AivEntrypointLauncher::launch_storage_and_wait(std::uint64_t device_request
     attributes[1].value.engine_type = NDS_ACL_ENGINE_TYPE_AIV;
     config.attrs = attributes;
     config.num_attrs = 2U;
-    const int launch_result = acl_->launch_kernel_with_host_args(function_, 1U, stream_, &config,
-                                                                 &device_request_address, sizeof(device_request_address),
-                                                                 nullptr, 0U);
+    const int launch_result = acl_->launch_kernel_with_host_args(
+        function_, 1U, stream_, &config, &device_request_address, sizeof(device_request_address), nullptr, 0U);
     if (launch_result != 0) {
-        set_error("aclrtLaunchKernelWithHostArgs(" + std::string(operator_name) + ") failed: " +
-                  std::to_string(launch_result));
+        set_error("aclrtLaunchKernelWithHostArgs(" + std::string(operator_name) +
+                  ") failed: " + std::to_string(launch_result));
         return false;
     }
     const int sync_result = acl_->synchronize_stream_with_timeout(stream_, completion_timeout_ms);
     if (sync_result != 0) {
-        set_error("aclrtSynchronizeStreamWithTimeout after " + std::string(operator_name) + " failed: " +
-                  std::to_string(sync_result));
+        set_error("aclrtSynchronizeStreamWithTimeout after " + std::string(operator_name) +
+                  " failed: " + std::to_string(sync_result));
         return false;
     }
     error_.clear();

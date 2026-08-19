@@ -24,7 +24,8 @@ inline void *NdsAicpuResolveSymbol(const char *name) {
     static void *provider = dlopen(kHnsProviderLibrary, RTLD_NOW | RTLD_LOCAL);
     if (provider != nullptr) {
         void *symbol = dlsym(provider, name);
-        if (symbol != nullptr) return symbol;
+        if (symbol != nullptr)
+            return symbol;
     }
     static void *verbs = dlopen(kVerbsLibrary, RTLD_NOW | RTLD_LOCAL);
     return verbs == nullptr ? nullptr : dlsym(verbs, name);

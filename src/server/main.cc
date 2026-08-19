@@ -67,8 +67,8 @@ int main(int argc, char **argv) {
     if (config.receive_probe) {
         std::array<unsigned char, 4096U> buffer{};
         nds::server::RegisteredRegion region;
-        if (const auto prepared = connection.prepare_receive(buffer.data(), buffer.size(), &region); !prepared ||
-            !connection.activate() || !connection.receive(5000U)) {
+        if (const auto prepared = connection.prepare_receive(buffer.data(), buffer.size(), &region);
+            !prepared || !connection.activate() || !connection.receive(5000U)) {
             NDS_LOG_ERROR("cpu-server", "transport receive probe failed");
             return EXIT_FAILURE;
         }

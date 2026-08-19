@@ -32,8 +32,7 @@ struct RaStorageRequest {
 /* Verbs layer. PostSend returns the RA doorbell metadata to its caller. */
 Result<nds_ra_send_response> NdsRaPostSend(NpuRaQp *qp, const nds_device_send_wr &wr);
 Result<void> NdsRaPostRecv(NpuRaQp *qp, const nds_device_recv_wr &wr);
-Result<std::uint32_t> NdsRaPollCq(NpuRaQp *qp, std::uint32_t queue_kind,
-                                  nds_device_completion_output *output);
+Result<std::uint32_t> NdsRaPollCq(NpuRaQp *qp, std::uint32_t queue_kind, nds_device_completion_output *output);
 
 /* Connection layer. Send/Read/Write post and ring the runtime doorbell. */
 Result<void> NdsRaRdmaSend(const RaConnection &connection, const nds_device_transfer &transfer);

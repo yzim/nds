@@ -59,7 +59,8 @@ Result<void> submit_device_storage(NpuRuntime *runtime, Transport *transport, co
     request.io.operation = operation;
     request.io.length = length;
     request.io.offset = offset;
-    request.io.data = {data.local_address().address, static_cast<std::uint32_t>(data.length()), data.local_address().key};
+    request.io.data = {data.local_address().address, static_cast<std::uint32_t>(data.length()),
+                       data.local_address().key};
     request.io.data_rkey = data.remote_address().key;
 
     DeviceAllocation result(runtime->memory());
@@ -119,7 +120,8 @@ Result<void> StorageClient::open(NpuRuntime *runtime, Transport *transport) {
         return unexpected(result.error());
     if (const auto result = memory->register_memory(transport_->qp(), &command_buffer_, &command_region_); !result)
         return unexpected(result.error());
-    if (const auto result = memory->register_memory(transport_->qp(), &completion_buffer_, &completion_region_); !result)
+    if (const auto result = memory->register_memory(transport_->qp(), &completion_buffer_, &completion_region_);
+        !result)
         return unexpected(result.error());
     const auto capacity = exchange_bootstrap();
     if (!capacity)
@@ -172,7 +174,8 @@ Result<void> StorageClient::execute(std::uint16_t operation, std::uint64_t offse
             completion_buffer_.data(),
             {completion_region_.local_address().address, static_cast<std::uint32_t>(completion_region_.length()),
              completion_region_.local_address().key},
-            {data_region.remote_address().address, data_region.length(), data_region.remote_address().key, remote_access},
+            {data_region.remote_address().address, data_region.length(), data_region.remote_address().key,
+             remote_access},
             offset,
             length,
             capacity_,
@@ -180,8 +183,8 @@ Result<void> StorageClient::execute(std::uint16_t operation, std::uint64_t offse
         return operation == NDS_PROTOCOL_READ ? NdsRaStorageRead(request) : NdsRaStorageWrite(request);
     }
     request_submitted_ = true;
-    if (const auto result = submit_device_storage(runtime_, transport_, command_region_, completion_region_, data_region,
-                                                  operation, offset, length, capacity_, request_id);
+    if (const auto result = submit_device_storage(runtime_, transport_, command_region_, completion_region_,
+                                                  data_region, operation, offset, length, capacity_, request_id);
         !result)
         return unexpected(result.error());
     return {};

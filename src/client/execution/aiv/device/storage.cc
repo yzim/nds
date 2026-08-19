@@ -4,8 +4,7 @@
 
 namespace {
 __aicore__ inline void StoreBytes(__gm__ uint8_t *destination, const uint8_t *source, uint32_t length) {
-    for (uint32_t index = 0U; index < length; ++index)
-        destination[index] = source[index];
+    for (uint32_t index = 0U; index < length; ++index) destination[index] = source[index];
     NdsAivCacheSync(destination, length);
 }
 
@@ -53,8 +52,7 @@ __aicore__ inline bool StorageValid(__gm__ const nds_device_storage *storage, __
         command_length < sizeof(nds_protocol_command_wire) || storage->completion.address == 0U ||
         storage->completion.local_key == 0U || completion_length < sizeof(nds_protocol_completion_wire) ||
         io_length == 0U || io->data.address == 0U || io->data.local_key == 0U || io->data_rkey == 0U ||
-        io->data.length < io_length ||
-        (operation != NDS_PROTOCOL_READ && operation != NDS_PROTOCOL_WRITE)) {
+        io->data.length < io_length || (operation != NDS_PROTOCOL_READ && operation != NDS_PROTOCOL_WRITE)) {
         return false;
     }
     if (offset > capacity || io_length > capacity - offset)
@@ -63,8 +61,7 @@ __aicore__ inline bool StorageValid(__gm__ const nds_device_storage *storage, __
 }
 
 __aicore__ inline void EncodePending(uint64_t request_id, uint8_t *wire) {
-    for (uint32_t index = 0U; index < sizeof(nds_protocol_completion_wire); ++index)
-        wire[index] = 0U;
+    for (uint32_t index = 0U; index < sizeof(nds_protocol_completion_wire); ++index) wire[index] = 0U;
     WriteBe32(wire, NDS_PROTOCOL_COMPLETION_MAGIC);
     WriteBe16(wire + 4, NDS_PROTOCOL_VERSION);
     WriteBe16(wire + 6, NDS_PROTOCOL_COMPLETION_PENDING);
@@ -77,8 +74,7 @@ __aicore__ inline void EncodeCommand(__gm__ const nds_device_storage *storage, _
     const uint16_t operation = io->operation;
     const uint32_t access =
         operation == NDS_PROTOCOL_READ ? NDS_PROTOCOL_ACCESS_REMOTE_WRITE : NDS_PROTOCOL_ACCESS_REMOTE_READ;
-    for (uint32_t index = 0U; index < sizeof(nds_protocol_command_wire); ++index)
-        wire[index] = 0U;
+    for (uint32_t index = 0U; index < sizeof(nds_protocol_command_wire); ++index) wire[index] = 0U;
     WriteBe32(wire, NDS_PROTOCOL_COMMAND_MAGIC);
     WriteBe16(wire + 4, NDS_PROTOCOL_VERSION);
     WriteBe16(wire + 6, operation);
@@ -99,7 +95,8 @@ __aicore__ inline bool CompletionDone(__gm__ const uint8_t *wire, uint64_t reque
 
 __aicore__ inline void Execute(__gm__ const nds_device_storage *storage, __gm__ const nds_device_storage_io *io,
                                TBuf<> *scratch, __gm__ nds_device_operation_result *result) {
-    if (result == nullptr) return;
+    if (result == nullptr)
+        return;
     if (storage == nullptr || io == nullptr || !StorageValid(storage, io)) {
         NdsAivSetResult(result, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
         return;
@@ -123,7 +120,8 @@ __aicore__ inline void Execute(__gm__ const nds_device_storage *storage, __gm__ 
     wr.local.length = sizeof(command);
     wr.local.local_key = command_lkey;
     NdsAivPostSendImpl(&storage->transport.control_qp, &wr, scratch, result);
-    if (result->status != NDS_DEVICE_OPERATION_SUCCESS) return;
+    if (result->status != NDS_DEVICE_OPERATION_SUCCESS)
+        return;
     __gm__ const uint8_t *completion = reinterpret_cast<__gm__ const uint8_t *>(completion_address);
     for (;;) {
         NdsAivCacheSync(reinterpret_cast<__gm__ uint8_t *>(completion_address), sizeof(nds_protocol_completion_wire));
@@ -136,13 +134,15 @@ __aicore__ inline void Execute(__gm__ const nds_device_storage *storage, __gm__ 
 }  // namespace
 
 NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivStorageReadImpl(__gm__ const nds_device_storage *storage,
-                                              __gm__ const nds_device_storage_io *io, TBuf<> *scratch,
-                                              __gm__ nds_device_operation_result *result) {
+                                                                 __gm__ const nds_device_storage_io *io,
+                                                                 TBuf<> *scratch,
+                                                                 __gm__ nds_device_operation_result *result) {
     Execute(storage, io, scratch, result);
 }
 
 NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivStorageWriteImpl(__gm__ const nds_device_storage *storage,
-                                               __gm__ const nds_device_storage_io *io, TBuf<> *scratch,
-                                               __gm__ nds_device_operation_result *result) {
+                                                                  __gm__ const nds_device_storage_io *io,
+                                                                  TBuf<> *scratch,
+                                                                  __gm__ nds_device_operation_result *result) {
     Execute(storage, io, scratch, result);
 }

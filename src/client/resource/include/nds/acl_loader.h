@@ -81,26 +81,22 @@ typedef struct nds_acl_launch_kernel_config {
     size_t num_attrs;
 } nds_acl_launch_kernel_config;
 
-typedef int (*nds_acl_rt_binary_load_from_file_fn)(const char *file_name,
-                                                    nds_acl_binary_load_options *options,
-                                                    nds_acl_bin_handle *bin_handle);
+typedef int (*nds_acl_rt_binary_load_from_file_fn)(const char *file_name, nds_acl_binary_load_options *options,
+                                                   nds_acl_bin_handle *bin_handle);
 typedef int (*nds_acl_rt_binary_unload_fn)(nds_acl_bin_handle bin_handle);
 typedef int (*nds_acl_rt_binary_get_function_fn)(nds_acl_bin_handle bin_handle, const char *name,
-                                                  nds_acl_func_handle *function_handle);
-typedef int (*nds_acl_rt_kernel_args_init_fn)(nds_acl_func_handle function_handle,
-                                              nds_acl_args_handle *args_handle);
-typedef int (*nds_acl_rt_kernel_args_append_fn)(nds_acl_args_handle args_handle, void *parameter,
-                                                size_t parameter_size, nds_acl_param_handle *parameter_handle);
+                                                 nds_acl_func_handle *function_handle);
+typedef int (*nds_acl_rt_kernel_args_init_fn)(nds_acl_func_handle function_handle, nds_acl_args_handle *args_handle);
+typedef int (*nds_acl_rt_kernel_args_append_fn)(nds_acl_args_handle args_handle, void *parameter, size_t parameter_size,
+                                                nds_acl_param_handle *parameter_handle);
 typedef int (*nds_acl_rt_kernel_args_finalize_fn)(nds_acl_args_handle args_handle);
-typedef int (*nds_acl_rt_launch_kernel_with_config_fn)(nds_acl_func_handle function_handle,
-                                                       uint32_t block_count, nds_acl_stream stream,
-                                                       nds_acl_launch_kernel_config *config,
+typedef int (*nds_acl_rt_launch_kernel_with_config_fn)(nds_acl_func_handle function_handle, uint32_t block_count,
+                                                       nds_acl_stream stream, nds_acl_launch_kernel_config *config,
                                                        nds_acl_args_handle args_handle, void *reserved);
-typedef int (*nds_acl_rt_launch_kernel_with_host_args_fn)(nds_acl_func_handle function_handle,
-                                                          uint32_t block_count, nds_acl_stream stream,
-                                                          nds_acl_launch_kernel_config *config,
-                                                          void *host_args, size_t args_size,
-                                                          void *placeholder_array, size_t placeholder_count);
+typedef int (*nds_acl_rt_launch_kernel_with_host_args_fn)(nds_acl_func_handle function_handle, uint32_t block_count,
+                                                          nds_acl_stream stream, nds_acl_launch_kernel_config *config,
+                                                          void *host_args, size_t args_size, void *placeholder_array,
+                                                          size_t placeholder_count);
 typedef int (*nds_acl_rt_create_stream_fn)(nds_acl_stream *stream);
 typedef int (*nds_acl_rt_create_stream_with_config_fn)(nds_acl_stream *stream, uint32_t priority, uint32_t flags);
 typedef int (*nds_acl_rt_destroy_stream_fn)(nds_acl_stream stream);

@@ -5,6 +5,21 @@ unit and integration tests only. Hardware end-to-end tests are opt-in because
 they require a matched Ascend NPU, CANN installation, NPU RNIC, CPU RNIC, and
 network configuration.
 
+## Formatting
+
+Formatting is pinned to clang-format 18 through `pre-commit`. Install
+`pre-commit` with Homebrew or pipx on macOS, or with pipx or the distribution
+package manager on Linux. Then enable the optional local check:
+
+```sh
+pre-commit install
+```
+
+Commits check formatting without modifying files. Apply formatting explicitly
+with `scripts/format.sh`, or check the complete tree with
+`scripts/check-format.sh`. GitHub Actions runs the same pinned check, so local
+hook installation is not required for correctness.
+
 ## Unit tests
 
 Unit tests use GoogleTest and run without sockets, shared libraries, CANN, RDMA

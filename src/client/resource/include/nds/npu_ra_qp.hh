@@ -56,8 +56,7 @@ public:
     NpuRaQp(NpuRaQp &&) = delete;
     NpuRaQp &operator=(NpuRaQp &&) = delete;
 
-    bool create(nds_ra_api *api, const NpuRaQpConfig &config,
-                NpuExecutionMode execution = NpuExecutionMode::Ra);
+    bool create(nds_ra_api *api, const NpuRaQpConfig &config, NpuExecutionMode execution = NpuExecutionMode::Ra);
     bool make_qp_info(nds_qp_info *info);
     bool register_memory(void *address, std::uint64_t size, int access, nds_ra_mr_info *info, void **mr_handle);
     bool deregister_memory(void *mr_handle);
@@ -73,8 +72,7 @@ public:
     const nds_ra_qp_attr &local_attributes() const noexcept;
     bool has_ai_qp_info() const noexcept;
     const nds_ra_ai_qp_info &ai_qp_info() const noexcept;
-    Result<void> set_device_wr_id_storage(std::uint64_t send_address,
-                                          std::uint64_t receive_address);
+    Result<void> set_device_wr_id_storage(std::uint64_t send_address, std::uint64_t receive_address);
     Result<nds_device_transport> make_device_transport() const;
     const NpuRaQpConfig &config() const noexcept;
     NpuExecutionMode execution_mode() const noexcept;

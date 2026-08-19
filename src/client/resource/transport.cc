@@ -37,7 +37,8 @@ Result<void> Transport::read(LocalAddress local, RemoteAddress remote, std::uint
         remote.address == 0U || remote.key == 0U || length == 0U) {
         return unexpected(ErrorCode::kInvalidArgument, "invalid RA transport read");
     }
-    const nds_device_transfer transfer{next_wr_id_++, {local.address, length, local.key}, remote.address, remote.key, 0U};
+    const nds_device_transfer transfer{
+        next_wr_id_++, {local.address, length, local.key}, remote.address, remote.key, 0U};
     return NdsRaRdmaRead({runtime_->context(), &qp_}, transfer);
 }
 
@@ -46,7 +47,8 @@ Result<void> Transport::write(LocalAddress local, RemoteAddress remote, std::uin
         remote.address == 0U || remote.key == 0U || length == 0U) {
         return unexpected(ErrorCode::kInvalidArgument, "invalid RA transport write");
     }
-    const nds_device_transfer transfer{next_wr_id_++, {local.address, length, local.key}, remote.address, remote.key, 0U};
+    const nds_device_transfer transfer{
+        next_wr_id_++, {local.address, length, local.key}, remote.address, remote.key, 0U};
     return NdsRaRdmaWrite({runtime_->context(), &qp_}, transfer);
 }
 
@@ -55,12 +57,12 @@ Result<void> Transport::send_bytes(const void *source, std::size_t size) {
         return unexpected(ErrorCode::kInvalidArgument, "transport send requires a bounded source buffer");
     if (const auto copied = runtime_->memory()->copy_to_device(&send_buffer_, source, size); !copied)
         return unexpected(copied.error());
-    const nds_device_transfer transfer{next_wr_id_++,
-                                       {send_region_.local_address().address, static_cast<std::uint32_t>(size),
-                                        send_region_.local_address().key},
-                                       0U,
-                                       0U,
-                                       0U};
+    const nds_device_transfer transfer{
+        next_wr_id_++,
+        {send_region_.local_address().address, static_cast<std::uint32_t>(size), send_region_.local_address().key},
+        0U,
+        0U,
+        0U};
     if (execution_.mode == NpuExecutionMode::Ra)
         return NdsRaRdmaSend({runtime_->context(), &qp_}, transfer);
 
@@ -71,8 +73,8 @@ Result<void> Transport::send_bytes(const void *source, std::size_t size) {
     if (const auto allocated = runtime_->memory()->allocate(sizeof(nds_device_operation_result), &result_buffer);
         !allocated)
         return unexpected(allocated.error());
-    const nds_device_operation_result pending{NDS_DEVICE_OPERATION_INVALID_ARGUMENT, NDS_DEVICE_OPERATION_PATH_NONE,
-                                              0, 0U};
+    const nds_device_operation_result pending{NDS_DEVICE_OPERATION_INVALID_ARGUMENT, NDS_DEVICE_OPERATION_PATH_NONE, 0,
+                                              0U};
     if (const auto copied = runtime_->memory()->copy_to_device(&result_buffer, &pending, sizeof(pending)); !copied)
         return unexpected(copied.error());
 
@@ -95,7 +97,8 @@ Result<void> Transport::send_bytes(const void *source, std::size_t size) {
             error = launcher.error();
         } else {
             DeviceBuffer request_buffer;
-            if (const auto allocated = runtime_->memory()->allocate(sizeof(device_request), &request_buffer); !allocated ||
+            if (const auto allocated = runtime_->memory()->allocate(sizeof(device_request), &request_buffer);
+                !allocated ||
                 !(runtime_->memory()->copy_to_device(&request_buffer, &device_request, sizeof(device_request))) ||
                 !launcher.launch_and_wait(reinterpret_cast<std::uint64_t>(request_buffer.data()), request.operation,
                                           5000)) {
@@ -113,11 +116,21 @@ Result<void> Transport::send_bytes(const void *source, std::size_t size) {
     return {};
 }
 
-TcpPeerExchange *Transport::bootstrap() noexcept { return &bootstrap_; }
-const nds_qp_info &Transport::local_qp_info() const noexcept { return local_; }
-NpuRuntime *Transport::runtime() noexcept { return runtime_; }
-NpuRaQp *Transport::qp() noexcept { return &qp_; }
-const ExecutionConfig &Transport::execution() const noexcept { return execution_; }
+TcpPeerExchange *Transport::bootstrap() noexcept {
+    return &bootstrap_;
+}
+const nds_qp_info &Transport::local_qp_info() const noexcept {
+    return local_;
+}
+NpuRuntime *Transport::runtime() noexcept {
+    return runtime_;
+}
+NpuRaQp *Transport::qp() noexcept {
+    return &qp_;
+}
+const ExecutionConfig &Transport::execution() const noexcept {
+    return execution_;
+}
 
 Result<void> Transport::ready() {
     int port = -1;

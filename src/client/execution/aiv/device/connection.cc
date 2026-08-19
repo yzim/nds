@@ -2,9 +2,11 @@
 #include "internal.h"
 
 NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaSendImpl(__gm__ const nds_device_transport *transport,
-                                           __gm__ const nds_device_transfer *transfer, TBuf<> *scratch,
-                                           __gm__ nds_device_operation_result *result) {
-    if (result == nullptr) return;
+                                                              __gm__ const nds_device_transfer *transfer,
+                                                              TBuf<> *scratch,
+                                                              __gm__ nds_device_operation_result *result) {
+    if (result == nullptr)
+        return;
     if (transport == nullptr || transfer == nullptr ||
         (transport->abi_version != NDS_DEVICE_TRANSPORT_ABI_VERSION || transport->size != sizeof(*transport))) {
         NdsAivSetResult(result, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
@@ -21,9 +23,11 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaSendImpl(__gm__ const nds_d
 }
 
 NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaRecvImpl(__gm__ const nds_device_transport *transport,
-                                           __gm__ const nds_device_transfer *transfer, TBuf<> *scratch,
-                                           __gm__ nds_device_operation_result *result) {
-    if (result == nullptr) return;
+                                                              __gm__ const nds_device_transfer *transfer,
+                                                              TBuf<> *scratch,
+                                                              __gm__ nds_device_operation_result *result) {
+    if (result == nullptr)
+        return;
     if (transport == nullptr || transfer == nullptr ||
         (transport->abi_version != NDS_DEVICE_TRANSPORT_ABI_VERSION || transport->size != sizeof(*transport))) {
         NdsAivSetResult(result, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
@@ -38,9 +42,11 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaRecvImpl(__gm__ const nds_d
 }
 
 NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaReadImpl(__gm__ const nds_device_transport *transport,
-                                           __gm__ const nds_device_transfer *transfer, TBuf<> *scratch,
-                                           __gm__ nds_device_operation_result *result) {
-    if (result == nullptr) return;
+                                                              __gm__ const nds_device_transfer *transfer,
+                                                              TBuf<> *scratch,
+                                                              __gm__ nds_device_operation_result *result) {
+    if (result == nullptr)
+        return;
     if (transport == nullptr || transfer == nullptr ||
         (transport->abi_version != NDS_DEVICE_TRANSPORT_ABI_VERSION || transport->size != sizeof(*transport))) {
         NdsAivSetResult(result, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
@@ -59,9 +65,11 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaReadImpl(__gm__ const nds_d
 }
 
 NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaWriteImpl(__gm__ const nds_device_transport *transport,
-                                            __gm__ const nds_device_transfer *transfer, TBuf<> *scratch,
-                                            __gm__ nds_device_operation_result *result) {
-    if (result == nullptr) return;
+                                                               __gm__ const nds_device_transfer *transfer,
+                                                               TBuf<> *scratch,
+                                                               __gm__ nds_device_operation_result *result) {
+    if (result == nullptr)
+        return;
     if (transport == nullptr || transfer == nullptr ||
         (transport->abi_version != NDS_DEVICE_TRANSPORT_ABI_VERSION || transport->size != sizeof(*transport))) {
         NdsAivSetResult(result, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);

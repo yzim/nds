@@ -152,7 +152,7 @@ bool AicpuEntrypointLauncher::launch_and_wait(nds_device_operation_request *requ
 }
 
 bool AicpuEntrypointLauncher::launch_post_send_and_wait(nds_device_post_send_request *request,
-                                                         std::int32_t completion_timeout_ms) {
+                                                        std::int32_t completion_timeout_ms) {
     if (!loaded() || request == nullptr || request->qp.abi_version != NDS_DEVICE_QP_ABI_VERSION ||
         request->operation_result_address == 0U || completion_timeout_ms <= 0) {
         set_error("NDS AICPU PostSend request has invalid metadata");
@@ -169,7 +169,8 @@ bool AicpuEntrypointLauncher::launch_post_send_and_wait(nds_device_post_send_req
     if (acl_->kernel_args_init(function_, &arguments) != 0 || arguments == nullptr ||
         acl_->kernel_args_append(arguments, request, sizeof(*request), &parameter_handle) != 0 ||
         acl_->kernel_args_finalize(arguments) != 0) {
-        if (arguments != nullptr) (void)acl_->kernel_args_finalize(arguments);
+        if (arguments != nullptr)
+            (void)acl_->kernel_args_finalize(arguments);
         set_error("failed to construct NDS AICPU PostSend arguments");
         return false;
     }

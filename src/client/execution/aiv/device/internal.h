@@ -16,7 +16,8 @@ __aicore__ inline void NdsAivCacheSync(__gm__ uint8_t *address, uint64_t length)
 }
 
 __aicore__ inline void NdsAivSetResult(__gm__ nds_device_operation_result *result, uint32_t status) {
-    if (result == nullptr) return;
+    if (result == nullptr)
+        return;
     result->status = status;
     result->path = NDS_DEVICE_OPERATION_PATH_DIRECT;
     result->provider_result = 0;

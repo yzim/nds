@@ -27,41 +27,35 @@ enum nds_hns_sq_opcode {
     NDS_HNS_SQ_INVALID = 0xffffffffU,
 };
 
-#define NDS_HNS_SQ_OPCODE_FROM_DEVICE(opcode)                                      \
-    ((opcode) == NDS_DEVICE_WR_SEND                                                \
-         ? NDS_HNS_SQ_SEND                                                        \
-         : ((opcode) == NDS_DEVICE_WR_RDMA_WRITE                                  \
-                ? NDS_HNS_SQ_RDMA_WRITE                                           \
-                : ((opcode) == NDS_DEVICE_WR_RDMA_READ ? NDS_HNS_SQ_RDMA_READ     \
-                                                       : NDS_HNS_SQ_INVALID)))
+#define NDS_HNS_SQ_OPCODE_FROM_DEVICE(opcode)    \
+    ((opcode) == NDS_DEVICE_WR_SEND              \
+         ? NDS_HNS_SQ_SEND                       \
+         : ((opcode) == NDS_DEVICE_WR_RDMA_WRITE \
+                ? NDS_HNS_SQ_RDMA_WRITE          \
+                : ((opcode) == NDS_DEVICE_WR_RDMA_READ ? NDS_HNS_SQ_RDMA_READ : NDS_HNS_SQ_INVALID)))
 
-static inline int nds_hns_queue_has_space(uint32_t head, uint32_t tail,
-                                          uint32_t depth, uint32_t reserved_entries) {
+static inline int nds_hns_queue_has_space(uint32_t head, uint32_t tail, uint32_t depth, uint32_t reserved_entries) {
     return depth > reserved_entries && head - tail < depth - reserved_entries;
 }
 
-static inline void nds_hns_encode_receive_segment(nds_hns_receive_segment *segment,
-                                                  uint64_t address, uint32_t length,
+static inline void nds_hns_encode_receive_segment(nds_hns_receive_segment *segment, uint64_t address, uint32_t length,
                                                   uint32_t local_key) {
     segment->length = length;
     segment->local_key = local_key;
     segment->address = address;
 }
 
-static inline int nds_hns_cqe_is_ready(const nds_hns_cqe *cqe, uint32_t consumer,
-                                       uint32_t depth) {
+static inline int nds_hns_cqe_is_ready(const nds_hns_cqe *cqe, uint32_t consumer, uint32_t depth) {
     const uint32_t owner = (cqe->byte_4 >> 7U) & 1U;
     return depth != 0U && (owner ^ !!(consumer & depth)) != 0U;
 }
 
-static inline uint32_t nds_hns_send_tail_for_cqe(uint32_t tail, uint32_t depth,
-                                                 const nds_hns_cqe *cqe) {
+static inline uint32_t nds_hns_send_tail_for_cqe(uint32_t tail, uint32_t depth, const nds_hns_cqe *cqe) {
     const uint32_t wqe_index = cqe->byte_4 >> 16U;
     return tail + ((wqe_index - tail) & (depth - 1U));
 }
 
-static inline void nds_hns_decode_cqe(const nds_hns_cqe *cqe, uint64_t wr_id,
-                                      nds_device_completion *completion) {
+static inline void nds_hns_decode_cqe(const nds_hns_cqe *cqe, uint64_t wr_id, nds_device_completion *completion) {
     completion->wr_id = wr_id;
     completion->status = (int32_t)((cqe->byte_4 >> 8U) & 0xffU);
     completion->opcode = (int32_t)(cqe->byte_4 & 0x1fU);

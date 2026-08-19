@@ -5,7 +5,8 @@
 namespace {
 uint32_t execute(const nds_device_storage *storage, const nds_device_storage_io *io,
                  nds_device_operation_result *result) {
-    if (result == nullptr) return kNdsAicpuInvalidArgument;
+    if (result == nullptr)
+        return kNdsAicpuInvalidArgument;
     if (!nds_device_storage_valid(storage, io)) {
         NdsAicpuSetResult(result, NDS_DEVICE_OPERATION_INVALID_ARGUMENT, NDS_DEVICE_OPERATION_PATH_NONE, 0);
         return kNdsAicpuSuccess;
@@ -23,7 +24,8 @@ uint32_t execute(const nds_device_storage *storage, const nds_device_storage_io 
     transfer.local.length = sizeof(command);
     transfer.local.local_key = storage->command.local_key;
     const uint32_t sent = NdsAicpuRdmaSendImpl(&storage->transport, &transfer, result);
-    if (sent != kNdsAicpuSuccess || result->status != NDS_DEVICE_OPERATION_SUCCESS) return sent;
+    if (sent != kNdsAicpuSuccess || result->status != NDS_DEVICE_OPERATION_SUCCESS)
+        return sent;
     auto *completion = reinterpret_cast<volatile nds_protocol_completion_wire *>(storage->completion.address);
     for (;;) {
         nds_protocol_completion_wire observed{};
@@ -37,14 +39,12 @@ uint32_t execute(const nds_device_storage *storage, const nds_device_storage_io 
 }
 }  // namespace
 
-extern "C" uint32_t NdsAicpuStorageReadImpl(
-    const nds_device_storage *storage, const nds_device_storage_io *io,
-    nds_device_operation_result *result) {
+extern "C" uint32_t NdsAicpuStorageReadImpl(const nds_device_storage *storage, const nds_device_storage_io *io,
+                                            nds_device_operation_result *result) {
     return execute(storage, io, result);
 }
 
-extern "C" uint32_t NdsAicpuStorageWriteImpl(
-    const nds_device_storage *storage, const nds_device_storage_io *io,
-    nds_device_operation_result *result) {
+extern "C" uint32_t NdsAicpuStorageWriteImpl(const nds_device_storage *storage, const nds_device_storage_io *io,
+                                             nds_device_operation_result *result) {
     return execute(storage, io, result);
 }

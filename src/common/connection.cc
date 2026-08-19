@@ -37,8 +37,7 @@ static enum nds_qp_info_result nds_qp_info_validate(const nds_qp_info *info) {
     return NDS_QP_INFO_RESULT_OK;
 }
 
-enum nds_qp_info_result nds_qp_info_encode(const nds_qp_info *info,
-                                                        nds_qp_info_wire *wire) {
+enum nds_qp_info_result nds_qp_info_encode(const nds_qp_info *info, nds_qp_info_wire *wire) {
     if (wire == nullptr) {
         return NDS_QP_INFO_RESULT_INVALID_ARGUMENT;
     }
@@ -172,8 +171,7 @@ Result<void> TcpPeerExchange::write_full(int fd, const void *buffer, std::size_t
     return {};
 }
 
-Result<nds_qp_info> TcpPeerExchange::exchange(int fd, const nds_qp_info &local,
-                                                         bool client_order) {
+Result<nds_qp_info> TcpPeerExchange::exchange(int fd, const nds_qp_info &local, bool client_order) {
     nds_qp_info_wire local_wire{};
     nds_qp_info_wire peer_wire{};
     if (fd < 0) {
@@ -269,8 +267,7 @@ Result<void> TcpPeerExchange::connect(const std::string &ipv4, std::uint16_t por
 
 }  // namespace nds
 
-enum nds_qp_info_result nds_qp_info_decode(const nds_qp_info_wire *wire,
-                                                        nds_qp_info *info) {
+enum nds_qp_info_result nds_qp_info_decode(const nds_qp_info_wire *wire, nds_qp_info *info) {
     nds_qp_info decoded;
 
     if (wire == nullptr || info == nullptr) {

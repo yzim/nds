@@ -72,11 +72,9 @@ enum {
     NDS_HNS_SEND_SIGNALED = 1 << 1,
 };
 
-typedef int (*nds_hns_exp_post_send_fn)(
-    void *qp, struct nds_hns_send_wr *wr, struct nds_hns_send_wr **bad_wr,
-    struct nds_hns_post_send_response *response);
-typedef int (*nds_hns_post_recv_fn)(void *qp, struct nds_hns_recv_wr *wr,
-                                    struct nds_hns_recv_wr **bad_wr);
+typedef int (*nds_hns_exp_post_send_fn)(void *qp, struct nds_hns_send_wr *wr, struct nds_hns_send_wr **bad_wr,
+                                        struct nds_hns_post_send_response *response);
+typedef int (*nds_hns_post_recv_fn)(void *qp, struct nds_hns_recv_wr *wr, struct nds_hns_recv_wr **bad_wr);
 typedef int (*nds_hns_poll_cq_fn)(void *cq, int num_entries, struct nds_hns_wc *wc);
 
 #if defined(__cplusplus)

@@ -12,11 +12,9 @@ Result<void> post(NpuRaContext *context, NpuRaQp *qp, const nds_device_send_wr &
     const auto posted = NdsRaPostSend(qp, request);
     if (!posted)
         return unexpected(posted.error());
-    NDS_LOG_INFO("npu-client",
-                 "Posted one signaled RA work request: opcode={} doorbell_index={} doorbell_info=0x{:x}",
+    NDS_LOG_INFO("npu-client", "Posted one signaled RA work request: opcode={} doorbell_index={} doorbell_info=0x{:x}",
                  request.opcode, posted->doorbell.db_index, posted->doorbell.db_info);
-    if (!context->ring_rdma_doorbell(posted->doorbell.db_index,
-                                     static_cast<std::uint64_t>(posted->doorbell.db_info))) {
+    if (!context->ring_rdma_doorbell(posted->doorbell.db_index, static_cast<std::uint64_t>(posted->doorbell.db_info))) {
         return unexpected(ErrorCode::kRuntime, context->error());
     }
     NDS_LOG_INFO("npu-client", "Rang the OPBASE RDMA doorbell on the runtime default stream.");

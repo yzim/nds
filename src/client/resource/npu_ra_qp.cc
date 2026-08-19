@@ -64,9 +64,7 @@ bool NpuRaQp::create(nds_ra_api *api, const NpuRaQpConfig &config, NpuExecutionM
         set_error("NPU RA QP is already created");
         return false;
     }
-    const auto is_power_of_two = [](std::uint32_t value) {
-        return value >= 2U && (value & (value - 1U)) == 0U;
-    };
+    const auto is_power_of_two = [](std::uint32_t value) { return value >= 2U && (value & (value - 1U)) == 0U; };
     if (config.local_ipv4.empty() || config.port_num == 0U || config.path_mtu == 0U ||
         !is_power_of_two(config.send_queue_depth) || !is_power_of_two(config.receive_queue_depth)) {
         set_error("NPU RA QP requires valid network settings and power-of-two queue depths of at least two");
@@ -101,8 +99,7 @@ bool NpuRaQp::create(nds_ra_api *api, const NpuRaQpConfig &config, NpuExecutionM
     api_ = api;
     config_ = config;
     if (config_.ai_qp_mode < 0) {
-        config_.ai_qp_mode = execution == NpuExecutionMode::Aicpu ?
-                                 NDS_RA_QP_MODE_NORMAL : NDS_RA_QP_MODE_OPBASE_EXT;
+        config_.ai_qp_mode = execution == NpuExecutionMode::Aicpu ? NDS_RA_QP_MODE_NORMAL : NDS_RA_QP_MODE_OPBASE_EXT;
     }
     execution_ = execution;
     rdev_init.mode = NDS_RA_NETWORK_OFFLINE;
@@ -137,8 +134,9 @@ bool NpuRaQp::create(nds_ra_api *api, const NpuRaQpConfig &config, NpuExecutionM
         ai_attrs.qp_attr.cap.max_inline_data = 32;
         ai_attrs.qp_attr.qp_type = NDS_RA_QP_TYPE_RC;
         ai_attrs.version = NDS_RA_QP_CREATE_WITH_ATTR_VERSION;
-        ai_attrs.data_plane_flag = (config_.control_flags & NpuRaQpCallerPollsCq) != 0U ?
-                                       static_cast<std::uint32_t>(NDS_RA_AI_CALLER_POLLS_CQ) : 0U;
+        ai_attrs.data_plane_flag = (config_.control_flags & NpuRaQpCallerPollsCq) != 0U
+                                       ? static_cast<std::uint32_t>(NDS_RA_AI_CALLER_POLLS_CQ)
+                                       : 0U;
         result = api_->ra_ai_qp_create(rdev_handle_, &ai_attrs, &ai_qp_info_, &qp_handle_);
         if (result != 0 || qp_handle_ == nullptr || ai_qp_info_.ai_qp_address == 0U) {
             set_error("RaAiQpCreate(AI execution mode) failed: " + std::to_string(result));
@@ -424,8 +422,7 @@ const nds_ra_ai_qp_info &NpuRaQp::ai_qp_info() const noexcept {
     return ai_qp_info_;
 }
 
-Result<void> NpuRaQp::set_device_wr_id_storage(std::uint64_t send_address,
-                                               std::uint64_t receive_address) {
+Result<void> NpuRaQp::set_device_wr_id_storage(std::uint64_t send_address, std::uint64_t receive_address) {
     if (!has_ai_qp_info() || send_address == 0U || receive_address == 0U)
         return unexpected(ErrorCode::kInvalidArgument,
                           "device WR-ID storage requires an AI QP and two device addresses");
@@ -436,8 +433,7 @@ Result<void> NpuRaQp::set_device_wr_id_storage(std::uint64_t send_address,
 
 Result<nds_device_transport> NpuRaQp::make_device_transport() const {
     if (!has_ai_qp_info() || send_wr_ids_ == 0U || receive_wr_ids_ == 0U)
-        return unexpected(ErrorCode::kInvalidArgument,
-                          "device transport requires an AI QP and WR-ID storage");
+        return unexpected(ErrorCode::kInvalidArgument, "device transport requires an AI QP and WR-ID storage");
     const auto *source = reinterpret_cast<const nds_ra_ai_data_plane_info *>(ai_qp_info_.data_plane_info);
     if (source->send_wq.buffer_address == 0U || source->receive_wq.buffer_address == 0U)
         return unexpected(ErrorCode::kRa, "HCCP did not return SQ/RQ dataplane information");
@@ -447,8 +443,7 @@ Result<nds_device_transport> NpuRaQp::make_device_transport() const {
         return unexpected(ErrorCode::kRa, "HCCP did not return caller-owned CQ dataplane information");
     }
 
-    const auto copy_wq = [](const nds_ra_ai_data_plane_wq &input, std::uint64_t wr_ids,
-                            bool send) {
+    const auto copy_wq = [](const nds_ra_ai_data_plane_wq &input, std::uint64_t wr_ids, bool send) {
         nds_device_work_queue output{};
         output.number = input.wqn;
         output.depth = input.depth;
@@ -478,8 +473,9 @@ Result<nds_device_transport> NpuRaQp::make_device_transport() const {
     output.size = sizeof(output);
     output.control_qp.abi_version = NDS_DEVICE_QP_ABI_VERSION;
     output.control_qp.size = sizeof(output.control_qp);
-    output.control_qp.flags = (config_.control_flags & NpuRaQpCallerPollsCq) != 0U ?
-                          static_cast<std::uint32_t>(NDS_DEVICE_QP_CALLER_POLLS_CQ) : 0U;
+    output.control_qp.flags = (config_.control_flags & NpuRaQpCallerPollsCq) != 0U
+                                  ? static_cast<std::uint32_t>(NDS_DEVICE_QP_CALLER_POLLS_CQ)
+                                  : 0U;
     output.control_qp.qp_mode = config_.ai_qp_mode;
     output.control_qp.service_level = config_.service_level;
     output.control_qp.provider_qp_address = ai_qp_info_.ai_qp_address;

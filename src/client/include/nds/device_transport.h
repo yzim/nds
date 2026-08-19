@@ -22,8 +22,8 @@ typedef struct nds_device_transfer {
     uint32_t reserved;
 } nds_device_transfer;
 
-static inline void nds_device_build_send_wr(const nds_device_transfer *transfer,
-                                            uint32_t opcode, nds_device_send_wr *wr) {
+static inline void nds_device_build_send_wr(const nds_device_transfer *transfer, uint32_t opcode,
+                                            nds_device_send_wr *wr) {
     wr->wr_id = transfer->wr_id;
     wr->opcode = opcode;
     wr->flags = NDS_DEVICE_SEND_SIGNALED;
