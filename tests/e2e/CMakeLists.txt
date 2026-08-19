@@ -25,3 +25,12 @@ if(TARGET nds_aicpu_kernel)
         nds_add_storage_e2e(aicpu ${operation})
     endforeach()
 endif()
+
+if(TARGET nds_torch)
+    add_test(NAME e2e.torch_storage_session
+        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/run_torch_storage.sh)
+    set_tests_properties(e2e.torch_storage_session PROPERTIES
+        LABELS "e2e;requires-ascend-npu;requires-rdma;torch;mode-ra"
+        TIMEOUT 120
+        RESOURCE_LOCK ascend_npu0)
+endif()

@@ -17,6 +17,7 @@ NDS_E2E_TCP_PORT    unused TCP bootstrap port
 NDS_E2E_DEVICE      CPU verbs device name
 NDS_E2E_GID_INDEX   CPU verbs GID index
 NDS_E2E_STATE_DIR   optional writable log and temporary-state directory
+NDS_E2E_TORCH_PYTHON Python interpreter with compatible torch and torch_npu
 ```
 
 Configure and inspect registration without touching hardware:
@@ -29,6 +30,11 @@ cmake -S . -B build-e2e \
   -DNDS_CANN_ROOT=<cann-root>
 ctest --test-dir build-e2e -N --label-regex '^e2e$'
 ```
+
+To register `e2e.torch_storage_session`, also configure the optional wrapper
+with `-DNDS_BUILD_TORCH_WRAPPERS=ON`, a compatible `CMAKE_PREFIX_PATH`, and
+`-DPython3_EXECUTABLE=<torch-python>`. Set `NDS_E2E_TORCH_PYTHON` to that
+interpreter when running the test.
 
 Run one bounded, payload-verified case on the approved target. The runner
 accepts the backend (`ra`, `aiv`, or `aicpu`) and operation (`read` or `write`)
@@ -45,7 +51,7 @@ serializes them with the `ascend_npu0` resource lock:
 
 ```sh
 env <NDS_E2E_* assignments> \
-  ctest --test-dir build-e2e --output-on-failure --label-regex '^e2e$'
+ctest --test-dir build-e2e --output-on-failure --label-regex '^e2e$'
 ```
 
 Each case transfers 4096 bytes. Read starts the server with its deterministic
