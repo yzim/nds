@@ -3,6 +3,7 @@
 
 #include "nds/device_transport.h"
 
+#include <stddef.h>
 #include <stdint.h>
 
 #define NDS_DEVICE_OPERATIONS_ABI_VERSION UINT32_C(3)
@@ -33,9 +34,11 @@ typedef struct nds_device_operation_request {
 #if defined(__cplusplus)
 static_assert(sizeof(nds_device_operation_parameters) == 40, "device operation parameters ABI changed");
 static_assert(sizeof(nds_device_operation_request) == 312, "device operation ABI changed");
+static_assert(offsetof(nds_device_operation_request, transport) == 16, "device operation transport offset changed");
 #else
 _Static_assert(sizeof(nds_device_operation_parameters) == 40, "device operation parameters ABI changed");
 _Static_assert(sizeof(nds_device_operation_request) == 312, "device operation ABI changed");
+_Static_assert(offsetof(nds_device_operation_request, transport) == 16, "device operation transport offset changed");
 #endif
 
 #endif
