@@ -8,6 +8,7 @@
 #include <CLI/CLI.hpp>
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <string>
@@ -57,7 +58,7 @@ nds::Result<Config> parse(int argc, char **argv) {
 }
 
 nds::Result<void> send(nds::client::Runtime *runtime, nds::client::Transport *transport,
-                       const std::array<unsigned char, 64U> &payload) {
+                       const std::array<std::byte, 64U> &payload) {
     auto allocated = runtime->allocate(payload.size());
     if (!allocated)
         return nds::unexpected(allocated.error());
@@ -140,7 +141,7 @@ int main(int argc, char **argv) {
         NDS_LOG_ERROR("transport-client", "transport open failed: {}", opened.error().message);
         return EXIT_FAILURE;
     }
-    const std::array<unsigned char, 64U> payload{0x4eU, 0x44U, 0x53U};
+    const std::array<std::byte, 64U> payload{std::byte{0x4e}, std::byte{0x44}, std::byte{0x53}};
     if (const auto sent = send(&runtime, &transport, payload); !sent) {
         NDS_LOG_ERROR("transport-client", "Send failed: {}", sent.error().message);
         return EXIT_FAILURE;

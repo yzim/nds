@@ -4,6 +4,11 @@ add_library(nds_ra_loader STATIC
     resource/loaders/acl_loader.cc)
 target_include_directories(nds_ra_loader PUBLIC resource/include)
 target_compile_options(nds_ra_loader PRIVATE -Wall -Wextra -Wpedantic -Werror)
+
+add_library(nds_hccn_loader STATIC resource/loaders/hccn_loader.cc)
+target_include_directories(nds_hccn_loader PUBLIC resource/loaders ${PROJECT_SOURCE_DIR}/src/include)
+target_link_libraries(nds_hccn_loader PUBLIC tl::expected ${CMAKE_DL_LIBS})
+target_compile_options(nds_hccn_loader PRIVATE -Wall -Wextra -Wpedantic -Werror)
 target_link_libraries(nds_ra_loader PUBLIC ${CMAKE_DL_LIBS})
 
 if(NDS_LINK_PUBLIC_ACL)
@@ -28,7 +33,7 @@ target_compile_options(nds_client_runtime PRIVATE -Wall -Wextra -Wpedantic -Werr
 
 add_library(nds_client_endpoint STATIC resource/endpoint.cc)
 target_include_directories(nds_client_endpoint PUBLIC resource resource/include include)
-target_link_libraries(nds_client_endpoint PUBLIC nds_client_runtime nds_ra_loader nds_transport)
+target_link_libraries(nds_client_endpoint PUBLIC nds_client_runtime nds_ra_loader nds_hccn_loader nds_transport)
 target_compile_options(nds_client_endpoint PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 add_library(nds_ra STATIC

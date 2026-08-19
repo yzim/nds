@@ -17,6 +17,7 @@ extern "C" {
 typedef int (*nds_acl_init_fn)(const char *config_path);
 typedef int (*nds_acl_finalize_fn)(void);
 typedef int (*nds_acl_rt_set_device_fn)(int32_t device_id);
+typedef int (*nds_acl_rt_get_phy_dev_id_fn)(int32_t logic_device_id, int32_t *physical_device_id);
 typedef int (*nds_acl_rt_malloc_fn)(void **device_ptr, size_t size, int policy);
 typedef int (*nds_acl_rt_free_fn)(void *device_ptr);
 typedef int (*nds_acl_rt_memcpy_fn)(void *dst, size_t dst_max, const void *src, size_t count, int kind);
@@ -122,6 +123,7 @@ typedef struct nds_acl_api {
     nds_acl_init_fn init;
     nds_acl_finalize_fn finalize;
     nds_acl_rt_set_device_fn set_device;
+    nds_acl_rt_get_phy_dev_id_fn get_phy_dev_id;
     nds_acl_rt_malloc_fn malloc_device;
     nds_acl_rt_free_fn free_device;
     nds_acl_rt_memcpy_fn memcpy;

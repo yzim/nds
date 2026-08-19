@@ -8,6 +8,7 @@
 #include <CLI/CLI.hpp>
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <string>
@@ -57,7 +58,7 @@ nds::Result<Config> parse(int argc, char **argv) {
 }
 
 nds::Result<void> post_send(nds::client::Runtime *runtime, nds::client::Transport *transport,
-                            const std::array<unsigned char, 64U> &payload) {
+                            const std::array<std::byte, 64U> &payload) {
     auto allocated = runtime->allocate(payload.size());
     if (!allocated)
         return nds::unexpected(allocated.error());
@@ -78,10 +79,14 @@ nds::Result<void> post_send(nds::client::Runtime *runtime, nds::client::Transpor
         auto &api = runtime->runtime_api();
         if (api.set_device == nullptr || api.rdma_db_send == nullptr)
             return nds::unexpected(nds::ErrorCode::kRuntime, "runtime doorbell ABI is unavailable");
-        if (const int result = api.set_device(static_cast<std::int32_t>(runtime->config().logical_device_id)); result != 0)
+        if (const int result = api.set_device(static_cast<std::int32_t>(runtime->config().logical_device_id));
+            result != 0) {
             return nds::unexpected(nds::ErrorCode::kRuntime, "rtSetDevice failed: " + std::to_string(result));
-        if (const int result = api.rdma_db_send(posted->doorbell.db_index, posted->doorbell.db_info, nullptr); result != 0)
+        }
+        if (const int result = api.rdma_db_send(posted->doorbell.db_index, posted->doorbell.db_info, nullptr);
+            result != 0) {
             return nds::unexpected(nds::ErrorCode::kRuntime, "rtRDMADBSend failed: " + std::to_string(result));
+        }
         return {};
     }
 
@@ -117,7 +122,8 @@ nds::Result<void> post_send(nds::client::Runtime *runtime, nds::client::Transpor
             return nds::unexpected(request_buffer.error());
         if (const auto copied = runtime->copy_to(&*request_buffer, &request, sizeof(request)); !copied)
             return nds::unexpected(copied.error());
-        if (const auto launched = launcher.launch_post_send_and_wait(reinterpret_cast<std::uint64_t>(request_buffer->data()), 5000);
+        if (const auto launched =
+                launcher.launch_post_send_and_wait(reinterpret_cast<std::uint64_t>(request_buffer->data()), 5000);
             !launched)
             return nds::unexpected(launched.error());
     }
@@ -148,7 +154,7 @@ int main(int argc, char **argv) {
         NDS_LOG_ERROR("verbs-client", "transport open failed: {}", opened.error().message);
         return EXIT_FAILURE;
     }
-    const std::array<unsigned char, 64U> payload{0x4eU, 0x44U, 0x53U};
+    const std::array<std::byte, 64U> payload{std::byte{0x4e}, std::byte{0x44}, std::byte{0x53}};
     if (const auto sent = post_send(&runtime, &transport, payload); !sent) {
         NDS_LOG_ERROR("verbs-client", "Send failed: {}", sent.error().message);
         return EXIT_FAILURE;

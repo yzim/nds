@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+runner_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=aicpu_overlay.sh
+source "${runner_dir}/aicpu_overlay.sh"
+
 usage() {
     cat <<'EOF'
 Usage:
@@ -59,15 +63,8 @@ run_client() {
                 'source "$1/set_env.sh"; shift; exec "$@"' bash "${cann}" "${client[@]}" >"${client_log}" 2>&1
             ;;
         aicpu)
-            local overlay="${case_dir}/overlay"
-            mkdir -p "${overlay}/conf" "${overlay}/opp/vendors/nds/aicpu/config" \
-                "${overlay}/opp/vendors/nds/aicpu/kernel"
-            cp "${cann}/aarch64-linux/conf/ascend_package_load.ini" "${overlay}/conf/ascend_package_load.ini"
-            chmod u+w "${overlay}/conf/ascend_package_load.ini"
-            printf '\nname:aicpu_nds.tar.gz\ninstall_path:2\noptional:true\npackage_path:opp/vendors/nds/aicpu/kernel\nload_as_per_soc:false\n' \
-                >>"${overlay}/conf/ascend_package_load.ini"
-            cp "${build}/aicpu/nds_aicpu_standard.json" "${overlay}/opp/vendors/nds/aicpu/config/"
-            cp "${build}/aicpu/aicpu_nds.tar.gz" "${overlay}/opp/vendors/nds/aicpu/kernel/"
+            local overlay
+            overlay="$(nds_prepare_aicpu_overlay "${case_dir}" "${cann}" "${build}")"
             client+=(--aicpu-kernel-config "${overlay}/opp/vendors/nds/aicpu/config/nds_aicpu_standard.json")
             timeout "${case_timeout}" sudo -n unshare -m "${runner_dir}/run_with_aicpu_package.sh" \
                 "${overlay}" "${cann}" "${client[@]}" >"${client_log}" 2>&1
@@ -127,7 +124,6 @@ require_environment
 build="${NDS_E2E_BUILD_DIR}"
 cann="${NDS_E2E_CANN_ROOT}"
 state_dir="${NDS_E2E_STATE_DIR:-${TMPDIR:-/tmp}/nds-e2e}"
-runner_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 bytes=4096
 case_timeout=45s
 server_pid=""

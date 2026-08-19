@@ -48,6 +48,7 @@ enum {
     NDS_RA_LITE_NOT_SUPPORTED = 0,
     NDS_RA_LITE_ALIGN_4K = 1,
     NDS_RA_LITE_ALIGN_2M = 2,
+    NDS_RA_MAX_INTERFACE_COUNT = 64,
 };
 
 enum { NDS_RA_ERROR_CAPACITY = 512 };
@@ -62,6 +63,32 @@ typedef struct nds_ra_rdev {
     int family;
     nds_ra_ip_address local_ip;
 } nds_ra_rdev;
+
+typedef struct nds_ra_get_interface_config {
+    unsigned int physical_device_id;
+    unsigned int network_mode;
+    bool all_interfaces;
+} nds_ra_get_interface_config;
+
+typedef struct nds_ra_interface_address {
+    nds_ra_ip_address ip;
+    struct in_addr netmask;
+} nds_ra_interface_address;
+
+typedef struct nds_ra_interface_info {
+    int family;
+    int scope_id;
+    nds_ra_interface_address address;
+    char name[256];
+} nds_ra_interface_info;
+
+#if defined(__cplusplus)
+static_assert(sizeof(nds_ra_get_interface_config) == 12, "HCCP RaGetIfattr ABI must remain 12 bytes");
+static_assert(sizeof(nds_ra_interface_info) == 284, "HCCP InterfaceInfo ABI must remain 284 bytes");
+#else
+_Static_assert(sizeof(nds_ra_get_interface_config) == 12, "HCCP RaGetIfattr ABI must remain 12 bytes");
+_Static_assert(sizeof(nds_ra_interface_info) == 284, "HCCP InterfaceInfo ABI must remain 284 bytes");
+#endif
 
 /*
  * HCCP v9.0.0 RdevInitInfo.  The legacy RaRdevInit() hard-codes
@@ -306,6 +333,9 @@ typedef int (*nds_ra_typical_send_wr_fn)(void *qp_handle, nds_ra_send_wr *wr, nd
 typedef int (*nds_ra_recv_wrlist_fn)(void *qp_handle, nds_ra_recv_wr *wr, unsigned int recv_num,
                                      unsigned int *complete_num);
 typedef int (*nds_ra_poll_cq_fn)(void *qp_handle, bool is_send_cq, unsigned int max_entries, void *completions);
+typedef int (*nds_ra_get_interface_count_fn)(nds_ra_get_interface_config *config, unsigned int *count);
+typedef int (*nds_ra_get_interfaces_fn)(nds_ra_get_interface_config *config, nds_ra_interface_info *interfaces,
+                                        unsigned int *count);
 
 /*
  * Runtime-only loader for the HCCP/RA shared-library ABI.
@@ -340,6 +370,8 @@ typedef struct nds_ra_api {
     nds_ra_typical_send_wr_fn ra_typical_send_wr;
     nds_ra_recv_wrlist_fn ra_recv_wrlist;
     nds_ra_poll_cq_fn ra_poll_cq;
+    nds_ra_get_interface_count_fn ra_get_interface_count;
+    nds_ra_get_interfaces_fn ra_get_interfaces;
     char error[NDS_RA_ERROR_CAPACITY];
 } nds_ra_api;
 

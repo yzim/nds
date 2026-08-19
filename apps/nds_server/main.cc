@@ -64,10 +64,10 @@ int main(int argc, char **argv) {
         NDS_LOG_ERROR("cpu-server", "server connection failed: {}", opened.error().message);
         return EXIT_FAILURE;
     }
-    std::vector<unsigned char> storage(config.namespace_bytes, 0U);
+    std::vector<std::uint8_t> storage(config.namespace_bytes, 0U);
     if (config.seed_pattern) {
         for (std::size_t index = 0; index < storage.size(); ++index)
-            storage[index] = static_cast<unsigned char>(index ^ 0x5aU);
+            storage[index] = static_cast<std::uint8_t>(index ^ 0x5aU);
     }
     if (const auto served = nds::server::serve_requests(&connection, &storage, config.storage_requests, 5000U);
         !served) {
@@ -79,7 +79,7 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
     for (std::size_t index = 0; index < config.verify_write_bytes; ++index) {
-        if (storage[index] != static_cast<unsigned char>(index ^ 0x5aU)) {
+        if (storage[index] != static_cast<std::uint8_t>(index ^ 0x5aU)) {
             NDS_LOG_ERROR("cpu-server", "storage Write verification failed at byte {}", index);
             return EXIT_FAILURE;
         }

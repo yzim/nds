@@ -1,5 +1,6 @@
 #include "endpoint.hh"
 
+#include "loaders/hccn_loader.hh"
 #include "runtime.hh"
 
 #include <arpa/inet.h>
@@ -428,7 +429,15 @@ Result<void> Endpoint::open(Runtime *runtime, const EndpointConfig &config) {
     nds_ra_rdev rdev{};
     rdev.phy_id = config_.physical_device_id;
     rdev.family = AF_INET;
-    if (!config_.local_ipv4.empty() && inet_pton(AF_INET, config_.local_ipv4.c_str(), &rdev.local_ip.ipv4) != 1) {
+    if (config_.local_ipv4.empty()) {
+        const auto ipv4 = hccn_ipv4(config_.physical_device_id);
+        if (!ipv4) {
+            reset();
+            return unexpected(ipv4.error());
+        }
+        config_.local_ipv4 = *ipv4;
+    }
+    if (inet_pton(AF_INET, config_.local_ipv4.c_str(), &rdev.local_ip.ipv4) != 1) {
         reset();
         return unexpected(ErrorCode::kInvalidArgument, "endpoint local IPv4 address is invalid");
     }
@@ -438,8 +447,10 @@ Result<void> Endpoint::open(Runtime *runtime, const EndpointConfig &config) {
     rdev_init.disabled_lite_thread = false;
     result = api_.ra_rdev_init_v2(rdev_init, rdev, &rdev_handle_);
     if (result != 0 || rdev_handle_ == nullptr) {
+        const std::string local_ipv4 = config_.local_ipv4;
         reset();
-        return unexpected(ErrorCode::kRa, "RaRdevInitV2 failed: " + std::to_string(result));
+        return unexpected(ErrorCode::kRa,
+                          "RaRdevInitV2 failed for " + local_ipv4 + ": " + std::to_string(result));
     }
     return {};
 }

@@ -49,7 +49,9 @@ tensor registration is intentionally not exposed yet: it needs a borrowed
 allocation lifetime and stream-synchronization contract with the PyTorch NPU
 allocator.
 
-`Session` adopts the active `torch_npu` context and current NPU device. It does
-not accept AscendCL or runtime library paths, device IDs, or an NPU IP address.
-Import `torch_npu` and select its device before creating a session. Vendor
-libraries are resolved through the CANN environment.
+`Session` adopts the active `torch_npu` context and current NPU device. The CANN
+DSMI query used by `hccn_tool` resolves the matching RoCE IPv4 address from that
+physical device; the session does not accept an NPU IP address, AscendCL/runtime
+library paths, or
+device IDs. Import `torch_npu` and select its device before creating a session.
+Vendor libraries are resolved through the CANN environment.

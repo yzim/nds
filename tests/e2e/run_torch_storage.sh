@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+runner_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=aicpu_overlay.sh
+source "${runner_dir}/aicpu_overlay.sh"
+
+usage() {
+    printf '%s\n' 'Usage: run_torch_storage.sh --backend <ra|aiv|aicpu>' >&2
+}
+
 require_environment() {
     local required=(NDS_E2E_BUILD_DIR NDS_E2E_CANN_ROOT NDS_E2E_SOURCE_DIR NDS_E2E_CPU_IP
         NDS_E2E_TCP_PORT NDS_E2E_DEVICE NDS_E2E_GID_INDEX NDS_E2E_TORCH_PYTHON)
@@ -13,12 +21,61 @@ require_environment() {
     done
 }
 
+validate_backend() {
+    case "$1" in
+        ra|aiv|aicpu) ;;
+        *) printf 'unsupported backend: %s\n' "$1" >&2; exit 2 ;;
+    esac
+}
+
 cleanup() {
     if [[ -n "${server_pid:-}" ]] && kill -0 "${server_pid}" 2>/dev/null; then
         kill "${server_pid}" 2>/dev/null || true
         wait "${server_pid}" 2>/dev/null || true
     fi
 }
+
+run_client() {
+    local backend="$1"
+    local case_dir="$2"
+    local client_log="$3"
+    local -a client=("${NDS_E2E_TORCH_PYTHON}" "${NDS_E2E_SOURCE_DIR}/apps/nds_torch.py"
+        "${NDS_E2E_CPU_IP}:${NDS_E2E_TCP_PORT}" --backend "${backend}" --bytes "${bytes}")
+
+    case "${backend}" in
+        ra)
+            timeout "${case_timeout}" sudo -n env "PATH=${PATH}" "PYTHONPATH=${build}/bin" \
+                bash -lc 'source "$1/set_env.sh"; shift; exec "$@"' bash "${cann}" "${client[@]}" >"${client_log}" 2>&1
+            ;;
+        aiv)
+            client+=(--aiv-kernel "${build}/aiv/nds_aiv_kernel.o")
+            timeout "${case_timeout}" sudo -n env "PATH=${PATH}" "PYTHONPATH=${build}/bin" \
+                bash -lc 'source "$1/set_env.sh"; shift; exec "$@"' bash "${cann}" "${client[@]}" >"${client_log}" 2>&1
+            ;;
+        aicpu)
+            local overlay
+            overlay="$(nds_prepare_aicpu_overlay "${case_dir}" "${cann}" "${build}")"
+            client+=(--aicpu-kernel-config "${overlay}/opp/vendors/nds/aicpu/config/nds_aicpu_standard.json")
+            timeout "${case_timeout}" sudo -n env "PATH=${PATH}" "PYTHONPATH=${build}/bin" \
+                unshare -m "${runner_dir}/run_with_aicpu_package.sh" "${overlay}" "${cann}" "${client[@]}" \
+                >"${client_log}" 2>&1
+            ;;
+    esac
+}
+
+backend=""
+while [[ "$#" -gt 0 ]]; do
+    case "$1" in
+        --backend) backend="${2:-}"; shift 2 ;;
+        --help|-h) usage; exit 0 ;;
+        *) printf 'unknown option: %s\n' "$1" >&2; usage; exit 2 ;;
+    esac
+done
+if [[ -z "${backend}" ]]; then
+    usage
+    exit 2
+fi
+validate_backend "${backend}"
 
 require_environment
 build="${NDS_E2E_BUILD_DIR}"
@@ -36,25 +93,19 @@ trap cleanup EXIT
 timeout "${case_timeout}" "${build}/bin/nds_server" \
     --device "${NDS_E2E_DEVICE}" --gid-index "${NDS_E2E_GID_INDEX}" \
     --listen "${NDS_E2E_CPU_IP}" --tcp-port "${NDS_E2E_TCP_PORT}" \
-    --namespace-bytes 1048576 --storage-requests 2 --verify-write-bytes "${bytes}" --log-level info \
+    --namespace-bytes 1048576 --storage-requests 2 --log-level info \
     >"${server_log}" 2>&1 &
 server_pid=$!
 sleep 1
 
 set +e
-timeout "${case_timeout}" sudo -n env PATH="${PATH}" PYTHONPATH="${build}/bin" \
-    NDS_E2E_SOURCE_DIR="${NDS_E2E_SOURCE_DIR}" \
-    bash -s "${cann}" "${NDS_E2E_TORCH_PYTHON}" "${NDS_E2E_CPU_IP}:${NDS_E2E_TCP_PORT}" >"${client_log}" 2>&1 <<'PYTHON_SHELL'
-source "$1/set_env.sh"
-exec "$2" "${NDS_E2E_SOURCE_DIR}/apps/nds_torch.py" \
-    "$3" --bytes 4096
-PYTHON_SHELL
+run_client "${backend}" "${case_dir}" "${client_log}"
 client_rc=$?
 wait "${server_pid}"
 server_rc=$?
 set -e
 server_pid=""
 
-printf 'client=%s server=%s client_rc=%s server_rc=%s\n' \
-    "${client_log}" "${server_log}" "${client_rc}" "${server_rc}"
+printf 'backend=%s client=%s server=%s client_rc=%s server_rc=%s\n' \
+    "${backend}" "${client_log}" "${server_log}" "${client_rc}" "${server_rc}"
 [[ "${client_rc}" -eq 0 && "${server_rc}" -eq 0 ]]

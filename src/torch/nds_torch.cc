@@ -76,10 +76,14 @@ public:
         runtime_config.logical_device_id = static_cast<std::uint32_t>(device);
         runtime_config.adopt_existing_context = true;
         check(runtime_.open(runtime_config));
+        std::int32_t physical_device{};
+        TORCH_CHECK(runtime_.acl_api().get_phy_dev_id != nullptr, "CANN physical-device query is unavailable");
+        TORCH_CHECK(runtime_.acl_api().get_phy_dev_id(device, &physical_device) == 0 && physical_device >= 0,
+                    "CANN cannot map the active logical device to a physical device");
 
         client::TransportConfig transport_config;
         transport_config.endpoint.ra_library = "libra.so";
-        transport_config.endpoint.physical_device_id = static_cast<std::uint32_t>(device);
+        transport_config.endpoint.physical_device_id = static_cast<std::uint32_t>(physical_device);
         transport_config.cpu_ipv4 = std::move(endpoint.ipv4);
         transport_config.tcp_port = endpoint.port;
 

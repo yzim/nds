@@ -117,6 +117,8 @@ int nds_ra_open(nds_ra_api *api, const char *library_path) {
     NDS_RESOLVE(ra_typical_send_wr, "RaTypicalSendWr");
     NDS_RESOLVE(ra_recv_wrlist, "RaRecvWrlist");
     NDS_RESOLVE(ra_poll_cq, "RaPollCq");
+    NDS_RESOLVE(ra_get_interface_count, "RaGetIfnum");
+    NDS_RESOLVE(ra_get_interfaces, "RaGetIfaddrs");
 
 #undef NDS_RESOLVE
     api->error[0] = '\0';

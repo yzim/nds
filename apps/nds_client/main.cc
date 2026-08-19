@@ -115,9 +115,9 @@ int main(int argc, char **argv) {
         NDS_LOG_ERROR("npu-client", "storage client open failed: {}", result.error().message);
         return EXIT_FAILURE;
     }
-    std::vector<unsigned char> payload(config.bytes);
+    std::vector<std::uint8_t> payload(config.bytes);
     for (std::size_t index = 0; index < payload.size(); ++index) {
-        payload[index] = static_cast<unsigned char>(index ^ 0x5aU);
+        payload[index] = static_cast<std::uint8_t>(index ^ 0x5aU);
     }
     auto allocated = runtime.allocate(payload.size());
     if (!allocated) {
@@ -139,7 +139,7 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
     if (config.operation == "read") {
-        std::vector<unsigned char> result(payload.size());
+        std::vector<std::uint8_t> result(payload.size());
         if (const auto copied = runtime.copy_from(result.data(), data, result.size()); !copied) {
             NDS_LOG_ERROR("npu-client", "client Read copy failed: {}", copied.error().message);
             return EXIT_FAILURE;

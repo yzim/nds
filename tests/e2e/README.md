@@ -32,10 +32,12 @@ cmake -S . -B build-e2e \
 ctest --test-dir build-e2e -N --label-regex '^e2e$'
 ```
 
-To register `e2e.torch_storage_session`, also configure the optional wrapper
-with `-DNDS_BUILD_TORCH_WRAPPERS=ON`, a compatible `CMAKE_PREFIX_PATH`, and
+To register the RA Torch session case, also configure the optional wrapper with
+`-DNDS_BUILD_TORCH_WRAPPERS=ON`, a compatible `CMAKE_PREFIX_PATH`, and
 `-DPython3_EXECUTABLE=<torch-python>`. Set `NDS_E2E_TORCH_PYTHON` to that
-interpreter when running the test.
+interpreter when running the test. Configuring the AIV and AICPU kernel targets
+also registers `e2e.aiv_torch_storage_session` and
+`e2e.aicpu_torch_storage_session`.
 
 Run one bounded, payload-verified case on the approved target. The runner
 accepts the backend (`ra`, `aiv`, or `aicpu`) and operation (`read` or `write`)
@@ -59,3 +61,8 @@ Each case transfers 4096 bytes. Read starts the server with its deterministic
 seed pattern, which the client verifies. Write enables server-side payload
 verification. The AICPU case creates a private mount namespace for its
 standard-CP1 package overlay; it does not modify the installed CANN files.
+
+When `NDS_BUILD_HARDWARE_PROBES=ON` is configured, CTest also registers the
+paired verbs and transport example cases for each available backend. These
+cases launch the matching example client and server and require both programs
+to complete one Send/receive exchange.

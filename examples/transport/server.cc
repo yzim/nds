@@ -4,6 +4,7 @@
 #include <CLI/CLI.hpp>
 
 #include <array>
+#include <cstddef>
 #include <cstdlib>
 #include <string>
 
@@ -53,7 +54,7 @@ int main(int argc, char **argv) {
         NDS_LOG_ERROR("transport-server", "connection open failed: {}", opened.error().message);
         return EXIT_FAILURE;
     }
-    std::array<unsigned char, 64U> payload{};
+    std::array<std::byte, 64U> payload{};
     const auto prepared = connection.prepare_receive(payload.data(), payload.size());
     if (!prepared || !connection.activate() || !connection.receive(5000U)) {
         NDS_LOG_ERROR("transport-server", "transport receive failed");
