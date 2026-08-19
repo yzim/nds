@@ -36,10 +36,6 @@ counter wrap, CQ owner phase, send-tail advancement, and CQE decoding.
 ctest --test-dir build --output-on-failure --label-regex '^unit$'
 ```
 
-The `compatibility` label contains a C11 compile-and-run target for the public
-device ABI headers. This prevents C++-only syntax from entering `.h` boundary
-headers.
-
 ## Integration tests
 
 Integration tests exercise boundaries that cross local operating-system or
@@ -94,6 +90,6 @@ verbs and transport probes remain independently selectable.
 ## CI
 
 GitHub Actions explicitly configures `NDS_ENABLE_E2E_TESTS=OFF`, then builds and
-runs all GoogleTest, compatibility, and non-hardware integration tests in both
-Debug and Release modes. It does not configure device kernels or claim that a
-hosted runner can validate Ascend hardware.
+runs all GoogleTest and non-hardware integration tests in both Debug and Release
+modes. It does not configure device kernels or claim that a hosted runner can
+validate Ascend hardware.

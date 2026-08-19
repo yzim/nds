@@ -1,7 +1,6 @@
 #include "nds/device_hns_codec.h"
 
 #include <gtest/gtest.h>
-#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <limits>
@@ -14,9 +13,6 @@ TEST(DeviceHnsCodecTest, ReceiveSegmentHardwareLayout) {
     EXPECT_TRUE(segment.length == UINT32_C(0xa1b2c3d4));
     EXPECT_TRUE(segment.local_key == UINT32_C(0x55667788));
     EXPECT_TRUE(segment.address == UINT64_C(0x1122334455667788));
-    EXPECT_TRUE(offsetof(nds_hns_receive_segment, length) == 0U);
-    EXPECT_TRUE(offsetof(nds_hns_receive_segment, local_key) == 4U);
-    EXPECT_TRUE(offsetof(nds_hns_receive_segment, address) == 8U);
 
     std::uint8_t bytes[sizeof(segment)]{};
     std::memcpy(bytes, &segment, sizeof(segment));

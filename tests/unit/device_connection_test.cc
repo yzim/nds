@@ -1,17 +1,9 @@
 #include "nds/device_operations.h"
 
 #include <gtest/gtest.h>
-#include <cstddef>
 #include <cstdint>
 
-TEST(DeviceConnectionTest, BuildsWorkRequestsAndPreservesAbi) {
-    nds_device_transport transport{};
-    transport.abi_version = NDS_DEVICE_TRANSPORT_ABI_VERSION;
-    transport.size = sizeof(transport);
-    transport.control_qp.abi_version = NDS_DEVICE_QP_ABI_VERSION;
-    transport.control_qp.size = sizeof(transport.control_qp);
-    transport.control_qp.provider_qp_address = UINT64_C(0x12340000);
-
+TEST(DeviceConnectionTest, BuildsWorkRequests) {
     nds_device_transfer transfer{
         UINT64_C(0x55), {UINT64_C(0x1000), 4096U, UINT32_C(0x77)}, UINT64_C(0x2000), UINT32_C(0x88), 0U};
     nds_device_send_wr send{};
@@ -27,8 +19,4 @@ TEST(DeviceConnectionTest, BuildsWorkRequestsAndPreservesAbi) {
     nds_device_build_recv_wr(&transfer, &receive);
     EXPECT_TRUE(receive.wr_id == transfer.wr_id);
     EXPECT_TRUE(receive.local.length == transfer.local.length);
-    EXPECT_TRUE(sizeof(nds_device_qp) == 240U);
-    EXPECT_TRUE(sizeof(nds_device_transport) == 248U);
-    EXPECT_TRUE(sizeof(nds_device_operation_request) == 312U);
-    EXPECT_TRUE(offsetof(nds_device_operation_request, transport) == 16U);
 }

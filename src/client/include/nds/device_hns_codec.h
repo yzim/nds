@@ -3,6 +3,7 @@
 
 #include "nds/device_verbs.h"
 
+#include <stddef.h>
 #include <stdint.h>
 
 typedef struct nds_hns_receive_segment {
@@ -69,9 +70,15 @@ static inline void nds_hns_decode_cqe(const nds_hns_cqe *cqe, uint64_t wr_id, nd
 
 #if defined(__cplusplus)
 static_assert(sizeof(nds_hns_receive_segment) == 16, "HNS receive segment ABI changed");
+static_assert(offsetof(nds_hns_receive_segment, length) == 0, "HNS receive length offset changed");
+static_assert(offsetof(nds_hns_receive_segment, local_key) == 4, "HNS receive local-key offset changed");
+static_assert(offsetof(nds_hns_receive_segment, address) == 8, "HNS receive address offset changed");
 static_assert(sizeof(nds_hns_cqe) == 32, "HNS CQE ABI changed");
 #else
 _Static_assert(sizeof(nds_hns_receive_segment) == 16, "HNS receive segment ABI changed");
+_Static_assert(offsetof(nds_hns_receive_segment, length) == 0, "HNS receive length offset changed");
+_Static_assert(offsetof(nds_hns_receive_segment, local_key) == 4, "HNS receive local-key offset changed");
+_Static_assert(offsetof(nds_hns_receive_segment, address) == 8, "HNS receive address offset changed");
 _Static_assert(sizeof(nds_hns_cqe) == 32, "HNS CQE ABI changed");
 #endif
 

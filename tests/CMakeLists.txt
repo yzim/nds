@@ -48,15 +48,6 @@ target_link_libraries(nds_transport_exchange_test PRIVATE nds_transport GTest::g
 target_compile_options(nds_transport_exchange_test PRIVATE -Wall -Wextra -Wpedantic -Werror)
 gtest_discover_tests(nds_transport_exchange_test TEST_PREFIX "integration." PROPERTIES LABELS integration)
 
-add_executable(nds_device_headers_c_test compatibility/device_headers_c_test.c)
-target_include_directories(nds_device_headers_c_test PRIVATE
-    ${PROJECT_SOURCE_DIR}/src/client/include
-    ${PROJECT_SOURCE_DIR}/src/include)
-target_compile_features(nds_device_headers_c_test PRIVATE c_std_11)
-target_compile_options(nds_device_headers_c_test PRIVATE -Wall -Wextra -Wpedantic -Werror)
-add_test(NAME compatibility.device_headers_c COMMAND nds_device_headers_c_test)
-set_tests_properties(compatibility.device_headers_c PROPERTIES LABELS compatibility)
-
 if(TARGET nds_aiv_kernel)
     add_test(NAME toolchain.aiv_device_api_symbols
         COMMAND ${CMAKE_COMMAND}

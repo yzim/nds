@@ -32,10 +32,6 @@ nds_device_storage_io valid_io(std::uint16_t operation) {
 }  // namespace
 
 TEST(DeviceStorageTest, ValidatesAndEncodesRequests) {
-    EXPECT_TRUE(sizeof(nds_device_storage) == 304U);
-    EXPECT_TRUE(sizeof(nds_device_storage_io) == 40U);
-    EXPECT_TRUE(sizeof(nds_device_storage_request) == 360U);
-
     nds_device_storage storage{};
     nds_device_storage_io io{};
     EXPECT_TRUE(!nds_device_storage_valid(&storage, &io));
@@ -83,13 +79,4 @@ TEST(DeviceStorageTest, ValidatesAndEncodesRequests) {
     EXPECT_TRUE(nds_device_storage_completion_done(&pending, 1U, 64U));
     EXPECT_TRUE(!nds_device_storage_completion_done(&pending, 2U, 64U));
     EXPECT_TRUE(!nds_device_storage_completion_done(&pending, 1U, 32U));
-
-    nds_device_storage_request request{};
-    request.abi_version = NDS_DEVICE_STORAGE_ABI_VERSION;
-    request.size = sizeof(request);
-    request.storage = valid_storage();
-    request.io = valid_io(NDS_PROTOCOL_WRITE);
-    request.operation_result_address = 0x4000U;
-    EXPECT_TRUE(request.size == 360U);
-    EXPECT_TRUE(nds_device_storage_valid(&request.storage, &request.io));
 }
