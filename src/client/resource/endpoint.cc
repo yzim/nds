@@ -1,6 +1,5 @@
 #include "endpoint.hh"
 
-#include "memory.hh"
 #include "runtime.hh"
 
 #include <arpa/inet.h>

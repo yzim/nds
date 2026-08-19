@@ -21,9 +21,7 @@ if(NDS_LINK_PUBLIC_ACL)
     endif()
 endif()
 
-add_library(nds_client_runtime STATIC
-    resource/runtime.cc
-    resource/memory.cc)
+add_library(nds_client_runtime STATIC resource/runtime.cc)
 target_include_directories(nds_client_runtime PUBLIC resource resource/include ${PROJECT_SOURCE_DIR}/src/include)
 target_link_libraries(nds_client_runtime PUBLIC nds_ra_loader tl::expected)
 target_compile_options(nds_client_runtime PRIVATE -Wall -Wextra -Wpedantic -Werror)

@@ -1,6 +1,6 @@
 #include "endpoint.hh"
-#include "memory.hh"
 #include "ra.hh"
+#include "runtime.hh"
 
 #include <gtest/gtest.h>
 

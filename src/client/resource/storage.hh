@@ -1,7 +1,6 @@
 #ifndef NDS_CLIENT_STORAGE_HH
 #define NDS_CLIENT_STORAGE_HH
 
-#include "memory.hh"
 #include "runtime.hh"
 #include "transport.hh"
 

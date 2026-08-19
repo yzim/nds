@@ -2,7 +2,6 @@
 #define NDS_CLIENT_TRANSPORT_HH
 
 #include "endpoint.hh"
-#include "memory.hh"
 #include "runtime.hh"
 
 #include "nds/connection.hh"
