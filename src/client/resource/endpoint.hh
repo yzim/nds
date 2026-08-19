@@ -8,6 +8,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace nds::client {
 
@@ -91,10 +92,10 @@ public:
 
     Result<nds_qp_info> local_qp_info() const;
     Result<void> connect(const nds_qp_info &peer);
-    Result<void> query_port_status(int *status);
-    Result<void> query_support_lite(int *support_lite);
-    Result<void> query_status(int *status);
-    Result<void> query_cqe_errors(nds_ra_cqe_error *errors, std::uint32_t *count);
+    Result<int> query_port_status();
+    Result<int> query_support_lite();
+    Result<int> query_status();
+    Result<std::vector<nds_ra_cqe_error>> query_cqe_errors();
     Result<void> set_device_wr_id_storage(std::uint64_t send_address, std::uint64_t receive_address);
     Result<nds_device_transport> make_device_transport() const;
 

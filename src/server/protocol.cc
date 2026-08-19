@@ -29,14 +29,13 @@ Result<void> serve_request(Connection *connection, std::vector<unsigned char> *s
         return unexpected(ErrorCode::kInvalidArgument, "connection and namespace are required");
     nds_protocol_command_wire command_wire{};
     nds_protocol_completion_wire completion_wire{};
-    RegisteredRegion command_region;
-    RegisteredRegion completion_region;
-    if (const auto result = connection->prepare_receive(&command_wire, sizeof(command_wire), &command_region); !result)
-        return unexpected(result.error());
-    if (const auto result = connection->register_memory(&completion_wire, sizeof(completion_wire),
-                                                        MemoryAccess::LocalRead, &completion_region);
-        !result)
-        return unexpected(result.error());
+    auto command_region = connection->prepare_receive(&command_wire, sizeof(command_wire));
+    if (!command_region)
+        return unexpected(command_region.error());
+    auto completion_region = connection->register_memory(&completion_wire, sizeof(completion_wire),
+                                                          MemoryAccess::LocalRead);
+    if (!completion_region)
+        return unexpected(completion_region.error());
     if (const auto result = connection->activate(); !result)
         return unexpected(result.error());
 
@@ -56,24 +55,21 @@ Result<void> serve_request(Connection *connection, std::vector<unsigned char> *s
         completion.status = NDS_PROTOCOL_RANGE_ERROR;
         completion.bytes_transferred = 0U;
     } else {
-        RegisteredRegion data_region;
         auto *data = storage->data() + command.offset;
-        if (const auto result =
-                connection->register_memory(data, command.length, MemoryAccess::LocalWrite, &data_region);
-            !result) {
-            return unexpected(result.error());
-        }
+        auto data_region = connection->register_memory(data, command.length, MemoryAccess::LocalWrite);
+        if (!data_region)
+            return unexpected(data_region.error());
         const auto transferred =
             command.operation == NDS_PROTOCOL_READ
-                ? connection->write(data_region, command.data.address, command.data.rkey, command.length)
-                : connection->read(data_region, command.data.address, command.data.rkey, command.length);
+                ? connection->write(*data_region, command.data.address, command.data.rkey, command.length)
+                : connection->read(*data_region, command.data.address, command.data.rkey, command.length);
         if (!transferred)
             return unexpected(transferred.error());
     }
     if (nds_protocol_completion_encode(&completion, &completion_wire) != 0) {
         return unexpected(ErrorCode::kProtocol, "invalid protocol record");
     }
-    return connection->write(completion_region, bootstrap->completion.address, bootstrap->completion.rkey,
+    return connection->write(*completion_region, bootstrap->completion.address, bootstrap->completion.rkey,
                              sizeof(completion_wire));
 }
 

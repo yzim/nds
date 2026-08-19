@@ -19,10 +19,11 @@ public:
     ~TcpPeerExchange();
     TcpPeerExchange(const TcpPeerExchange &) = delete;
     TcpPeerExchange &operator=(const TcpPeerExchange &) = delete;
+    TcpPeerExchange(TcpPeerExchange &&other) noexcept;
+    TcpPeerExchange &operator=(TcpPeerExchange &&other) noexcept;
 
     /* Open a TCP connection without exchanging. The returned object owns the socket. */
-    static Result<void> connect(const std::string &ipv4, std::uint16_t port, std::uint32_t timeout_ms,
-                                TcpPeerExchange *connection);
+    static Result<TcpPeerExchange> connect(const std::string &ipv4, std::uint16_t port, std::uint32_t timeout_ms);
 
     /* Client ordering: send the local QP info, then receive the peer QP info. */
     Result<nds_qp_info> exchange_as_client(const nds_qp_info &local) const;

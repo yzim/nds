@@ -16,20 +16,26 @@ constexpr std::uint32_t kCompletionTimeoutMs = 5000U;
 
 class DeviceAllocation {
 public:
-    explicit DeviceAllocation(Memory *memory) : memory_(memory) {}
+    explicit DeviceAllocation(Runtime *runtime) : runtime_(runtime) {}
     ~DeviceAllocation() = default;
     DeviceAllocation(const DeviceAllocation &) = delete;
     DeviceAllocation &operator=(const DeviceAllocation &) = delete;
 
     bool allocate(std::size_t size) {
-        return memory_ != nullptr && buffer_.data() == nullptr && memory_->allocate(size, &buffer_);
+        if (runtime_ == nullptr || buffer_.data() != nullptr)
+            return false;
+        auto allocated = runtime_->allocate(size);
+        if (!allocated)
+            return false;
+        buffer_ = std::move(*allocated);
+        return true;
     }
     void *get() const noexcept {
         return buffer_.data();
     }
 
 private:
-    Memory *memory_{};
+    Runtime *runtime_{};
     MemoryBuffer buffer_;
 };
 
@@ -62,7 +68,7 @@ Result<void> submit_device_storage(Runtime *runtime, Transport *transport, const
     request.io.data = {data.address(), static_cast<std::uint32_t>(data.length()), data.local_key()};
     request.io.data_rkey = data.remote_key();
 
-    DeviceAllocation result(runtime->memory());
+    DeviceAllocation result(runtime);
     if (!result.allocate(sizeof(nds_device_operation_result)))
         return unexpected(ErrorCode::kRuntime, runtime->error());
     const nds_device_operation_result pending{NDS_DEVICE_OPERATION_INVALID_ARGUMENT, NDS_DEVICE_OPERATION_PATH_NONE, 0,
@@ -85,7 +91,7 @@ Result<void> submit_device_storage(Runtime *runtime, Transport *transport, const
         if (!launcher.load(&runtime->acl_api(), transport->execution().aiv_kernel)) {
             launch_error = launcher.error();
         } else {
-            DeviceAllocation device_request(runtime->memory());
+            DeviceAllocation device_request(runtime);
             if (!device_request.allocate(sizeof(request)) ||
                 !(runtime->copy_host_to_device(device_request.get(), &request, sizeof(request))) ||
                 !launcher.launch_storage_and_wait(reinterpret_cast<std::uint64_t>(device_request.get()), operation,
@@ -108,15 +114,18 @@ Result<void> submit_device_storage(Runtime *runtime, Transport *transport, const
 }  // namespace
 
 Result<void> StorageClient::open(Runtime *runtime, Transport *transport) {
-    if (opened_ || runtime == nullptr || transport == nullptr || runtime->memory() == nullptr)
+    if (opened_ || runtime == nullptr || transport == nullptr || !runtime->initialized())
         return unexpected(ErrorCode::kInvalidArgument, "storage client requires one open runtime and transport");
     runtime_ = runtime;
     transport_ = transport;
-    Memory *memory = runtime_->memory();
-    if (const auto result = memory->allocate(sizeof(nds_protocol_command_wire), &command_buffer_); !result)
-        return unexpected(result.error());
-    if (const auto result = memory->allocate(sizeof(nds_protocol_completion_wire), &completion_buffer_); !result)
-        return unexpected(result.error());
+    auto command_buffer = runtime_->allocate(sizeof(nds_protocol_command_wire));
+    if (!command_buffer)
+        return unexpected(command_buffer.error());
+    command_buffer_ = std::move(*command_buffer);
+    auto completion_buffer = runtime_->allocate(sizeof(nds_protocol_completion_wire));
+    if (!completion_buffer)
+        return unexpected(completion_buffer.error());
+    completion_buffer_ = std::move(*completion_buffer);
     auto command_region = transport_->endpoint()->reg_mr(command_buffer_, MemoryAccess::DirectNpu);
     if (!command_region)
         return unexpected(command_region.error());

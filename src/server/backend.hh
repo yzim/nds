@@ -23,6 +23,8 @@ public:
     ~RegisteredRegion();
     RegisteredRegion(const RegisteredRegion &) = delete;
     RegisteredRegion &operator=(const RegisteredRegion &) = delete;
+    RegisteredRegion(RegisteredRegion &&other) noexcept;
+    RegisteredRegion &operator=(RegisteredRegion &&other) noexcept;
 
     void *address() const noexcept;
     std::size_t length() const noexcept;

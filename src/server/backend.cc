@@ -68,6 +68,15 @@ RegisteredRegion::~RegisteredRegion() {
     if (mr_ != nullptr)
         (void)ibv_dereg_mr(mr_);
 }
+RegisteredRegion::RegisteredRegion(RegisteredRegion &&other) noexcept : mr_(std::exchange(other.mr_, nullptr)) {}
+RegisteredRegion &RegisteredRegion::operator=(RegisteredRegion &&other) noexcept {
+    if (this != &other) {
+        if (mr_ != nullptr)
+            (void)ibv_dereg_mr(mr_);
+        mr_ = std::exchange(other.mr_, nullptr);
+    }
+    return *this;
+}
 void *RegisteredRegion::address() const noexcept {
     return mr_ == nullptr ? nullptr : mr_->addr;
 }

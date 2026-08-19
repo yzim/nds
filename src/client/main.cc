@@ -119,13 +119,14 @@ int main(int argc, char **argv) {
     for (std::size_t index = 0; index < payload.size(); ++index) {
         payload[index] = static_cast<unsigned char>(index ^ 0x5aU);
     }
-    nds::client::MemoryBuffer data;
-    if (const auto result = runtime.memory()->allocate(payload.size(), &data); !result) {
-        NDS_LOG_ERROR("npu-client", "client application buffer allocation failed: {}", result.error().message);
+    auto allocated = runtime.allocate(payload.size());
+    if (!allocated) {
+        NDS_LOG_ERROR("npu-client", "client application buffer allocation failed: {}", allocated.error().message);
         return EXIT_FAILURE;
     }
+    nds::client::MemoryBuffer data = std::move(*allocated);
     if (config.operation == "write") {
-        if (const auto copied = runtime.memory()->copy_to(&data, payload.data(), payload.size()); !copied) {
+        if (const auto copied = runtime.copy_to(&data, payload.data(), payload.size()); !copied) {
             NDS_LOG_ERROR("npu-client", "client application buffer copy failed: {}", copied.error().message);
             return EXIT_FAILURE;
         }
@@ -139,7 +140,7 @@ int main(int argc, char **argv) {
     }
     if (config.operation == "read") {
         std::vector<unsigned char> result(payload.size());
-        if (const auto copied = runtime.memory()->copy_from(result.data(), data, result.size()); !copied) {
+        if (const auto copied = runtime.copy_from(result.data(), data, result.size()); !copied) {
             NDS_LOG_ERROR("npu-client", "client Read copy failed: {}", copied.error().message);
             return EXIT_FAILURE;
         }

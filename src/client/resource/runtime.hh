@@ -33,7 +33,7 @@ public:
     MemoryLocation location() const noexcept;
 
 private:
-    friend class Memory;
+    friend class Runtime;
     friend struct EndpointTestAccess;
     void reset() noexcept;
 
@@ -43,26 +43,6 @@ private:
     MemoryLocation location_{MemoryLocation::Device};
 };
 
-/* Allocates and copies generic host or device buffers through one live runtime. */
-class Memory {
-public:
-    Memory() = default;
-    ~Memory() = default;
-    Memory(const Memory &) = delete;
-    Memory &operator=(const Memory &) = delete;
-
-    Result<void> allocate(std::size_t size, MemoryBuffer *buffer);
-    Result<void> allocate(std::size_t size, MemoryLocation location, MemoryBuffer *buffer);
-    Result<void> copy_to(MemoryBuffer *buffer, const void *source, std::size_t size);
-    Result<void> copy_from(void *destination, const MemoryBuffer &buffer, std::size_t size);
-
-private:
-    friend class Runtime;
-    void attach(Runtime *runtime) noexcept;
-
-    Runtime *runtime_{};
-};
-
 struct RuntimeConfig {
     std::string ascendcl_library;
     std::string runtime_library;
@@ -70,7 +50,7 @@ struct RuntimeConfig {
     std::int32_t hdc_type{NDS_RUNTIME_HDC_SERVICE_TYPE_RDMA_V2};
 };
 
-/* Owns process-local AscendCL/CANN lifecycle and its memory service. */
+/* Owns process-local AscendCL/CANN lifecycle and device/host memory operations. */
 class Runtime {
 public:
     Runtime() = default;
@@ -80,11 +60,15 @@ public:
 
     Result<void> open(const RuntimeConfig &config);
 
-    Memory *memory() noexcept;
     const RuntimeConfig &config() const noexcept;
     bool initialized() const noexcept;
 
-    Result<void> allocate_device_memory(std::size_t size, void **device_ptr);
+    Result<MemoryBuffer> allocate(std::size_t size);
+    Result<MemoryBuffer> allocate(std::size_t size, MemoryLocation location);
+    Result<void> copy_to(MemoryBuffer *buffer, const void *source, std::size_t size);
+    Result<void> copy_from(void *destination, const MemoryBuffer &buffer, std::size_t size);
+
+    Result<void *> allocate_device_memory(std::size_t size);
     Result<void> free_device_memory(void *device_ptr);
     Result<void> copy_host_to_device(void *device_ptr, const void *host_ptr, std::size_t size);
     Result<void> copy_device_to_host(void *host_ptr, const void *device_ptr, std::size_t size);
@@ -104,7 +88,6 @@ private:
     bool net_service_open_{false};
     bool initialized_{false};
     std::string error_;
-    Memory memory_;
 };
 
 }  // namespace nds::client

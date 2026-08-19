@@ -251,44 +251,46 @@ Result<void> QueuePair::connect(const nds_qp_info &peer) {
     return {};
 }
 
-Result<void> QueuePair::query_port_status(int *status) {
-    if (!created() || status == nullptr || endpoint_->api_.ra_rdev_get_port_status == nullptr)
-        return unexpected(ErrorCode::kInvalidArgument, "port-status query requires a created QP and output");
-    const int result = endpoint_->api_.ra_rdev_get_port_status(endpoint_->rdev_handle_, status);
-    if (result != 0 || *status < NDS_RA_PORT_STATUS_DOWN || *status > NDS_RA_PORT_STATUS_ACTIVE)
+Result<int> QueuePair::query_port_status() {
+    if (!created() || endpoint_->api_.ra_rdev_get_port_status == nullptr)
+        return unexpected(ErrorCode::kInvalidArgument, "port-status query requires a created QP");
+    int status{};
+    const int result = endpoint_->api_.ra_rdev_get_port_status(endpoint_->rdev_handle_, &status);
+    if (result != 0 || status < NDS_RA_PORT_STATUS_DOWN || status > NDS_RA_PORT_STATUS_ACTIVE)
         return unexpected(ErrorCode::kRa, "RaRdevGetPortStatus failed or returned invalid status");
-    return {};
+    return status;
 }
 
-Result<void> QueuePair::query_support_lite(int *support_lite) {
-    if (!created() || support_lite == nullptr || endpoint_->api_.ra_rdev_get_support_lite == nullptr)
-        return unexpected(ErrorCode::kInvalidArgument, "RDMA-lite query requires a created QP and output");
-    const int result = endpoint_->api_.ra_rdev_get_support_lite(endpoint_->rdev_handle_, support_lite);
-    if (result != 0 || *support_lite < NDS_RA_LITE_NOT_SUPPORTED || *support_lite > NDS_RA_LITE_ALIGN_2M)
+Result<int> QueuePair::query_support_lite() {
+    if (!created() || endpoint_->api_.ra_rdev_get_support_lite == nullptr)
+        return unexpected(ErrorCode::kInvalidArgument, "RDMA-lite query requires a created QP");
+    int support_lite{};
+    const int result = endpoint_->api_.ra_rdev_get_support_lite(endpoint_->rdev_handle_, &support_lite);
+    if (result != 0 || support_lite < NDS_RA_LITE_NOT_SUPPORTED || support_lite > NDS_RA_LITE_ALIGN_2M)
         return unexpected(ErrorCode::kRa, "RaRdevGetSupportLite failed or returned invalid status");
-    return {};
+    return support_lite;
 }
 
-Result<void> QueuePair::query_status(int *status) {
-    if (!created() || status == nullptr || endpoint_->api_.ra_get_qp_status == nullptr)
-        return unexpected(ErrorCode::kInvalidArgument, "QP-status query requires a created QP and output");
-    const int result = endpoint_->api_.ra_get_qp_status(handle_, status);
-    if (result != 0 || *status < NDS_RA_QP_STATUS_NOT_CONNECTED || *status > NDS_RA_QP_STATUS_CONNECTING)
+Result<int> QueuePair::query_status() {
+    if (!created() || endpoint_->api_.ra_get_qp_status == nullptr)
+        return unexpected(ErrorCode::kInvalidArgument, "QP-status query requires a created QP");
+    int status{};
+    const int result = endpoint_->api_.ra_get_qp_status(handle_, &status);
+    if (result != 0 || status < NDS_RA_QP_STATUS_NOT_CONNECTED || status > NDS_RA_QP_STATUS_CONNECTING)
         return unexpected(ErrorCode::kRa, "RaGetQpStatus failed or returned invalid status");
-    return {};
+    return status;
 }
 
-Result<void> QueuePair::query_cqe_errors(nds_ra_cqe_error *errors, std::uint32_t *count) {
-    if (!created() || errors == nullptr || count == nullptr || *count == 0U ||
-        endpoint_->api_.ra_rdev_get_cqe_error_list == nullptr) {
-        return unexpected(ErrorCode::kInvalidArgument, "CQE-error query requires a created QP and output capacity");
-    }
-    unsigned int requested = *count;
-    const int result = endpoint_->api_.ra_rdev_get_cqe_error_list(endpoint_->rdev_handle_, errors, &requested);
-    if (result != 0 || requested > *count)
-        return unexpected(ErrorCode::kRa, "RaRdevGetCqeErrInfoList failed or exceeded output capacity");
-    *count = requested;
-    return {};
+Result<std::vector<nds_ra_cqe_error>> QueuePair::query_cqe_errors() {
+    if (!created() || endpoint_->api_.ra_rdev_get_cqe_error_list == nullptr)
+        return unexpected(ErrorCode::kInvalidArgument, "CQE-error query requires a created QP");
+    std::vector<nds_ra_cqe_error> errors(NDS_RA_ERROR_CAPACITY);
+    unsigned int count = static_cast<unsigned int>(errors.size());
+    const int result = endpoint_->api_.ra_rdev_get_cqe_error_list(endpoint_->rdev_handle_, errors.data(), &count);
+    if (result != 0 || count > errors.size())
+        return unexpected(ErrorCode::kRa, "RaRdevGetCqeErrInfoList failed or exceeded error capacity");
+    errors.resize(count);
+    return errors;
 }
 
 Result<void> QueuePair::set_device_wr_id_storage(std::uint64_t send_address, std::uint64_t receive_address) {

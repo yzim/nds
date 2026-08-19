@@ -8,6 +8,7 @@
 #include <poll.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <utility>
 
 static enum nds_qp_info_result nds_qp_info_validate(const nds_qp_info *info) {
     if (info == nullptr) {
@@ -114,6 +115,17 @@ TcpPeerExchange::~TcpPeerExchange() {
     }
 }
 
+TcpPeerExchange::TcpPeerExchange(TcpPeerExchange &&other) noexcept : fd_(std::exchange(other.fd_, -1)) {}
+
+TcpPeerExchange &TcpPeerExchange::operator=(TcpPeerExchange &&other) noexcept {
+    if (this != &other) {
+        if (fd_ >= 0)
+            (void)close(fd_);
+        fd_ = std::exchange(other.fd_, -1);
+    }
+    return *this;
+}
+
 Result<void> TcpPeerExchange::send_bytes(const void *buffer, std::size_t length) const {
     if (fd_ < 0 || buffer == nullptr)
         return unexpected(ErrorCode::kInvalidArgument, "TCP bootstrap socket and buffer are required");
@@ -206,19 +218,13 @@ Result<nds_qp_info> TcpPeerExchange::exchange_as_server(const nds_qp_info &local
     return exchange(fd_, local, false);
 }
 
-Result<void> TcpPeerExchange::connect(const std::string &ipv4, std::uint16_t port, std::uint32_t timeout_ms,
-                                      TcpPeerExchange *connection) {
+Result<TcpPeerExchange> TcpPeerExchange::connect(const std::string &ipv4, std::uint16_t port,
+                                                  std::uint32_t timeout_ms) {
     sockaddr_in address{};
     int socket_fd;
     int flags;
     int connect_result;
 
-    if (connection == nullptr) {
-        return unexpected(ErrorCode::kInvalidArgument, "TCP bootstrap requires an output connection");
-    }
-    if (connection->fd_ >= 0) {
-        return unexpected(ErrorCode::kInvalidArgument, "output TCP bootstrap object already owns a socket");
-    }
     address.sin_family = AF_INET;
     address.sin_port = htons(port);
     if (inet_pton(AF_INET, ipv4.c_str(), &address.sin_addr) != 1) {
@@ -261,8 +267,7 @@ Result<void> TcpPeerExchange::connect(const std::string &ipv4, std::uint16_t por
         (void)close(socket_fd);
         return unexpected(ErrorCode::kTransport, system_error("fcntl"));
     }
-    connection->fd_ = socket_fd;
-    return {};
+    return TcpPeerExchange(socket_fd);
 }
 
 }  // namespace nds

@@ -19,7 +19,6 @@ Result<void> Runtime::open(const RuntimeConfig &config) {
         return unexpected(ErrorCode::kInvalidArgument, "NPU runtime is already open");
     if (!initialize(config))
         return unexpected(ErrorCode::kRuntime, error_);
-    memory_.attach(this);
     return {};
 }
 
@@ -83,10 +82,6 @@ void Runtime::reset() noexcept {
     initialized_ = false;
 }
 
-Memory *Runtime::memory() noexcept {
-    return &memory_;
-}
-
 const RuntimeConfig &Runtime::config() const noexcept {
     return config_;
 }
@@ -95,19 +90,19 @@ bool Runtime::initialized() const noexcept {
     return initialized_;
 }
 
-Result<void> Runtime::allocate_device_memory(std::size_t size, void **device_ptr) {
-    if (!initialized_ || device_ptr == nullptr || size == 0U) {
-        set_error("device allocation requires an initialized runtime, nonzero size, and output pointer");
+Result<void *> Runtime::allocate_device_memory(std::size_t size) {
+    if (!initialized_ || size == 0U) {
+        set_error("device allocation requires an initialized runtime and nonzero size");
         return unexpected(ErrorCode::kInvalidArgument, error_);
     }
-    *device_ptr = nullptr;
-    const int result = acl_.malloc_device(device_ptr, size, NDS_ACL_MEM_MALLOC_DIRECT_NPU);
-    if (result != 0 || *device_ptr == nullptr) {
+    void *device_ptr = nullptr;
+    const int result = acl_.malloc_device(&device_ptr, size, NDS_ACL_MEM_MALLOC_DIRECT_NPU);
+    if (result != 0 || device_ptr == nullptr) {
         set_error("aclrtMalloc failed: " + std::to_string(result));
         return unexpected(ErrorCode::kRuntime, error_);
     }
     error_.clear();
-    return {};
+    return device_ptr;
 }
 
 Result<void> Runtime::free_device_memory(void *device_ptr) {
@@ -208,53 +203,52 @@ MemoryLocation MemoryBuffer::location() const noexcept {
     return location_;
 }
 
-Result<void> Memory::allocate(std::size_t size, MemoryBuffer *buffer) {
-    return allocate(size, MemoryLocation::Device, buffer);
+Result<MemoryBuffer> Runtime::allocate(std::size_t size) {
+    return allocate(size, MemoryLocation::Device);
 }
 
-Result<void> Memory::allocate(std::size_t size, MemoryLocation location, MemoryBuffer *buffer) {
-    if (runtime_ == nullptr || !runtime_->initialized() || buffer == nullptr || buffer->data_ != nullptr || size == 0U)
-        return unexpected(ErrorCode::kInvalidArgument, "memory allocation requires an open runtime and empty buffer");
+Result<MemoryBuffer> Runtime::allocate(std::size_t size, MemoryLocation location) {
+    if (!initialized_ || size == 0U)
+        return unexpected(ErrorCode::kInvalidArgument, "memory allocation requires an open runtime and nonzero size");
+    MemoryBuffer buffer;
     if (location == MemoryLocation::Device) {
-        if (const auto allocated = runtime_->allocate_device_memory(size, &buffer->data_); !allocated)
+        auto allocated = allocate_device_memory(size);
+        if (!allocated)
             return unexpected(allocated.error());
-        buffer->runtime_ = runtime_;
+        buffer.data_ = *allocated;
+        buffer.runtime_ = this;
     } else {
-        buffer->data_ = new (std::nothrow) std::byte[size];
-        if (buffer->data_ == nullptr)
+        buffer.data_ = new (std::nothrow) std::byte[size];
+        if (buffer.data_ == nullptr)
             return unexpected(ErrorCode::kRuntime, "host memory allocation failed");
     }
-    buffer->size_ = size;
-    buffer->location_ = location;
-    return {};
+    buffer.size_ = size;
+    buffer.location_ = location;
+    return buffer;
 }
 
-Result<void> Memory::copy_to(MemoryBuffer *buffer, const void *source, std::size_t size) {
-    if (runtime_ == nullptr || buffer == nullptr || buffer->data_ == nullptr || source == nullptr ||
-        size > buffer->size_ || (buffer->location_ == MemoryLocation::Device && buffer->runtime_ != runtime_)) {
+Result<void> Runtime::copy_to(MemoryBuffer *buffer, const void *source, std::size_t size) {
+    if (!initialized_ || buffer == nullptr || buffer->data_ == nullptr || source == nullptr || size > buffer->size_ ||
+        (buffer->location_ == MemoryLocation::Device && buffer->runtime_ != this)) {
         return unexpected(ErrorCode::kInvalidArgument, "memory copy requires a runtime buffer and valid source");
     }
     if (buffer->location_ == MemoryLocation::Host) {
         std::memcpy(buffer->data_, source, size);
         return {};
     }
-    return runtime_->copy_host_to_device(buffer->data_, source, size);
+    return copy_host_to_device(buffer->data_, source, size);
 }
 
-Result<void> Memory::copy_from(void *destination, const MemoryBuffer &buffer, std::size_t size) {
-    if (runtime_ == nullptr || destination == nullptr || buffer.data_ == nullptr || size > buffer.size_ ||
-        (buffer.location_ == MemoryLocation::Device && buffer.runtime_ != runtime_)) {
+Result<void> Runtime::copy_from(void *destination, const MemoryBuffer &buffer, std::size_t size) {
+    if (!initialized_ || destination == nullptr || buffer.data_ == nullptr || size > buffer.size_ ||
+        (buffer.location_ == MemoryLocation::Device && buffer.runtime_ != this)) {
         return unexpected(ErrorCode::kInvalidArgument, "memory copy requires a runtime buffer and valid destination");
     }
     if (buffer.location_ == MemoryLocation::Host) {
         std::memcpy(destination, buffer.data_, size);
         return {};
     }
-    return runtime_->copy_device_to_host(destination, buffer.data_, size);
-}
-
-void Memory::attach(Runtime *runtime) noexcept {
-    runtime_ = runtime;
+    return copy_device_to_host(destination, buffer.data_, size);
 }
 
 }  // namespace nds::client

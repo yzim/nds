@@ -7,6 +7,7 @@
 #include <cstring>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <utility>
 
 namespace nds::server {
 
@@ -50,10 +51,11 @@ Result<void> Connection::open(const ConnectionConfig &config) {
     return {};
 }
 
-Result<void> Connection::prepare_receive(void *buffer, std::size_t length, RegisteredRegion *region) {
-    if (!backend_.register_memory(buffer, length, IBV_ACCESS_LOCAL_WRITE, region) || !backend_.post_receive(*region))
+Result<RegisteredRegion> Connection::prepare_receive(void *buffer, std::size_t length) {
+    RegisteredRegion region;
+    if (!backend_.register_memory(buffer, length, IBV_ACCESS_LOCAL_WRITE, &region) || !backend_.post_receive(region))
         return unexpected(ErrorCode::kVerbs, backend_.error());
-    return {};
+    return region;
 }
 
 Result<void> Connection::activate() {
@@ -69,8 +71,7 @@ Result<void> Connection::send(const RegisteredRegion &local, std::uint32_t lengt
         return unexpected(ErrorCode::kVerbs, backend_.error());
     return {};
 }
-Result<void> Connection::register_memory(void *buffer, std::size_t length, MemoryAccess access,
-                                         RegisteredRegion *region) {
+Result<RegisteredRegion> Connection::register_memory(void *buffer, std::size_t length, MemoryAccess access) {
     int backend_access = 0;
     if (access == MemoryAccess::LocalWrite)
         backend_access = IBV_ACCESS_LOCAL_WRITE;
@@ -78,9 +79,10 @@ Result<void> Connection::register_memory(void *buffer, std::size_t length, Memor
         backend_access = IBV_ACCESS_REMOTE_READ;
     else if (access == MemoryAccess::RemoteWrite)
         backend_access = IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE;
-    if (!backend_.register_memory(buffer, length, backend_access, region))
+    RegisteredRegion region;
+    if (!backend_.register_memory(buffer, length, backend_access, &region))
         return unexpected(ErrorCode::kVerbs, backend_.error());
-    return {};
+    return region;
 }
 Result<void> Connection::read(const RegisteredRegion &local, std::uint64_t address, std::uint32_t key,
                               std::uint32_t length) {

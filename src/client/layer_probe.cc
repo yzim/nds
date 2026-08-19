@@ -22,27 +22,26 @@ struct Config {
     std::string layer;
 };
 
-nds::Result<void> parse(int argc, char **argv, Config *config) {
-    if (config == nullptr)
-        return nds::unexpected(nds::ErrorCode::kInvalidArgument, "layer probe configuration is required");
+nds::Result<Config> parse(int argc, char **argv) {
+    Config config;
     CLI::App app{"Exercise one NDS verbs or transport Send against the CPU probe receiver."};
-    app.add_option("--layer", config->layer, "Layer to exercise")
+    app.add_option("--layer", config.layer, "Layer to exercise")
         ->required()
         ->check(CLI::IsMember({"verbs", "transport"}));
     std::string execution{"ra"};
     app.add_option("--backend", execution, "Execution backend")
         ->required()
         ->check(CLI::IsMember({"ra", "aiv", "aicpu"}));
-    app.add_option("--ascendcl", config->runtime.ascendcl_library)->required();
-    app.add_option("--runtime", config->runtime.runtime_library)->required();
-    app.add_option("--ra", config->transport.endpoint.ra_library)->required();
-    app.add_option("--aiv-kernel", config->execution.aiv_kernel);
-    app.add_option("--aicpu-kernel-config", config->execution.aicpu_kernel_config);
-    app.add_option("--npu-ip", config->transport.endpoint.local_ipv4)->required();
-    app.add_option("--logical-device", config->runtime.logical_device_id)->required();
-    app.add_option("--physical-device", config->transport.endpoint.physical_device_id)->required();
-    app.add_option("--cpu-ip", config->transport.cpu_ipv4)->required();
-    app.add_option("--tcp-port", config->transport.tcp_port)->required();
+    app.add_option("--ascendcl", config.runtime.ascendcl_library)->required();
+    app.add_option("--runtime", config.runtime.runtime_library)->required();
+    app.add_option("--ra", config.transport.endpoint.ra_library)->required();
+    app.add_option("--aiv-kernel", config.execution.aiv_kernel);
+    app.add_option("--aicpu-kernel-config", config.execution.aicpu_kernel_config);
+    app.add_option("--npu-ip", config.transport.endpoint.local_ipv4)->required();
+    app.add_option("--logical-device", config.runtime.logical_device_id)->required();
+    app.add_option("--physical-device", config.transport.endpoint.physical_device_id)->required();
+    app.add_option("--cpu-ip", config.transport.cpu_ipv4)->required();
+    app.add_option("--tcp-port", config.transport.tcp_port)->required();
     try {
         app.parse(argc, argv);
     } catch (const CLI::ParseError &error) {
@@ -50,24 +49,23 @@ nds::Result<void> parse(int argc, char **argv, Config *config) {
                                app.exit(error) == 0 ? "help requested" : "invalid options");
     }
     if (execution == "aiv")
-        config->execution.mode = nds::client::NpuExecutionMode::Aiv;
+        config.execution.mode = nds::client::NpuExecutionMode::Aiv;
     if (execution == "aicpu")
-        config->execution.mode = nds::client::NpuExecutionMode::Aicpu;
-    if ((config->execution.mode == nds::client::NpuExecutionMode::Aiv && config->execution.aiv_kernel.empty()) ||
-        (config->execution.mode == nds::client::NpuExecutionMode::Aicpu &&
-         config->execution.aicpu_kernel_config.empty())) {
+        config.execution.mode = nds::client::NpuExecutionMode::Aicpu;
+    if ((config.execution.mode == nds::client::NpuExecutionMode::Aiv && config.execution.aiv_kernel.empty()) ||
+        (config.execution.mode == nds::client::NpuExecutionMode::Aicpu && config.execution.aicpu_kernel_config.empty())) {
         return nds::unexpected(nds::ErrorCode::kInvalidArgument, "device backend requires its kernel artifact");
     }
-    return {};
+    return config;
 }
 
 nds::Result<void> post_verbs(nds::client::Runtime *runtime, nds::client::Transport *transport,
                              const std::array<unsigned char, 64U> &payload) {
-    nds::client::MemoryBuffer buffer;
-    auto *memory = runtime->memory();
-    if (const auto allocated = memory->allocate(payload.size(), &buffer); !allocated)
+    auto allocated = runtime->allocate(payload.size());
+    if (!allocated)
         return nds::unexpected(allocated.error());
-    if (const auto copied = memory->copy_to(&buffer, payload.data(), payload.size()); !copied)
+    nds::client::MemoryBuffer buffer = std::move(*allocated);
+    if (const auto copied = runtime->copy_to(&buffer, payload.data(), payload.size()); !copied)
         return nds::unexpected(copied.error());
     auto registered = transport->endpoint()->reg_mr(buffer, nds::client::MemoryAccess::DirectNpu);
     if (!registered)
@@ -95,12 +93,13 @@ nds::Result<void> post_verbs(nds::client::Runtime *runtime, nds::client::Transpo
             return nds::unexpected(nds::ErrorCode::kRuntime, "rtRDMADBSend failed: " + std::to_string(result));
         return {};
     }
-    nds::client::MemoryBuffer result_buffer;
-    if (const auto allocated = memory->allocate(sizeof(nds_device_operation_result), &result_buffer); !allocated)
-        return nds::unexpected(allocated.error());
+    auto allocated_result = runtime->allocate(sizeof(nds_device_operation_result));
+    if (!allocated_result)
+        return nds::unexpected(allocated_result.error());
+    nds::client::MemoryBuffer result_buffer = std::move(*allocated_result);
     const nds_device_operation_result pending{NDS_DEVICE_OPERATION_INVALID_ARGUMENT, NDS_DEVICE_OPERATION_PATH_NONE, 0,
                                               0U};
-    if (const auto copied = memory->copy_to(&result_buffer, &pending, sizeof(pending)); !copied)
+    if (const auto copied = runtime->copy_to(&result_buffer, &pending, sizeof(pending)); !copied)
         return nds::unexpected(copied.error());
     nds_device_post_send_request request{};
     const auto device_transport = transport->qp()->make_device_transport();
@@ -117,19 +116,24 @@ nds::Result<void> post_verbs(nds::client::Runtime *runtime, nds::client::Transpo
             error = launcher.error();
     } else {
         nds::AivEntrypointLauncher launcher;
-        nds::client::MemoryBuffer request_buffer;
         request.abi_version = NDS_DEVICE_OPERATOR_ARGS_ABI_VERSION;
         request.size = sizeof(request);
-        if (!launcher.load(&runtime->acl_api(), transport->execution().aiv_kernel) ||
-            !(memory->allocate(sizeof(request), &request_buffer)) ||
-            !(memory->copy_to(&request_buffer, &request, sizeof(request))) ||
-            !launcher.launch_post_send_and_wait(reinterpret_cast<std::uint64_t>(request_buffer.data()), 5000))
+        if (!launcher.load(&runtime->acl_api(), transport->execution().aiv_kernel)) {
             error = launcher.error();
+        } else {
+            auto request_buffer = runtime->allocate(sizeof(request));
+            if (!request_buffer)
+                return nds::unexpected(request_buffer.error());
+            if (const auto copied = runtime->copy_to(&*request_buffer, &request, sizeof(request)); !copied)
+                return nds::unexpected(copied.error());
+            if (!launcher.launch_post_send_and_wait(reinterpret_cast<std::uint64_t>(request_buffer->data()), 5000))
+                error = launcher.error();
+        }
     }
     if (!error.empty())
         return nds::unexpected(nds::ErrorCode::kRuntime, error);
     nds_device_operation_result completed{};
-    if (const auto copied = memory->copy_from(&completed, result_buffer, sizeof(completed)); !copied)
+    if (const auto copied = runtime->copy_from(&completed, result_buffer, sizeof(completed)); !copied)
         return nds::unexpected(copied.error());
     return completed.status == NDS_DEVICE_OPERATION_SUCCESS
                ? nds::Result<void>{}
@@ -138,11 +142,11 @@ nds::Result<void> post_verbs(nds::client::Runtime *runtime, nds::client::Transpo
 
 nds::Result<void> send_transport(nds::client::Runtime *runtime, nds::client::Transport *transport,
                                  const std::array<unsigned char, 64U> &payload) {
-    auto *memory = runtime->memory();
-    nds::client::MemoryBuffer buffer;
-    if (const auto allocated = memory->allocate(payload.size(), &buffer); !allocated)
+    auto allocated = runtime->allocate(payload.size());
+    if (!allocated)
         return nds::unexpected(allocated.error());
-    if (const auto copied = memory->copy_to(&buffer, payload.data(), payload.size()); !copied)
+    nds::client::MemoryBuffer buffer = std::move(*allocated);
+    if (const auto copied = runtime->copy_to(&buffer, payload.data(), payload.size()); !copied)
         return nds::unexpected(copied.error());
     auto registered = transport->endpoint()->reg_mr(buffer, nds::client::MemoryAccess::DirectNpu);
     if (!registered)
@@ -156,12 +160,13 @@ nds::Result<void> send_transport(nds::client::Runtime *runtime, nds::client::Tra
     const auto device_transport = transport->qp()->make_device_transport();
     if (!device_transport)
         return nds::unexpected(device_transport.error());
-    nds::client::MemoryBuffer result_buffer;
-    if (const auto allocated = memory->allocate(sizeof(nds_device_operation_result), &result_buffer); !allocated)
-        return nds::unexpected(allocated.error());
+    auto allocated_result = runtime->allocate(sizeof(nds_device_operation_result));
+    if (!allocated_result)
+        return nds::unexpected(allocated_result.error());
+    nds::client::MemoryBuffer result_buffer = std::move(*allocated_result);
     const nds_device_operation_result pending{NDS_DEVICE_OPERATION_INVALID_ARGUMENT, NDS_DEVICE_OPERATION_PATH_NONE, 0,
                                               0U};
-    if (const auto copied = memory->copy_to(&result_buffer, &pending, sizeof(pending)); !copied)
+    if (const auto copied = runtime->copy_to(&result_buffer, &pending, sizeof(pending)); !copied)
         return nds::unexpected(copied.error());
 
     nds_device_operation_request request{};
@@ -182,11 +187,15 @@ nds::Result<void> send_transport(nds::client::Runtime *runtime, nds::client::Tra
             !launcher.make_device_request(request, &device_request)) {
             error = launcher.error();
         } else {
-            nds::client::MemoryBuffer request_buffer;
-            if (const auto allocated = memory->allocate(sizeof(device_request), &request_buffer);
-                !allocated || !(memory->copy_to(&request_buffer, &device_request, sizeof(device_request))) ||
-                !launcher.launch_and_wait(reinterpret_cast<std::uint64_t>(request_buffer.data()), request.operation,
-                                          5000)) {
+            auto request_buffer = runtime->allocate(sizeof(device_request));
+            if (!request_buffer)
+                return nds::unexpected(request_buffer.error());
+            if (const auto copied = runtime->copy_to(&*request_buffer, &device_request, sizeof(device_request));
+                !copied) {
+                return nds::unexpected(copied.error());
+            }
+            if (!launcher.launch_and_wait(reinterpret_cast<std::uint64_t>(request_buffer->data()), request.operation,
+                                         5000)) {
                 error = launcher.error().empty() ? runtime->error() : launcher.error();
             }
         }
@@ -194,7 +203,7 @@ nds::Result<void> send_transport(nds::client::Runtime *runtime, nds::client::Tra
     if (!error.empty())
         return nds::unexpected(nds::ErrorCode::kRuntime, error);
     nds_device_operation_result completed{};
-    if (const auto copied = memory->copy_from(&completed, result_buffer, sizeof(completed)); !copied)
+    if (const auto copied = runtime->copy_from(&completed, result_buffer, sizeof(completed)); !copied)
         return nds::unexpected(copied.error());
     return completed.status == NDS_DEVICE_OPERATION_SUCCESS
                ? nds::Result<void>{}
@@ -205,12 +214,12 @@ nds::Result<void> send_transport(nds::client::Runtime *runtime, nds::client::Tra
 
 int main(int argc, char **argv) {
     (void)nds::log::configure("npu-client", "stderr", "info");
-    Config config;
-    const auto parsed = parse(argc, argv, &config);
+    const auto parsed = parse(argc, argv);
     if (!parsed) {
         NDS_LOG_ERROR("npu-client", "layer probe options failed: {}", parsed.error().message);
         return EXIT_FAILURE;
     }
+    Config config = std::move(*parsed);
     nds::client::Runtime runtime;
     nds::client::Transport transport;
     if (const auto opened = runtime.open(config.runtime); !opened) {

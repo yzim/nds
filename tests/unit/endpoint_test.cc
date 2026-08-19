@@ -41,6 +41,7 @@ struct FakeRa {
     int port_status{NDS_RA_PORT_STATUS_ACTIVE};
     int qp_status{NDS_RA_QP_STATUS_CONNECTED};
     int lite_support{NDS_RA_LITE_ALIGN_4K};
+    std::uint32_t cqe_error_count{};
     nds_ra_qp_ext_attrs ai_attributes{};
     nds_ra_typical_qp local{};
     nds_ra_typical_qp remote{};
@@ -130,8 +131,14 @@ int fake_lite_support(void *, int *support) {
     return 0;
 }
 
-int fake_cqe_errors(void *, nds_ra_cqe_error *, unsigned int *count) {
-    *count = 0U;
+int fake_cqe_errors(void *, nds_ra_cqe_error *errors, unsigned int *count) {
+    if (*count < fake_state->cqe_error_count)
+        return -1;
+    for (std::uint32_t index = 0U; index < fake_state->cqe_error_count; ++index) {
+        errors[index].status = index + 1U;
+        errors[index].qp_number = 0x1000U + index;
+    }
+    *count = fake_state->cqe_error_count;
     return 0;
 }
 
@@ -228,13 +235,20 @@ TEST(EndpointTest, CreatesAdvertisesAndConnectsQueuePair) {
     EXPECT_TRUE(qp.connect(peer_info()));
     EXPECT_TRUE(qp.connected());
     EXPECT_EQ(fake.modify_calls, 1);
-    int status = -1;
-    EXPECT_TRUE(qp.query_port_status(&status));
-    EXPECT_EQ(status, NDS_RA_PORT_STATUS_ACTIVE);
-    EXPECT_TRUE(qp.query_status(&status));
-    EXPECT_EQ(status, NDS_RA_QP_STATUS_CONNECTED);
-    EXPECT_TRUE(qp.query_support_lite(&status));
-    EXPECT_EQ(status, NDS_RA_LITE_ALIGN_4K);
+    const auto port_status = qp.query_port_status();
+    ASSERT_TRUE(port_status);
+    EXPECT_EQ(*port_status, NDS_RA_PORT_STATUS_ACTIVE);
+    const auto qp_status = qp.query_status();
+    ASSERT_TRUE(qp_status);
+    EXPECT_EQ(*qp_status, NDS_RA_QP_STATUS_CONNECTED);
+    const auto lite_support = qp.query_support_lite();
+    ASSERT_TRUE(lite_support);
+    EXPECT_EQ(*lite_support, NDS_RA_LITE_ALIGN_4K);
+    fake.cqe_error_count = 2U;
+    const auto cqe_errors = qp.query_cqe_errors();
+    ASSERT_TRUE(cqe_errors);
+    ASSERT_EQ(cqe_errors->size(), 2U);
+    EXPECT_EQ((*cqe_errors)[1].qp_number, 0x1001U);
 }
 
 TEST(EndpointTest, ProducesAiQueuePairDeviceView) {
