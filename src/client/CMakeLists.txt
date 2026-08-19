@@ -42,13 +42,13 @@ target_compile_options(nds_ra PRIVATE -Wall -Wextra -Wpedantic -Werror)
 add_library(nds_aiv_launcher STATIC execution/aiv/host/launcher.cc)
 target_include_directories(nds_aiv_launcher PUBLIC
     execution include resource/include ${PROJECT_SOURCE_DIR}/src/include)
-target_link_libraries(nds_aiv_launcher PUBLIC nds_ra_loader)
+target_link_libraries(nds_aiv_launcher PUBLIC nds_ra_loader tl::expected)
 target_compile_options(nds_aiv_launcher PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 add_library(nds_aicpu_launcher STATIC execution/aicpu/host/launcher.cc)
 target_include_directories(nds_aicpu_launcher PUBLIC
     execution include resource/include ${PROJECT_SOURCE_DIR}/src/include)
-target_link_libraries(nds_aicpu_launcher PUBLIC nds_ra_loader)
+target_link_libraries(nds_aicpu_launcher PUBLIC nds_ra_loader tl::expected)
 target_compile_options(nds_aicpu_launcher PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 add_library(nds_client_control STATIC

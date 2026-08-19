@@ -21,14 +21,14 @@ public:
     DeviceAllocation(const DeviceAllocation &) = delete;
     DeviceAllocation &operator=(const DeviceAllocation &) = delete;
 
-    bool allocate(std::size_t size) {
+    Result<void> allocate(std::size_t size) {
         if (runtime_ == nullptr || buffer_.data() != nullptr)
-            return false;
+            return unexpected(ErrorCode::kInvalidArgument, "device allocation requires one runtime and empty storage");
         auto allocated = runtime_->allocate(size);
         if (!allocated)
-            return false;
+            return unexpected(allocated.error());
         buffer_ = std::move(*allocated);
-        return true;
+        return {};
     }
     void *get() const noexcept {
         return buffer_.data();
@@ -69,39 +69,36 @@ Result<void> submit_device_storage(Runtime *runtime, Transport *transport, const
     request.io.data_rkey = data.remote_key();
 
     DeviceAllocation result(runtime);
-    if (!result.allocate(sizeof(nds_device_operation_result)))
-        return unexpected(ErrorCode::kRuntime, runtime->error());
+    if (const auto allocated = result.allocate(sizeof(nds_device_operation_result)); !allocated)
+        return unexpected(allocated.error());
     const nds_device_operation_result pending{NDS_DEVICE_OPERATION_INVALID_ARGUMENT, NDS_DEVICE_OPERATION_PATH_NONE, 0,
                                               0U};
     if (const auto copied = runtime->copy_host_to_device(result.get(), &pending, sizeof(pending)); !copied)
         return unexpected(copied.error());
     request.operation_result_address = reinterpret_cast<std::uint64_t>(result.get());
 
-    std::string launch_error;
     if (transport->execution().mode == NpuExecutionMode::Aicpu) {
         AicpuEntrypointLauncher launcher;
-        if (!launcher.load(&runtime->acl_api(), transport->execution().aicpu_kernel_config) ||
-            !launcher.launch_storage_and_wait(&request, kCompletionTimeoutMs)) {
-            launch_error = launcher.error();
-        }
+        if (const auto loaded = launcher.load(&runtime->acl_api(), transport->execution().aicpu_kernel_config); !loaded)
+            return unexpected(loaded.error());
+        if (const auto launched = launcher.launch_storage_and_wait(&request, kCompletionTimeoutMs); !launched)
+            return unexpected(launched.error());
     } else {
         AivEntrypointLauncher launcher;
         request.abi_version = NDS_DEVICE_STORAGE_ABI_VERSION;
         request.size = sizeof(request);
-        if (!launcher.load(&runtime->acl_api(), transport->execution().aiv_kernel)) {
-            launch_error = launcher.error();
-        } else {
-            DeviceAllocation device_request(runtime);
-            if (!device_request.allocate(sizeof(request)) ||
-                !(runtime->copy_host_to_device(device_request.get(), &request, sizeof(request))) ||
-                !launcher.launch_storage_and_wait(reinterpret_cast<std::uint64_t>(device_request.get()), operation,
-                                                  kCompletionTimeoutMs)) {
-                launch_error = launcher.error().empty() ? runtime->error() : launcher.error();
-            }
-        }
+        if (const auto loaded = launcher.load(&runtime->acl_api(), transport->execution().aiv_kernel); !loaded)
+            return unexpected(loaded.error());
+        DeviceAllocation device_request(runtime);
+        if (const auto allocated = device_request.allocate(sizeof(request)); !allocated)
+            return unexpected(allocated.error());
+        if (const auto copied = runtime->copy_host_to_device(device_request.get(), &request, sizeof(request)); !copied)
+            return unexpected(copied.error());
+        if (const auto launched = launcher.launch_storage_and_wait(
+                reinterpret_cast<std::uint64_t>(device_request.get()), operation, kCompletionTimeoutMs);
+            !launched)
+            return unexpected(launched.error());
     }
-    if (!launch_error.empty())
-        return unexpected(ErrorCode::kRuntime, launch_error);
 
     nds_device_operation_result completed{};
     if (const auto copied = runtime->copy_device_to_host(&completed, result.get(), sizeof(completed)); !copied)

@@ -12,8 +12,8 @@
 namespace nds::server {
 
 Result<void> Connection::open(const ConnectionConfig &config) {
-    if (!backend_.open(config.backend))
-        return unexpected(ErrorCode::kVerbs, backend_.error());
+    if (const auto opened = backend_.open(config.backend); !opened)
+        return unexpected(opened.error());
     if (nds_qp_info_encode(&backend_.local_qp_info(), &local_wire_) != 0) {
         return unexpected(ErrorCode::kTransport, "invalid transport endpoint record");
     }
@@ -46,29 +46,31 @@ Result<void> Connection::open(const ConnectionConfig &config) {
     if (nds_qp_info_decode(&peer_wire, &peer) != 0) {
         return unexpected(ErrorCode::kTransport, "invalid transport endpoint record");
     }
-    if (!backend_.connect(peer))
-        return unexpected(ErrorCode::kVerbs, backend_.error());
+    if (const auto connected = backend_.connect(peer); !connected)
+        return unexpected(connected.error());
     return {};
 }
 
 Result<RegisteredRegion> Connection::prepare_receive(void *buffer, std::size_t length) {
-    RegisteredRegion region;
-    if (!backend_.register_memory(buffer, length, IBV_ACCESS_LOCAL_WRITE, &region) || !backend_.post_receive(region))
-        return unexpected(ErrorCode::kVerbs, backend_.error());
-    return region;
+    auto registered = backend_.register_memory(buffer, length, IBV_ACCESS_LOCAL_WRITE);
+    if (!registered)
+        return unexpected(registered.error());
+    if (const auto posted = backend_.post_receive(*registered); !posted)
+        return unexpected(posted.error());
+    return std::move(*registered);
 }
 
 Result<void> Connection::activate() {
     return bootstrap_.send_bytes(&local_wire_, sizeof(local_wire_));
 }
 Result<void> Connection::receive(std::uint32_t timeout_ms) {
-    if (!backend_.wait_receive(timeout_ms))
-        return unexpected(ErrorCode::kVerbs, backend_.error());
+    if (const auto received = backend_.wait_receive(timeout_ms); !received)
+        return unexpected(received.error());
     return {};
 }
 Result<void> Connection::send(const RegisteredRegion &local, std::uint32_t length) {
-    if (!backend_.send(local, length))
-        return unexpected(ErrorCode::kVerbs, backend_.error());
+    if (const auto sent = backend_.send(local, length); !sent)
+        return unexpected(sent.error());
     return {};
 }
 Result<RegisteredRegion> Connection::register_memory(void *buffer, std::size_t length, MemoryAccess access) {
@@ -79,21 +81,21 @@ Result<RegisteredRegion> Connection::register_memory(void *buffer, std::size_t l
         backend_access = IBV_ACCESS_REMOTE_READ;
     else if (access == MemoryAccess::RemoteWrite)
         backend_access = IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE;
-    RegisteredRegion region;
-    if (!backend_.register_memory(buffer, length, backend_access, &region))
-        return unexpected(ErrorCode::kVerbs, backend_.error());
-    return region;
+    auto registered = backend_.register_memory(buffer, length, backend_access);
+    if (!registered)
+        return unexpected(registered.error());
+    return std::move(*registered);
 }
 Result<void> Connection::read(const RegisteredRegion &local, std::uint64_t address, std::uint32_t key,
                               std::uint32_t length) {
-    if (!backend_.read(local, address, key, length))
-        return unexpected(ErrorCode::kVerbs, backend_.error());
+    if (const auto read = backend_.read(local, address, key, length); !read)
+        return unexpected(read.error());
     return {};
 }
 Result<void> Connection::write(const RegisteredRegion &local, std::uint64_t address, std::uint32_t key,
                                std::uint32_t length) {
-    if (!backend_.write(local, address, key, length))
-        return unexpected(ErrorCode::kVerbs, backend_.error());
+    if (const auto written = backend_.write(local, address, key, length); !written)
+        return unexpected(written.error());
     return {};
 }
 TcpPeerExchange *Connection::bootstrap() noexcept {

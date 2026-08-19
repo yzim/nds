@@ -101,7 +101,7 @@ VerbsBackend::~VerbsBackend() {
         (void)ibv_close_device(context_);
 }
 
-bool VerbsBackend::open(const BackendConfig &config) {
+Result<void> VerbsBackend::open(const BackendConfig &config) {
     int count = 0;
     ibv_device **devices = ibv_get_device_list(&count);
     ibv_device *selected = nullptr;
@@ -112,15 +112,13 @@ bool VerbsBackend::open(const BackendConfig &config) {
     if (selected == nullptr) {
         if (devices != nullptr)
             ibv_free_device_list(devices);
-        set_error("RDMA device not found: " + config.device_name);
-        return false;
+        return unexpected(ErrorCode::kVerbs, "RDMA device not found: " + config.device_name);
     }
     context_ = ibv_open_device(selected);
     ibv_free_device_list(devices);
     if (context_ == nullptr || (pd_ = ibv_alloc_pd(context_)) == nullptr ||
         (cq_ = ibv_create_cq(context_, static_cast<int>(kQpDepth * 2U), nullptr, nullptr, 0)) == nullptr) {
-        set_error(std::strerror(errno));
-        return false;
+        return unexpected(ErrorCode::kVerbs, std::strerror(errno));
     }
     ibv_qp_init_attr init{};
     init.send_cq = cq_;
@@ -135,8 +133,7 @@ bool VerbsBackend::open(const BackendConfig &config) {
     ibv_gid gid{};
     if (qp_ == nullptr || ibv_query_port(context_, config.port, &port) != 0 || port.state != IBV_PORT_ACTIVE ||
         ibv_query_gid(context_, config.port, static_cast<int>(config.gid_index), &gid) != 0) {
-        set_error("failed to create CPU verbs QP or query active port");
-        return false;
+        return unexpected(ErrorCode::kVerbs, "failed to create CPU verbs QP or query active port");
     }
     config_ = config;
     local_.qp_num = qp_->qp_num;
@@ -153,17 +150,15 @@ bool VerbsBackend::open(const BackendConfig &config) {
     attr.port_num = config.port;
     attr.qp_access_flags = IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE;
     if (ibv_modify_qp(qp_, &attr, IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_PORT | IBV_QP_ACCESS_FLAGS) != 0) {
-        set_error(std::strerror(errno));
-        return false;
+        return unexpected(ErrorCode::kVerbs, std::strerror(errno));
     }
-    return true;
+    return {};
 }
 
-bool VerbsBackend::connect(const nds_qp_info &peer) {
+Result<void> VerbsBackend::connect(const nds_qp_info &peer) {
     ibv_mtu mtu{};
     if (!mtu_value(nds_qp_mtu_select(local_.path_mtu, peer.path_mtu), &mtu)) {
-        set_error("unsupported local path MTU");
-        return false;
+        return unexpected(ErrorCode::kVerbs, "unsupported local path MTU");
     }
     ibv_qp_attr attr{};
     attr.qp_state = IBV_QPS_RTR;
@@ -182,8 +177,7 @@ bool VerbsBackend::connect(const nds_qp_info &peer) {
     if (ibv_modify_qp(qp_, &attr,
                       IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | IBV_QP_DEST_QPN | IBV_QP_RQ_PSN |
                           IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER) != 0) {
-        set_error(std::strerror(errno));
-        return false;
+        return unexpected(ErrorCode::kVerbs, std::strerror(errno));
     }
     attr = {};
     attr.qp_state = IBV_QPS_RTS;
@@ -195,26 +189,23 @@ bool VerbsBackend::connect(const nds_qp_info &peer) {
     if (ibv_modify_qp(qp_, &attr,
                       IBV_QP_STATE | IBV_QP_TIMEOUT | IBV_QP_RETRY_CNT | IBV_QP_RNR_RETRY | IBV_QP_SQ_PSN |
                           IBV_QP_MAX_QP_RD_ATOMIC) != 0) {
-        set_error(std::strerror(errno));
-        return false;
+        return unexpected(ErrorCode::kVerbs, std::strerror(errno));
     }
-    return true;
+    return {};
 }
 
-bool VerbsBackend::register_memory(void *address, std::size_t length, int access, RegisteredRegion *region) {
-    if (address == nullptr || length == 0U || region == nullptr || region->mr_ != nullptr) {
-        set_error("invalid or already registered memory region");
-        return false;
+Result<RegisteredRegion> VerbsBackend::register_memory(void *address, std::size_t length, int access) {
+    if (address == nullptr || length == 0U)
+        return unexpected(ErrorCode::kInvalidArgument, "invalid memory region");
+    RegisteredRegion region;
+    region.mr_ = ibv_reg_mr(pd_, address, length, access);
+    if (region.mr_ == nullptr) {
+        return unexpected(ErrorCode::kVerbs, std::strerror(errno));
     }
-    region->mr_ = ibv_reg_mr(pd_, address, length, access);
-    if (region->mr_ == nullptr) {
-        set_error(std::strerror(errno));
-        return false;
-    }
-    return true;
+    return region;
 }
 
-bool VerbsBackend::post_receive(const RegisteredRegion &region) {
+Result<void> VerbsBackend::post_receive(const RegisteredRegion &region) {
     ibv_sge sge{reinterpret_cast<std::uintptr_t>(region.address()), static_cast<std::uint32_t>(region.length()),
                 region.local_key()};
     ibv_recv_wr wr{};
@@ -223,36 +214,32 @@ bool VerbsBackend::post_receive(const RegisteredRegion &region) {
     wr.sg_list = &sge;
     wr.num_sge = 1;
     if (ibv_post_recv(qp_, &wr, &bad) != 0) {
-        set_error(std::strerror(errno));
-        return false;
+        return unexpected(ErrorCode::kVerbs, std::strerror(errno));
     }
-    return true;
+    return {};
 }
 
-bool VerbsBackend::poll(ibv_wc_opcode opcode, std::uint32_t timeout_ms) {
+Result<void> VerbsBackend::poll(ibv_wc_opcode opcode, std::uint32_t timeout_ms) {
     for (std::uint32_t elapsed = 0U; elapsed < timeout_ms; ++elapsed) {
         ibv_wc completion{};
         const int count = ibv_poll_cq(cq_, 1, &completion);
         if (count < 0 || (count == 1 && (completion.status != IBV_WC_SUCCESS || completion.opcode != opcode))) {
-            set_error("unexpected verbs completion");
-            return false;
+            return unexpected(ErrorCode::kVerbs, "unexpected verbs completion");
         }
         if (count == 1)
-            return true;
+            return {};
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
-    set_error("timed out waiting for verbs completion");
-    return false;
+    return unexpected(ErrorCode::kVerbs, "timed out waiting for verbs completion");
 }
 
-bool VerbsBackend::wait_receive(std::uint32_t timeout_ms) {
+Result<void> VerbsBackend::wait_receive(std::uint32_t timeout_ms) {
     return poll(IBV_WC_RECV, timeout_ms);
 }
 
-bool VerbsBackend::send(const RegisteredRegion &local, std::uint32_t length) {
+Result<void> VerbsBackend::send(const RegisteredRegion &local, std::uint32_t length) {
     if (length == 0U || length > local.length()) {
-        set_error("invalid send length");
-        return false;
+        return unexpected(ErrorCode::kInvalidArgument, "invalid send length");
     }
     ibv_sge sge{reinterpret_cast<std::uintptr_t>(local.address()), length, local.local_key()};
     ibv_send_wr wr{};
@@ -263,14 +250,13 @@ bool VerbsBackend::send(const RegisteredRegion &local, std::uint32_t length) {
     wr.opcode = IBV_WR_SEND;
     wr.send_flags = IBV_SEND_SIGNALED;
     if (ibv_post_send(qp_, &wr, &bad) != 0) {
-        set_error(std::strerror(errno));
-        return false;
+        return unexpected(ErrorCode::kVerbs, std::strerror(errno));
     }
     return poll(IBV_WC_SEND, 5000U);
 }
 
-bool VerbsBackend::transfer(ibv_wr_opcode opcode, const RegisteredRegion &local, std::uint64_t remote_address,
-                            std::uint32_t remote_key, std::uint32_t length) {
+Result<void> VerbsBackend::transfer(ibv_wr_opcode opcode, const RegisteredRegion &local, std::uint64_t remote_address,
+                                    std::uint32_t remote_key, std::uint32_t length) {
     ibv_sge sge{reinterpret_cast<std::uintptr_t>(local.address()), length, local.local_key()};
     ibv_send_wr wr{};
     ibv_send_wr *bad = nullptr;
@@ -282,32 +268,23 @@ bool VerbsBackend::transfer(ibv_wr_opcode opcode, const RegisteredRegion &local,
     wr.wr.rdma.remote_addr = remote_address;
     wr.wr.rdma.rkey = remote_key;
     if (ibv_post_send(qp_, &wr, &bad) != 0) {
-        set_error(std::strerror(errno));
-        return false;
+        return unexpected(ErrorCode::kVerbs, std::strerror(errno));
     }
     return poll(opcode == IBV_WR_RDMA_READ ? IBV_WC_RDMA_READ : IBV_WC_RDMA_WRITE, 5000U);
 }
 
-bool VerbsBackend::read(const RegisteredRegion &local, std::uint64_t remote_address, std::uint32_t remote_key,
-                        std::uint32_t length) {
+Result<void> VerbsBackend::read(const RegisteredRegion &local, std::uint64_t remote_address, std::uint32_t remote_key,
+                                std::uint32_t length) {
     return transfer(IBV_WR_RDMA_READ, local, remote_address, remote_key, length);
 }
 
-bool VerbsBackend::write(const RegisteredRegion &local, std::uint64_t remote_address, std::uint32_t remote_key,
-                         std::uint32_t length) {
+Result<void> VerbsBackend::write(const RegisteredRegion &local, std::uint64_t remote_address, std::uint32_t remote_key,
+                                 std::uint32_t length) {
     return transfer(IBV_WR_RDMA_WRITE, local, remote_address, remote_key, length);
 }
 
 const nds_qp_info &VerbsBackend::local_qp_info() const noexcept {
     return local_;
-}
-
-const std::string &VerbsBackend::error() const noexcept {
-    return error_;
-}
-
-void VerbsBackend::set_error(std::string message) {
-    error_ = std::move(message);
 }
 
 }  // namespace nds::server

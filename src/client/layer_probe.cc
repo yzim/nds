@@ -53,7 +53,8 @@ nds::Result<Config> parse(int argc, char **argv) {
     if (execution == "aicpu")
         config.execution.mode = nds::client::NpuExecutionMode::Aicpu;
     if ((config.execution.mode == nds::client::NpuExecutionMode::Aiv && config.execution.aiv_kernel.empty()) ||
-        (config.execution.mode == nds::client::NpuExecutionMode::Aicpu && config.execution.aicpu_kernel_config.empty())) {
+        (config.execution.mode == nds::client::NpuExecutionMode::Aicpu &&
+         config.execution.aicpu_kernel_config.empty())) {
         return nds::unexpected(nds::ErrorCode::kInvalidArgument, "device backend requires its kernel artifact");
     }
     return config;
@@ -108,30 +109,28 @@ nds::Result<void> post_verbs(nds::client::Runtime *runtime, nds::client::Transpo
     request.qp = device_transport->control_qp;
     request.wr = wr;
     request.operation_result_address = reinterpret_cast<std::uint64_t>(result_buffer.data());
-    std::string error;
     if (transport->execution().mode == nds::client::NpuExecutionMode::Aicpu) {
         nds::AicpuEntrypointLauncher launcher;
-        if (!launcher.load(&runtime->acl_api(), transport->execution().aicpu_kernel_config) ||
-            !launcher.launch_post_send_and_wait(&request, 5000))
-            error = launcher.error();
+        if (const auto loaded = launcher.load(&runtime->acl_api(), transport->execution().aicpu_kernel_config); !loaded)
+            return nds::unexpected(loaded.error());
+        if (const auto launched = launcher.launch_post_send_and_wait(&request, 5000); !launched)
+            return nds::unexpected(launched.error());
     } else {
         nds::AivEntrypointLauncher launcher;
         request.abi_version = NDS_DEVICE_OPERATOR_ARGS_ABI_VERSION;
         request.size = sizeof(request);
-        if (!launcher.load(&runtime->acl_api(), transport->execution().aiv_kernel)) {
-            error = launcher.error();
-        } else {
-            auto request_buffer = runtime->allocate(sizeof(request));
-            if (!request_buffer)
-                return nds::unexpected(request_buffer.error());
-            if (const auto copied = runtime->copy_to(&*request_buffer, &request, sizeof(request)); !copied)
-                return nds::unexpected(copied.error());
-            if (!launcher.launch_post_send_and_wait(reinterpret_cast<std::uint64_t>(request_buffer->data()), 5000))
-                error = launcher.error();
-        }
+        if (const auto loaded = launcher.load(&runtime->acl_api(), transport->execution().aiv_kernel); !loaded)
+            return nds::unexpected(loaded.error());
+        auto request_buffer = runtime->allocate(sizeof(request));
+        if (!request_buffer)
+            return nds::unexpected(request_buffer.error());
+        if (const auto copied = runtime->copy_to(&*request_buffer, &request, sizeof(request)); !copied)
+            return nds::unexpected(copied.error());
+        if (const auto launched =
+                launcher.launch_post_send_and_wait(reinterpret_cast<std::uint64_t>(request_buffer->data()), 5000);
+            !launched)
+            return nds::unexpected(launched.error());
     }
-    if (!error.empty())
-        return nds::unexpected(nds::ErrorCode::kRuntime, error);
     nds_device_operation_result completed{};
     if (const auto copied = runtime->copy_from(&completed, result_buffer, sizeof(completed)); !copied)
         return nds::unexpected(copied.error());
@@ -174,34 +173,29 @@ nds::Result<void> send_transport(nds::client::Runtime *runtime, nds::client::Tra
     request.operation = NDS_DEVICE_RDMA_SEND;
     request.parameters.transfer = transfer;
     request.operation_result_address = reinterpret_cast<std::uint64_t>(result_buffer.data());
-    std::string error;
     if (transport->execution().mode == nds::client::NpuExecutionMode::Aicpu) {
         nds::AicpuEntrypointLauncher launcher;
-        if (!launcher.load(&runtime->acl_api(), transport->execution().aicpu_kernel_config) ||
-            !launcher.launch_and_wait(&request, 5000))
-            error = launcher.error();
+        if (const auto loaded = launcher.load(&runtime->acl_api(), transport->execution().aicpu_kernel_config); !loaded)
+            return nds::unexpected(loaded.error());
+        if (const auto launched = launcher.launch_and_wait(&request, 5000); !launched)
+            return nds::unexpected(launched.error());
     } else {
         nds::AivEntrypointLauncher launcher;
-        nds_device_operation_request device_request{};
-        if (!launcher.load(&runtime->acl_api(), transport->execution().aiv_kernel) ||
-            !launcher.make_device_request(request, &device_request)) {
-            error = launcher.error();
-        } else {
-            auto request_buffer = runtime->allocate(sizeof(device_request));
-            if (!request_buffer)
-                return nds::unexpected(request_buffer.error());
-            if (const auto copied = runtime->copy_to(&*request_buffer, &device_request, sizeof(device_request));
-                !copied) {
-                return nds::unexpected(copied.error());
-            }
-            if (!launcher.launch_and_wait(reinterpret_cast<std::uint64_t>(request_buffer->data()), request.operation,
-                                         5000)) {
-                error = launcher.error().empty() ? runtime->error() : launcher.error();
-            }
-        }
+        if (const auto loaded = launcher.load(&runtime->acl_api(), transport->execution().aiv_kernel); !loaded)
+            return nds::unexpected(loaded.error());
+        auto device_request = launcher.make_device_request(request);
+        if (!device_request)
+            return nds::unexpected(device_request.error());
+        auto request_buffer = runtime->allocate(sizeof(*device_request));
+        if (!request_buffer)
+            return nds::unexpected(request_buffer.error());
+        if (const auto copied = runtime->copy_to(&*request_buffer, &*device_request, sizeof(*device_request)); !copied)
+            return nds::unexpected(copied.error());
+        if (const auto launched = launcher.launch_and_wait(reinterpret_cast<std::uint64_t>(request_buffer->data()),
+                                                           request.operation, 5000);
+            !launched)
+            return nds::unexpected(launched.error());
     }
-    if (!error.empty())
-        return nds::unexpected(nds::ErrorCode::kRuntime, error);
     nds_device_operation_result completed{};
     if (const auto copied = runtime->copy_from(&completed, result_buffer, sizeof(completed)); !copied)
         return nds::unexpected(copied.error());

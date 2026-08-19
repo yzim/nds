@@ -14,5 +14,7 @@ shift 3
 mount --bind "${overlay}/conf/ascend_package_load.ini" \
     "${cann_root}/aarch64-linux/conf/ascend_package_load.ini"
 mount --bind "${overlay}/opp/vendors" "${cann_root}/opp/vendors"
+set +u
 source "${cann_root}/set_env.sh"
+set -u
 exec "${client}" "$@"

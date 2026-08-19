@@ -2,6 +2,7 @@
 #define NDS_CPU_VERBS_BACKEND_HH
 
 #include "nds/connection.h"
+#include "nds/result.hh"
 
 #include <infiniband/verbs.h>
 
@@ -43,24 +44,22 @@ public:
     VerbsBackend(const VerbsBackend &) = delete;
     VerbsBackend &operator=(const VerbsBackend &) = delete;
 
-    bool open(const BackendConfig &config);
-    bool connect(const nds_qp_info &peer);
-    bool register_memory(void *address, std::size_t length, int access, RegisteredRegion *region);
-    bool post_receive(const RegisteredRegion &region);
-    bool wait_receive(std::uint32_t timeout_ms);
-    bool send(const RegisteredRegion &local, std::uint32_t length);
-    bool read(const RegisteredRegion &local, std::uint64_t remote_address, std::uint32_t remote_key,
-              std::uint32_t length);
-    bool write(const RegisteredRegion &local, std::uint64_t remote_address, std::uint32_t remote_key,
-               std::uint32_t length);
+    Result<void> open(const BackendConfig &config);
+    Result<void> connect(const nds_qp_info &peer);
+    Result<RegisteredRegion> register_memory(void *address, std::size_t length, int access);
+    Result<void> post_receive(const RegisteredRegion &region);
+    Result<void> wait_receive(std::uint32_t timeout_ms);
+    Result<void> send(const RegisteredRegion &local, std::uint32_t length);
+    Result<void> read(const RegisteredRegion &local, std::uint64_t remote_address, std::uint32_t remote_key,
+                      std::uint32_t length);
+    Result<void> write(const RegisteredRegion &local, std::uint64_t remote_address, std::uint32_t remote_key,
+                       std::uint32_t length);
     const nds_qp_info &local_qp_info() const noexcept;
-    const std::string &error() const noexcept;
 
 private:
-    bool transfer(ibv_wr_opcode opcode, const RegisteredRegion &local, std::uint64_t remote_address,
-                  std::uint32_t remote_key, std::uint32_t length);
-    bool poll(ibv_wc_opcode opcode, std::uint32_t timeout_ms);
-    void set_error(std::string message);
+    Result<void> transfer(ibv_wr_opcode opcode, const RegisteredRegion &local, std::uint64_t remote_address,
+                          std::uint32_t remote_key, std::uint32_t length);
+    Result<void> poll(ibv_wc_opcode opcode, std::uint32_t timeout_ms);
 
     ibv_context *context_{};
     ibv_pd *pd_{};
@@ -68,7 +67,6 @@ private:
     ibv_qp *qp_{};
     nds_qp_info local_{};
     BackendConfig config_{};
-    std::string error_;
 };
 
 }  // namespace nds::server

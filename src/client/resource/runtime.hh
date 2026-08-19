@@ -74,12 +74,10 @@ public:
     Result<void> copy_device_to_host(void *host_ptr, const void *device_ptr, std::size_t size);
     nds_acl_api &acl_api() noexcept;
     nds_runtime_api &runtime_api() noexcept;
-    const std::string &error() const noexcept;
 
 private:
-    bool initialize(const RuntimeConfig &config);
+    Result<void> initialize(const RuntimeConfig &config);
     void reset() noexcept;
-    void set_error(std::string message);
 
     RuntimeConfig config_{};
     nds_acl_api acl_{};
@@ -87,7 +85,6 @@ private:
     bool acl_initialized_{false};
     bool net_service_open_{false};
     bool initialized_{false};
-    std::string error_;
 };
 
 }  // namespace nds::client
