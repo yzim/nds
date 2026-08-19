@@ -4,6 +4,7 @@
 #include "transport.hh"
 
 #include <torch/extension.h>
+#include <torch_npu/csrc/core/npu/NPUFunctions.h>
 
 #include <cstdint>
 #include <limits>
@@ -90,25 +91,21 @@ private:
 
 class Session : public std::enable_shared_from_this<Session> {
 public:
-    Session(std::string ascendcl_library, std::string runtime_library, std::string ra_library, std::string npu_ip,
-            std::int64_t logical_device, std::int64_t physical_device, std::string cpu_ip, std::int64_t tcp_port,
+    Session(std::string ra_library, std::string npu_ip, std::string cpu_ip, std::int64_t tcp_port,
             std::string backend, std::string aiv_kernel, std::string aicpu_kernel_config) {
-        TORCH_CHECK(logical_device >= 0 && logical_device <= std::numeric_limits<std::uint32_t>::max(),
-                    "invalid logical device");
-        TORCH_CHECK(physical_device >= 0 && physical_device <= std::numeric_limits<std::uint32_t>::max(),
-                    "invalid physical device");
         TORCH_CHECK(tcp_port > 0 && tcp_port <= std::numeric_limits<std::uint16_t>::max(), "invalid TCP port");
+        const auto device = c10_npu::current_device();
+        TORCH_CHECK(device >= 0, "torch_npu has no active NPU device");
 
         client::RuntimeConfig runtime_config;
-        runtime_config.ascendcl_library = std::move(ascendcl_library);
-        runtime_config.runtime_library = std::move(runtime_library);
-        runtime_config.logical_device_id = static_cast<std::uint32_t>(logical_device);
+        runtime_config.logical_device_id = static_cast<std::uint32_t>(device);
+        runtime_config.adopt_existing_context = true;
         check(runtime_.open(runtime_config));
 
         client::TransportConfig transport_config;
         transport_config.endpoint.ra_library = std::move(ra_library);
         transport_config.endpoint.local_ipv4 = std::move(npu_ip);
-        transport_config.endpoint.physical_device_id = static_cast<std::uint32_t>(physical_device);
+        transport_config.endpoint.physical_device_id = static_cast<std::uint32_t>(device);
         transport_config.cpu_ipv4 = std::move(cpu_ip);
         transport_config.tcp_port = static_cast<std::uint16_t>(tcp_port);
 
@@ -249,11 +246,10 @@ std::int64_t Storage::capacity() const {
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, module) {
     namespace nds_torch = nds::torch;
     pybind11::class_<nds_torch::Session, std::shared_ptr<nds_torch::Session>>(module, "Session")
-        .def(pybind11::init<std::string, std::string, std::string, std::string, std::int64_t, std::int64_t,
-                            std::string, std::int64_t, std::string, std::string, std::string>(),
-             pybind11::arg("ascendcl_library"), pybind11::arg("runtime_library"), pybind11::arg("ra_library"),
-             pybind11::arg("npu_ip"), pybind11::arg("logical_device"), pybind11::arg("physical_device"),
-             pybind11::arg("cpu_ip"), pybind11::arg("tcp_port"), pybind11::arg("backend") = "ra",
+        .def(pybind11::init<std::string, std::string, std::string, std::int64_t, std::string, std::string,
+                            std::string>(),
+             pybind11::arg("ra_library"), pybind11::arg("npu_ip"), pybind11::arg("cpu_ip"),
+             pybind11::arg("tcp_port"), pybind11::arg("backend") = "ra",
              pybind11::arg("aiv_kernel") = "", pybind11::arg("aicpu_kernel_config") = "")
         .def("verbs", &nds_torch::Session::verbs)
         .def("transport", &nds_torch::Session::transport)

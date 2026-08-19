@@ -21,11 +21,15 @@ Result<void> Runtime::initialize(const RuntimeConfig &config) {
     nds_rt_proc_ext_param parameter{};
     nds_rt_net_service_open_args open_args{};
 
-    if (config.ascendcl_library.empty() || config.runtime_library.empty()) {
+    if (!config.adopt_existing_context && (config.ascendcl_library.empty() || config.runtime_library.empty())) {
         return unexpected(ErrorCode::kInvalidArgument,
                           "NPU runtime requires explicit AscendCL and runtime library paths");
     }
     config_ = config;
+    if (config_.ascendcl_library.empty())
+        config_.ascendcl_library = "libascendcl.so";
+    if (config_.runtime_library.empty())
+        config_.runtime_library = "libruntime.so";
     parameter.param_info = hdc_type_argument.c_str();
     parameter.param_len = hdc_type_argument.size();
     open_args.ext_param_list = &parameter;
@@ -35,16 +39,18 @@ Result<void> Runtime::initialize(const RuntimeConfig &config) {
         reset();
         return unexpected(ErrorCode::kRuntime, error);
     }
-    if (const int result = acl_.init(nullptr); result != 0) {
-        const std::string error = "aclInit failed: " + std::to_string(result);
-        reset();
-        return unexpected(ErrorCode::kRuntime, error);
-    }
-    acl_initialized_ = true;
-    if (const int result = acl_.set_device(static_cast<std::int32_t>(config_.logical_device_id)); result != 0) {
-        const std::string error = "aclrtSetDevice failed: " + std::to_string(result);
-        reset();
-        return unexpected(ErrorCode::kRuntime, error);
+    if (!config_.adopt_existing_context) {
+        if (const int result = acl_.init(nullptr); result != 0) {
+            const std::string error = "aclInit failed: " + std::to_string(result);
+            reset();
+            return unexpected(ErrorCode::kRuntime, error);
+        }
+        acl_initialized_ = true;
+        if (const int result = acl_.set_device(static_cast<std::int32_t>(config_.logical_device_id)); result != 0) {
+            const std::string error = "aclrtSetDevice failed: " + std::to_string(result);
+            reset();
+            return unexpected(ErrorCode::kRuntime, error);
+        }
     }
     if (nds_runtime_open(&runtime_, config_.runtime_library.c_str()) != 0) {
         const std::string error = std::string("cannot load CANN runtime: ") + nds_runtime_error(&runtime_);

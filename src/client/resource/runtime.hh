@@ -48,6 +48,7 @@ struct RuntimeConfig {
     std::string runtime_library;
     std::uint32_t logical_device_id{};
     std::int32_t hdc_type{NDS_RUNTIME_HDC_SERVICE_TYPE_RDMA_V2};
+    bool adopt_existing_context{};
 };
 
 /* Owns process-local AscendCL/CANN lifecycle and device/host memory operations. */

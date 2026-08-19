@@ -26,11 +26,9 @@ may require the same `sudo -n` context as other NDS hardware programs.
 ```python
 import nds_torch
 import torch
+import torch_npu
 
-session = nds_torch.Session(
-    ascendcl_library, runtime_library, ra_library,
-    npu_ip, logical_device, physical_device, cpu_ip, tcp_port,
-    backend="ra")
+session = nds_torch.Session(ra_library, npu_ip, cpu_ip, tcp_port, backend="ra")
 
 storage = session.storage()
 payload = torch.full((4096,), 0x5A, dtype=torch.uint8)
@@ -61,3 +59,8 @@ through NDS-owned NPU allocations before registration. Direct `torch_npu`
 tensor registration is intentionally not exposed yet: it needs a borrowed
 allocation lifetime and stream-synchronization contract with the PyTorch NPU
 allocator.
+
+`Session` adopts the active `torch_npu` context and current NPU device. It does
+not accept AscendCL or runtime library paths, or a logical or physical device
+ID. Import `torch_npu` and select its device before creating a session. The RA
+library remains NDS-specific and is therefore explicit.
