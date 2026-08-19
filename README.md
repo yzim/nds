@@ -121,6 +121,8 @@ specific sources and limits.
 - [HCCP QP, MR, and runtime ABI](docs/hccp-resources.md): resource ownership,
   bootstrap, teardown, and the runtime library boundary.
 - [NPU execution modes](docs/npu-backends.md): RA, AIV, and AICPU posting paths.
+- [PyTorch wrappers](docs/torch-wrappers.md): optional verbs, transport, and
+  storage bindings for PyTorch tensors.
 
 **Runtime and evidence**
 
