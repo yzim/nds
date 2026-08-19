@@ -7,8 +7,8 @@ network configuration.
 
 ## Unit tests
 
-Unit tests run without sockets, shared libraries, CANN, RDMA hardware, or an
-NPU. They cover the NDS transport and storage codecs, CPU path-MTU policy, RA
+Unit tests use GoogleTest and run without sockets, shared libraries, CANN, RDMA
+hardware, or an NPU. They cover the NDS transport and storage codecs, CPU path-MTU policy, RA
 QP lifecycle logic through an in-process fake RA API, RMA capabilities, the
 AICPU and AIV request ABI layouts, the AICPU mode-0 package registration contract,
 the device QP/WR/connection builders, and
@@ -20,6 +20,10 @@ counter wrap, CQ owner phase, send-tail advancement, and CQE decoding.
 ```sh
 ctest --test-dir build --output-on-failure --label-regex '^unit$'
 ```
+
+The `compatibility` label contains a C11 compile-and-run target for the public
+device ABI headers. This prevents C++-only syntax from entering `.h` boundary
+headers.
 
 ## Integration tests
 
@@ -45,34 +49,24 @@ RoCE resources. They are not configured by default and are never run in GitHub
 Actions. They must be launched only on the approved target with one bounded
 case, a whole-process timeout, and target-specific values held under `.local/`.
 
-To register E2E tests, configure with `NDS_ENABLE_E2E_TESTS=ON` and provide one
-or more named CMake command variables. Each value is a CMake list containing a
-target-local wrapper command. For example:
+Tracked E2E runners live in `tests/e2e/`. Configure with
+`NDS_ENABLE_E2E_TESTS=ON`; CMake always registers the RA storage case and also
+registers AIV/AICPU cases when their device targets are enabled:
 
 ```sh
 cmake -S . -B build-e2e \
   -DNDS_ENABLE_E2E_TESTS=ON \
-  '-DNDS_E2E_AIV_STORAGE_COMMAND=/absolute/path/to/.local/run_aiv_storage_once.sh' \
-  '-DNDS_E2E_AICPU_TRANSPORT_COMMAND=/absolute/path/to/.local/run_aicpu_transport_once.sh'
-ctest --test-dir build-e2e --output-on-failure --label-regex '^e2e$'
+  -DNDS_BUILD_AIV_KERNEL=ON \
+  -DNDS_BUILD_AICPU_KERNEL=ON \
+  -DNDS_CANN_ROOT=<cann-root>
+ctest --test-dir build-e2e -N --label-regex '^e2e$'
 ```
 
-The supported variables and registered test names are:
-
-- `NDS_E2E_RA_VERBS_COMMAND`, `NDS_E2E_RA_TRANSPORT_COMMAND`, `NDS_E2E_RA_STORAGE_COMMAND`
-- `NDS_E2E_AIV_VERBS_COMMAND`, `NDS_E2E_AIV_TRANSPORT_COMMAND`, `NDS_E2E_AIV_STORAGE_COMMAND`
-- `NDS_E2E_AICPU_VERBS_COMMAND`, `NDS_E2E_AICPU_TRANSPORT_COMMAND`, `NDS_E2E_AICPU_STORAGE_COMMAND`
-
-Each command registers `e2e.<backend>_<layer>`. A storage run is the full
-storage → transport → verbs composition. The verbs probe posts one raw Send to
-a CPU receive probe. The transport probe invokes `Transport::send_bytes` to
-that same receiver. Both are optional isolation probes and must use the
-matching typed device request ABI.
-
-The wrapper owns server startup, client invocation, timeout, cleanup, and
-validation for one selected mode. Create it locally when needed; it must not be
-tracked because it contains target addresses and deployment paths. The
-registered tests have a 120-second CTest timeout, share the
+The runner reads all paths, interface names, addresses, ports, and GID values
+from `NDS_E2E_*` environment variables. Their contract and bounded invocation
+are documented in `tests/e2e/README.md`; values must remain under `.local/` or
+another ignored target configuration. The registered tests have a 120-second
+CTest timeout, share the
 `ascend_npu0` resource lock, and carry `e2e`, `requires-ascend-npu`,
 `requires-rdma`, `mode-*`, and `operation-*` labels. This permits selecting one
 mode or operation while preventing concurrent use of the single NPU.
@@ -84,8 +78,7 @@ verbs and transport probes remain independently selectable.
 
 ## CI
 
-GitHub Actions installs only standard Linux build dependencies, then builds and
-runs every test registered by the default configuration in both Debug and
-Release modes. The default configuration includes all unit and non-hardware
-integration tests. It does not configure device kernels, register E2E tests, or
-claim that a hosted runner can validate Ascend hardware.
+GitHub Actions explicitly configures `NDS_ENABLE_E2E_TESTS=OFF`, then builds and
+runs all GoogleTest, compatibility, and non-hardware integration tests in both
+Debug and Release modes. It does not configure device kernels or claim that a
+hosted runner can validate Ascend hardware.

@@ -4,7 +4,9 @@
 #include "nds/device_transport.h"
 #include "nds/protocol.h"
 
+#include <stddef.h>
 #include <stdint.h>
+#include <string.h>
 
 #define NDS_DEVICE_STORAGE_ABI_VERSION UINT32_C(1)
 
@@ -48,19 +50,16 @@ static inline uint64_t nds_device_htonll(uint64_t value) {
     return ((uint64_t)nds_device_htonl((uint32_t)value) << 32) | nds_device_htonl((uint32_t)(value >> 32));
 }
 
-static inline int nds_device_storage_valid(const nds_device_storage *storage,
-                                           const nds_device_storage_io *io) {
+static inline int nds_device_storage_valid(const nds_device_storage *storage, const nds_device_storage_io *io) {
     uint32_t required_access;
-    if (storage == nullptr || io == nullptr || storage->abi_version != NDS_DEVICE_STORAGE_ABI_VERSION ||
+    if (storage == NULL || io == NULL || storage->abi_version != NDS_DEVICE_STORAGE_ABI_VERSION ||
         storage->size != sizeof(*storage) || storage->transport.abi_version != NDS_DEVICE_TRANSPORT_ABI_VERSION ||
         storage->transport.size != sizeof(storage->transport) || storage->request_id == 0U ||
         storage->command.address == 0U || storage->command.local_key == 0U ||
         storage->command.length < sizeof(nds_protocol_command_wire) || storage->completion.address == 0U ||
-        storage->completion.local_key == 0U ||
-        storage->completion.length < sizeof(nds_protocol_completion_wire) || io->length == 0U ||
-        io->data.address == 0U || io->data.local_key == 0U || io->data_rkey == 0U ||
-        io->data.length < io->length ||
-        (io->operation != NDS_PROTOCOL_READ && io->operation != NDS_PROTOCOL_WRITE)) {
+        storage->completion.local_key == 0U || storage->completion.length < sizeof(nds_protocol_completion_wire) ||
+        io->length == 0U || io->data.address == 0U || io->data.local_key == 0U || io->data_rkey == 0U ||
+        io->data.length < io->length || (io->operation != NDS_PROTOCOL_READ && io->operation != NDS_PROTOCOL_WRITE)) {
         return 0;
     }
     if (io->offset > storage->capacity || io->length > storage->capacity - io->offset)
@@ -71,12 +70,11 @@ static inline int nds_device_storage_valid(const nds_device_storage *storage,
     return 1;
 }
 
-static inline void nds_device_storage_encode_command(const nds_device_storage *storage,
-                                                     const nds_device_storage_io *io,
+static inline void nds_device_storage_encode_command(const nds_device_storage *storage, const nds_device_storage_io *io,
                                                      nds_protocol_command_wire *wire) {
     const uint32_t access =
         io->operation == NDS_PROTOCOL_READ ? NDS_PROTOCOL_ACCESS_REMOTE_WRITE : NDS_PROTOCOL_ACCESS_REMOTE_READ;
-    *wire = {};
+    (void)memset(wire, 0, sizeof(*wire));
     wire->magic = nds_device_htonl(NDS_PROTOCOL_COMMAND_MAGIC);
     wire->version = nds_device_htons(NDS_PROTOCOL_VERSION);
     wire->operation = nds_device_htons(io->operation);
@@ -91,7 +89,7 @@ static inline void nds_device_storage_encode_command(const nds_device_storage *s
 
 static inline void nds_device_storage_encode_pending(const nds_device_storage *storage,
                                                      nds_protocol_completion_wire *wire) {
-    *wire = {};
+    (void)memset(wire, 0, sizeof(*wire));
     wire->magic = nds_device_htonl(NDS_PROTOCOL_COMPLETION_MAGIC);
     wire->version = nds_device_htons(NDS_PROTOCOL_VERSION);
     wire->state = nds_device_htons(NDS_PROTOCOL_COMPLETION_PENDING);
@@ -100,13 +98,12 @@ static inline void nds_device_storage_encode_pending(const nds_device_storage *s
     wire->bytes_transferred = 0U;
 }
 
-static inline int nds_device_storage_completion_done(const nds_protocol_completion_wire *wire,
-                                                     uint64_t request_id, uint64_t expected_bytes) {
+static inline int nds_device_storage_completion_done(const nds_protocol_completion_wire *wire, uint64_t request_id,
+                                                     uint64_t expected_bytes) {
     if (nds_device_htonl(wire->magic) != NDS_PROTOCOL_COMPLETION_MAGIC ||
         nds_device_htons(wire->version) != NDS_PROTOCOL_VERSION ||
         nds_device_htons(wire->state) != NDS_PROTOCOL_COMPLETION_COMPLETE ||
-        nds_device_htonll(wire->request_id) != request_id ||
-        nds_device_htons(wire->status) != NDS_PROTOCOL_SUCCESS ||
+        nds_device_htonll(wire->request_id) != request_id || nds_device_htons(wire->status) != NDS_PROTOCOL_SUCCESS ||
         nds_device_htonll(wire->bytes_transferred) != expected_bytes) {
         return 0;
     }

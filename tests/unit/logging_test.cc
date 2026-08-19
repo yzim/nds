@@ -1,13 +1,13 @@
 #include "nds/logging.hh"
 
-#include <cassert>
+#include <gtest/gtest.h>
 #include <memory>
 #include <sstream>
 #include <string>
 
 #include <spdlog/sinks/ostream_sink.h>
 
-int main() {
+TEST(LoggingTest, UsesInjectedSinkAndRejectsInvalidConfiguration) {
     std::ostringstream output;
     auto sink = std::make_shared<spdlog::sinks::ostream_sink_mt>(output);
     auto external = std::make_shared<spdlog::logger>("test", sink);
@@ -19,13 +19,12 @@ int main() {
     NDS_LOG_ERROR("test", "failure {}", 8);
     NDS_LOG_INFO("test", "formatted {}", "message");
     external->flush();
-    assert(output.str() == "message 7\nfailure 8\nformatted message\n");
+    EXPECT_TRUE(output.str() == "message 7\nfailure 8\nformatted message\n");
 
     const auto invalid_sink = nds::log::configure("test", "invalid", "info");
-    assert(!invalid_sink);
-    assert(invalid_sink.error().message == "unsupported log sink: invalid");
+    EXPECT_TRUE(!invalid_sink);
+    EXPECT_TRUE(invalid_sink.error().message == "unsupported log sink: invalid");
     const auto invalid_level = nds::log::configure("test", "none", "invalid");
-    assert(!invalid_level);
-    assert(invalid_level.error().message == "unsupported log level: invalid");
-    return 0;
+    EXPECT_TRUE(!invalid_level);
+    EXPECT_TRUE(invalid_level.error().message == "unsupported log level: invalid");
 }

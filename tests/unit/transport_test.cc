@@ -3,18 +3,11 @@
 
 #include <arpa/inet.h>
 
-#include <cstdio>
 #include <cstring>
 
-namespace {
+#include <gtest/gtest.h>
 
-int expect(bool condition, const char *message) {
-    if (!condition) {
-        std::fprintf(stderr, "FAIL: %s\n", message);
-        return 1;
-    }
-    return 0;
-}
+namespace {
 
 nds_qp_info endpoint() {
     nds_qp_info value{};
@@ -34,36 +27,29 @@ nds_qp_info endpoint() {
 
 }  // namespace
 
-int main() {
+TEST(TransportCodecTest, RoundTripsTransportAndStorageRecords) {
     const nds_qp_info source = endpoint();
     nds_qp_info decoded{};
     nds_qp_info_wire wire{};
-    if (nds_qp_info_encode(&source, &wire) != NDS_QP_INFO_RESULT_OK ||
-        expect(ntohl(wire.magic) == NDS_QP_INFO_WIRE_MAGIC, "transport magic") != 0 ||
-        expect(ntohs(wire.version) == NDS_QP_INFO_WIRE_VERSION, "transport version") != 0 ||
-        expect(nds_qp_info_decode(&wire, &decoded) == NDS_QP_INFO_RESULT_OK, "transport decode") != 0 ||
-        expect(std::memcmp(&source, &decoded, sizeof(source)) == 0, "transport round trip") != 0) {
-        return 1;
-    }
+    ASSERT_EQ(nds_qp_info_encode(&source, &wire), NDS_QP_INFO_RESULT_OK);
+    EXPECT_EQ(ntohl(wire.magic), NDS_QP_INFO_WIRE_MAGIC);
+    EXPECT_EQ(ntohs(wire.version), NDS_QP_INFO_WIRE_VERSION);
+    ASSERT_EQ(nds_qp_info_decode(&wire, &decoded), NDS_QP_INFO_RESULT_OK);
+    EXPECT_EQ(std::memcmp(&source, &decoded, sizeof(source)), 0);
 
     nds_protocol_bootstrap bootstrap_source{{0x0102030405060708U, 64U, 0x12345678U, NDS_PROTOCOL_ACCESS_REMOTE_WRITE}};
     nds_protocol_bootstrap bootstrap_decoded{};
     nds_protocol_bootstrap_wire bootstrap_wire{};
-    if (nds_protocol_bootstrap_encode(&bootstrap_source, &bootstrap_wire) != NDS_PROTOCOL_RESULT_OK ||
-        nds_protocol_bootstrap_decode(&bootstrap_wire, &bootstrap_decoded) != NDS_PROTOCOL_RESULT_OK ||
-        expect(std::memcmp(&bootstrap_source, &bootstrap_decoded, sizeof(bootstrap_source)) == 0,
-               "bootstrap round trip") != 0) {
-        return 1;
-    }
+    ASSERT_EQ(nds_protocol_bootstrap_encode(&bootstrap_source, &bootstrap_wire), NDS_PROTOCOL_RESULT_OK);
+    ASSERT_EQ(nds_protocol_bootstrap_decode(&bootstrap_wire, &bootstrap_decoded), NDS_PROTOCOL_RESULT_OK);
+    EXPECT_EQ(std::memcmp(&bootstrap_source, &bootstrap_decoded, sizeof(bootstrap_source)), 0);
 
     nds_protocol_namespace namespace_source{1024U * 1024U};
     nds_protocol_namespace namespace_decoded{};
     nds_protocol_namespace_wire namespace_wire{};
-    if (nds_protocol_namespace_encode(&namespace_source, &namespace_wire) != NDS_PROTOCOL_RESULT_OK ||
-        nds_protocol_namespace_decode(&namespace_wire, &namespace_decoded) != NDS_PROTOCOL_RESULT_OK ||
-        expect(namespace_source.capacity == namespace_decoded.capacity, "namespace round trip") != 0) {
-        return 1;
-    }
+    ASSERT_EQ(nds_protocol_namespace_encode(&namespace_source, &namespace_wire), NDS_PROTOCOL_RESULT_OK);
+    ASSERT_EQ(nds_protocol_namespace_decode(&namespace_wire, &namespace_decoded), NDS_PROTOCOL_RESULT_OK);
+    EXPECT_EQ(namespace_source.capacity, namespace_decoded.capacity);
 
     nds_protocol_command command_source{0x1020304050607080U,
                                         NDS_PROTOCOL_READ,
@@ -72,30 +58,20 @@ int main() {
                                         {0x1020304050607080U, 8192U, 0x12345678U, NDS_PROTOCOL_ACCESS_REMOTE_WRITE}};
     nds_protocol_command command_decoded{};
     nds_protocol_command_wire command_wire{};
-    if (nds_protocol_command_encode(&command_source, &command_wire) != NDS_PROTOCOL_RESULT_OK ||
-        nds_protocol_command_decode(&command_wire, &command_decoded) != NDS_PROTOCOL_RESULT_OK ||
-        expect(std::memcmp(&command_source, &command_decoded, sizeof(command_source)) == 0, "command round trip") !=
-            0) {
-        return 1;
-    }
+    ASSERT_EQ(nds_protocol_command_encode(&command_source, &command_wire), NDS_PROTOCOL_RESULT_OK);
+    ASSERT_EQ(nds_protocol_command_decode(&command_wire, &command_decoded), NDS_PROTOCOL_RESULT_OK);
+    EXPECT_EQ(std::memcmp(&command_source, &command_decoded, sizeof(command_source)), 0);
     command_wire.data_access = htonl(NDS_PROTOCOL_ACCESS_REMOTE_READ);
-    if (expect(nds_protocol_command_decode(&command_wire, &command_decoded) != NDS_PROTOCOL_RESULT_OK,
-               "invalid command access rejected") != 0) {
-        return 1;
-    }
+    EXPECT_NE(nds_protocol_command_decode(&command_wire, &command_decoded), NDS_PROTOCOL_RESULT_OK);
 
     nds_protocol_completion completion_source{0x1020304050607080U, NDS_PROTOCOL_COMPLETION_COMPLETE,
                                               NDS_PROTOCOL_SUCCESS, 8192U};
     nds_protocol_completion completion_decoded{};
     nds_protocol_completion_wire completion_wire{};
-    if (nds_protocol_completion_encode(&completion_source, &completion_wire) != NDS_PROTOCOL_RESULT_OK ||
-        nds_protocol_completion_decode(&completion_wire, &completion_decoded) != NDS_PROTOCOL_RESULT_OK ||
-        expect(std::memcmp(&completion_source, &completion_decoded, sizeof(completion_source)) == 0,
-               "completion round trip") != 0) {
-        return 1;
-    }
+    ASSERT_EQ(nds_protocol_completion_encode(&completion_source, &completion_wire), NDS_PROTOCOL_RESULT_OK);
+    ASSERT_EQ(nds_protocol_completion_decode(&completion_wire, &completion_decoded), NDS_PROTOCOL_RESULT_OK);
+    EXPECT_EQ(std::memcmp(&completion_source, &completion_decoded, sizeof(completion_source)), 0);
 
     wire.magic = 0U;
-    return expect(nds_qp_info_decode(&wire, &decoded) != NDS_QP_INFO_RESULT_OK,
-                  "invalid transport magic rejected");
+    EXPECT_NE(nds_qp_info_decode(&wire, &decoded), NDS_QP_INFO_RESULT_OK);
 }

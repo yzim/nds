@@ -1,6 +1,6 @@
 #include "aicpu/host/launcher.hh"
 
-#include <cassert>
+#include <gtest/gtest.h>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -19,18 +19,18 @@ int binary_handle;
 int stream_handle;
 
 int load_binary(const char *path, nds_acl_binary_load_options *options, nds_acl_bin_handle *handle) {
-    assert(path != nullptr && std::strcmp(path, "/tmp/nds_aicpu_standard.json") == 0);
-    assert(options != nullptr && options->num_options == 1U && options->options != nullptr);
-    assert(options->options[0].type == NDS_ACL_BINARY_LOAD_OPT_CPU_KERNEL_MODE);
-    assert(options->options[0].value.cpu_kernel_mode == NDS_ACL_CPU_KERNEL_REGISTER_JSON);
-    assert(handle != nullptr);
+    EXPECT_TRUE(path != nullptr && std::strcmp(path, "/tmp/nds_aicpu_standard.json") == 0);
+    EXPECT_TRUE(options != nullptr && options->num_options == 1U && options->options != nullptr);
+    EXPECT_TRUE(options->options[0].type == NDS_ACL_BINARY_LOAD_OPT_CPU_KERNEL_MODE);
+    EXPECT_TRUE(options->options[0].value.cpu_kernel_mode == NDS_ACL_CPU_KERNEL_REGISTER_JSON);
+    EXPECT_TRUE(handle != nullptr);
     state.binary_loaded = true;
     *handle = &binary_handle;
     return 0;
 }
 
 int unload_binary(nds_acl_bin_handle handle) {
-    assert(handle == &binary_handle);
+    EXPECT_TRUE(handle == &binary_handle);
     state.binary_unloaded = true;
     return 0;
 }
@@ -53,14 +53,14 @@ int launch(nds_acl_func_handle, std::uint32_t, nds_acl_stream, nds_acl_launch_ke
 }
 
 int create_stream(nds_acl_stream *stream, std::uint32_t, std::uint32_t) {
-    assert(stream != nullptr);
+    EXPECT_TRUE(stream != nullptr);
     state.stream_created = true;
     *stream = &stream_handle;
     return 0;
 }
 
 int destroy_stream(nds_acl_stream stream) {
-    assert(stream == &stream_handle);
+    EXPECT_TRUE(stream == &stream_handle);
     state.stream_destroyed = true;
     return 0;
 }
@@ -71,7 +71,8 @@ int synchronize(nds_acl_stream, std::int32_t) {
 
 }  // namespace
 
-int main() {
+TEST(AicpuLauncherTest, LoadsModeZeroPackageAndReleasesResources) {
+    state = {};
     nds_acl_api api{};
     api.binary_load_from_file = load_binary;
     api.binary_unload = unload_binary;
@@ -86,10 +87,9 @@ int main() {
 
     {
         nds::AicpuEntrypointLauncher launcher;
-        assert(launcher.load(&api, "/tmp/nds_aicpu_standard.json"));
-        assert(launcher.loaded());
-        assert(state.binary_loaded && state.stream_created);
+        EXPECT_TRUE(launcher.load(&api, "/tmp/nds_aicpu_standard.json"));
+        EXPECT_TRUE(launcher.loaded());
+        EXPECT_TRUE(state.binary_loaded && state.stream_created);
     }
-    assert(state.stream_destroyed && state.binary_unloaded);
-    return 0;
+    EXPECT_TRUE(state.stream_destroyed && state.binary_unloaded);
 }

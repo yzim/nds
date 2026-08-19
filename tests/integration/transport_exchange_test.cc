@@ -5,7 +5,8 @@
 
 #include <cstring>
 #include <future>
-#include <iostream>
+
+#include <gtest/gtest.h>
 
 namespace {
 
@@ -27,12 +28,9 @@ nds_qp_info make_endpoint(std::uint32_t qpn, std::uint32_t psn) {
 
 }  // namespace
 
-int main() {
+TEST(TransportExchangeIntegrationTest, ExchangesEndpointRecordsOverSocketPair) {
     int sockets[2]{};
-    if (socketpair(AF_UNIX, SOCK_STREAM, 0, sockets) != 0) {
-        std::perror("socketpair");
-        return 1;
-    }
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, sockets), 0);
     const auto client = make_endpoint(0x1101, 0x2202);
     const auto server = make_endpoint(0x3303, 0x4404);
     std::future<nds::Result<nds_qp_info>> server_result = std::async(
@@ -40,12 +38,12 @@ int main() {
     const auto client_result = nds::TcpPeerExchange{sockets[0]}.exchange_as_client(client);
     const auto remote_result = server_result.get();
 
-    if (!client_result || !remote_result || client_result->qp_num != server.qp_num ||
-        remote_result->qp_num != client.qp_num || client_result->psn != server.psn ||
-        remote_result->psn != client.psn) {
-        std::cerr << "peer exchange failed\n";
-        return 1;
-    }
-    std::cout << "peer exchange test passed\n";
-    return 0;
+    ASSERT_TRUE(client_result) << client_result.error().message;
+    ASSERT_TRUE(remote_result) << remote_result.error().message;
+    EXPECT_EQ(client_result->qp_num, server.qp_num);
+    EXPECT_EQ(remote_result->qp_num, client.qp_num);
+    EXPECT_EQ(client_result->psn, server.psn);
+    EXPECT_EQ(remote_result->psn, client.psn);
+    close(sockets[0]);
+    close(sockets[1]);
 }

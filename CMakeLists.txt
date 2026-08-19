@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(nds LANGUAGES CXX)
+project(nds LANGUAGES C CXX)
 
 include(CTest)
 include(FetchContent)
@@ -38,5 +38,12 @@ add_subdirectory(src/client)
 add_subdirectory(src/server)
 
 if(BUILD_TESTING)
+    set(BUILD_GMOCK OFF CACHE BOOL "Do not build GoogleMock" FORCE)
+    set(INSTALL_GTEST OFF CACHE BOOL "Do not install GoogleTest" FORCE)
+    FetchContent_Declare(
+        googletest
+        GIT_REPOSITORY https://github.com/google/googletest.git
+        GIT_TAG f8d7d77c06936315286eb55f8de22cd23c188571) # v1.14.0
+    FetchContent_MakeAvailable(googletest)
     add_subdirectory(tests)
 endif()
