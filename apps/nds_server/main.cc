@@ -4,7 +4,6 @@
 
 #include <CLI/CLI.hpp>
 
-#include <array>
 #include <cstdint>
 #include <cstdlib>
 #include <string>
@@ -17,7 +16,6 @@ struct Config {
     std::uint32_t storage_requests{1U};
     bool seed_pattern{};
     std::uint32_t verify_write_bytes{};
-    bool receive_probe{};
     std::string log_sink{"stderr"};
     std::string log_level{"info"};
 };
@@ -37,8 +35,6 @@ int parse(int argc, char **argv, Config *config, bool *exit_requested) {
     app.add_option("--verify-write-bytes", config->verify_write_bytes,
                    "Verify this many leading namespace bytes against the NDS test pattern")
         ->check(CLI::Range(0U, 64U * 1024U * 1024U));
-    app.add_flag("--receive-probe", config->receive_probe,
-                 "Receive one transport Send without interpreting a storage record");
     app.add_option("--log-sink", config->log_sink)->check(CLI::IsMember({"stderr", "stdout", "syslog", "none"}));
     app.add_option("--log-level", config->log_level)
         ->check(CLI::IsMember({"trace", "debug", "info", "warn", "error", "critical", "off"}));
@@ -67,16 +63,6 @@ int main(int argc, char **argv) {
     if (const auto opened = connection.open(config.connection); !opened) {
         NDS_LOG_ERROR("cpu-server", "server connection failed: {}", opened.error().message);
         return EXIT_FAILURE;
-    }
-    if (config.receive_probe) {
-        std::array<unsigned char, 4096U> buffer{};
-        const auto prepared = connection.prepare_receive(buffer.data(), buffer.size());
-        if (!prepared || !connection.activate() || !connection.receive(5000U)) {
-            NDS_LOG_ERROR("cpu-server", "transport receive probe failed");
-            return EXIT_FAILURE;
-        }
-        NDS_LOG_INFO("cpu-server", "completed one NDS transport receive probe");
-        return EXIT_SUCCESS;
     }
     std::vector<unsigned char> storage(config.namespace_bytes, 0U);
     if (config.seed_pattern) {

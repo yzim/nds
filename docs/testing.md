@@ -84,8 +84,11 @@ mode or operation while preventing concurrent use of the single NPU.
 
 Hardware results are recorded per target experiment under `.local/`; a
 successful build or exported-symbol check is not an end-to-end completion.
-Storage tests exercise the composed storage → transport → verbs path, while
-verbs and transport probes remain independently selectable.
+Storage tests exercise the composed storage → transport → verbs path. The
+lower-layer examples are independently runnable with
+`-DNDS_BUILD_HARDWARE_PROBES=ON`: `examples/verbs` and
+`examples/transport` each build a paired client/server program. Storage remains
+an application under `apps/`; its server has no lower-layer probe mode.
 
 ## CI
 

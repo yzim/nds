@@ -11,8 +11,7 @@ Application -> StorageClient -> Transport -> Verbs -> protocol resources
 
 ```text
 src/
-  client/         NPU-attached endpoint
-    main.cc        CLI, application buffers, and workload verification
+  client/         NPU-attached endpoint libraries
     include/      shared device-safe QP, WR, CQ, and connection records
     resource/     stateful RA/HCCP resources, storage session, and storage dispatch
     execution/    RA / AIV / AICPU execution backends
@@ -21,8 +20,7 @@ src/
         device/   AIV device kernels plus their local device headers
       aicpu/      AICPU host launcher and device operators
         device/   AICPU device kernels plus their local device headers
-  server/         CPU-side endpoint
-    main.cc        CLI and memory-backed namespace ownership
+  server/         CPU-side endpoint libraries
     protocol.*     command decode, range checks, data movement, completion
     transport.*    one connected CPU-to-NPU transport session
     backend.*      libibverbs QP, MR, work request, and CQ operations
@@ -32,7 +30,31 @@ src/
     logging.*      replaceable process logging
   include/        shared client/server header boundary
     nds/          protocol.h, connection.h, connection.hh, result.hh, logging.hh
+
+examples/
+  verbs/          paired verbs client/server instance
+  transport/      paired transport client/server instance
+
+apps/
+  nds_client/     NPU-side storage application
+  nds_server/     CPU-side storage application
+  nds_torch.py    Python program using the src/torch wrapper
+
 ```
+
+The example directories are executable compositions of the reusable libraries.
+They are intentionally paired: a client and server in the same directory
+exercise one lower API layer and its wire contract. They are not
+implementations of one generic server. A verbs example validates verbs only;
+a transport example validates connection/bootstrap and transport operations.
+Storage is the complete NDS application, so its client/server program remains
+under `apps/` and validates the storage protocol over transport. Backend
+selection (RA, AIV, or AICPU) remains an execution-mode axis inside the client
+where applicable.
+
+`src/torch` contains the reusable C++/PyTorch extension (`_nds_torch`), not a
+standalone application. The Python Torch application under `apps/` imports that
+extension, but must not own runtime, transport, or storage implementation logic.
 
 ## API Matrix
 
@@ -114,12 +136,15 @@ Planned AIV and AICPU implementations expose the same storage semantics in
 their device environments and use a device-safe transport/QP view produced by
 the host control path.
 
-## Application
+## Application And Examples
 
-Applications own process configuration, data buffers, request selection, and
-workload verification. They call `StorageClient::read` or
-`StorageClient::write` and do not manipulate QPs, work requests, CQs, or wire
-codecs.
+Applications and examples own process configuration, data buffers, request
+selection, and workload verification. They call the layer library under test
+and do not duplicate resource, transport, protocol, or operator
+implementation. The storage application calls `StorageClient::read` or
+`StorageClient::write`; a transport example stops at transport operations; a
+verbs example stops at verbs operations. No application server should add a
+mode flag that turns it into a lower-layer probe.
 
 ## Shared Boundaries
 

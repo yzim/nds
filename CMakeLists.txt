@@ -41,6 +41,10 @@ add_subdirectory(src/client)
 add_subdirectory(src/server)
 add_subdirectory(apps)
 
+if(NDS_BUILD_HARDWARE_PROBES)
+    add_subdirectory(examples)
+endif()
+
 if(NDS_BUILD_TORCH_WRAPPERS)
     find_package(Python3 COMPONENTS Interpreter Development.Module REQUIRED)
     find_package(Torch REQUIRED)

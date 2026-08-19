@@ -75,13 +75,20 @@ and an RA local CQE are not this protocol completion.
 ## Repository layout
 
 ```text
-src/              Reusable client, server, and common libraries
-apps/             Supported nds_client, nds_server, and nds_torch.py frontends
-examples/         Opt-in lower-level probes and layer-specific demonstrations
+src/              Reusable client, server, common, and Torch wrapper libraries
+apps/             Complete NDS applications, including storage and Torch
+examples/         Paired client/server instances for lower API layers
 benchmarks/       Reserved for opt-in performance workloads
 tests/            Unit/integration tests and opt-in hardware validation
 docs/             Resource lifecycle, modes, linkage, and implementation guides
 ```
+
+The examples demonstrate only the lower layers. Each of `examples/verbs` and
+`examples/transport` contains a paired client and server; do not use one generic
+server with flags for unrelated layers. Storage is the complete NDS application
+and remains under `apps/`, alongside the Python Torch application which imports
+the reusable `_nds_torch` extension from `src/torch`. The C++ code in `src/`
+remains library code.
 
 The headers in `src/include/nds/` are shared internal interfaces, named
 with an `nds/` prefix to avoid collisions. NDS does not currently install an
