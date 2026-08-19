@@ -205,12 +205,12 @@ Key implementation paths:
 Start the CPU server:
 
 ```sh
-build/nds_server --device <cpu-rdma-device> --gid-index <gid-index> \
+build/bin/nds_server --device <cpu-rdma-device> --gid-index <gid-index> \
   --listen <cpu-roce-ip> --tcp-port <port> --namespace-bytes 1048576
 ```
 
 ```sh
-build/nds_client --execution ra \
+build/bin/nds_client --execution ra \
   --ascendcl <cann-root>/aarch64-linux/lib64/libascendcl.so \
   --runtime <cann-root>/aarch64-linux/lib64/libruntime.so \
   --ra <cann-root>/aarch64-linux/lib64/libra.so \

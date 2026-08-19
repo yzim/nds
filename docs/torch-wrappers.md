@@ -1,7 +1,8 @@
 # PyTorch Wrappers
 
-NDS provides an optional `nds_torch` Python extension for tensor-facing
-storage operations. It keeps runtime, endpoint, QP, registered-memory, and
+NDS provides an optional `_nds_torch` extension under `src/torch` and a
+user-facing `apps/nds_torch.py` program for tensor-facing storage operations.
+The extension keeps runtime, endpoint, QP, registered-memory, and
 storage-session ownership in C++.
 
 The extension is built only on the target host. It requires a PyTorch and
@@ -16,19 +17,20 @@ cmake -S . -B build-torch \
   -DNDS_CANN_ROOT=<cann-root> \
   -DNDS_BUILD_AIV_KERNEL=ON \
   -DNDS_BUILD_AICPU_KERNEL=ON
-cmake --build build-torch --target nds_torch --parallel
+cmake --build build-torch --target _nds_torch --parallel
 ```
 
-Import the resulting module by adding the build directory to `PYTHONPATH`.
+Import the resulting module by adding `build/bin` to `PYTHONPATH`; run the
+user-facing program from `apps/nds_torch.py`.
 The process must run with the CANN environment configured; access to the NPU
 may require the same `sudo -n` context as other NDS hardware programs.
 
 ```python
-import nds_torch
 import torch
 import torch_npu
+import _nds_torch
 
-session = nds_torch.Session("192.168.100.100:18615", backend="ra")
+session = _nds_torch.Session("192.168.100.100:18615", backend="ra")
 
 payload = torch.full((4096,), 0x5A, dtype=torch.uint8)
 session.write(payload, 0)

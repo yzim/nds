@@ -11,6 +11,7 @@ variables in the target's ignored operational environment:
 ```text
 NDS_E2E_BUILD_DIR   absolute target build directory
 NDS_E2E_CANN_ROOT   absolute CANN installation root
+NDS_E2E_SOURCE_DIR  absolute NDS source directory
 NDS_E2E_NPU_IP      NPU RNIC IPv4 address
 NDS_E2E_CPU_IP      CPU RNIC IPv4 address
 NDS_E2E_TCP_PORT    unused TCP bootstrap port

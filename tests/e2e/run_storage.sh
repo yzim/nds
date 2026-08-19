@@ -40,7 +40,7 @@ run_client() {
     local operation="$2"
     local case_dir="$3"
     local client_log="$4"
-    local -a client=("${build}/nds_client" --execution "${backend}"
+    local -a client=("${build}/bin/nds_client" --execution "${backend}"
         --ascendcl "${cann}/aarch64-linux/lib64/libascendcl.so"
         --runtime "${cann}/aarch64-linux/lib64/libruntime.so"
         --ra "${cann}/aarch64-linux/lib64/libra.so"
@@ -84,7 +84,7 @@ run_case() {
     case_dir="$(mktemp -d "${state_dir}/${backend}-${operation}.XXXXXX")"
     local server_log="${case_dir}/server.log"
     local client_log="${case_dir}/client.log"
-    local -a server=("${build}/nds_server" --device "${NDS_E2E_DEVICE}" --gid-index "${NDS_E2E_GID_INDEX}"
+    local -a server=("${build}/bin/nds_server" --device "${NDS_E2E_DEVICE}" --gid-index "${NDS_E2E_GID_INDEX}"
         --listen "${NDS_E2E_CPU_IP}" --tcp-port "${NDS_E2E_TCP_PORT}" --namespace-bytes 1048576 --log-level info)
 
     if [[ "${operation}" == read ]]; then

@@ -75,10 +75,11 @@ and an RA local CQE are not this protocol completion.
 ## Repository layout
 
 ```text
-src/client/       NPU client: control plane plus RA / AIV / AICPU data planes
-src/server/       CPU machine acting as server: protocol, transport, and verbs backend
-src/common/       Shared transport bootstrap/metadata, storage ABI, and logging
-tests/            Unit/integration tests and opt-in hardware probes
+src/              Reusable client, server, and common libraries
+apps/             Supported nds_client, nds_server, and nds_torch.py frontends
+examples/         Opt-in lower-level probes and layer-specific demonstrations
+benchmarks/       Reserved for opt-in performance workloads
+tests/            Unit/integration tests and opt-in hardware validation
 docs/             Resource lifecycle, modes, linkage, and implementation guides
 ```
 
@@ -121,8 +122,8 @@ specific sources and limits.
 - [HCCP QP, MR, and runtime ABI](docs/hccp-resources.md): resource ownership,
   bootstrap, teardown, and the runtime library boundary.
 - [NPU execution modes](docs/npu-backends.md): RA, AIV, and AICPU posting paths.
-- [PyTorch wrappers](docs/torch-wrappers.md): optional verbs, transport, and
-  storage bindings for PyTorch tensors.
+- [PyTorch wrappers](docs/torch-wrappers.md): optional persistent storage
+  session for PyTorch tensors.
 
 **Runtime and evidence**
 

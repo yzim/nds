@@ -2,8 +2,8 @@
 set -euo pipefail
 
 require_environment() {
-    local required=(NDS_E2E_BUILD_DIR NDS_E2E_CANN_ROOT NDS_E2E_CPU_IP NDS_E2E_TCP_PORT
-        NDS_E2E_DEVICE NDS_E2E_GID_INDEX NDS_E2E_TORCH_PYTHON)
+    local required=(NDS_E2E_BUILD_DIR NDS_E2E_CANN_ROOT NDS_E2E_SOURCE_DIR NDS_E2E_CPU_IP
+        NDS_E2E_TCP_PORT NDS_E2E_DEVICE NDS_E2E_GID_INDEX NDS_E2E_TORCH_PYTHON)
     local name
     for name in "${required[@]}"; do
         if [[ -z "${!name:-}" ]]; then
@@ -33,7 +33,7 @@ server_log="${case_dir}/server.log"
 client_log="${case_dir}/client.log"
 trap cleanup EXIT
 
-timeout "${case_timeout}" "${build}/nds_server" \
+timeout "${case_timeout}" "${build}/bin/nds_server" \
     --device "${NDS_E2E_DEVICE}" --gid-index "${NDS_E2E_GID_INDEX}" \
     --listen "${NDS_E2E_CPU_IP}" --tcp-port "${NDS_E2E_TCP_PORT}" \
     --namespace-bytes 1048576 --storage-requests 2 --verify-write-bytes "${bytes}" --log-level info \
@@ -42,25 +42,12 @@ server_pid=$!
 sleep 1
 
 set +e
-timeout "${case_timeout}" sudo -n env PATH="${PATH}" PYTHONPATH="${build}" \
-    bash -s "${cann}" "${NDS_E2E_CPU_IP}:${NDS_E2E_TCP_PORT}" "${NDS_E2E_TORCH_PYTHON}" >"${client_log}" 2>&1 <<'PYTHON_SHELL'
+timeout "${case_timeout}" sudo -n env PATH="${PATH}" PYTHONPATH="${build}/bin" \
+    NDS_E2E_SOURCE_DIR="${NDS_E2E_SOURCE_DIR}" \
+    bash -s "${cann}" "${NDS_E2E_TORCH_PYTHON}" "${NDS_E2E_CPU_IP}:${NDS_E2E_TCP_PORT}" >"${client_log}" 2>&1 <<'PYTHON_SHELL'
 source "$1/set_env.sh"
-exec "$3" - "$2" <<'PYTHON'
-import sys
-
-import torch
-import torch_npu
-import nds_torch
-
-torch.npu.set_device(0)
-session = nds_torch.Session(sys.argv[1])
-payload = torch.arange(4096, dtype=torch.uint8) ^ 0x5A
-session.write(payload, 0)
-output = torch.empty_like(payload)
-session.read_(output, 0)
-assert torch.equal(output, payload)
-assert session.capacity == 1048576
-PYTHON
+exec "$2" "${NDS_E2E_SOURCE_DIR}/apps/nds_torch.py" \
+    "$3" --bytes 4096
 PYTHON_SHELL
 client_rc=$?
 wait "${server_pid}"

@@ -182,22 +182,3 @@ if(NDS_BUILD_AICPU_KERNEL)
     add_custom_target(nds_aicpu_kernel ALL DEPENDS "${NDS_AICPU_STANDARD_KERNEL}"
         "${NDS_AICPU_STANDARD_CONFIG}" "${NDS_AICPU_STANDARD_PACKAGE}")
 endif()
-
-add_executable(nds_client main.cc)
-target_link_libraries(nds_client PRIVATE
-    CLI11::CLI11
-    nds_logging
-    nds_client_storage)
-target_compile_options(nds_client PRIVATE -Wall -Wextra -Wpedantic -Werror)
-
-add_executable(nds_layer_probe layer_probe.cc)
-target_include_directories(nds_layer_probe PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/execution
-    ${CMAKE_CURRENT_SOURCE_DIR}/resource)
-target_link_libraries(nds_layer_probe PRIVATE
-    CLI11::CLI11
-    nds_logging
-    nds_client_control
-    nds_aiv_launcher
-    nds_aicpu_launcher)
-target_compile_options(nds_layer_probe PRIVATE -Wall -Wextra -Wpedantic -Werror)
