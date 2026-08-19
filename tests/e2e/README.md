@@ -30,16 +30,25 @@ cmake -S . -B build-e2e \
 ctest --test-dir build-e2e -N --label-regex '^e2e$'
 ```
 
-Run one bounded case on the approved target, supplying the variables through
-the target's ignored environment:
+Run one bounded, payload-verified case on the approved target. The runner
+accepts the backend (`ra`, `aiv`, or `aicpu`) and operation (`read` or `write`)
+explicitly:
 
 ```sh
-sudo -n env <NDS_E2E_* assignments> \
-  ctest --test-dir build-e2e --output-on-failure \
-    --tests-regex '^e2e\.aicpu_storage$'
+env <NDS_E2E_* assignments> \
+  tests/e2e/run_storage.sh --backend aicpu --operation read
 ```
 
-Each case starts one server, executes one 4096-byte payload-verified storage
-Write, and stops. CTest serializes all cases with the `ascend_npu0` resource
-lock. The AICPU case creates a private mount namespace for its standard-CP1
-package overlay; it does not modify the installed CANN files.
+Use `--sweep` to run all six backend/operation combinations sequentially; the
+sweep stops at the first failed case. CTest registers the same six cases and
+serializes them with the `ascend_npu0` resource lock:
+
+```sh
+env <NDS_E2E_* assignments> \
+  ctest --test-dir build-e2e --output-on-failure --label-regex '^e2e$'
+```
+
+Each case transfers 4096 bytes. Read starts the server with its deterministic
+seed pattern, which the client verifies. Write enables server-side payload
+verification. The AICPU case creates a private mount namespace for its
+standard-CP1 package overlay; it does not modify the installed CANN files.
