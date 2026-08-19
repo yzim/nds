@@ -22,7 +22,7 @@ uint32_t execute(const nds_device_storage *storage, const nds_device_storage_io 
     transfer.local.address = storage->command.address;
     transfer.local.length = sizeof(command);
     transfer.local.local_key = storage->command.local_key;
-    const uint32_t sent = NdsAicpuRdmaSendImpl(&storage->connection, &transfer, result);
+    const uint32_t sent = NdsAicpuRdmaSendImpl(&storage->transport, &transfer, result);
     if (sent != kNdsAicpuSuccess || result->status != NDS_DEVICE_OPERATION_SUCCESS) return sent;
     auto *completion = reinterpret_cast<volatile nds_protocol_completion_wire *>(storage->completion.address);
     for (;;) {

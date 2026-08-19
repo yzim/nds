@@ -70,11 +70,11 @@ bool AivEntrypointLauncher::load(nds_acl_api *acl, const std::string &kernel_pat
 
 bool AivEntrypointLauncher::make_device_request(const nds_device_operation_request &request,
                                                  nds_device_operation_request *output) {
-    if (output == nullptr || request.connection.abi_version != NDS_DEVICE_CONNECTION_ABI_VERSION ||
-        request.connection.size != sizeof(request.connection) ||
-        request.connection.qp.abi_version != NDS_DEVICE_QP_ABI_VERSION ||
+    if (output == nullptr || request.transport.abi_version != NDS_DEVICE_TRANSPORT_ABI_VERSION ||
+        request.transport.size != sizeof(request.transport) ||
+        request.transport.control_qp.abi_version != NDS_DEVICE_QP_ABI_VERSION ||
         request.operation < NDS_DEVICE_RDMA_SEND || request.operation > NDS_DEVICE_POLL_CQ) {
-        set_error("NDS AIV request has invalid device connection metadata");
+        set_error("NDS AIV request has invalid device transport metadata");
         return false;
     }
     *output = request;
@@ -115,6 +115,36 @@ bool AivEntrypointLauncher::launch_and_wait(std::uint64_t device_request_address
     result = acl_->synchronize_stream_with_timeout(stream_, completion_timeout_ms);
     if (result != 0) {
         set_error("aclrtSynchronizeStreamWithTimeout after " + std::string(operator_name) + " failed: " + std::to_string(result));
+        return false;
+    }
+    error_.clear();
+    return true;
+}
+
+bool AivEntrypointLauncher::launch_post_send_and_wait(std::uint64_t device_request_address,
+                                                       std::int32_t completion_timeout_ms) {
+    if (!loaded() || device_request_address == 0U || completion_timeout_ms <= 0) {
+        set_error("NDS AIV PostSend launch requires a loaded binary, request address, and positive timeout");
+        return false;
+    }
+    if (acl_->binary_get_function(binary_, "NdsAivPostSend", &function_) != 0 || function_ == nullptr) {
+        set_error("NDS AIV binary does not expose NdsAivPostSend");
+        return false;
+    }
+    nds_acl_launch_kernel_attr attributes[2]{};
+    attributes[0].id = NDS_ACL_LAUNCH_KERNEL_ATTR_SCHEM_MODE;
+    attributes[0].value.schem_mode = 1U;
+    attributes[1].id = NDS_ACL_LAUNCH_KERNEL_ATTR_ENGINE_TYPE;
+    attributes[1].value.engine_type = NDS_ACL_ENGINE_TYPE_AIV;
+    nds_acl_launch_kernel_config config{attributes, 2U};
+    if (const int result = acl_->launch_kernel_with_host_args(function_, 1U, stream_, &config, &device_request_address,
+                                                               sizeof(device_request_address), nullptr, 0U);
+        result != 0) {
+        set_error("aclrtLaunchKernelWithHostArgs(NdsAivPostSend) failed: " + std::to_string(result));
+        return false;
+    }
+    if (const int result = acl_->synchronize_stream_with_timeout(stream_, completion_timeout_ms); result != 0) {
+        set_error("aclrtSynchronizeStreamWithTimeout after NdsAivPostSend failed: " + std::to_string(result));
         return false;
     }
     error_.clear();

@@ -127,6 +127,11 @@ HCCP-managed AI-QP CQ is an NDS completion API.
   first.
 - [x] Validate the host StorageClient with AIV and AICPU command-Send RMA paths.
 - [ ] Implement device-callable AIV and AICPU Transport APIs.
+  The initial API uses one QP. A later multi-QP transport will reserve one
+  control QP and select data QPs round-robin in device code. Define shared
+  scheduling and per-QP submission coordination when concurrent device
+  transport users are introduced; concurrency is out of scope for the
+  initial design.
 - [x] Add device-callable AIV and AICPU storage Read and Write operators.
 - [ ] Switch the host validation executable to launch those storage operators.
 - [x] Validate a deterministic storage Write with RA, AIV, and AICPU.

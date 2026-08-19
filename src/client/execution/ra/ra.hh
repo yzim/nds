@@ -1,7 +1,7 @@
 #ifndef NDS_RA_HPP
 #define NDS_RA_HPP
 
-#include "nds/device_connection.h"
+#include "nds/device_transport.h"
 #include "nds/device_storage.h"
 #include "nds/npu_ra_context.hh"
 #include "nds/npu_ra_qp.hh"

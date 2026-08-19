@@ -53,19 +53,21 @@ target-local wrapper command. For example:
 cmake -S . -B build-e2e \
   -DNDS_ENABLE_E2E_TESTS=ON \
   '-DNDS_E2E_AIV_STORAGE_COMMAND=/absolute/path/to/.local/run_aiv_storage_once.sh' \
-  '-DNDS_E2E_AICPU_CONNECTION_COMMAND=/absolute/path/to/.local/run_aicpu_connection_once.sh'
+  '-DNDS_E2E_AICPU_TRANSPORT_COMMAND=/absolute/path/to/.local/run_aicpu_transport_once.sh'
 ctest --test-dir build-e2e --output-on-failure --label-regex '^e2e$'
 ```
 
 The supported variables and registered test names are:
 
-- `NDS_E2E_RA_VERBS_COMMAND`, `NDS_E2E_RA_CONNECTION_COMMAND`, `NDS_E2E_RA_STORAGE_COMMAND`
-- `NDS_E2E_AIV_VERBS_COMMAND`, `NDS_E2E_AIV_CONNECTION_COMMAND`, `NDS_E2E_AIV_STORAGE_COMMAND`
-- `NDS_E2E_AICPU_VERBS_COMMAND`, `NDS_E2E_AICPU_CONNECTION_COMMAND`, `NDS_E2E_AICPU_STORAGE_COMMAND`
+- `NDS_E2E_RA_VERBS_COMMAND`, `NDS_E2E_RA_TRANSPORT_COMMAND`, `NDS_E2E_RA_STORAGE_COMMAND`
+- `NDS_E2E_AIV_VERBS_COMMAND`, `NDS_E2E_AIV_TRANSPORT_COMMAND`, `NDS_E2E_AIV_STORAGE_COMMAND`
+- `NDS_E2E_AICPU_VERBS_COMMAND`, `NDS_E2E_AICPU_TRANSPORT_COMMAND`, `NDS_E2E_AICPU_STORAGE_COMMAND`
 
 Each command registers `e2e.<backend>_<layer>`. A storage run is the full
-storage → connection → verbs composition. Verbs and connection commands are
-optional isolation probes and must use the matching typed device request ABI.
+storage → transport → verbs composition. The verbs probe posts one raw Send to
+a CPU receive probe. The transport probe invokes `Transport::send_bytes` to
+that same receiver. Both are optional isolation probes and must use the
+matching typed device request ABI.
 
 The wrapper owns server startup, client invocation, timeout, cleanup, and
 validation for one selected mode. Create it locally when needed; it must not be
@@ -77,8 +79,8 @@ mode or operation while preventing concurrent use of the single NPU.
 
 Hardware results are recorded per target experiment under `.local/`; a
 successful build or exported-symbol check is not an end-to-end completion.
-Storage tests exercise the composed storage → connection → verbs path, while
-verbs and connection probes remain independently selectable.
+Storage tests exercise the composed storage → transport → verbs path, while
+verbs and transport probes remain independently selectable.
 
 ## CI
 

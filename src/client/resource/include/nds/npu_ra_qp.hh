@@ -1,7 +1,7 @@
 #ifndef NDS_NPU_RA_QP_HPP
 #define NDS_NPU_RA_QP_HPP
 
-#include "nds/device_connection.h"
+#include "nds/device_transport.h"
 #include "nds/ra_loader.h"
 #include "nds/result.hh"
 #include "nds/connection.h"
@@ -75,7 +75,7 @@ public:
     const nds_ra_ai_qp_info &ai_qp_info() const noexcept;
     Result<void> set_device_wr_id_storage(std::uint64_t send_address,
                                           std::uint64_t receive_address);
-    Result<nds_device_connection> make_device_connection() const;
+    Result<nds_device_transport> make_device_transport() const;
     const NpuRaQpConfig &config() const noexcept;
     NpuExecutionMode execution_mode() const noexcept;
     nds_ra_api *ra_api() const noexcept;

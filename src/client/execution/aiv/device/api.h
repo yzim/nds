@@ -22,19 +22,19 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPollCqImpl(__gm__ const nds_dev
                              AscendC::TBuf<> *scratch,
                              __gm__ nds_device_operation_result *result);
 
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaSendImpl(__gm__ const nds_device_connection *connection,
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaSendImpl(__gm__ const nds_device_transport *transport,
                                __gm__ const nds_device_transfer *transfer,
                                AscendC::TBuf<> *scratch,
                                __gm__ nds_device_operation_result *result);
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaRecvImpl(__gm__ const nds_device_connection *connection,
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaRecvImpl(__gm__ const nds_device_transport *transport,
                                __gm__ const nds_device_transfer *transfer,
                                AscendC::TBuf<> *scratch,
                                __gm__ nds_device_operation_result *result);
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaReadImpl(__gm__ const nds_device_connection *connection,
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaReadImpl(__gm__ const nds_device_transport *transport,
                                __gm__ const nds_device_transfer *transfer,
                                AscendC::TBuf<> *scratch,
                                __gm__ nds_device_operation_result *result);
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaWriteImpl(__gm__ const nds_device_connection *connection,
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaWriteImpl(__gm__ const nds_device_transport *transport,
                                 __gm__ const nds_device_transfer *transfer,
                                 AscendC::TBuf<> *scratch,
                                 __gm__ nds_device_operation_result *result);

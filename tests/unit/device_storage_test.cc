@@ -10,8 +10,8 @@ nds_device_storage valid_storage() {
     nds_device_storage storage{};
     storage.abi_version = NDS_DEVICE_STORAGE_ABI_VERSION;
     storage.size = sizeof(storage);
-    storage.connection.abi_version = NDS_DEVICE_CONNECTION_ABI_VERSION;
-    storage.connection.size = sizeof(storage.connection);
+    storage.transport.abi_version = NDS_DEVICE_TRANSPORT_ABI_VERSION;
+    storage.transport.size = sizeof(storage.transport);
     storage.request_id = 1U;
     storage.capacity = 4096U;
     storage.command = {0x1000U, sizeof(nds_protocol_command_wire), 2U};

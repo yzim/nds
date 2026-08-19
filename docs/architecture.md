@@ -4,7 +4,7 @@ NDS has two top-level endpoints: an NPU client and a CPU server. The NPU client
 uses one dependency direction:
 
 ```text
-Application -> StorageClient -> Transport -> RMA -> protocol resources
+Application -> StorageClient -> Transport -> Verbs -> protocol resources
 ```
 
 ## Source Tree
@@ -36,13 +36,13 @@ src/
 
 ## API Matrix
 
-RA, AIV, and AICPU are execution modes. Work-request, transport, and
+RA, AIV, and AICPU are execution modes. Verbs, transport, and
 storage are API layers. They are separate axes:
 
 | Layer | RA | AIV | AICPU |
 |---|---|---|---|
 | Verbs | `NdsRaPostSend`, `NdsRaPostRecv`, `NdsRaPollCq` | `PostSend`, `PostRecv`, `PollCq` over device QP addresses | Exported provider/fallback `PostSend`, `PostRecv`, `PollCq` |
-| Connection/RDMA | `NdsRaRdmaSend`, `NdsRaRdmaRecv`, `NdsRaRdmaRead`, `NdsRaRdmaWrite` | Device `RdmaSend`, `RdmaRecv`, `RdmaRead`, `RdmaWrite` | Device `RdmaSend`, `RdmaRecv`, `RdmaRead`, `RdmaWrite` |
+| Transport operations | Host `Transport` selects a QP and invokes verbs | Device `Transport` selects a device QP | Device `Transport` selects a device QP |
 | Transport | Host `Transport` | Device transport/session API planned | Device transport/session API planned |
 | Storage | `NdsRaStorageRead`, `NdsRaStorageWrite` | Device `StorageRead` / `StorageWrite` | Device `StorageRead` / `StorageWrite` |
 
@@ -84,13 +84,21 @@ polling. It does not encode storage commands or make namespace decisions.
 
 ## Transport
 
-The NPU `Transport` owns its RA context, one RC QP, registered-region
-lifetimes, peer metadata, and TCP bootstrap object. It exposes Send, RDMA Read,
-and RDMA Write over registered buffers, and lowers them to QP work requests.
+The application owns `NpuRuntime`, `Transport`, and `StorageClient` in that
+order. `NpuRuntime` owns the CANN/RA context, runtime loaders, and its `Memory`
+service. `Transport` borrows the runtime and owns one RC QP, peer metadata, TCP
+bootstrap, and its private registered buffers. `StorageClient` borrows the
+runtime and transport; it owns protocol buffers and obtains direct-transfer
+allocations and registrations through `NpuRuntime::memory()`.
+
+`Transport` exposes direct Read and Write using local and remote address/key
+values plus a length. It selects a QP and lowers the operation to verbs.
 Protocol records and namespace decisions do not belong here.
 
-One QP per transport is an initial constraint. A future transport may select
-from multiple QPs without changing the storage API.
+One QP per transport is an initial constraint. A future transport reserves a
+control QP and selects data QPs round-robin without changing the storage API.
+The device-safe `nds_device_transport` currently contains the control QP; it is
+the ABI boundary that will grow a data-QP view when multi-QP support is added.
 
 ## Storage Client
 

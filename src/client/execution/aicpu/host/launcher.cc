@@ -102,9 +102,9 @@ bool AicpuEntrypointLauncher::launch_and_wait(nds_device_operation_request *requ
     }
     const char *operator_name = request == nullptr ? nullptr : aicpu_operator_name(request->operation);
     if (request == nullptr || completion_timeout_ms <= 0 || operator_name == nullptr ||
-        request->connection.abi_version != NDS_DEVICE_CONNECTION_ABI_VERSION ||
-        request->connection.qp.abi_version != NDS_DEVICE_QP_ABI_VERSION) {
-        set_error("NDS AICPU request has invalid device connection metadata");
+        request->transport.abi_version != NDS_DEVICE_TRANSPORT_ABI_VERSION ||
+        request->transport.control_qp.abi_version != NDS_DEVICE_QP_ABI_VERSION) {
+        set_error("NDS AICPU request has invalid device transport metadata");
         return false;
     }
     request->abi_version = NDS_DEVICE_OPERATIONS_ABI_VERSION;
@@ -151,10 +151,50 @@ bool AicpuEntrypointLauncher::launch_and_wait(nds_device_operation_request *requ
     return true;
 }
 
+bool AicpuEntrypointLauncher::launch_post_send_and_wait(nds_device_post_send_request *request,
+                                                         std::int32_t completion_timeout_ms) {
+    if (!loaded() || request == nullptr || request->qp.abi_version != NDS_DEVICE_QP_ABI_VERSION ||
+        request->operation_result_address == 0U || completion_timeout_ms <= 0) {
+        set_error("NDS AICPU PostSend request has invalid metadata");
+        return false;
+    }
+    request->abi_version = NDS_DEVICE_OPERATOR_ARGS_ABI_VERSION;
+    request->size = sizeof(*request);
+    if (acl_->binary_get_function(binary_, "NdsAicpuPostSend", &function_) != 0 || function_ == nullptr) {
+        set_error("NDS AICPU package does not expose NdsAicpuPostSend");
+        return false;
+    }
+    nds_acl_args_handle arguments{};
+    nds_acl_param_handle parameter_handle{};
+    if (acl_->kernel_args_init(function_, &arguments) != 0 || arguments == nullptr ||
+        acl_->kernel_args_append(arguments, request, sizeof(*request), &parameter_handle) != 0 ||
+        acl_->kernel_args_finalize(arguments) != 0) {
+        if (arguments != nullptr) (void)acl_->kernel_args_finalize(arguments);
+        set_error("failed to construct NDS AICPU PostSend arguments");
+        return false;
+    }
+    nds_acl_launch_kernel_attr attribute{};
+    attribute.id = NDS_ACL_LAUNCH_KERNEL_ATTR_TIMEOUT;
+    attribute.value.timeout_seconds = 5U;
+    nds_acl_launch_kernel_config config{&attribute, 1U};
+    const int launched = acl_->launch_kernel_with_config(function_, 1U, stream_, &config, arguments, nullptr);
+    if (launched != 0) {
+        set_error("aclrtLaunchKernelWithConfig(NdsAicpuPostSend) failed: " + std::to_string(launched));
+        return false;
+    }
+    const int synchronized = acl_->synchronize_stream_with_timeout(stream_, completion_timeout_ms);
+    if (synchronized != 0) {
+        set_error("aclrtSynchronizeStreamWithTimeout after NdsAicpuPostSend failed: " + std::to_string(synchronized));
+        return false;
+    }
+    error_.clear();
+    return true;
+}
+
 bool AicpuEntrypointLauncher::launch_storage_and_wait(nds_device_storage_request *request,
                                                       std::int32_t completion_timeout_ms) {
-    if (request == nullptr || request->storage.connection.abi_version != NDS_DEVICE_CONNECTION_ABI_VERSION ||
-        request->storage.connection.qp.abi_version != NDS_DEVICE_QP_ABI_VERSION ||
+    if (request == nullptr || request->storage.transport.abi_version != NDS_DEVICE_TRANSPORT_ABI_VERSION ||
+        request->storage.transport.control_qp.abi_version != NDS_DEVICE_QP_ABI_VERSION ||
         request->operation_result_address == 0U || completion_timeout_ms <= 0) {
         set_error("NDS AICPU storage request has invalid metadata");
         return false;

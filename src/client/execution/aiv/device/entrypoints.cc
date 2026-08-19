@@ -29,7 +29,7 @@ __aicore__ inline bool ValidRequest(__gm__ const Request *request, uint64_t resu
 __aicore__ inline bool ValidOperationRequest(__gm__ const nds_device_operation_request *request) {
     return request != nullptr && request->abi_version == NDS_DEVICE_OPERATIONS_ABI_VERSION &&
            request->size == sizeof(*request) && request->operation_result_address != 0U &&
-           request->connection.abi_version == NDS_DEVICE_CONNECTION_ABI_VERSION;
+           request->transport.abi_version == NDS_DEVICE_TRANSPORT_ABI_VERSION;
 }
 
 __aicore__ inline bool ValidStorageRequest(__gm__ const nds_device_storage_request *request) {
@@ -76,7 +76,7 @@ extern "C" __global__ __aicore__ void NdsAivPollCq(GM_ADDR request_address) {
     __gm__ auto *result = request == nullptr ? nullptr : reinterpret_cast<__gm__ nds_device_operation_result *>(request->operation_result_address);
     if (!ValidOperationRequest(request)) return SetInvalid(result);
     TPipe pipe; TBuf<> scratch; pipe.InitBuffer(scratch, 64U);
-    NdsAivPollCqImpl(&request->connection.qp, &request->parameters.poll_cq, &scratch, result);
+    NdsAivPollCqImpl(&request->transport.control_qp, &request->parameters.poll_cq, &scratch, result);
 }
 extern "C" __global__ __aicore__ void NdsAivRdmaSend(GM_ADDR request_address) {
     __gm__ auto *request = reinterpret_cast<__gm__ nds_device_operation_request *>(request_address);
@@ -86,7 +86,7 @@ extern "C" __global__ __aicore__ void NdsAivRdmaSend(GM_ADDR request_address) {
     TPipe pipe;
     TBuf<> scratch;
     pipe.InitBuffer(scratch, 64U);
-    NdsAivRdmaSendImpl(&request->connection, &request->parameters.transfer, &scratch, result);
+    NdsAivRdmaSendImpl(&request->transport, &request->parameters.transfer, &scratch, result);
 }
 
 extern "C" __global__ __aicore__ void NdsAivRdmaRecv(GM_ADDR request_address) {
@@ -97,7 +97,7 @@ extern "C" __global__ __aicore__ void NdsAivRdmaRecv(GM_ADDR request_address) {
     TPipe pipe;
     TBuf<> scratch;
     pipe.InitBuffer(scratch, 64U);
-    NdsAivRdmaRecvImpl(&request->connection, &request->parameters.transfer, &scratch, result);
+    NdsAivRdmaRecvImpl(&request->transport, &request->parameters.transfer, &scratch, result);
 }
 
 extern "C" __global__ __aicore__ void NdsAivRdmaRead(GM_ADDR request_address) {
@@ -108,7 +108,7 @@ extern "C" __global__ __aicore__ void NdsAivRdmaRead(GM_ADDR request_address) {
     TPipe pipe;
     TBuf<> scratch;
     pipe.InitBuffer(scratch, 64U);
-    NdsAivRdmaReadImpl(&request->connection, &request->parameters.transfer, &scratch, result);
+    NdsAivRdmaReadImpl(&request->transport, &request->parameters.transfer, &scratch, result);
 }
 
 extern "C" __global__ __aicore__ void NdsAivRdmaWrite(GM_ADDR request_address) {
@@ -119,7 +119,7 @@ extern "C" __global__ __aicore__ void NdsAivRdmaWrite(GM_ADDR request_address) {
     TPipe pipe;
     TBuf<> scratch;
     pipe.InitBuffer(scratch, 64U);
-    NdsAivRdmaWriteImpl(&request->connection, &request->parameters.transfer, &scratch, result);
+    NdsAivRdmaWriteImpl(&request->transport, &request->parameters.transfer, &scratch, result);
 }
 
 extern "C" __global__ __aicore__ void NdsAivStorageRead(GM_ADDR request_address) {

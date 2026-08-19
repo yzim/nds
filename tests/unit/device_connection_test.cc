@@ -5,12 +5,12 @@
 #include <cstdint>
 
 int main() {
-    nds_device_connection connection{};
-    connection.abi_version = NDS_DEVICE_CONNECTION_ABI_VERSION;
-    connection.size = sizeof(connection);
-    connection.qp.abi_version = NDS_DEVICE_QP_ABI_VERSION;
-    connection.qp.size = sizeof(connection.qp);
-    connection.qp.provider_qp_address = UINT64_C(0x12340000);
+    nds_device_transport transport{};
+    transport.abi_version = NDS_DEVICE_TRANSPORT_ABI_VERSION;
+    transport.size = sizeof(transport);
+    transport.control_qp.abi_version = NDS_DEVICE_QP_ABI_VERSION;
+    transport.control_qp.size = sizeof(transport.control_qp);
+    transport.control_qp.provider_qp_address = UINT64_C(0x12340000);
 
     nds_device_transfer transfer{UINT64_C(0x55),
                                  {UINT64_C(0x1000), 4096U, UINT32_C(0x77)},
@@ -29,8 +29,8 @@ int main() {
     assert(receive.wr_id == transfer.wr_id);
     assert(receive.local.length == transfer.local.length);
     assert(sizeof(nds_device_qp) == 240U);
-    assert(sizeof(nds_device_connection) == 248U);
+    assert(sizeof(nds_device_transport) == 248U);
     assert(sizeof(nds_device_operation_request) == 312U);
-    assert(offsetof(nds_device_operation_request, connection) == 16U);
+    assert(offsetof(nds_device_operation_request, transport) == 16U);
     return 0;
 }

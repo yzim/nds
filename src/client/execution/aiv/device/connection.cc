@@ -1,13 +1,12 @@
 #include "api.h"
 #include "internal.h"
 
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaSendImpl(__gm__ const nds_device_connection *connection,
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaSendImpl(__gm__ const nds_device_transport *transport,
                                            __gm__ const nds_device_transfer *transfer, TBuf<> *scratch,
                                            __gm__ nds_device_operation_result *result) {
     if (result == nullptr) return;
-    if (connection == nullptr || transfer == nullptr ||
-        (connection->abi_version != NDS_DEVICE_CONNECTION_ABI_VERSION ||
-         connection->size != sizeof(*connection))) {
+    if (transport == nullptr || transfer == nullptr ||
+        (transport->abi_version != NDS_DEVICE_TRANSPORT_ABI_VERSION || transport->size != sizeof(*transport))) {
         NdsAivSetResult(result, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
         return;
     }
@@ -18,16 +17,15 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaSendImpl(__gm__ const nds_d
     wr.local.address = transfer->local.address;
     wr.local.length = transfer->local.length;
     wr.local.local_key = transfer->local.local_key;
-    NdsAivPostSendImpl(&connection->qp, &wr, scratch, result);
+    NdsAivPostSendImpl(&transport->control_qp, &wr, scratch, result);
 }
 
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaRecvImpl(__gm__ const nds_device_connection *connection,
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaRecvImpl(__gm__ const nds_device_transport *transport,
                                            __gm__ const nds_device_transfer *transfer, TBuf<> *scratch,
                                            __gm__ nds_device_operation_result *result) {
     if (result == nullptr) return;
-    if (connection == nullptr || transfer == nullptr ||
-        (connection->abi_version != NDS_DEVICE_CONNECTION_ABI_VERSION ||
-         connection->size != sizeof(*connection))) {
+    if (transport == nullptr || transfer == nullptr ||
+        (transport->abi_version != NDS_DEVICE_TRANSPORT_ABI_VERSION || transport->size != sizeof(*transport))) {
         NdsAivSetResult(result, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
         return;
     }
@@ -36,16 +34,15 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaRecvImpl(__gm__ const nds_d
     wr.local.address = transfer->local.address;
     wr.local.length = transfer->local.length;
     wr.local.local_key = transfer->local.local_key;
-    NdsAivPostRecvImpl(&connection->qp, &wr, scratch, result);
+    NdsAivPostRecvImpl(&transport->control_qp, &wr, scratch, result);
 }
 
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaReadImpl(__gm__ const nds_device_connection *connection,
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaReadImpl(__gm__ const nds_device_transport *transport,
                                            __gm__ const nds_device_transfer *transfer, TBuf<> *scratch,
                                            __gm__ nds_device_operation_result *result) {
     if (result == nullptr) return;
-    if (connection == nullptr || transfer == nullptr ||
-        (connection->abi_version != NDS_DEVICE_CONNECTION_ABI_VERSION ||
-         connection->size != sizeof(*connection))) {
+    if (transport == nullptr || transfer == nullptr ||
+        (transport->abi_version != NDS_DEVICE_TRANSPORT_ABI_VERSION || transport->size != sizeof(*transport))) {
         NdsAivSetResult(result, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
         return;
     }
@@ -58,16 +55,15 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaReadImpl(__gm__ const nds_d
     wr.local.local_key = transfer->local.local_key;
     wr.remote_address = transfer->remote_address;
     wr.remote_key = transfer->remote_key;
-    NdsAivPostSendImpl(&connection->qp, &wr, scratch, result);
+    NdsAivPostSendImpl(&transport->control_qp, &wr, scratch, result);
 }
 
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaWriteImpl(__gm__ const nds_device_connection *connection,
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaWriteImpl(__gm__ const nds_device_transport *transport,
                                             __gm__ const nds_device_transfer *transfer, TBuf<> *scratch,
                                             __gm__ nds_device_operation_result *result) {
     if (result == nullptr) return;
-    if (connection == nullptr || transfer == nullptr ||
-        (connection->abi_version != NDS_DEVICE_CONNECTION_ABI_VERSION ||
-         connection->size != sizeof(*connection))) {
+    if (transport == nullptr || transfer == nullptr ||
+        (transport->abi_version != NDS_DEVICE_TRANSPORT_ABI_VERSION || transport->size != sizeof(*transport))) {
         NdsAivSetResult(result, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
         return;
     }
@@ -80,5 +76,5 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaWriteImpl(__gm__ const nds_
     wr.local.local_key = transfer->local.local_key;
     wr.remote_address = transfer->remote_address;
     wr.remote_key = transfer->remote_key;
-    NdsAivPostSendImpl(&connection->qp, &wr, scratch, result);
+    NdsAivPostSendImpl(&transport->control_qp, &wr, scratch, result);
 }

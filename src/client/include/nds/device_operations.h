@@ -1,7 +1,7 @@
 #ifndef NDS_DEVICE_OPERATIONS_H
 #define NDS_DEVICE_OPERATIONS_H
 
-#include "nds/device_connection.h"
+#include "nds/device_transport.h"
 
 #include <stdint.h>
 
@@ -25,7 +25,7 @@ typedef struct nds_device_operation_request {
     uint32_t size;
     uint32_t operation;
     uint32_t reserved;
-    nds_device_connection connection;
+    nds_device_transport transport;
     nds_device_operation_parameters parameters;
     uint64_t operation_result_address;
 } nds_device_operation_request;

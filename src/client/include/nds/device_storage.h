@@ -1,7 +1,7 @@
 #ifndef NDS_DEVICE_STORAGE_H
 #define NDS_DEVICE_STORAGE_H
 
-#include "nds/device_connection.h"
+#include "nds/device_transport.h"
 #include "nds/protocol.h"
 
 #include <stdint.h>
@@ -11,7 +11,7 @@
 typedef struct nds_device_storage {
     uint32_t abi_version;
     uint32_t size;
-    nds_device_connection connection;
+    nds_device_transport transport;
     nds_device_sge command;
     nds_device_sge completion;
     uint64_t capacity;
@@ -52,8 +52,8 @@ static inline int nds_device_storage_valid(const nds_device_storage *storage,
                                            const nds_device_storage_io *io) {
     uint32_t required_access;
     if (storage == nullptr || io == nullptr || storage->abi_version != NDS_DEVICE_STORAGE_ABI_VERSION ||
-        storage->size != sizeof(*storage) || storage->connection.abi_version != NDS_DEVICE_CONNECTION_ABI_VERSION ||
-        storage->connection.size != sizeof(storage->connection) || storage->request_id == 0U ||
+        storage->size != sizeof(*storage) || storage->transport.abi_version != NDS_DEVICE_TRANSPORT_ABI_VERSION ||
+        storage->transport.size != sizeof(storage->transport) || storage->request_id == 0U ||
         storage->command.address == 0U || storage->command.local_key == 0U ||
         storage->command.length < sizeof(nds_protocol_command_wire) || storage->completion.address == 0U ||
         storage->completion.local_key == 0U ||

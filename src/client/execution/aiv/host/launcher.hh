@@ -24,6 +24,7 @@ public:
                              nds_device_operation_request *output);
     bool launch_and_wait(std::uint64_t device_request_address, std::uint32_t operation,
                          std::int32_t completion_timeout_ms);
+    bool launch_post_send_and_wait(std::uint64_t device_request_address, std::int32_t completion_timeout_ms);
     bool launch_storage_and_wait(std::uint64_t device_request_address, std::uint16_t operation,
                                  std::int32_t completion_timeout_ms);
     void reset() noexcept;

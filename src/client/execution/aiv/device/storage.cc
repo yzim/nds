@@ -47,8 +47,8 @@ __aicore__ inline bool StorageValid(__gm__ const nds_device_storage *storage, __
     const uint64_t capacity = storage->capacity;
     const uint16_t operation = io->operation;
     if (storage->abi_version != NDS_DEVICE_STORAGE_ABI_VERSION || storage->size != sizeof(nds_device_storage) ||
-        storage->connection.abi_version != NDS_DEVICE_CONNECTION_ABI_VERSION ||
-        storage->connection.size != sizeof(nds_device_connection) || storage->request_id == 0U ||
+        storage->transport.abi_version != NDS_DEVICE_TRANSPORT_ABI_VERSION ||
+        storage->transport.size != sizeof(nds_device_transport) || storage->request_id == 0U ||
         storage->command.address == 0U || storage->command.local_key == 0U ||
         command_length < sizeof(nds_protocol_command_wire) || storage->completion.address == 0U ||
         storage->completion.local_key == 0U || completion_length < sizeof(nds_protocol_completion_wire) ||
@@ -122,7 +122,7 @@ __aicore__ inline void Execute(__gm__ const nds_device_storage *storage, __gm__ 
     wr.local.address = command_address;
     wr.local.length = sizeof(command);
     wr.local.local_key = command_lkey;
-    NdsAivPostSendImpl(&storage->connection.qp, &wr, scratch, result);
+    NdsAivPostSendImpl(&storage->transport.control_qp, &wr, scratch, result);
     if (result->status != NDS_DEVICE_OPERATION_SUCCESS) return;
     __gm__ const uint8_t *completion = reinterpret_cast<__gm__ const uint8_t *>(completion_address);
     for (;;) {

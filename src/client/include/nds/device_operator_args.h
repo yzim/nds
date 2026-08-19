@@ -1,7 +1,7 @@
 #ifndef NDS_DEVICE_OPERATOR_ARGS_H
 #define NDS_DEVICE_OPERATOR_ARGS_H
 
-#include "nds/device_connection.h"
+#include "nds/device_transport.h"
 #include "nds/device_storage.h"
 
 #include <stdint.h>

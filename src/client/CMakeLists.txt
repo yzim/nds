@@ -52,11 +52,14 @@ target_include_directories(nds_aicpu_launcher PUBLIC
 target_link_libraries(nds_aicpu_launcher PUBLIC nds_ra_loader)
 target_compile_options(nds_aicpu_launcher PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
-add_library(nds_client_control STATIC resource/connection.cc)
+add_library(nds_client_control STATIC
+    resource/runtime.cc
+    resource/memory.cc
+    resource/transport.cc)
 target_include_directories(nds_client_control PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/resource
     ${CMAKE_CURRENT_SOURCE_DIR}/execution)
-target_link_libraries(nds_client_control PUBLIC nds_npu_ra_context nds_npu_ra_qp nds_transport)
+target_link_libraries(nds_client_control PUBLIC nds_npu_ra_context nds_npu_ra_qp nds_ra nds_transport)
 target_compile_options(nds_client_control PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 add_library(nds_client_storage STATIC resource/storage.cc)
@@ -114,7 +117,7 @@ if(NDS_BUILD_AIV_KERNEL)
             "${NDS_AIV_DEVICE_DIR}/internal.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_operations.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_operator_args.h"
-            "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_connection.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_transport.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_verbs.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_qp.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_hns_codec.h"
@@ -162,7 +165,7 @@ if(NDS_BUILD_AICPU_KERNEL)
             "${NDS_AICPU_DEVICE_DIR}/hns_abi.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_operations.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_operator_args.h"
-            "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_connection.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_transport.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_verbs.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_qp.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_hns_codec.h"
@@ -179,3 +182,15 @@ target_link_libraries(nds_client PRIVATE
     nds_logging
     nds_client_storage)
 target_compile_options(nds_client PRIVATE -Wall -Wextra -Wpedantic -Werror)
+
+add_executable(nds_layer_probe layer_probe.cc)
+target_include_directories(nds_layer_probe PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/execution
+    ${CMAKE_CURRENT_SOURCE_DIR}/resource)
+target_link_libraries(nds_layer_probe PRIVATE
+    CLI11::CLI11
+    nds_logging
+    nds_client_control
+    nds_aiv_launcher
+    nds_aicpu_launcher)
+target_compile_options(nds_layer_probe PRIVATE -Wall -Wextra -Wpedantic -Werror)

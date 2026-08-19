@@ -430,10 +430,10 @@ Result<void> NpuRaQp::set_device_wr_id_storage(std::uint64_t send_address,
     return {};
 }
 
-Result<nds_device_connection> NpuRaQp::make_device_connection() const {
+Result<nds_device_transport> NpuRaQp::make_device_transport() const {
     if (!has_ai_qp_info() || send_wr_ids_ == 0U || receive_wr_ids_ == 0U)
         return unexpected(ErrorCode::kInvalidArgument,
-                          "device connection requires an AI QP and WR-ID storage");
+                          "device transport requires an AI QP and WR-ID storage");
     const auto *source = reinterpret_cast<const nds_ra_ai_data_plane_info *>(ai_qp_info_.data_plane_info);
     if (source->send_wq.buffer_address == 0U || source->receive_wq.buffer_address == 0U)
         return unexpected(ErrorCode::kRa, "HCCP did not return SQ/RQ dataplane information");
@@ -469,22 +469,22 @@ Result<nds_device_connection> NpuRaQp::make_device_connection() const {
         return output;
     };
 
-    nds_device_connection output{};
-    output.abi_version = NDS_DEVICE_CONNECTION_ABI_VERSION;
+    nds_device_transport output{};
+    output.abi_version = NDS_DEVICE_TRANSPORT_ABI_VERSION;
     output.size = sizeof(output);
-    output.qp.abi_version = NDS_DEVICE_QP_ABI_VERSION;
-    output.qp.size = sizeof(output.qp);
-    output.qp.flags = (config_.control_flags & NpuRaQpCallerPollsCq) != 0U ?
+    output.control_qp.abi_version = NDS_DEVICE_QP_ABI_VERSION;
+    output.control_qp.size = sizeof(output.control_qp);
+    output.control_qp.flags = (config_.control_flags & NpuRaQpCallerPollsCq) != 0U ?
                           static_cast<std::uint32_t>(NDS_DEVICE_QP_CALLER_POLLS_CQ) : 0U;
-    output.qp.qp_mode = config_.ai_qp_mode;
-    output.qp.service_level = config_.service_level;
-    output.qp.provider_qp_address = ai_qp_info_.ai_qp_address;
-    output.qp.provider_send_cq_address = ai_qp_info_.ai_scq_address;
-    output.qp.provider_receive_cq_address = ai_qp_info_.ai_rcq_address;
-    output.qp.send_queue = copy_wq(source->send_wq, send_wr_ids_, true);
-    output.qp.receive_queue = copy_wq(source->receive_wq, receive_wr_ids_, false);
-    output.qp.send_cq = copy_cq(source->send_cq);
-    output.qp.receive_cq = copy_cq(source->receive_cq);
+    output.control_qp.qp_mode = config_.ai_qp_mode;
+    output.control_qp.service_level = config_.service_level;
+    output.control_qp.provider_qp_address = ai_qp_info_.ai_qp_address;
+    output.control_qp.provider_send_cq_address = ai_qp_info_.ai_scq_address;
+    output.control_qp.provider_receive_cq_address = ai_qp_info_.ai_rcq_address;
+    output.control_qp.send_queue = copy_wq(source->send_wq, send_wr_ids_, true);
+    output.control_qp.receive_queue = copy_wq(source->receive_wq, receive_wr_ids_, false);
+    output.control_qp.send_cq = copy_cq(source->send_cq);
+    output.control_qp.receive_cq = copy_cq(source->receive_cq);
     return output;
 }
 

@@ -21,16 +21,16 @@ uint32_t NdsAicpuPollCqImpl(
     nds_device_operation_result *result);
 
 uint32_t NdsAicpuRdmaSendImpl(
-    const nds_device_connection *connection, const nds_device_transfer *transfer,
+    const nds_device_transport *transport, const nds_device_transfer *transfer,
     nds_device_operation_result *result);
 uint32_t NdsAicpuRdmaRecvImpl(
-    const nds_device_connection *connection, const nds_device_transfer *transfer,
+    const nds_device_transport *transport, const nds_device_transfer *transfer,
     nds_device_operation_result *result);
 uint32_t NdsAicpuRdmaReadImpl(
-    const nds_device_connection *connection, const nds_device_transfer *transfer,
+    const nds_device_transport *transport, const nds_device_transfer *transfer,
     nds_device_operation_result *result);
 uint32_t NdsAicpuRdmaWriteImpl(
-    const nds_device_connection *connection, const nds_device_transfer *transfer,
+    const nds_device_transport *transport, const nds_device_transfer *transfer,
     nds_device_operation_result *result);
 
 uint32_t NdsAicpuStorageReadImpl(

@@ -1,7 +1,8 @@
 #include "nds/logging.hh"
 #include "nds/result.hh"
+#include "runtime.hh"
 #include "storage.hh"
-#include "connection.hh"
+#include "transport.hh"
 
 #include <CLI/CLI.hpp>
 
@@ -15,7 +16,9 @@ namespace {
 
 constexpr std::uint64_t kMaxTransferBytes = 64U * 1024U;
 struct ClientConfig {
-    nds::client::ConnectionConfig connection;
+    nds::client::RuntimeConfig runtime;
+    nds::client::TransportConfig transport;
+    nds::client::ExecutionConfig execution;
     std::string operation{"write"};
     std::uint64_t offset{};
     std::uint32_t bytes{4096U};
@@ -27,29 +30,29 @@ nds::Result<int> parse_args(int argc, char **argv, ClientConfig *config, bool *e
     if (config == nullptr || exit_requested == nullptr)
         return nds::unexpected(nds::ErrorCode::kInvalidArgument, "client configuration and exit state are required");
     CLI::App app{"Send one NDS storage command from an NPU to a CPU memory namespace."};
-    app.add_option("--ascendcl", config->connection.context.ascendcl_library, "AscendCL shared library")->required();
-    app.add_option("--runtime", config->connection.context.runtime_library, "CANN runtime shared library")->required();
-    app.add_option("--ra", config->connection.context.ra_library, "CANN RA shared library")->required();
+    app.add_option("--ascendcl", config->runtime.ascendcl_library, "AscendCL shared library")->required();
+    app.add_option("--runtime", config->runtime.runtime_library, "CANN runtime shared library")->required();
+    app.add_option("--ra", config->runtime.ra_library, "CANN RA shared library")->required();
     std::string execution{"ra"};
     app.add_option("--execution", execution, "Storage execution mode")->check(CLI::IsMember({"ra", "aicpu", "aiv"}));
-    app.add_option("--aicpu-kernel", config->connection.rma.aicpu_kernel, "AICPU kernel shared object");
-    app.add_option("--aiv-kernel", config->connection.rma.aiv_kernel, "AIV kernel binary");
+    app.add_option("--aicpu-kernel", config->execution.aicpu_kernel, "AICPU kernel shared object");
+    app.add_option("--aiv-kernel", config->execution.aiv_kernel, "AIV kernel binary");
     app.add_option("--operation", config->operation, "Storage operation")->check(CLI::IsMember({"read", "write"}));
     app.add_option("--offset", config->offset, "Namespace byte offset");
     app.add_option("--bytes", config->bytes, "Storage transfer length")
         ->check(CLI::Range(std::uint32_t{1}, static_cast<std::uint32_t>(kMaxTransferBytes)));
-    app.add_option("--npu-ip", config->connection.qp.local_ipv4, "NPU RoCE IPv4 address")->required();
-    app.add_option("--logical-device", config->connection.context.logical_device_id, "NPU logical device")->required();
-    app.add_option("--physical-device", config->connection.context.physical_device_id, "NPU physical device")
+    app.add_option("--npu-ip", config->transport.qp.local_ipv4, "NPU RoCE IPv4 address")->required();
+    app.add_option("--logical-device", config->runtime.logical_device_id, "NPU logical device")->required();
+    app.add_option("--physical-device", config->runtime.physical_device_id, "NPU physical device")
         ->required();
-    app.add_option("--port", config->connection.qp.port_num, "NPU RoCE port")
+    app.add_option("--port", config->transport.qp.port_num, "NPU RoCE port")
         ->check(CLI::Range(std::uint16_t{1}, std::numeric_limits<std::uint16_t>::max()));
-    app.add_option("--path-mtu", config->connection.qp.path_mtu, "Path MTU")
+    app.add_option("--path-mtu", config->transport.qp.path_mtu, "Path MTU")
         ->check(CLI::Range(std::uint16_t{1}, std::numeric_limits<std::uint16_t>::max()));
-    app.add_option("--cpu-ip", config->connection.cpu_ipv4, "CPU peer IPv4 address")->required();
-    app.add_option("--tcp-port", config->connection.tcp_port, "TCP peer-exchange port")
+    app.add_option("--cpu-ip", config->transport.cpu_ipv4, "CPU peer IPv4 address")->required();
+    app.add_option("--tcp-port", config->transport.tcp_port, "TCP peer-exchange port")
         ->check(CLI::Range(std::uint16_t{1}, std::numeric_limits<std::uint16_t>::max()));
-    app.add_option("--tcp-timeout-ms", config->connection.tcp_timeout_ms, "TCP peer-exchange timeout")
+    app.add_option("--tcp-timeout-ms", config->transport.tcp_timeout_ms, "TCP peer-exchange timeout")
         ->check(CLI::PositiveNumber);
     app.add_option("--log-sink", config->log_sink, "Log sink")
         ->check(CLI::IsMember({"stderr", "stdout", "syslog", "none"}));
@@ -65,12 +68,12 @@ nds::Result<int> parse_args(int argc, char **argv, ClientConfig *config, bool *e
     }
 
     if (execution == "aicpu")
-        config->connection.execution = nds::NpuExecutionMode::Aicpu;
+        config->execution.mode = nds::NpuExecutionMode::Aicpu;
     if (execution == "aiv")
-        config->connection.execution = nds::NpuExecutionMode::Aiv;
-    config->connection.qp.physical_device_id = config->connection.context.physical_device_id;
-    if ((execution == "aicpu" && config->connection.rma.aicpu_kernel.empty()) ||
-        (execution == "aiv" && config->connection.rma.aiv_kernel.empty())) {
+        config->execution.mode = nds::NpuExecutionMode::Aiv;
+    config->transport.qp.physical_device_id = config->runtime.physical_device_id;
+    if ((execution == "aicpu" && config->execution.aicpu_kernel.empty()) ||
+        (execution == "aiv" && config->execution.aiv_kernel.empty())) {
         return nds::unexpected(nds::ErrorCode::kInvalidArgument, "invalid option combination");
     }
     return 0;
@@ -81,8 +84,8 @@ nds::Result<int> parse_args(int argc, char **argv, ClientConfig *config, bool *e
 int main(int argc, char **argv) {
     (void)nds::log::configure("npu-client", "stderr", "info");
     ClientConfig config;
-    config.connection.tcp_port = 18515U;
-    config.connection.tcp_timeout_ms = 10000U;
+    config.transport.tcp_port = 18515U;
+    config.transport.tcp_timeout_ms = 10000U;
     bool exit_requested = false;
     const auto parse_result = parse_args(argc, argv, &config, &exit_requested);
     if (!parse_result) {
@@ -97,8 +100,18 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
 
+    nds::client::NpuRuntime runtime;
+    nds::client::Transport transport;
     nds::client::StorageClient client;
-    if (const auto result = client.open(config.connection); !result) {
+    if (const auto result = runtime.open(config.runtime); !result) {
+        NDS_LOG_ERROR("npu-client", "runtime open failed: {}", result.error().message);
+        return EXIT_FAILURE;
+    }
+    if (const auto result = transport.open(&runtime, config.transport, config.execution); !result) {
+        NDS_LOG_ERROR("npu-client", "transport open failed: {}", result.error().message);
+        return EXIT_FAILURE;
+    }
+    if (const auto result = client.open(&runtime, &transport); !result) {
         NDS_LOG_ERROR("npu-client", "storage client open failed: {}", result.error().message);
         return EXIT_FAILURE;
     }
@@ -107,12 +120,12 @@ int main(int argc, char **argv) {
         payload[index] = static_cast<unsigned char>(index ^ 0x5aU);
     }
     nds::client::DeviceBuffer data;
-    if (const auto result = client.allocate(payload.size(), &data); !result) {
+    if (const auto result = runtime.memory()->allocate(payload.size(), &data); !result) {
         NDS_LOG_ERROR("npu-client", "client application buffer allocation failed: {}", result.error().message);
         return EXIT_FAILURE;
     }
     if (config.operation == "write") {
-        if (const auto copied = client.copy_to_device(&data, payload.data(), payload.size()); !copied) {
+        if (const auto copied = runtime.memory()->copy_to_device(&data, payload.data(), payload.size()); !copied) {
             NDS_LOG_ERROR("npu-client", "client application buffer copy failed: {}", copied.error().message);
             return EXIT_FAILURE;
         }
@@ -126,7 +139,7 @@ int main(int argc, char **argv) {
     }
     if (config.operation == "read") {
         std::vector<unsigned char> result(payload.size());
-        if (const auto copied = client.copy_from_device(result.data(), data, result.size()); !copied) {
+        if (const auto copied = runtime.memory()->copy_from_device(result.data(), data, result.size()); !copied) {
             NDS_LOG_ERROR("npu-client", "client Read copy failed: {}", copied.error().message);
             return EXIT_FAILURE;
         }

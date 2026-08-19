@@ -413,16 +413,16 @@ void test_aicpu_qp_creation_and_connection() {
     assert(qp.ai_qp_info().sq_index == 17U);
     assert(qp.ai_qp_info().db_index == 19U);
     assert(qp.set_device_wr_id_storage(0x50000U, 0x60000U));
-    const auto connection = qp.make_device_connection();
-    assert(connection);
-    assert(connection->abi_version == NDS_DEVICE_CONNECTION_ABI_VERSION);
-    assert(connection->qp.provider_qp_address == UINT64_C(0x123456789abcdef0));
-    assert(connection->qp.qp_mode == NDS_RA_QP_MODE_NORMAL);
-    assert(connection->qp.send_queue.doorbell_mode == NDS_DEVICE_DOORBELL_MMIO);
-    assert(connection->qp.send_queue.doorbell_address == 0x14000U);
-    assert(connection->qp.receive_queue.doorbell_mode == NDS_DEVICE_DOORBELL_RECORD);
-    assert(connection->qp.receive_queue.doorbell_address == 0x23000U);
-    assert(connection->qp.send_cq.doorbell_address == 0x33000U);
+    const auto transport = qp.make_device_transport();
+    assert(transport);
+    assert(transport->abi_version == NDS_DEVICE_TRANSPORT_ABI_VERSION);
+    assert(transport->control_qp.provider_qp_address == UINT64_C(0x123456789abcdef0));
+    assert(transport->control_qp.qp_mode == NDS_RA_QP_MODE_NORMAL);
+    assert(transport->control_qp.send_queue.doorbell_mode == NDS_DEVICE_DOORBELL_MMIO);
+    assert(transport->control_qp.send_queue.doorbell_address == 0x14000U);
+    assert(transport->control_qp.receive_queue.doorbell_mode == NDS_DEVICE_DOORBELL_RECORD);
+    assert(transport->control_qp.receive_queue.doorbell_address == 0x23000U);
+    assert(transport->control_qp.send_cq.doorbell_address == 0x33000U);
 
     assert(qp.make_qp_info(&local));
     peer.qp_num = 0x2000U;
@@ -479,11 +479,11 @@ void test_ai_qp_mode_override_and_hccp_owned_cq() {
     assert(fake.ai_qp_attrs.cq_attr.recv_cq_depth == 32);
     assert(fake.ai_qp_attrs.data_plane_flag == 0U);
     assert(qp.set_device_wr_id_storage(0x50000U, 0x60000U));
-    const auto connection = qp.make_device_connection();
-    assert(connection);
-    assert(connection->qp.flags == 0U);
-    assert(connection->qp.send_cq.buffer_address == 0U);
-    assert(connection->qp.receive_cq.buffer_address == 0U);
+    const auto transport = qp.make_device_transport();
+    assert(transport);
+    assert(transport->control_qp.flags == 0U);
+    assert(transport->control_qp.send_cq.buffer_address == 0U);
+    assert(transport->control_qp.receive_cq.buffer_address == 0U);
 }
 
 void test_rejects_incomplete_ai_connection() {
@@ -496,7 +496,7 @@ void test_rejects_incomplete_ai_connection() {
     config.local_ipv4 = "192.0.2.10";
     assert(qp.create(&api, config, nds::NpuExecutionMode::Aiv));
     assert(qp.set_device_wr_id_storage(0x50000U, 0x60000U));
-    assert(!qp.make_device_connection());
+    assert(!qp.make_device_transport());
     qp.reset();
 
     fake = {};
@@ -505,7 +505,7 @@ void test_rejects_incomplete_ai_connection() {
     api = make_fake_api();
     assert(qp.create(&api, config, nds::NpuExecutionMode::Aiv));
     assert(qp.set_device_wr_id_storage(0x50000U, 0x60000U));
-    assert(!qp.make_device_connection());
+    assert(!qp.make_device_transport());
 }
 
 void test_memory_registration_lifecycle() {
