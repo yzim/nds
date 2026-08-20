@@ -206,7 +206,7 @@ Start the CPU server:
 
 ```sh
 build/bin/nds_server --device <cpu-rdma-device> --gid-index <gid-index> \
-  --listen <cpu-roce-ip> --tcp-port <port> --namespace-bytes 1048576
+  --listen <server-ip:port> --namespace-bytes 1048576
 ```
 
 ```sh
@@ -214,8 +214,8 @@ build/bin/nds_client --execution ra \
   --ascendcl <cann-root>/aarch64-linux/lib64/libascendcl.so \
   --runtime <cann-root>/aarch64-linux/lib64/libruntime.so \
   --ra <cann-root>/aarch64-linux/lib64/libra.so \
-  --npu-ip <npu-roce-ip> --logical-device 0 --physical-device 0 \
-  --cpu-ip <cpu-roce-ip> --tcp-port <port> \
+  --logical-device 0 \
+  --server <server-ip:port> \
   --operation write --offset 0 --bytes 4096
 ```
 

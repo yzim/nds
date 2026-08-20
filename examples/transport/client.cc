@@ -34,11 +34,8 @@ nds::Result<Config> parse(int argc, char **argv) {
     app.add_option("--ra", config.transport.endpoint.ra_library)->required();
     app.add_option("--aiv-kernel", config.execution.aiv_kernel);
     app.add_option("--aicpu-kernel-config", config.execution.aicpu_kernel_config);
-    app.add_option("--npu-ip", config.transport.endpoint.local_ipv4)->required();
     app.add_option("--logical-device", config.runtime.logical_device_id)->required();
-    app.add_option("--physical-device", config.transport.endpoint.physical_device_id)->required();
-    app.add_option("--cpu-ip", config.transport.cpu_ipv4)->required();
-    app.add_option("--tcp-port", config.transport.tcp_port)->required();
+    app.add_option("--server", config.transport.server_address)->required();
     try {
         app.parse(argc, argv);
     } catch (const CLI::ParseError &error) {

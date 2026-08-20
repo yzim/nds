@@ -20,10 +20,13 @@ Result<void> Connection::open(const ConnectionConfig &config) {
     const int listener = socket(AF_INET, SOCK_STREAM, 0);
     int enabled = 1;
     sockaddr_in address{};
+    const auto listen_address = parse_tcp_address(config.listen_address);
+    if (!listen_address)
+        return unexpected(listen_address.error());
     address.sin_family = AF_INET;
-    address.sin_port = htons(config.tcp_port);
+    address.sin_port = htons(listen_address->port);
     if (listener < 0 || setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &enabled, sizeof(enabled)) != 0 ||
-        inet_pton(AF_INET, config.listen_address.c_str(), &address.sin_addr) != 1 ||
+        inet_pton(AF_INET, listen_address->ipv4.c_str(), &address.sin_addr) != 1 ||
         bind(listener, reinterpret_cast<const sockaddr *>(&address), sizeof(address)) != 0 ||
         listen(listener, 1) != 0) {
         if (listener >= 0)

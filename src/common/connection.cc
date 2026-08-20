@@ -2,6 +2,7 @@
 
 #include <arpa/inet.h>
 #include <cerrno>
+#include <charconv>
 #include <cstring>
 #include <fcntl.h>
 #include <netinet/in.h>
@@ -106,6 +107,20 @@ Result<void> wait_for_fd(int fd, short events, std::uint32_t timeout_ms) {
 }
 
 }  // namespace
+
+Result<TcpAddress> parse_tcp_address(const std::string &address) {
+    const std::size_t separator = address.rfind(':');
+    if (separator == std::string::npos || separator == 0U || separator + 1U == address.size())
+        return unexpected(ErrorCode::kInvalidArgument, "TCP address must be IPv4:port");
+    TcpAddress parsed{address.substr(0U, separator), 0U};
+    const std::string port_text = address.substr(separator + 1U);
+    const auto [last, error] = std::from_chars(port_text.data(), port_text.data() + port_text.size(), parsed.port);
+    in_addr ipv4{};
+    if (inet_pton(AF_INET, parsed.ipv4.c_str(), &ipv4) != 1 || error != std::errc{} ||
+        last != port_text.data() + port_text.size() || parsed.port == 0U)
+        return unexpected(ErrorCode::kInvalidArgument, "TCP address must be IPv4:port");
+    return parsed;
+}
 
 TcpPeerExchange::TcpPeerExchange(int fd) noexcept : fd_(fd) {}
 

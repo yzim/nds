@@ -19,8 +19,7 @@ enum class MemoryAccess {
 
 struct ConnectionConfig {
     BackendConfig backend;
-    std::string listen_address{"0.0.0.0"};
-    std::uint16_t tcp_port{18515U};
+    std::string listen_address{"0.0.0.0:18515"};
 };
 
 class Connection {

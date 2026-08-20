@@ -10,8 +10,7 @@ usage() {
 }
 
 require_environment() {
-    local required=(NDS_E2E_BUILD_DIR NDS_E2E_CANN_ROOT NDS_E2E_NPU_IP NDS_E2E_CPU_IP
-        NDS_E2E_TCP_PORT NDS_E2E_DEVICE NDS_E2E_GID_INDEX)
+    local required=(NDS_E2E_BUILD_DIR NDS_E2E_CANN_ROOT NDS_E2E_SERVER_ADDRESS NDS_E2E_DEVICE NDS_E2E_GID_INDEX)
     local name
     for name in "${required[@]}"; do
         if [[ -z "${!name:-}" ]]; then
@@ -44,8 +43,8 @@ run_client() {
         --ascendcl "${cann}/aarch64-linux/lib64/libascendcl.so"
         --runtime "${cann}/aarch64-linux/lib64/libruntime.so"
         --ra "${cann}/aarch64-linux/lib64/libra.so"
-        --npu-ip "${NDS_E2E_NPU_IP}" --logical-device 0 --physical-device 0
-        --cpu-ip "${NDS_E2E_CPU_IP}" --tcp-port "${NDS_E2E_TCP_PORT}")
+        --logical-device 0
+        --server "${NDS_E2E_SERVER_ADDRESS}")
 
     case "${backend}" in
         ra)
@@ -98,7 +97,7 @@ trap cleanup EXIT
 
 timeout "${case_timeout}" "${build}/bin/nds_${layer}_server" \
     --device "${NDS_E2E_DEVICE}" --gid-index "${NDS_E2E_GID_INDEX}" \
-    --listen "${NDS_E2E_CPU_IP}" --tcp-port "${NDS_E2E_TCP_PORT}" --log-level info >"${server_log}" 2>&1 &
+    --listen "${NDS_E2E_SERVER_ADDRESS}" --log-level info >"${server_log}" 2>&1 &
 server_pid=$!
 sleep 1
 

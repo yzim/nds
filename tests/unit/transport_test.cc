@@ -1,5 +1,6 @@
 #include "nds/protocol.h"
 #include "nds/connection.h"
+#include "nds/connection.hh"
 
 #include <arpa/inet.h>
 
@@ -26,6 +27,17 @@ nds_qp_info endpoint() {
 }
 
 }  // namespace
+
+TEST(TransportCodecTest, ParsesTcpBootstrapAddress) {
+    const auto parsed = nds::parse_tcp_address("192.168.100.100:18515");
+    ASSERT_TRUE(parsed);
+    EXPECT_EQ(parsed->ipv4, "192.168.100.100");
+    EXPECT_EQ(parsed->port, 18515U);
+
+    EXPECT_FALSE(nds::parse_tcp_address("192.168.100.100"));
+    EXPECT_FALSE(nds::parse_tcp_address("192.168.100.100:0"));
+    EXPECT_FALSE(nds::parse_tcp_address("host:18515"));
+}
 
 TEST(TransportCodecTest, RoundTripsTransportAndStorageRecords) {
     const nds_qp_info source = endpoint();

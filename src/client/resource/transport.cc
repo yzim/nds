@@ -22,7 +22,10 @@ Result<void> Transport::open(Runtime *runtime, const TransportConfig &config, co
     local_ = *local;
     if (const auto private_memory = initialize_private_memory(); !private_memory)
         return unexpected(private_memory.error());
-    auto connected = TcpPeerExchange::connect(config_.cpu_ipv4, config_.tcp_port, config_.tcp_timeout_ms);
+    const auto server = parse_tcp_address(config_.server_address);
+    if (!server)
+        return unexpected(server.error());
+    auto connected = TcpPeerExchange::connect(server->ipv4, server->port, config_.tcp_timeout_ms);
     if (!connected) {
         return unexpected(connected.error());
     }

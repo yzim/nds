@@ -405,17 +405,26 @@ Endpoint::~Endpoint() {
 Result<void> Endpoint::open(Runtime *runtime, const EndpointConfig &config) {
     if (opened() || runtime == nullptr || !runtime->initialized() || config.ra_library.empty()) {
         return unexpected(ErrorCode::kInvalidArgument,
-                          "endpoint open requires one runtime, RA library, and physical device");
+                          "endpoint open requires one runtime and RA library");
     }
     runtime_ = runtime;
     config_ = config;
+    const auto logical_device = static_cast<std::int32_t>(runtime_->config().logical_device_id);
+    std::int32_t physical_device = -1;
+    if (runtime_->acl_api().get_phy_dev_id == nullptr ||
+        runtime_->acl_api().get_phy_dev_id(logical_device, &physical_device) != 0 || physical_device < 0) {
+        reset();
+        return unexpected(ErrorCode::kRuntime,
+                          "CANN cannot map logical device " + std::to_string(logical_device) + " to a physical device");
+    }
+    physical_device_id_ = static_cast<std::uint32_t>(physical_device);
     if (nds_ra_open(&api_, config_.ra_library.c_str()) != 0) {
         const std::string message = std::string("cannot load libra.so: ") + nds_ra_error(&api_);
         reset();
         return unexpected(ErrorCode::kRa, message);
     }
     nds_ra_init_config init_config{};
-    init_config.phy_id = config_.physical_device_id;
+    init_config.phy_id = physical_device_id_;
     init_config.nic_position = NDS_RA_NETWORK_OFFLINE;
     init_config.hdc_type = config_.hdc_type;
     init_config.enable_hdc_async = false;
@@ -427,17 +436,14 @@ Result<void> Endpoint::open(Runtime *runtime, const EndpointConfig &config) {
     ra_initialized_ = true;
 
     nds_ra_rdev rdev{};
-    rdev.phy_id = config_.physical_device_id;
+    rdev.phy_id = physical_device_id_;
     rdev.family = AF_INET;
-    if (config_.local_ipv4.empty()) {
-        const auto ipv4 = hccn_ipv4(config_.physical_device_id);
-        if (!ipv4) {
-            reset();
-            return unexpected(ipv4.error());
-        }
-        config_.local_ipv4 = *ipv4;
+    const auto ipv4 = hccn_ipv4(physical_device_id_);
+    if (!ipv4) {
+        reset();
+        return unexpected(ipv4.error());
     }
-    if (inet_pton(AF_INET, config_.local_ipv4.c_str(), &rdev.local_ip.ipv4) != 1) {
+    if (inet_pton(AF_INET, ipv4->c_str(), &rdev.local_ip.ipv4) != 1) {
         reset();
         return unexpected(ErrorCode::kInvalidArgument, "endpoint local IPv4 address is invalid");
     }
@@ -447,10 +453,9 @@ Result<void> Endpoint::open(Runtime *runtime, const EndpointConfig &config) {
     rdev_init.disabled_lite_thread = false;
     result = api_.ra_rdev_init_v2(rdev_init, rdev, &rdev_handle_);
     if (result != 0 || rdev_handle_ == nullptr) {
-        const std::string local_ipv4 = config_.local_ipv4;
         reset();
         return unexpected(ErrorCode::kRa,
-                          "RaRdevInitV2 failed for " + local_ipv4 + ": " + std::to_string(result));
+                          "RaRdevInitV2 failed for " + *ipv4 + ": " + std::to_string(result));
     }
     return {};
 }
@@ -496,7 +501,7 @@ void Endpoint::reset() noexcept {
     rdev_handle_ = nullptr;
     if (ra_initialized_) {
         nds_ra_init_config init_config{};
-        init_config.phy_id = config_.physical_device_id;
+        init_config.phy_id = physical_device_id_;
         init_config.nic_position = NDS_RA_NETWORK_OFFLINE;
         init_config.hdc_type = config_.hdc_type;
         init_config.enable_hdc_async = false;
@@ -506,6 +511,7 @@ void Endpoint::reset() noexcept {
     nds_ra_close(&api_);
     runtime_ = nullptr;
     config_ = {};
+    physical_device_id_ = {};
 }
 
 }  // namespace nds::client

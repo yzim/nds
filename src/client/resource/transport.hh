@@ -15,8 +15,7 @@ namespace nds::client {
 struct TransportConfig {
     EndpointConfig endpoint;
     QueuePairConfig qp;
-    std::string cpu_ipv4;
-    std::uint16_t tcp_port{};
+    std::string server_address;
     std::uint32_t tcp_timeout_ms{};
 };
 

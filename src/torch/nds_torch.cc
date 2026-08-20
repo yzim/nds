@@ -5,9 +5,6 @@
 #include <torch/extension.h>
 #include <torch_npu/csrc/core/npu/NPUFunctions.h>
 
-#include <arpa/inet.h>
-
-#include <charconv>
 #include <cstdint>
 #include <limits>
 #include <memory>
@@ -44,31 +41,10 @@ client::NpuExecutionMode execution_mode(const std::string &backend) {
     TORCH_CHECK(false, "unsupported NDS backend: ", backend);
 }
 
-struct ServerEndpoint {
-    std::string ipv4;
-    std::uint16_t port;
-};
-
-ServerEndpoint parse_server_endpoint(const std::string &server) {
-    const auto separator = server.rfind(':');
-    TORCH_CHECK(separator != std::string::npos && separator > 0U && separator + 1U < server.size(),
-                "server must be an IPv4 address followed by ':' and a TCP port");
-
-    ServerEndpoint endpoint{server.substr(0U, separator), 0U};
-    in_addr address{};
-    TORCH_CHECK(inet_pton(AF_INET, endpoint.ipv4.c_str(), &address) == 1, "server IPv4 address is invalid");
-
-    const auto port = server.substr(separator + 1U);
-    const auto [last, error] = std::from_chars(port.data(), port.data() + port.size(), endpoint.port);
-    TORCH_CHECK(error == std::errc{} && last == port.data() + port.size() && endpoint.port != 0U,
-                "server TCP port is invalid");
-    return endpoint;
-}
-
 class Session : public std::enable_shared_from_this<Session> {
 public:
     Session(std::string server, std::string backend, std::string aiv_kernel, std::string aicpu_kernel_config) {
-        auto endpoint = parse_server_endpoint(server);
+        TORCH_CHECK(parse_tcp_address(server), "server must be IPv4:port");
         const auto device = c10_npu::current_device();
         TORCH_CHECK(device >= 0, "torch_npu has no active NPU device");
 
@@ -76,16 +52,9 @@ public:
         runtime_config.logical_device_id = static_cast<std::uint32_t>(device);
         runtime_config.adopt_existing_context = true;
         check(runtime_.open(runtime_config));
-        std::int32_t physical_device{};
-        TORCH_CHECK(runtime_.acl_api().get_phy_dev_id != nullptr, "CANN physical-device query is unavailable");
-        TORCH_CHECK(runtime_.acl_api().get_phy_dev_id(device, &physical_device) == 0 && physical_device >= 0,
-                    "CANN cannot map the active logical device to a physical device");
-
         client::TransportConfig transport_config;
         transport_config.endpoint.ra_library = "libra.so";
-        transport_config.endpoint.physical_device_id = static_cast<std::uint32_t>(physical_device);
-        transport_config.cpu_ipv4 = std::move(endpoint.ipv4);
-        transport_config.tcp_port = endpoint.port;
+        transport_config.server_address = std::move(server);
 
         client::ExecutionConfig execution;
         execution.mode = execution_mode(backend);

@@ -7,7 +7,7 @@ protocol semantics. The programs are opt-in hardware targets.
 | Directory | Client target | Server target | Scope |
 |---|---|---|---|
 | `verbs/` | `nds_verbs_client` | `nds_verbs_server` | NPU verbs post/local completion and CPU receive/CQ |
-| `transport/` | `nds_transport_client` | `nds_transport_server` | NPU bootstrap/transport operation and CPU peer exchange/receive |
+| `transport/` | `nds_transport_client` | `nds_transport_server` | NPU bootstrap/transport operation and server exchange/receive |
 
 Configure them with `-DNDS_BUILD_HARDWARE_PROBES=ON`. They are emitted in
 `build/bin/` and must be run only on the approved aarch64 CANN target with one

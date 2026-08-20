@@ -42,18 +42,14 @@ nds::Result<int> parse_args(int argc, char **argv, ClientConfig *config, bool *e
     app.add_option("--offset", config->offset, "Namespace byte offset");
     app.add_option("--bytes", config->bytes, "Storage transfer length")
         ->check(CLI::Range(std::uint32_t{1}, static_cast<std::uint32_t>(kMaxTransferBytes)));
-    app.add_option("--npu-ip", config->transport.endpoint.local_ipv4, "NPU RoCE IPv4 address")->required();
     app.add_option("--logical-device", config->runtime.logical_device_id, "NPU logical device")->required();
-    app.add_option("--physical-device", config->transport.endpoint.physical_device_id, "NPU physical device")
-        ->required();
     app.add_option("--port", config->transport.qp.port_num, "NPU RoCE port")
         ->check(CLI::Range(std::uint16_t{1}, std::numeric_limits<std::uint16_t>::max()));
     app.add_option("--path-mtu", config->transport.qp.path_mtu, "Path MTU")
         ->check(CLI::Range(std::uint16_t{1}, std::numeric_limits<std::uint16_t>::max()));
-    app.add_option("--cpu-ip", config->transport.cpu_ipv4, "CPU peer IPv4 address")->required();
-    app.add_option("--tcp-port", config->transport.tcp_port, "TCP peer-exchange port")
-        ->check(CLI::Range(std::uint16_t{1}, std::numeric_limits<std::uint16_t>::max()));
-    app.add_option("--tcp-timeout-ms", config->transport.tcp_timeout_ms, "TCP peer-exchange timeout")
+    app.add_option("--server", config->transport.server_address, "Server TCP bootstrap address as IPv4:port")
+        ->required();
+    app.add_option("--tcp-timeout-ms", config->transport.tcp_timeout_ms, "TCP server bootstrap timeout")
         ->check(CLI::PositiveNumber);
     app.add_option("--log-sink", config->log_sink, "Log sink")
         ->check(CLI::IsMember({"stderr", "stdout", "syslog", "none"}));
@@ -84,7 +80,6 @@ nds::Result<int> parse_args(int argc, char **argv, ClientConfig *config, bool *e
 int main(int argc, char **argv) {
     (void)nds::log::configure("npu-client", "stderr", "info");
     ClientConfig config;
-    config.transport.tcp_port = 18515U;
     config.transport.tcp_timeout_ms = 10000U;
     bool exit_requested = false;
     const auto parse_result = parse_args(argc, argv, &config, &exit_requested);

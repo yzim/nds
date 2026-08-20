@@ -24,8 +24,7 @@ int parse(int argc, char **argv, Config *config, bool *exit_requested) {
     CLI::App app{"Serve NDS memory-backed storage requests."};
     app.add_option("--device", config->connection.backend.device_name)->required();
     app.add_option("--gid-index", config->connection.backend.gid_index)->required();
-    app.add_option("--listen", config->connection.listen_address);
-    app.add_option("--tcp-port", config->connection.tcp_port);
+    app.add_option("--listen", config->connection.listen_address, "TCP bootstrap listen address as IPv4:port");
     app.add_option("--ib-port", config->connection.backend.port);
     app.add_option("--namespace-bytes", config->namespace_bytes)->check(CLI::Range(1U, 64U * 1024U * 1024U));
     app.add_option("--storage-requests", config->storage_requests,

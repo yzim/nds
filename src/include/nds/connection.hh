@@ -9,6 +9,13 @@
 
 namespace nds {
 
+struct TcpAddress {
+    std::string ipv4;
+    std::uint16_t port{};
+};
+
+Result<TcpAddress> parse_tcp_address(const std::string &address);
+
 /*
  * TCP helper used by connection control to exchange one nds_qp_info in each
  * direction. It has no HCCP, HCOMM, ACL, or verbs dependency.

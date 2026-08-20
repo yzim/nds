@@ -10,8 +10,8 @@ usage() {
 }
 
 require_environment() {
-    local required=(NDS_E2E_BUILD_DIR NDS_E2E_CANN_ROOT NDS_E2E_SOURCE_DIR NDS_E2E_CPU_IP
-        NDS_E2E_TCP_PORT NDS_E2E_DEVICE NDS_E2E_GID_INDEX NDS_E2E_TORCH_PYTHON)
+    local required=(NDS_E2E_BUILD_DIR NDS_E2E_CANN_ROOT NDS_E2E_SOURCE_DIR NDS_E2E_SERVER_ADDRESS
+        NDS_E2E_DEVICE NDS_E2E_GID_INDEX NDS_E2E_TORCH_PYTHON)
     local name
     for name in "${required[@]}"; do
         if [[ -z "${!name:-}" ]]; then
@@ -40,7 +40,7 @@ run_client() {
     local case_dir="$2"
     local client_log="$3"
     local -a client=("${NDS_E2E_TORCH_PYTHON}" "${NDS_E2E_SOURCE_DIR}/apps/nds_torch.py"
-        "${NDS_E2E_CPU_IP}:${NDS_E2E_TCP_PORT}" --backend "${backend}" --bytes "${bytes}")
+        "${NDS_E2E_SERVER_ADDRESS}" --backend "${backend}" --bytes "${bytes}")
 
     case "${backend}" in
         ra)
@@ -92,7 +92,7 @@ trap cleanup EXIT
 
 timeout "${case_timeout}" "${build}/bin/nds_server" \
     --device "${NDS_E2E_DEVICE}" --gid-index "${NDS_E2E_GID_INDEX}" \
-    --listen "${NDS_E2E_CPU_IP}" --tcp-port "${NDS_E2E_TCP_PORT}" \
+    --listen "${NDS_E2E_SERVER_ADDRESS}" \
     --namespace-bytes 1048576 --storage-requests 2 --log-level info \
     >"${server_log}" 2>&1 &
 server_pid=$!

@@ -21,7 +21,6 @@ int parse(int argc, char **argv, Config *config, bool *exit_requested) {
     app.add_option("--device", config->connection.backend.device_name)->required();
     app.add_option("--gid-index", config->connection.backend.gid_index)->required();
     app.add_option("--listen", config->connection.listen_address);
-    app.add_option("--tcp-port", config->connection.tcp_port);
     app.add_option("--ib-port", config->connection.backend.port);
     app.add_option("--log-sink", config->log_sink)->check(CLI::IsMember({"stderr", "stdout", "syslog", "none"}));
     app.add_option("--log-level", config->log_level)

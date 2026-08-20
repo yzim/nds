@@ -35,9 +35,7 @@ enum class MemoryAccess : int {
 
 struct EndpointConfig {
     std::string ra_library;
-    std::uint32_t physical_device_id{NDS_RA_PHY_ID_NPU0};
     std::int32_t hdc_type{NDS_RA_HDC_SERVICE_TYPE_RDMA_V2};
-    std::string local_ipv4;
 };
 
 struct QueuePairConfig {
@@ -152,6 +150,7 @@ private:
 
     Runtime *runtime_{};
     EndpointConfig config_{};
+    std::uint32_t physical_device_id_{};
     nds_ra_api api_{};
     void *rdev_handle_{};
     bool ra_initialized_{};
