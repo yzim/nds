@@ -8,7 +8,7 @@
 #include <vector>
 
 namespace nds::server {
-Result<void> serve_requests(Connection *connection, std::vector<unsigned char> *storage, std::uint32_t request_count,
+Result<void> serve_commands(Connection *connection, std::vector<unsigned char> *storage, std::uint32_t command_count,
                             std::uint32_t timeout_ms);
 }
 #endif

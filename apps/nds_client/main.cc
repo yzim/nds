@@ -22,6 +22,7 @@ struct ClientConfig {
     std::string operation{"write"};
     std::uint64_t offset{};
     std::uint32_t bytes{4096U};
+    std::uint32_t batch_count{2U};
     std::string log_sink{"stderr"};
     std::string log_level{"info"};
 };
@@ -38,10 +39,13 @@ nds::Result<int> parse_args(int argc, char **argv, ClientConfig *config, bool *e
     app.add_option("--aicpu-kernel-config", config->execution.aicpu_kernel_config,
                    "AICPU standard-kernel package configuration");
     app.add_option("--aiv-kernel", config->execution.aiv_kernel, "AIV kernel binary");
-    app.add_option("--operation", config->operation, "Storage operation")->check(CLI::IsMember({"read", "write"}));
+    app.add_option("--operation", config->operation, "Storage operation")
+        ->check(CLI::IsMember({"read", "write", "batch-read", "batch-write"}));
     app.add_option("--offset", config->offset, "Namespace byte offset");
     app.add_option("--bytes", config->bytes, "Storage transfer length")
         ->check(CLI::Range(std::uint32_t{1}, static_cast<std::uint32_t>(kMaxTransferBytes)));
+    app.add_option("--batch-count", config->batch_count, "Number of entries in a batch storage command")
+        ->check(CLI::Range(std::uint32_t{1}, nds::kStorageMaxBatchEntries));
     app.add_option("--logical-device", config->runtime.logical_device_id, "NPU logical device")->required();
     app.add_option("--port", config->transport.qp.port_num, "NPU RoCE port")
         ->check(CLI::Range(std::uint16_t{1}, std::numeric_limits<std::uint16_t>::max()));
@@ -110,38 +114,62 @@ int main(int argc, char **argv) {
         NDS_LOG_ERROR("npu-client", "storage client open failed: {}", result.error().message);
         return EXIT_FAILURE;
     }
-    std::vector<std::uint8_t> payload(config.bytes);
-    for (std::size_t index = 0; index < payload.size(); ++index) {
-        payload[index] = static_cast<std::uint8_t>(index ^ 0x5aU);
-    }
-    auto allocated = runtime.allocate(payload.size());
-    if (!allocated) {
-        NDS_LOG_ERROR("npu-client", "client application buffer allocation failed: {}", allocated.error().message);
+    const bool batch = config.operation == "batch-read" || config.operation == "batch-write";
+    const bool read = config.operation == "read" || config.operation == "batch-read";
+    const std::uint32_t operation_count = batch ? config.batch_count : 1U;
+    const std::uint64_t final_offset_delta = static_cast<std::uint64_t>(operation_count - 1U) * config.bytes;
+    if (final_offset_delta > std::numeric_limits<std::uint64_t>::max() - config.offset) {
+        NDS_LOG_ERROR("npu-client", "batch storage offsets overflow");
         return EXIT_FAILURE;
     }
-    nds::client::MemoryBuffer data = std::move(*allocated);
-    if (config.operation == "write") {
-        if (const auto copied = runtime.copy_to(&data, payload.data(), payload.size()); !copied) {
-            NDS_LOG_ERROR("npu-client", "client application buffer copy failed: {}", copied.error().message);
+    std::vector<nds::client::MemoryBuffer> buffers;
+    std::vector<nds::client::StorageIo> requests;
+    buffers.reserve(operation_count);
+    requests.reserve(operation_count);
+    for (std::uint32_t operation_index = 0U; operation_index < operation_count; ++operation_index) {
+        const std::uint64_t operation_offset = config.offset + operation_index * config.bytes;
+        auto allocated = runtime.allocate(config.bytes);
+        if (!allocated) {
+            NDS_LOG_ERROR("npu-client", "client application buffer allocation failed: {}", allocated.error().message);
             return EXIT_FAILURE;
+        }
+        buffers.push_back(std::move(*allocated));
+        requests.push_back({operation_offset, &buffers.back(), config.bytes});
+        if (!read) {
+            std::vector<std::uint8_t> payload(config.bytes);
+            for (std::size_t index = 0U; index < payload.size(); ++index)
+                payload[index] = static_cast<std::uint8_t>((operation_offset + index) ^ 0x5aU);
+            if (const auto copied = runtime.copy_to(&buffers.back(), payload.data(), payload.size()); !copied) {
+                NDS_LOG_ERROR("npu-client", "client application buffer copy failed: {}", copied.error().message);
+                return EXIT_FAILURE;
+            }
         }
     }
 
-    const auto result = config.operation == "read" ? client.read(config.offset, &data, config.bytes)
-                                                   : client.write(config.offset, &data, config.bytes);
+    nds::Result<void> result;
+    if (batch)
+        result = read ? client.read_batch(requests) : client.write_batch(requests);
+    else
+        result = read ? client.read(config.offset, &buffers.front(), config.bytes)
+                      : client.write(config.offset, &buffers.front(), config.bytes);
     if (!result) {
         NDS_LOG_ERROR("npu-client", "storage {} failed: {}", config.operation, result.error().message);
         return EXIT_FAILURE;
     }
-    if (config.operation == "read") {
-        std::vector<std::uint8_t> result(payload.size());
-        if (const auto copied = runtime.copy_from(result.data(), data, result.size()); !copied) {
-            NDS_LOG_ERROR("npu-client", "client Read copy failed: {}", copied.error().message);
-            return EXIT_FAILURE;
-        }
-        if (result != payload) {
-            NDS_LOG_ERROR("npu-client", "storage Read verification failed");
-            return EXIT_FAILURE;
+    if (read) {
+        for (const nds::client::StorageIo &request : requests) {
+            std::vector<std::uint8_t> observed(request.length);
+            if (const auto copied = runtime.copy_from(observed.data(), *request.data, observed.size()); !copied) {
+                NDS_LOG_ERROR("npu-client", "client Read copy failed: {}", copied.error().message);
+                return EXIT_FAILURE;
+            }
+            for (std::size_t index = 0U; index < observed.size(); ++index) {
+                if (observed[index] != static_cast<std::uint8_t>((request.offset + index) ^ 0x5aU)) {
+                    NDS_LOG_ERROR("npu-client", "storage Read verification failed at namespace byte {}",
+                                  request.offset + index);
+                    return EXIT_FAILURE;
+                }
+            }
         }
     }
     NDS_LOG_INFO("npu-client", "CPU completed the NDS storage command.");

@@ -1,7 +1,7 @@
 #ifndef NDS_CLIENT_ENDPOINT_HH
 #define NDS_CLIENT_ENDPOINT_HH
 
-#include "nds/connection.h"
+#include "nds/wire/transport.hh"
 #include "nds/device_transport.h"
 #include "nds/ra_loader.h"
 #include "nds/result.hh"
@@ -75,7 +75,7 @@ private:
 
     Endpoint *endpoint_{};
     const MemoryBuffer *buffer_{};
-    nds_ra_mr_info info_{};
+    NdsRaMrInfo info_{};
     void *handle_{};
 };
 
@@ -88,31 +88,31 @@ public:
     QueuePair(QueuePair &&other) noexcept;
     QueuePair &operator=(QueuePair &&other) noexcept;
 
-    Result<nds_qp_info> local_qp_info() const;
-    Result<void> connect(const nds_qp_info &peer);
+    Result<nds::transport::QpInfo> local_qp_info() const;
+    Result<void> connect(const nds::transport::QpInfo &peer);
     Result<int> query_port_status();
     Result<int> query_support_lite();
     Result<int> query_status();
-    Result<std::vector<nds_ra_cqe_error>> query_cqe_errors();
+    Result<std::vector<NdsRaCqeError>> query_cqe_errors();
     Result<void> set_device_wr_id_storage(std::uint64_t send_address, std::uint64_t receive_address);
-    Result<nds_device_transport> make_device_transport() const;
+    Result<NdsDeviceTransport> make_device_transport() const;
 
     bool created() const noexcept;
     bool connected() const noexcept;
-    const nds_ra_qp_attr &local_attributes() const noexcept;
+    const NdsRaQpAttr &local_attributes() const noexcept;
     NpuExecutionMode execution_mode() const noexcept;
 
     /* Temporary RA execution accessors; replaced by explicit execution views next. */
-    nds_ra_api *ra_api() const noexcept;
+    NdsRaApi *ra_api() const noexcept;
     void *handle() const noexcept;
-    nds_ra_sge *posted_send_sge() noexcept;
+    NdsRaSge *posted_send_sge() noexcept;
 
 private:
     friend class Endpoint;
     QueuePair(Endpoint *endpoint, const QueuePairConfig &config, NpuExecutionMode execution);
     Result<void> initialize();
     void reset() noexcept;
-    Result<nds_ra_typical_qp> build_typical_qp(const nds_ra_qp_attr &attributes, std::uint32_t traffic_class,
+    Result<NdsRaTypicalQp> build_typical_qp(const NdsRaQpAttr &attributes, std::uint32_t traffic_class,
                                                std::uint32_t service_level, std::uint32_t retry_count,
                                                std::uint32_t retry_timeout) const;
 
@@ -120,11 +120,11 @@ private:
     QueuePairConfig config_{};
     NpuExecutionMode execution_{NpuExecutionMode::Ra};
     void *handle_{};
-    nds_ra_qp_attr local_attributes_{};
-    nds_ra_ai_qp_info ai_qp_info_{};
+    NdsRaQpAttr local_attributes_{};
+    NdsRaAiQpInfo ai_qp_info_{};
     std::uint64_t send_wr_ids_{};
     std::uint64_t receive_wr_ids_{};
-    nds_ra_sge posted_send_sge_{};
+    NdsRaSge posted_send_sge_{};
     bool connected_{};
 };
 
@@ -151,7 +151,7 @@ private:
     Runtime *runtime_{};
     EndpointConfig config_{};
     std::uint32_t physical_device_id_{};
-    nds_ra_api api_{};
+    NdsRaApi api_{};
     void *rdev_handle_{};
     bool ra_initialized_{};
 };

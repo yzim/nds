@@ -13,15 +13,20 @@ The endpoint-local dependency direction is:
 Application -> StorageClient -> Transport -> Verbs -> protocol resources
 ```
 
-`src/common/connection.*` owns shared QP identity, TCP bootstrap, and MTU
-policy. `src/common/protocol.*` owns shared versioned storage records and
-codecs. Backends and transport do not depend on storage command semantics.
+`src/include/nds/wire/transport.hh` owns the fixed QP-bootstrap wire record.
+`src/common/transport.cc` implements shared QP identity, TCP bootstrap, and MTU
+policy; `src/include/nds/tcp_bootstrap.hh` is its C++ interface.
+`src/include/nds/storage_protocol.hh` owns the four semantic storage command
+types and their fixed-layout, endian-explicit serializers and deserializers.
+They operate on ordinary byte buffers and are the same functions used by the
+host CPU, AICPU, and AIV. Backend and transport code do not depend on storage
+command semantics.
 
 `Runtime` owns AscendCL, network-service lifecycle, NPU allocation/copy, and
 memory services. `Transport` borrows the runtime and owns an `Endpoint`, one
 QP, peer metadata, the TCP channel, and required AI-QP WR-ID storage.
 `Endpoint` owns the RA lifecycle and rdev. `StorageClient` borrows the runtime
-and transport, owns protocol buffers and request sequencing, and registers
+and transport, owns protocol buffers and command sequencing, and registers
 them through the endpoint.
 
 The CPU server independently owns its verbs context, PD, CQ, RC QP, command
@@ -34,9 +39,9 @@ The source layout reflects these boundaries:
 
 ```text
 src/client/resource/    NPU lifecycle, transport, storage session
-src/client/execution/   RA, AIV, and AICPU request execution
+src/client/execution/   RA, AIV, and AICPU command execution
 src/server/             CPU protocol, transport, and verbs backend
-src/common/             shared connection and storage wire records
+src/common/             shared transport implementation
 src/torch/              reusable PyTorch extension
 ```
 
@@ -48,8 +53,9 @@ The TCP bootstrap carries only versioned NDS records:
   MTU.
 - Storage bootstrap: completion-record address, length, rkey, and access.
 - Namespace: CPU memory-backed capacity.
-- Command: request ID, operation, namespace range, and NPU application-memory
-  descriptor.
+- Command: command ID, operation, namespace range, and NPU application-memory
+  descriptor. Batch commands instead reference an NPU-resident array of
+  fixed-width storage descriptors governed by the enclosing command version.
 
 It never carries HCCP QP or MR handles, AI-QP descriptors, queue or doorbell
 addresses, or provider objects. Those are local to the environment that owns
@@ -103,13 +109,34 @@ CPU to RDMA Read NPU application data into its namespace; a storage Read causes
 the CPU to RDMA Write namespace data to that buffer. The CPU posts the data
 operation and terminal completion Write in order on the same QP.
 
+`StorageClient::read_batch` and `StorageClient::write_batch` each submit one
+cross-endpoint command. Its `BATCH_READ` or `BATCH_WRITE` record identifies an
+NPU-registered descriptor array and total payload bytes; the CPU RDMA Reads the
+array, validates every descriptor and the aggregate length, then performs its
+ordered payload operations before one terminal completion Write. A malformed
+batch has no namespace effect. The batch itself remains one command in flight;
+it does not introduce command pipelining.
+
 The CPU polls its verbs CQ for command Receive and terminal completion Write.
 The CPU-written NDS completion record is the storage completion. An RA local
 CQE, HCCP AI-QP CQ activity, ACL synchronization, provider resolution, or an
-operator launch is not NDS storage completion. The current host
-`StorageClient` observes the record through a bounded device-to-host copy;
-device-side storage clients must eventually provide their own correct cache and
-ordering behavior.
+operator launch is not NDS storage completion. RA observes the record through
+bounded device-to-host copies. AIV performs explicit cache synchronization and
+copies global-memory bytes into a local buffer before deserialization; AICPU
+uses ordered volatile reads before the same deserializer.
+
+The four command semantics are explicit across execution environments:
+
+| Operation | Shared semantic command | RA input | AIV/AICPU invocation |
+|---|---|---|---|
+| Read | `StorageReadCommand` | `RaStorageContext` plus command | `NdsDeviceStorageReadArgs` |
+| Write | `StorageWriteCommand` | `RaStorageContext` plus command | `NdsDeviceStorageWriteArgs` |
+| Batch Read | `StorageBatchReadCommand` | `RaStorageContext` plus command | `NdsDeviceStorageBatchReadArgs` |
+| Batch Write | `StorageBatchWriteCommand` | `RaStorageContext` plus command | `NdsDeviceStorageBatchWriteArgs` |
+
+The invocation arguments are host-device ABI envelopes, not network records.
+AIV copies command fields between global and local memory outside serde; serde
+itself has no execution-mode branches.
 
 ## Execution modes
 
@@ -117,11 +144,11 @@ Execution mode decides where a work request runs, not which API layer is used.
 All modes share host lifecycle, QP/MR setup, TCP bootstrap, and CPU protocol
 execution.
 
-| Mode | RDMA-post site | Host request role | Local completion |
+| Mode | RDMA-post site | Host launch role | Local completion |
 |---|---|---|---|
 | `ra` | Host CPU: `RaTypicalSendWr`, then `rtRDMADBSend` | Executes the post | RA CQ available |
-| `aiv` | NPU AIV writes WQEs and rings a doorbell | Creates and launches the device request | Caller-owned SCQ/RCQ |
-| `aicpu` | Standard CP1 provider posts Send | Creates and launches the device request | Caller-owned SCQ/RCQ |
+| `aiv` | NPU AIV writes WQEs and rings a doorbell | Creates and launches the operation-specific device args | Caller-owned SCQ/RCQ |
+| `aicpu` | Standard CP1 provider posts Send | Creates and launches the operation-specific device args | Caller-owned SCQ/RCQ |
 
 ### RA
 

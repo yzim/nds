@@ -24,13 +24,17 @@ current architecture and protocol contract.
 - Defined endpoint-local ownership across runtime, transport, storage, and
   execution code; shared wire records remain NDS-owned.
 - Implemented a memory-backed namespace with range validation, fixed command
-  and completion records, and serial Read/Write semantics.
+  and completion records, serial Read/Write semantics, and one-command batch
+  Read/Write with CPU-side whole-batch descriptor validation.
 - Implemented CPU-initiated RDMA Read/Write data movement and terminal
   completion writes.
 - Added a page-locked host client buffer for direct NPU RoCE data transfer
   through an RA-registered device-visible mapping.
 - Implemented RA, AIV, and AICPU command paths, including device-callable
   transport and storage operations for AIV and AICPU.
+- Unified RA, AIV, and AICPU on the same operation-specific storage command
+  types and fixed-layout serializers; host-device invocation envelopes remain
+  separate from client-server protocol data.
 - Added native storage, paired lower-layer examples, persistent Torch storage,
   and opt-in bounded E2E coverage.
 
@@ -78,7 +82,7 @@ memory lifetime, and teardown before queue management. Later work must be
 designed as transport and protocol behavior, not application-side parallel
 loops:
 
-1. Define queue depth, credits, receive-WR replenishment, request IDs,
+1. Define queue depth, credits, receive-WR replenishment, command IDs,
    completion demultiplexing, per-command timeouts, and error handling.
 2. Define QP selection, whether command and data QPs separate, and the
    synchronization required by concurrent device submitters.

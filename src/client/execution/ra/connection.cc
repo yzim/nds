@@ -6,7 +6,7 @@
 namespace nds {
 
 namespace {
-Result<void> post(client::Runtime *runtime, client::QueuePair *qp, const nds_device_send_wr &request) {
+Result<void> post(client::Runtime *runtime, client::QueuePair *qp, const NdsDeviceSendWr &request) {
     if (runtime == nullptr || qp == nullptr)
         return unexpected(ErrorCode::kInvalidArgument, "RA posting requires a runtime and QP");
     const auto posted = NdsRaPostSend(qp, request);
@@ -28,28 +28,28 @@ Result<void> post(client::Runtime *runtime, client::QueuePair *qp, const nds_dev
 }
 }  // namespace
 
-Result<void> NdsRaRdmaSend(const RaConnection &connection, const nds_device_transfer &transfer) {
-    nds_device_send_wr request{};
+Result<void> NdsRaRdmaSend(const RaConnection &connection, const NdsDeviceTransfer &transfer) {
+    NdsDeviceSendWr request{};
     nds_device_build_send_wr(&transfer, NDS_DEVICE_WR_SEND, &request);
     return post(connection.runtime, connection.qp, request);
 }
 
-Result<void> NdsRaRdmaRecv(const RaConnection &connection, const nds_device_transfer &transfer) {
+Result<void> NdsRaRdmaRecv(const RaConnection &connection, const NdsDeviceTransfer &transfer) {
     if (connection.runtime == nullptr || connection.qp == nullptr)
         return unexpected(ErrorCode::kInvalidArgument, "RA receive requires a runtime and QP");
-    nds_device_recv_wr request{};
+    NdsDeviceRecvWr request{};
     nds_device_build_recv_wr(&transfer, &request);
     return NdsRaPostRecv(connection.qp, request);
 }
 
-Result<void> NdsRaRdmaRead(const RaConnection &connection, const nds_device_transfer &transfer) {
-    nds_device_send_wr request{};
+Result<void> NdsRaRdmaRead(const RaConnection &connection, const NdsDeviceTransfer &transfer) {
+    NdsDeviceSendWr request{};
     nds_device_build_send_wr(&transfer, NDS_DEVICE_WR_RDMA_READ, &request);
     return post(connection.runtime, connection.qp, request);
 }
 
-Result<void> NdsRaRdmaWrite(const RaConnection &connection, const nds_device_transfer &transfer) {
-    nds_device_send_wr request{};
+Result<void> NdsRaRdmaWrite(const RaConnection &connection, const NdsDeviceTransfer &transfer) {
+    NdsDeviceSendWr request{};
     nds_device_build_send_wr(&transfer, NDS_DEVICE_WR_RDMA_WRITE, &request);
     return post(connection.runtime, connection.qp, request);
 }

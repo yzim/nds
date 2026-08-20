@@ -1,7 +1,7 @@
-#ifndef NDS_CONNECTION_HH
-#define NDS_CONNECTION_HH
+#ifndef NDS_TCP_BOOTSTRAP_HH
+#define NDS_TCP_BOOTSTRAP_HH
 
-#include "nds/connection.h"
+#include "nds/wire/transport.hh"
 #include "nds/result.hh"
 
 #include <cstdint>
@@ -17,7 +17,7 @@ struct TcpAddress {
 Result<TcpAddress> parse_tcp_address(const std::string &address);
 
 /*
- * TCP helper used by connection control to exchange one nds_qp_info in each
+ * TCP helper used by transport control to exchange one QP-info record in each
  * direction. It has no HCCP, HCOMM, ACL, or verbs dependency.
  */
 class TcpPeerExchange {
@@ -33,10 +33,10 @@ public:
     static Result<TcpPeerExchange> connect(const std::string &ipv4, std::uint16_t port, std::uint32_t timeout_ms);
 
     /* Client ordering: send the local QP info, then receive the peer QP info. */
-    Result<nds_qp_info> exchange_as_client(const nds_qp_info &local) const;
+    Result<transport::QpInfo> exchange_as_client(const transport::QpInfo &local) const;
 
     /* Server ordering: receive the peer QP info, then send the local QP info. */
-    Result<nds_qp_info> exchange_as_server(const nds_qp_info &local) const;
+    Result<transport::QpInfo> exchange_as_server(const transport::QpInfo &local) const;
 
     Result<void> send_bytes(const void *buffer, std::size_t length) const;
     Result<void> receive_bytes(void *buffer, std::size_t length) const;
@@ -46,7 +46,7 @@ public:
 private:
     static Result<void> read_full(int fd, void *buffer, std::size_t length);
     static Result<void> write_full(int fd, const void *buffer, std::size_t length);
-    static Result<nds_qp_info> exchange(int fd, const nds_qp_info &local, bool client_order);
+    static Result<transport::QpInfo> exchange(int fd, const transport::QpInfo &local, bool client_order);
 
     int fd_;
 };

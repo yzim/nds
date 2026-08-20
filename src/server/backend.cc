@@ -1,6 +1,6 @@
 #include "backend.hh"
 
-#include "nds/connection.h"
+#include "nds/wire/transport.hh"
 
 #include <arpa/inet.h>
 #include <cerrno>
@@ -143,7 +143,7 @@ Result<void> VerbsBackend::open(const BackendConfig &config) {
     local_.path_mtu = mtu_bytes(port.active_mtu);
     local_.retry_count = 7U;
     local_.retry_timeout = 14U;
-    std::memcpy(local_.gid, &gid, NDS_GID_BYTES);
+    std::memcpy(local_.gid, &gid, nds::wire::kGidBytes);
     ibv_qp_attr attr{};
     attr.qp_state = IBV_QPS_INIT;
     attr.pkey_index = 0;
@@ -155,9 +155,9 @@ Result<void> VerbsBackend::open(const BackendConfig &config) {
     return {};
 }
 
-Result<void> VerbsBackend::connect(const nds_qp_info &peer) {
+Result<void> VerbsBackend::connect(const nds::transport::QpInfo &peer) {
     ibv_mtu mtu{};
-    if (!mtu_value(nds_qp_mtu_select(local_.path_mtu, peer.path_mtu), &mtu)) {
+    if (!mtu_value(nds::transport::select_mtu(local_.path_mtu, peer.path_mtu), &mtu)) {
         return unexpected(ErrorCode::kVerbs, "unsupported local path MTU");
     }
     ibv_qp_attr attr{};
@@ -168,7 +168,7 @@ Result<void> VerbsBackend::connect(const nds_qp_info &peer) {
     attr.max_dest_rd_atomic = 1U;
     attr.min_rnr_timer = 12U;
     attr.ah_attr.is_global = 1;
-    std::memcpy(&attr.ah_attr.grh.dgid, peer.gid, NDS_GID_BYTES);
+    std::memcpy(&attr.ah_attr.grh.dgid, peer.gid, nds::wire::kGidBytes);
     attr.ah_attr.grh.sgid_index = static_cast<std::uint8_t>(config_.gid_index);
     attr.ah_attr.grh.hop_limit = 1U;
     attr.ah_attr.grh.traffic_class = static_cast<std::uint8_t>(peer.traffic_class);
@@ -283,7 +283,7 @@ Result<void> VerbsBackend::write(const RegisteredRegion &local, std::uint64_t re
     return transfer(IBV_WR_RDMA_WRITE, local, remote_address, remote_key, length);
 }
 
-const nds_qp_info &VerbsBackend::local_qp_info() const noexcept {
+const nds::transport::QpInfo &VerbsBackend::local_qp_info() const noexcept {
     return local_;
 }
 

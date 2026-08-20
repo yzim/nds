@@ -31,8 +31,8 @@ Result<void> Runtime::open(const RuntimeConfig &config) {
 
 Result<void> Runtime::initialize(const RuntimeConfig &config) {
     const std::string hdc_type_argument = "--hdcType=" + std::to_string(config.hdc_type);
-    nds_rt_proc_ext_param parameter{};
-    nds_rt_net_service_open_args open_args{};
+    NdsRtProcExtParam parameter{};
+    NdsRtNetServiceOpenArgs open_args{};
 
     if (!config.adopt_existing_context && (config.ascendcl_library.empty() || config.runtime_library.empty())) {
         return unexpected(ErrorCode::kInvalidArgument,
@@ -183,11 +183,11 @@ Result<void> Runtime::copy_device_to_host(void *host_ptr, const void *device_ptr
     return {};
 }
 
-nds_acl_api &Runtime::acl_api() noexcept {
+NdsAclApi &Runtime::acl_api() noexcept {
     return acl_;
 }
 
-nds_runtime_api &Runtime::runtime_api() noexcept {
+NdsRuntimeApi &Runtime::runtime_api() noexcept {
     return runtime_;
 }
 

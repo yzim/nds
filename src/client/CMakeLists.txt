@@ -73,7 +73,7 @@ target_link_libraries(nds_client_storage PUBLIC
     nds_ra
     nds_aiv_launcher
     nds_aicpu_launcher
-    nds_protocol)
+    nds_storage_protocol)
 target_compile_options(nds_client_storage PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 if(NDS_BUILD_AIV_KERNEL)
@@ -124,6 +124,7 @@ if(NDS_BUILD_AIV_KERNEL)
             "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_qp.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_hns_codec.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_storage.h"
+            "${PROJECT_SOURCE_DIR}/src/include/nds/storage_protocol.hh"
         VERBATIM)
     add_custom_target(nds_aiv_kernel ALL DEPENDS "${NDS_AIV_OBJECT}")
 endif()
@@ -173,6 +174,7 @@ if(NDS_BUILD_AICPU_KERNEL)
             "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_qp.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_hns_codec.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_storage.h"
+            "${PROJECT_SOURCE_DIR}/src/include/nds/storage_protocol.hh"
         VERBATIM)
     configure_file(${NDS_AICPU_DEVICE_DIR}/package/nds_aicpu_standard.json.in "${NDS_AICPU_STANDARD_CONFIG}" @ONLY)
     add_custom_command(

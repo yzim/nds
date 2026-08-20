@@ -3,11 +3,21 @@
 
 #include "runtime.hh"
 #include "transport.hh"
+#include "nds/storage_protocol.hh"
 
 #include <cstddef>
 #include <cstdint>
+#include <span>
 
 namespace nds::client {
+
+struct StorageClientTestAccess;
+
+struct StorageIo {
+    std::uint64_t offset{};
+    MemoryBuffer *data{};
+    std::uint32_t length{};
+};
 
 /* Host implementation of the NDS storage API. Device implementations use the same semantics. */
 class StorageClient {
@@ -15,11 +25,19 @@ public:
     Result<void> open(Runtime *runtime, Transport *transport);
     Result<void> read(std::uint64_t offset, MemoryBuffer *data, std::uint32_t length);
     Result<void> write(std::uint64_t offset, MemoryBuffer *data, std::uint32_t length);
+    Result<void> read_batch(std::span<const StorageIo> requests);
+    Result<void> write_batch(std::span<const StorageIo> requests);
 
     std::uint64_t capacity() const noexcept;
 
 private:
-    Result<void> execute(std::uint16_t operation, std::uint64_t offset, MemoryBuffer *data, std::uint32_t length);
+    friend struct StorageClientTestAccess;
+    Result<void> validate_io(const StorageIo &command) const;
+    Result<void> execute_storage_read(const StorageReadCommand &command);
+    Result<void> execute_storage_write(const StorageWriteCommand &command);
+    Result<void> execute_storage_batch_read(const StorageBatchReadCommand &command);
+    Result<void> execute_storage_batch_write(const StorageBatchWriteCommand &command);
+    std::uint64_t allocate_command_id() noexcept;
     Result<std::uint64_t> exchange_bootstrap();
     Runtime *runtime_{};
     Transport *transport_{};
@@ -28,7 +46,7 @@ private:
     MemoryRegion command_region_;
     MemoryRegion completion_region_;
     std::uint64_t capacity_{};
-    std::uint64_t next_request_id_{};
+    std::uint64_t next_command_id_{};
     bool opened_{};
 };
 

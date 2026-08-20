@@ -8,7 +8,7 @@
 namespace {
 
 TEST(DeviceHnsCodecTest, ReceiveSegmentHardwareLayout) {
-    nds_hns_receive_segment segment{};
+    NdsHnsReceiveSegment segment{};
     nds_hns_encode_receive_segment(&segment, UINT64_C(0x1122334455667788), UINT32_C(0xa1b2c3d4), UINT32_C(0x55667788));
     EXPECT_TRUE(segment.length == UINT32_C(0xa1b2c3d4));
     EXPECT_TRUE(segment.local_key == UINT32_C(0x55667788));
@@ -33,7 +33,7 @@ TEST(DeviceHnsCodecTest, QueueCapacityAndCounterWrap) {
 }
 
 TEST(DeviceHnsCodecTest, CqeOwnerPhase) {
-    nds_hns_cqe cqe{};
+    NdsHnsCqe cqe{};
     cqe.byte_4 = 1U << 7U;
     EXPECT_TRUE(nds_hns_cqe_is_ready(&cqe, 0U, 8U));
     EXPECT_TRUE(!nds_hns_cqe_is_ready(&cqe, 8U, 8U));
@@ -44,7 +44,7 @@ TEST(DeviceHnsCodecTest, CqeOwnerPhase) {
 }
 
 TEST(DeviceHnsCodecTest, SendTailWrap) {
-    nds_hns_cqe cqe{};
+    NdsHnsCqe cqe{};
     cqe.byte_4 = 1U << 16U;
     EXPECT_TRUE(nds_hns_send_tail_for_cqe(0U, 8U, &cqe) == 1U);
     EXPECT_TRUE(nds_hns_send_tail_for_cqe(6U, 8U, &cqe) == 9U);
@@ -53,13 +53,13 @@ TEST(DeviceHnsCodecTest, SendTailWrap) {
 }
 
 TEST(DeviceHnsCodecTest, CompletionDecode) {
-    nds_hns_cqe cqe{};
+    NdsHnsCqe cqe{};
     cqe.byte_4 = (UINT32_C(0x4321) << 16U) | (UINT32_C(0x5a) << 8U) | 0x13U;
     cqe.immediate_data = UINT32_C(0xaabbccdd);
     cqe.byte_12 = UINT32_C(0xff345678);
     cqe.byte_16 = UINT32_C(0x7e000000);
     cqe.byte_count = 4096U;
-    nds_device_completion completion{};
+    NdsDeviceCompletion completion{};
     nds_hns_decode_cqe(&cqe, UINT64_C(0x1020304050607080), &completion);
     EXPECT_TRUE(completion.wr_id == UINT64_C(0x1020304050607080));
     EXPECT_TRUE(completion.status == 0x5a);

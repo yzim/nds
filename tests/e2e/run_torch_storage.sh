@@ -93,7 +93,7 @@ trap cleanup EXIT
 timeout "${case_timeout}" "${build}/bin/nds_server" \
     --device "${NDS_E2E_DEVICE}" --gid-index "${NDS_E2E_GID_INDEX}" \
     --listen "${NDS_E2E_SERVER_ADDRESS}" \
-    --namespace-bytes 1048576 --storage-requests 2 --log-level info \
+    --namespace-bytes 1048576 --storage-commands 2 --log-level info \
     >"${server_log}" 2>&1 &
 server_pid=$!
 sleep 1

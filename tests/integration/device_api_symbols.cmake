@@ -17,13 +17,15 @@ if(NDS_DEVICE_KIND STREQUAL "aicpu")
     set(symbols
         NdsAicpuPostSend NdsAicpuPostRecv NdsAicpuPollCq
         NdsAicpuRdmaSend NdsAicpuRdmaRecv NdsAicpuRdmaRead NdsAicpuRdmaWrite
-        NdsAicpuStorageRead NdsAicpuStorageWrite)
+        NdsAicpuStorageRead NdsAicpuStorageWrite
+        NdsAicpuStorageBatchRead NdsAicpuStorageBatchWrite)
 elseif(NDS_DEVICE_KIND STREQUAL "aiv")
     set(nm_args -g)
     set(symbols
         NdsAivPostSend NdsAivPostRecv NdsAivPollCq
         NdsAivRdmaSend NdsAivRdmaRecv NdsAivRdmaRead NdsAivRdmaWrite
-        NdsAivStorageRead NdsAivStorageWrite)
+        NdsAivStorageRead NdsAivStorageWrite
+        NdsAivStorageBatchRead NdsAivStorageBatchWrite)
 else()
     message(FATAL_ERROR "unknown device API kind: ${NDS_DEVICE_KIND}")
 endif()

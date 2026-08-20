@@ -14,56 +14,56 @@ extern "C" {
  * may instead link the official ACL headers/library behind this same adapter
  * (NDS_LINK_PUBLIC_ACL), without changing the consumer-facing API.
  */
-typedef int (*nds_acl_init_fn)(const char *config_path);
-typedef int (*nds_acl_finalize_fn)(void);
-typedef int (*nds_acl_rt_set_device_fn)(int32_t device_id);
-typedef int (*nds_acl_rt_get_phy_dev_id_fn)(int32_t logic_device_id, int32_t *physical_device_id);
-typedef int (*nds_acl_rt_malloc_fn)(void **device_ptr, size_t size, int policy);
-typedef int (*nds_acl_rt_free_fn)(void *device_ptr);
-typedef int (*nds_acl_rt_host_register_fn)(void *host_ptr, uint64_t size, int type, void **device_ptr);
-typedef int (*nds_acl_rt_host_unregister_fn)(void *host_ptr);
-typedef int (*nds_acl_rt_memcpy_fn)(void *dst, size_t dst_max, const void *src, size_t count, int kind);
-typedef int (*nds_acl_rt_memset_fn)(void *device_ptr, size_t max_count, int32_t value, size_t count);
-typedef void *nds_acl_bin_handle;
-typedef void *nds_acl_func_handle;
-typedef void *nds_acl_args_handle;
-typedef void *nds_acl_param_handle;
-typedef void *nds_acl_stream;
+typedef int (*NdsAclInitFn)(const char *config_path);
+typedef int (*NdsAclFinalizeFn)(void);
+typedef int (*NdsAclRtSetDeviceFn)(int32_t device_id);
+typedef int (*NdsAclRtGetPhyDevIdFn)(int32_t logic_device_id, int32_t *physical_device_id);
+typedef int (*NdsAclRtMallocFn)(void **device_ptr, size_t size, int policy);
+typedef int (*NdsAclRtFreeFn)(void *device_ptr);
+typedef int (*NdsAclRtHostRegisterFn)(void *host_ptr, uint64_t size, int type, void **device_ptr);
+typedef int (*NdsAclRtHostUnregisterFn)(void *host_ptr);
+typedef int (*NdsAclRtMemcpyFn)(void *dst, size_t dst_max, const void *src, size_t count, int kind);
+typedef int (*NdsAclRtMemsetFn)(void *device_ptr, size_t max_count, int32_t value, size_t count);
+typedef void *NdsAclBinHandle;
+typedef void *NdsAclFuncHandle;
+typedef void *NdsAclArgsHandle;
+typedef void *NdsAclParamHandle;
+typedef void *NdsAclStream;
 
-typedef enum nds_acl_binary_load_option_type {
+typedef enum NdsAclBinaryLoadOptionType {
     NDS_ACL_BINARY_LOAD_OPT_LAZY_LOAD = 1,
     NDS_ACL_BINARY_LOAD_OPT_CPU_KERNEL_MODE = 3,
-} nds_acl_binary_load_option_type;
+} NdsAclBinaryLoadOptionType;
 
-typedef enum nds_acl_cpu_kernel_mode {
+typedef enum NdsAclCpuKernelMode {
     NDS_ACL_CPU_KERNEL_REGISTER_JSON = 0,
     NDS_ACL_CPU_KERNEL_LOAD_SO_AND_JSON = 1,
-} nds_acl_cpu_kernel_mode;
+} NdsAclCpuKernelMode;
 
-typedef union nds_acl_binary_load_option_value {
+typedef union NdsAclBinaryLoadOptionValue {
     uint32_t lazy_load;
     int32_t cpu_kernel_mode;
     uint32_t reserved[4];
-} nds_acl_binary_load_option_value;
+} NdsAclBinaryLoadOptionValue;
 
-typedef struct nds_acl_binary_load_option {
-    nds_acl_binary_load_option_type type;
-    nds_acl_binary_load_option_value value;
-} nds_acl_binary_load_option;
+typedef struct NdsAclBinaryLoadOption {
+    NdsAclBinaryLoadOptionType type;
+    NdsAclBinaryLoadOptionValue value;
+} NdsAclBinaryLoadOption;
 
-typedef struct nds_acl_binary_load_options {
-    nds_acl_binary_load_option *options;
+typedef struct NdsAclBinaryLoadOptions {
+    NdsAclBinaryLoadOption *options;
     size_t num_options;
-} nds_acl_binary_load_options;
+} NdsAclBinaryLoadOptions;
 
-typedef enum nds_acl_launch_kernel_attr_id {
+typedef enum NdsAclLaunchKernelAttrId {
     NDS_ACL_LAUNCH_KERNEL_ATTR_SCHEM_MODE = 1,
     NDS_ACL_LAUNCH_KERNEL_ATTR_ENGINE_TYPE = 3,
     NDS_ACL_LAUNCH_KERNEL_ATTR_TIMEOUT = 7,
     NDS_ACL_LAUNCH_KERNEL_ATTR_TIMEOUT_US = 8,
-} nds_acl_launch_kernel_attr_id;
+} NdsAclLaunchKernelAttrId;
 
-typedef union nds_acl_launch_kernel_attr_value {
+typedef union NdsAclLaunchKernelAttrValue {
     uint8_t schem_mode;
     int32_t engine_type;
     struct {
@@ -72,38 +72,38 @@ typedef union nds_acl_launch_kernel_attr_value {
     } timeout_us;
     uint16_t timeout_seconds;
     uint32_t reserved[4];
-} nds_acl_launch_kernel_attr_value;
+} NdsAclLaunchKernelAttrValue;
 
-typedef struct nds_acl_launch_kernel_attr {
-    nds_acl_launch_kernel_attr_id id;
-    nds_acl_launch_kernel_attr_value value;
-} nds_acl_launch_kernel_attr;
+typedef struct NdsAclLaunchKernelAttr {
+    NdsAclLaunchKernelAttrId id;
+    NdsAclLaunchKernelAttrValue value;
+} NdsAclLaunchKernelAttr;
 
-typedef struct nds_acl_launch_kernel_config {
-    nds_acl_launch_kernel_attr *attrs;
+typedef struct NdsAclLaunchKernelConfig {
+    NdsAclLaunchKernelAttr *attrs;
     size_t num_attrs;
-} nds_acl_launch_kernel_config;
+} NdsAclLaunchKernelConfig;
 
-typedef int (*nds_acl_rt_binary_load_from_file_fn)(const char *file_name, nds_acl_binary_load_options *options,
-                                                   nds_acl_bin_handle *bin_handle);
-typedef int (*nds_acl_rt_binary_unload_fn)(nds_acl_bin_handle bin_handle);
-typedef int (*nds_acl_rt_binary_get_function_fn)(nds_acl_bin_handle bin_handle, const char *name,
-                                                 nds_acl_func_handle *function_handle);
-typedef int (*nds_acl_rt_kernel_args_init_fn)(nds_acl_func_handle function_handle, nds_acl_args_handle *args_handle);
-typedef int (*nds_acl_rt_kernel_args_append_fn)(nds_acl_args_handle args_handle, void *parameter, size_t parameter_size,
-                                                nds_acl_param_handle *parameter_handle);
-typedef int (*nds_acl_rt_kernel_args_finalize_fn)(nds_acl_args_handle args_handle);
-typedef int (*nds_acl_rt_launch_kernel_with_config_fn)(nds_acl_func_handle function_handle, uint32_t block_count,
-                                                       nds_acl_stream stream, nds_acl_launch_kernel_config *config,
-                                                       nds_acl_args_handle args_handle, void *reserved);
-typedef int (*nds_acl_rt_launch_kernel_with_host_args_fn)(nds_acl_func_handle function_handle, uint32_t block_count,
-                                                          nds_acl_stream stream, nds_acl_launch_kernel_config *config,
+typedef int (*NdsAclRtBinaryLoadFromFileFn)(const char *file_name, NdsAclBinaryLoadOptions *options,
+                                                   NdsAclBinHandle *bin_handle);
+typedef int (*NdsAclRtBinaryUnloadFn)(NdsAclBinHandle bin_handle);
+typedef int (*NdsAclRtBinaryGetFunctionFn)(NdsAclBinHandle bin_handle, const char *name,
+                                                 NdsAclFuncHandle *function_handle);
+typedef int (*NdsAclRtKernelArgsInitFn)(NdsAclFuncHandle function_handle, NdsAclArgsHandle *args_handle);
+typedef int (*NdsAclRtKernelArgsAppendFn)(NdsAclArgsHandle args_handle, void *parameter, size_t parameter_size,
+                                                NdsAclParamHandle *parameter_handle);
+typedef int (*NdsAclRtKernelArgsFinalizeFn)(NdsAclArgsHandle args_handle);
+typedef int (*NdsAclRtLaunchKernelWithConfigFn)(NdsAclFuncHandle function_handle, uint32_t block_count,
+                                                       NdsAclStream stream, NdsAclLaunchKernelConfig *config,
+                                                       NdsAclArgsHandle args_handle, void *reserved);
+typedef int (*NdsAclRtLaunchKernelWithHostArgsFn)(NdsAclFuncHandle function_handle, uint32_t block_count,
+                                                          NdsAclStream stream, NdsAclLaunchKernelConfig *config,
                                                           void *host_args, size_t args_size, void *placeholder_array,
                                                           size_t placeholder_count);
-typedef int (*nds_acl_rt_create_stream_fn)(nds_acl_stream *stream);
-typedef int (*nds_acl_rt_create_stream_with_config_fn)(nds_acl_stream *stream, uint32_t priority, uint32_t flags);
-typedef int (*nds_acl_rt_destroy_stream_fn)(nds_acl_stream stream);
-typedef int (*nds_acl_rt_synchronize_stream_with_timeout_fn)(nds_acl_stream stream, int32_t timeout_ms);
+typedef int (*NdsAclRtCreateStreamFn)(NdsAclStream *stream);
+typedef int (*NdsAclRtCreateStreamWithConfigFn)(NdsAclStream *stream, uint32_t priority, uint32_t flags);
+typedef int (*NdsAclRtDestroyStreamFn)(NdsAclStream stream);
+typedef int (*NdsAclRtSynchronizeStreamWithTimeoutFn)(NdsAclStream stream, int32_t timeout_ms);
 
 enum {
     /* aclrtMemMallocPolicy values needed by the direct NPU data path. */
@@ -121,37 +121,37 @@ enum {
 
 enum { NDS_ACL_ERROR_CAPACITY = 512 };
 
-typedef struct nds_acl_api {
+typedef struct NdsAclApi {
     void *library;
-    nds_acl_init_fn init;
-    nds_acl_finalize_fn finalize;
-    nds_acl_rt_set_device_fn set_device;
-    nds_acl_rt_get_phy_dev_id_fn get_phy_dev_id;
-    nds_acl_rt_malloc_fn malloc_device;
-    nds_acl_rt_free_fn free_device;
+    NdsAclInitFn init;
+    NdsAclFinalizeFn finalize;
+    NdsAclRtSetDeviceFn set_device;
+    NdsAclRtGetPhyDevIdFn get_phy_dev_id;
+    NdsAclRtMallocFn malloc_device;
+    NdsAclRtFreeFn free_device;
     /* Optional CANN page-locked host-memory API. */
-    nds_acl_rt_host_register_fn host_register;
-    nds_acl_rt_host_unregister_fn host_unregister;
-    nds_acl_rt_memcpy_fn memcpy;
-    nds_acl_rt_memset_fn memset_device;
-    nds_acl_rt_binary_load_from_file_fn binary_load_from_file;
-    nds_acl_rt_binary_unload_fn binary_unload;
-    nds_acl_rt_binary_get_function_fn binary_get_function;
-    nds_acl_rt_kernel_args_init_fn kernel_args_init;
-    nds_acl_rt_kernel_args_append_fn kernel_args_append;
-    nds_acl_rt_kernel_args_finalize_fn kernel_args_finalize;
-    nds_acl_rt_launch_kernel_with_config_fn launch_kernel_with_config;
-    nds_acl_rt_launch_kernel_with_host_args_fn launch_kernel_with_host_args;
-    nds_acl_rt_create_stream_fn create_stream;
-    nds_acl_rt_create_stream_with_config_fn create_stream_with_config;
-    nds_acl_rt_destroy_stream_fn destroy_stream;
-    nds_acl_rt_synchronize_stream_with_timeout_fn synchronize_stream_with_timeout;
+    NdsAclRtHostRegisterFn host_register;
+    NdsAclRtHostUnregisterFn host_unregister;
+    NdsAclRtMemcpyFn memcpy;
+    NdsAclRtMemsetFn memset_device;
+    NdsAclRtBinaryLoadFromFileFn binary_load_from_file;
+    NdsAclRtBinaryUnloadFn binary_unload;
+    NdsAclRtBinaryGetFunctionFn binary_get_function;
+    NdsAclRtKernelArgsInitFn kernel_args_init;
+    NdsAclRtKernelArgsAppendFn kernel_args_append;
+    NdsAclRtKernelArgsFinalizeFn kernel_args_finalize;
+    NdsAclRtLaunchKernelWithConfigFn launch_kernel_with_config;
+    NdsAclRtLaunchKernelWithHostArgsFn launch_kernel_with_host_args;
+    NdsAclRtCreateStreamFn create_stream;
+    NdsAclRtCreateStreamWithConfigFn create_stream_with_config;
+    NdsAclRtDestroyStreamFn destroy_stream;
+    NdsAclRtSynchronizeStreamWithTimeoutFn synchronize_stream_with_timeout;
     char error[NDS_ACL_ERROR_CAPACITY];
-} nds_acl_api;
+} NdsAclApi;
 
-int nds_acl_open(nds_acl_api *api, const char *library_path);
-void nds_acl_close(nds_acl_api *api);
-const char *nds_acl_error(const nds_acl_api *api);
+int nds_acl_open(NdsAclApi *api, const char *library_path);
+void nds_acl_close(NdsAclApi *api);
+const char *nds_acl_error(const NdsAclApi *api);
 
 #ifdef __cplusplus
 }

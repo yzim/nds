@@ -8,38 +8,38 @@
 
 #define NDS_DEVICE_OPERATOR_ARGS_ABI_VERSION UINT32_C(1)
 
-typedef struct nds_device_post_send_request {
+typedef struct NdsDevicePostSendRequest {
     uint32_t abi_version;
     uint32_t size;
-    nds_device_qp qp;
-    nds_device_send_wr wr;
+    NdsDeviceQp qp;
+    NdsDeviceSendWr wr;
     uint64_t operation_result_address;
-} nds_device_post_send_request;
+} NdsDevicePostSendRequest;
 
-typedef struct nds_device_post_recv_request {
+typedef struct NdsDevicePostRecvRequest {
     uint32_t abi_version;
     uint32_t size;
-    nds_device_qp qp;
-    nds_device_recv_wr wr;
+    NdsDeviceQp qp;
+    NdsDeviceRecvWr wr;
     uint64_t operation_result_address;
-} nds_device_post_recv_request;
+} NdsDevicePostRecvRequest;
 
-typedef struct nds_device_poll_cq_operator_request {
+typedef struct NdsDevicePollCqOperatorRequest {
     uint32_t abi_version;
     uint32_t size;
-    nds_device_qp qp;
-    nds_device_poll_cq_request poll_cq;
+    NdsDeviceQp qp;
+    NdsDevicePollCqRequest poll_cq;
     uint64_t operation_result_address;
-} nds_device_poll_cq_operator_request;
+} NdsDevicePollCqOperatorRequest;
 
 #if defined(__cplusplus)
-static_assert(sizeof(nds_device_post_send_request) == 304, "post-send operator ABI changed");
-static_assert(sizeof(nds_device_post_recv_request) == 280, "post-recv operator ABI changed");
-static_assert(sizeof(nds_device_poll_cq_operator_request) == 272, "poll-CQ operator ABI changed");
+static_assert(sizeof(NdsDevicePostSendRequest) == 304, "post-send operator ABI changed");
+static_assert(sizeof(NdsDevicePostRecvRequest) == 280, "post-recv operator ABI changed");
+static_assert(sizeof(NdsDevicePollCqOperatorRequest) == 272, "poll-CQ operator ABI changed");
 #else
-_Static_assert(sizeof(nds_device_post_send_request) == 304, "post-send operator ABI changed");
-_Static_assert(sizeof(nds_device_post_recv_request) == 280, "post-recv operator ABI changed");
-_Static_assert(sizeof(nds_device_poll_cq_operator_request) == 272, "poll-CQ operator ABI changed");
+_Static_assert(sizeof(NdsDevicePostSendRequest) == 304, "post-send operator ABI changed");
+_Static_assert(sizeof(NdsDevicePostRecvRequest) == 280, "post-recv operator ABI changed");
+_Static_assert(sizeof(NdsDevicePollCqOperatorRequest) == 272, "poll-CQ operator ABI changed");
 #endif
 
 #endif

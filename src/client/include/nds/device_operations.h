@@ -8,7 +8,7 @@
 
 #define NDS_DEVICE_OPERATIONS_ABI_VERSION UINT32_C(3)
 
-enum nds_device_operation {
+enum NdsDeviceOperation {
     NDS_DEVICE_RDMA_SEND = 1U,
     NDS_DEVICE_RDMA_RECV = 2U,
     NDS_DEVICE_RDMA_READ = 3U,
@@ -16,29 +16,29 @@ enum nds_device_operation {
     NDS_DEVICE_POLL_CQ = 5U,
 };
 
-typedef union nds_device_operation_parameters {
-    nds_device_transfer transfer;
-    nds_device_poll_cq_request poll_cq;
-} nds_device_operation_parameters;
+typedef union NdsDeviceOperationParameters {
+    NdsDeviceTransfer transfer;
+    NdsDevicePollCqRequest poll_cq;
+} NdsDeviceOperationParameters;
 
-typedef struct nds_device_operation_request {
+typedef struct NdsDeviceOperationRequest {
     uint32_t abi_version;
     uint32_t size;
     uint32_t operation;
     uint32_t reserved;
-    nds_device_transport transport;
-    nds_device_operation_parameters parameters;
+    NdsDeviceTransport transport;
+    NdsDeviceOperationParameters parameters;
     uint64_t operation_result_address;
-} nds_device_operation_request;
+} NdsDeviceOperationRequest;
 
 #if defined(__cplusplus)
-static_assert(sizeof(nds_device_operation_parameters) == 40, "device operation parameters ABI changed");
-static_assert(sizeof(nds_device_operation_request) == 312, "device operation ABI changed");
-static_assert(offsetof(nds_device_operation_request, transport) == 16, "device operation transport offset changed");
+static_assert(sizeof(NdsDeviceOperationParameters) == 40, "device operation parameters ABI changed");
+static_assert(sizeof(NdsDeviceOperationRequest) == 312, "device operation ABI changed");
+static_assert(offsetof(NdsDeviceOperationRequest, transport) == 16, "device operation transport offset changed");
 #else
-_Static_assert(sizeof(nds_device_operation_parameters) == 40, "device operation parameters ABI changed");
-_Static_assert(sizeof(nds_device_operation_request) == 312, "device operation ABI changed");
-_Static_assert(offsetof(nds_device_operation_request, transport) == 16, "device operation transport offset changed");
+_Static_assert(sizeof(NdsDeviceOperationParameters) == 40, "device operation parameters ABI changed");
+_Static_assert(sizeof(NdsDeviceOperationRequest) == 312, "device operation ABI changed");
+_Static_assert(offsetof(NdsDeviceOperationRequest, transport) == 16, "device operation transport offset changed");
 #endif
 
 #endif

@@ -21,15 +21,18 @@ const char *aiv_operator_name(std::uint32_t operation) {
     }
 }
 
-const char *aiv_storage_operator_name(std::uint16_t operation) {
+const char *aiv_storage_operator_name(StorageOperation operation) {
     switch (operation) {
-        case NDS_PROTOCOL_READ:
+        case StorageOperation::Read:
             return "NdsAivStorageRead";
-        case NDS_PROTOCOL_WRITE:
+        case StorageOperation::Write:
             return "NdsAivStorageWrite";
-        default:
-            return nullptr;
+        case StorageOperation::BatchRead:
+            return "NdsAivStorageBatchRead";
+        case StorageOperation::BatchWrite:
+            return "NdsAivStorageBatchWrite";
     }
+    return nullptr;
 }
 }  // namespace
 
@@ -37,9 +40,9 @@ AivEntrypointLauncher::~AivEntrypointLauncher() {
     reset();
 }
 
-Result<void> AivEntrypointLauncher::load(nds_acl_api *acl, const std::string &kernel_path) {
-    nds_acl_binary_load_option option{};
-    nds_acl_binary_load_options options{};
+Result<void> AivEntrypointLauncher::load(NdsAclApi *acl, const std::string &kernel_path) {
+    NdsAclBinaryLoadOption option{};
+    NdsAclBinaryLoadOptions options{};
     int result;
 
     if (acl == nullptr || loaded() || kernel_path.empty()) {
@@ -72,15 +75,15 @@ Result<void> AivEntrypointLauncher::load(nds_acl_api *acl, const std::string &ke
     return {};
 }
 
-Result<nds_device_operation_request> AivEntrypointLauncher::make_device_request(
-    const nds_device_operation_request &request) {
+Result<NdsDeviceOperationRequest> AivEntrypointLauncher::make_device_request(
+    const NdsDeviceOperationRequest &request) {
     if (request.transport.abi_version != NDS_DEVICE_TRANSPORT_ABI_VERSION ||
         request.transport.size != sizeof(request.transport) ||
         request.transport.control_qp.abi_version != NDS_DEVICE_QP_ABI_VERSION ||
         request.operation < NDS_DEVICE_RDMA_SEND || request.operation > NDS_DEVICE_POLL_CQ) {
         return unexpected(ErrorCode::kInvalidArgument, "NDS AIV request has invalid device transport metadata");
     }
-    nds_device_operation_request output = request;
+    NdsDeviceOperationRequest output = request;
     output.abi_version = NDS_DEVICE_OPERATIONS_ABI_VERSION;
     output.size = sizeof(output);
     return output;
@@ -88,8 +91,8 @@ Result<nds_device_operation_request> AivEntrypointLauncher::make_device_request(
 
 Result<void> AivEntrypointLauncher::launch_and_wait(std::uint64_t device_request_address, std::uint32_t operation,
                                                     std::int32_t completion_timeout_ms) {
-    nds_acl_launch_kernel_attr attributes[2]{};
-    nds_acl_launch_kernel_config config{};
+    NdsAclLaunchKernelAttr attributes[2]{};
+    NdsAclLaunchKernelConfig config{};
     int result;
 
     const char *operator_name = aiv_operator_name(operation);
@@ -131,12 +134,12 @@ Result<void> AivEntrypointLauncher::launch_post_send_and_wait(std::uint64_t devi
     if (acl_->binary_get_function(binary_, "NdsAivPostSend", &function_) != 0 || function_ == nullptr) {
         return unexpected(ErrorCode::kRuntime, "NDS AIV binary does not expose NdsAivPostSend");
     }
-    nds_acl_launch_kernel_attr attributes[2]{};
+    NdsAclLaunchKernelAttr attributes[2]{};
     attributes[0].id = NDS_ACL_LAUNCH_KERNEL_ATTR_SCHEM_MODE;
     attributes[0].value.schem_mode = 1U;
     attributes[1].id = NDS_ACL_LAUNCH_KERNEL_ATTR_ENGINE_TYPE;
     attributes[1].value.engine_type = NDS_ACL_ENGINE_TYPE_AIV;
-    nds_acl_launch_kernel_config config{attributes, 2U};
+    NdsAclLaunchKernelConfig config{attributes, 2U};
     if (const int result = acl_->launch_kernel_with_host_args(function_, 1U, stream_, &config, &device_request_address,
                                                               sizeof(device_request_address), nullptr, 0U);
         result != 0) {
@@ -151,10 +154,10 @@ Result<void> AivEntrypointLauncher::launch_post_send_and_wait(std::uint64_t devi
 }
 
 Result<void> AivEntrypointLauncher::launch_storage_and_wait(std::uint64_t device_request_address,
-                                                            std::uint16_t operation,
+                                                            StorageOperation operation,
                                                             std::int32_t completion_timeout_ms) {
-    nds_acl_launch_kernel_attr attributes[2]{};
-    nds_acl_launch_kernel_config config{};
+    NdsAclLaunchKernelAttr attributes[2]{};
+    NdsAclLaunchKernelConfig config{};
     const char *operator_name = aiv_storage_operator_name(operation);
     if (!loaded() || device_request_address == 0U || completion_timeout_ms <= 0 || operator_name == nullptr) {
         return unexpected(ErrorCode::kInvalidArgument,

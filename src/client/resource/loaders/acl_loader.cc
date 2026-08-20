@@ -9,7 +9,7 @@
 #include <string.h>
 
 #ifdef NDS_LINK_PUBLIC_ACL
-/* Public AscendCL ABI wrappers keep nds_acl_api's stable int-returning surface. */
+/* Public AscendCL ABI wrappers keep NdsAclApi's stable int-returning surface. */
 static const int nds_linked_acl_library_marker = 0;
 static int nds_linked_acl_init(const char *config_path) {
     return (int)aclInit(config_path);
@@ -51,58 +51,58 @@ static int nds_linked_acl_memset_device(void *device_ptr, size_t max_count, int3
     return (int)aclrtMemset(device_ptr, max_count, value, count);
 }
 
-static int nds_linked_acl_binary_load_from_file(const char *file_name, nds_acl_binary_load_options *options,
-                                                nds_acl_bin_handle *bin_handle) {
+static int nds_linked_acl_binary_load_from_file(const char *file_name, NdsAclBinaryLoadOptions *options,
+                                                NdsAclBinHandle *bin_handle) {
     return (int)aclrtBinaryLoadFromFile(file_name, (aclrtBinaryLoadOptions *)options, (aclrtBinHandle *)bin_handle);
 }
-static int nds_linked_acl_binary_unload(nds_acl_bin_handle bin_handle) {
+static int nds_linked_acl_binary_unload(NdsAclBinHandle bin_handle) {
     return (int)aclrtBinaryUnLoad((aclrtBinHandle)bin_handle);
 }
-static int nds_linked_acl_binary_get_function(nds_acl_bin_handle bin_handle, const char *name,
-                                              nds_acl_func_handle *function_handle) {
+static int nds_linked_acl_binary_get_function(NdsAclBinHandle bin_handle, const char *name,
+                                              NdsAclFuncHandle *function_handle) {
     return (int)aclrtBinaryGetFunction((aclrtBinHandle)bin_handle, name, (aclrtFuncHandle *)function_handle);
 }
-static int nds_linked_acl_kernel_args_init(nds_acl_func_handle function_handle, nds_acl_args_handle *args_handle) {
+static int nds_linked_acl_kernel_args_init(NdsAclFuncHandle function_handle, NdsAclArgsHandle *args_handle) {
     return (int)aclrtKernelArgsInit((aclrtFuncHandle)function_handle, (aclrtArgsHandle *)args_handle);
 }
-static int nds_linked_acl_kernel_args_append(nds_acl_args_handle args_handle, void *parameter, size_t parameter_size,
-                                             nds_acl_param_handle *parameter_handle) {
+static int nds_linked_acl_kernel_args_append(NdsAclArgsHandle args_handle, void *parameter, size_t parameter_size,
+                                             NdsAclParamHandle *parameter_handle) {
     return (int)aclrtKernelArgsAppend((aclrtArgsHandle)args_handle, parameter, parameter_size,
                                       (aclrtParamHandle *)parameter_handle);
 }
-static int nds_linked_acl_kernel_args_finalize(nds_acl_args_handle args_handle) {
+static int nds_linked_acl_kernel_args_finalize(NdsAclArgsHandle args_handle) {
     return (int)aclrtKernelArgsFinalize((aclrtArgsHandle)args_handle);
 }
-static int nds_linked_acl_launch_kernel_with_config(nds_acl_func_handle function_handle, uint32_t block_count,
-                                                    nds_acl_stream stream, nds_acl_launch_kernel_config *config,
-                                                    nds_acl_args_handle args_handle, void *reserved) {
+static int nds_linked_acl_launch_kernel_with_config(NdsAclFuncHandle function_handle, uint32_t block_count,
+                                                    NdsAclStream stream, NdsAclLaunchKernelConfig *config,
+                                                    NdsAclArgsHandle args_handle, void *reserved) {
     return (int)aclrtLaunchKernelWithConfig((aclrtFuncHandle)function_handle, block_count, (aclrtStream)stream,
                                             (aclrtLaunchKernelCfg *)config, (aclrtArgsHandle)args_handle, reserved);
 }
-static int nds_linked_acl_launch_kernel_with_host_args(nds_acl_func_handle function_handle, uint32_t block_count,
-                                                       nds_acl_stream stream, nds_acl_launch_kernel_config *config,
+static int nds_linked_acl_launch_kernel_with_host_args(NdsAclFuncHandle function_handle, uint32_t block_count,
+                                                       NdsAclStream stream, NdsAclLaunchKernelConfig *config,
                                                        void *host_args, size_t args_size, void *placeholder_array,
                                                        size_t placeholder_count) {
     return (int)aclrtLaunchKernelWithHostArgs((aclrtFuncHandle)function_handle, block_count, (aclrtStream)stream,
                                               (aclrtLaunchKernelCfg *)config, host_args, args_size,
                                               (aclrtPlaceHolderInfo *)placeholder_array, placeholder_count);
 }
-static int nds_linked_acl_create_stream(nds_acl_stream *stream) {
+static int nds_linked_acl_create_stream(NdsAclStream *stream) {
     return (int)aclrtCreateStream((aclrtStream *)stream);
 }
-static int nds_linked_acl_create_stream_with_config(nds_acl_stream *stream, uint32_t priority, uint32_t flags) {
+static int nds_linked_acl_create_stream_with_config(NdsAclStream *stream, uint32_t priority, uint32_t flags) {
     return (int)aclrtCreateStreamWithConfig((aclrtStream *)stream, priority, flags);
 }
-static int nds_linked_acl_destroy_stream(nds_acl_stream stream) {
+static int nds_linked_acl_destroy_stream(NdsAclStream stream) {
     return (int)aclrtDestroyStream((aclrtStream)stream);
 }
-static int nds_linked_acl_synchronize_stream_with_timeout(nds_acl_stream stream, int32_t timeout_ms) {
+static int nds_linked_acl_synchronize_stream_with_timeout(NdsAclStream stream, int32_t timeout_ms) {
     return (int)aclrtSynchronizeStreamWithTimeout((aclrtStream)stream, timeout_ms);
 }
 #endif
 
 #ifndef NDS_LINK_PUBLIC_ACL
-static void nds_acl_set_error(nds_acl_api *api, const char *format, ...) {
+static void nds_acl_set_error(NdsAclApi *api, const char *format, ...) {
     va_list arguments;
 
     va_start(arguments, format);
@@ -110,7 +110,7 @@ static void nds_acl_set_error(nds_acl_api *api, const char *format, ...) {
     va_end(arguments);
 }
 
-static int nds_acl_resolve(nds_acl_api *api, const char *name, void *slot, size_t slot_size) {
+static int nds_acl_resolve(NdsAclApi *api, const char *name, void *slot, size_t slot_size) {
     const char *loader_error;
     void *symbol;
 
@@ -131,7 +131,7 @@ static int nds_acl_resolve(nds_acl_api *api, const char *name, void *slot, size_
 }
 #endif
 
-int nds_acl_open(nds_acl_api *api, const char *library_path) {
+int nds_acl_open(NdsAclApi *api, const char *library_path) {
     if (api == nullptr) {
         return -1;
     }
@@ -223,7 +223,7 @@ int nds_acl_open(nds_acl_api *api, const char *library_path) {
 #endif
 }
 
-void nds_acl_close(nds_acl_api *api) {
+void nds_acl_close(NdsAclApi *api) {
     if (api == nullptr) {
         return;
     }
@@ -235,6 +235,6 @@ void nds_acl_close(nds_acl_api *api) {
     *api = {};
 }
 
-const char *nds_acl_error(const nds_acl_api *api) {
+const char *nds_acl_error(const NdsAclApi *api) {
     return api == nullptr ? "no loader state" : api->error;
 }

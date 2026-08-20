@@ -18,7 +18,7 @@ FakeState state;
 int binary_handle;
 int stream_handle;
 
-int load_binary(const char *path, nds_acl_binary_load_options *options, nds_acl_bin_handle *handle) {
+int load_binary(const char *path, NdsAclBinaryLoadOptions *options, NdsAclBinHandle *handle) {
     EXPECT_TRUE(path != nullptr && std::strcmp(path, "/tmp/nds_aicpu_standard.json") == 0);
     EXPECT_TRUE(options != nullptr && options->num_options == 1U && options->options != nullptr);
     EXPECT_TRUE(options->options[0].type == NDS_ACL_BINARY_LOAD_OPT_CPU_KERNEL_MODE);
@@ -29,43 +29,43 @@ int load_binary(const char *path, nds_acl_binary_load_options *options, nds_acl_
     return 0;
 }
 
-int unload_binary(nds_acl_bin_handle handle) {
+int unload_binary(NdsAclBinHandle handle) {
     EXPECT_TRUE(handle == &binary_handle);
     state.binary_unloaded = true;
     return 0;
 }
 
-int get_function(nds_acl_bin_handle, const char *, nds_acl_func_handle *) {
+int get_function(NdsAclBinHandle, const char *, NdsAclFuncHandle *) {
     return 0;
 }
-int init_args(nds_acl_func_handle, nds_acl_args_handle *) {
+int init_args(NdsAclFuncHandle, NdsAclArgsHandle *) {
     return 0;
 }
-int append_arg(nds_acl_args_handle, void *, std::size_t, nds_acl_param_handle *) {
+int append_arg(NdsAclArgsHandle, void *, std::size_t, NdsAclParamHandle *) {
     return 0;
 }
-int finalize_args(nds_acl_args_handle) {
+int finalize_args(NdsAclArgsHandle) {
     return 0;
 }
-int launch(nds_acl_func_handle, std::uint32_t, nds_acl_stream, nds_acl_launch_kernel_config *, nds_acl_args_handle,
+int launch(NdsAclFuncHandle, std::uint32_t, NdsAclStream, NdsAclLaunchKernelConfig *, NdsAclArgsHandle,
            void *) {
     return 0;
 }
 
-int create_stream(nds_acl_stream *stream, std::uint32_t, std::uint32_t) {
+int create_stream(NdsAclStream *stream, std::uint32_t, std::uint32_t) {
     EXPECT_TRUE(stream != nullptr);
     state.stream_created = true;
     *stream = &stream_handle;
     return 0;
 }
 
-int destroy_stream(nds_acl_stream stream) {
+int destroy_stream(NdsAclStream stream) {
     EXPECT_TRUE(stream == &stream_handle);
     state.stream_destroyed = true;
     return 0;
 }
 
-int synchronize(nds_acl_stream, std::int32_t) {
+int synchronize(NdsAclStream, std::int32_t) {
     return 0;
 }
 
@@ -73,7 +73,7 @@ int synchronize(nds_acl_stream, std::int32_t) {
 
 TEST(AicpuLauncherTest, LoadsModeZeroPackageAndReleasesResources) {
     state = {};
-    nds_acl_api api{};
+    NdsAclApi api{};
     api.binary_load_from_file = load_binary;
     api.binary_unload = unload_binary;
     api.binary_get_function = get_function;

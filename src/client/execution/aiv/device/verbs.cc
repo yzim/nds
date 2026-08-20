@@ -35,9 +35,9 @@ __aicore__ inline void StoreU32(uint64_t address, uint32_t value) {
 }
 }  // namespace
 
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPostSendImpl(__gm__ const nds_device_qp *qp,
-                                                              const nds_device_send_wr *wr, TBuf<> *scratch,
-                                                              __gm__ nds_device_operation_result *result) {
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPostSendImpl(__gm__ const NdsDeviceQp *qp,
+                                                              const NdsDeviceSendWr *wr, TBuf<> *scratch,
+                                                              __gm__ NdsDeviceOperationResult *result) {
     if (result == nullptr)
         return;
     if (!NdsAivValidQp(qp) || wr == nullptr || scratch == nullptr ||
@@ -46,7 +46,7 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPostSendImpl(__gm__ const nds_d
         NdsAivSetResult(result, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
         return;
     }
-    __gm__ const nds_device_work_queue *queue = &qp->send_queue;
+    __gm__ const NdsDeviceWorkQueue *queue = &qp->send_queue;
     __gm__ uint32_t *head_address = reinterpret_cast<__gm__ uint32_t *>(queue->head_address);
     __gm__ uint32_t *tail_address = reinterpret_cast<__gm__ uint32_t *>(queue->tail_address);
     NdsAivCacheSync(reinterpret_cast<__gm__ uint8_t *>(head_address), sizeof(uint32_t));
@@ -85,9 +85,9 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPostSendImpl(__gm__ const nds_d
     NdsAivSetResult(result, NDS_DEVICE_OPERATION_SUCCESS);
 }
 
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPostRecvImpl(__gm__ const nds_device_qp *qp,
-                                                              const nds_device_recv_wr *wr, TBuf<> *scratch,
-                                                              __gm__ nds_device_operation_result *result) {
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPostRecvImpl(__gm__ const NdsDeviceQp *qp,
+                                                              const NdsDeviceRecvWr *wr, TBuf<> *scratch,
+                                                              __gm__ NdsDeviceOperationResult *result) {
     (void)scratch;
     if (result == nullptr)
         return;
@@ -95,7 +95,7 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPostRecvImpl(__gm__ const nds_d
         NdsAivSetResult(result, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
         return;
     }
-    __gm__ const nds_device_work_queue *queue = &qp->receive_queue;
+    __gm__ const NdsDeviceWorkQueue *queue = &qp->receive_queue;
     __gm__ uint32_t *head_address = reinterpret_cast<__gm__ uint32_t *>(queue->head_address);
     __gm__ uint32_t *tail_address = reinterpret_cast<__gm__ uint32_t *>(queue->tail_address);
     NdsAivCacheSync(reinterpret_cast<__gm__ uint8_t *>(head_address), sizeof(uint32_t));
@@ -121,10 +121,10 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPostRecvImpl(__gm__ const nds_d
     NdsAivSetResult(result, NDS_DEVICE_OPERATION_SUCCESS);
 }
 
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPollCqImpl(__gm__ const nds_device_qp *qp,
-                                                            __gm__ const nds_device_poll_cq_request *request,
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPollCqImpl(__gm__ const NdsDeviceQp *qp,
+                                                            __gm__ const NdsDevicePollCqRequest *request,
                                                             TBuf<> *scratch,
-                                                            __gm__ nds_device_operation_result *result) {
+                                                            __gm__ NdsDeviceOperationResult *result) {
     (void)scratch;
     if (result == nullptr)
         return;
@@ -133,30 +133,30 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPollCqImpl(__gm__ const nds_dev
         return;
     }
     const bool receive = request->queue_kind == NDS_DEVICE_RECEIVE_QUEUE;
-    __gm__ const nds_device_completion_queue *cq = receive ? &qp->receive_cq : &qp->send_cq;
-    __gm__ const nds_device_work_queue *wq = receive ? &qp->receive_queue : &qp->send_queue;
+    __gm__ const NdsDeviceCompletionQueue *cq = receive ? &qp->receive_cq : &qp->send_cq;
+    __gm__ const NdsDeviceWorkQueue *wq = receive ? &qp->receive_queue : &qp->send_queue;
     __gm__ uint32_t *consumer_address = reinterpret_cast<__gm__ uint32_t *>(cq->consumer_address);
     __gm__ uint32_t *tail_address = reinterpret_cast<__gm__ uint32_t *>(wq->tail_address);
     NdsAivCacheSync(reinterpret_cast<__gm__ uint8_t *>(consumer_address), sizeof(uint32_t));
     uint32_t consumer = *consumer_address;
     NdsAivCacheSync(reinterpret_cast<__gm__ uint8_t *>(tail_address), sizeof(uint32_t));
     uint32_t tail = *tail_address;
-    __gm__ nds_device_completion_output *output =
-        reinterpret_cast<__gm__ nds_device_completion_output *>(request->completion_output_address);
+    __gm__ NdsDeviceCompletionOutput *output =
+        reinterpret_cast<__gm__ NdsDeviceCompletionOutput *>(request->completion_output_address);
     uint32_t count = 0U;
     const uint32_t limit =
         request->max_completions < NDS_DEVICE_MAX_COMPLETIONS ? request->max_completions : NDS_DEVICE_MAX_COMPLETIONS;
     while (count < limit) {
-        __gm__ nds_hns_cqe *cqe = reinterpret_cast<__gm__ nds_hns_cqe *>(
+        __gm__ NdsHnsCqe *cqe = reinterpret_cast<__gm__ NdsHnsCqe *>(
             cq->buffer_address + (uint64_t)cq->entry_size * (consumer % cq->depth));
-        NdsAivCacheSync(reinterpret_cast<__gm__ uint8_t *>(cqe), sizeof(nds_hns_cqe));
+        NdsAivCacheSync(reinterpret_cast<__gm__ uint8_t *>(cqe), sizeof(NdsHnsCqe));
         const uint32_t owner = (cqe->byte_4 >> 7U) & 1U;
         if ((owner ^ !!(consumer & cq->depth)) == 0U)
             break;
         const uint32_t wqe_index = cqe->byte_4 >> 16U;
         if (!receive)
             tail += (wqe_index - tail) & (wq->depth - 1U);
-        __gm__ nds_device_completion *completion = &output->entries[count++];
+        __gm__ NdsDeviceCompletion *completion = &output->entries[count++];
         completion->wr_id = reinterpret_cast<__gm__ uint64_t *>(wq->wr_id_address)[tail % wq->depth];
         completion->status = (cqe->byte_4 >> 8U) & 0xffU;
         completion->opcode = cqe->byte_4 & 0x1fU;

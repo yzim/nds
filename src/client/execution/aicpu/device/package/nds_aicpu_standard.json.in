@@ -61,5 +61,19 @@
       "kernelSo": "@NDS_AICPU_STANDARD_KERNEL_SO@",
       "opKernelLib": "AICPUKernel"
     }
+  },
+  "NdsAicpuStorageBatchRead": {
+    "opInfo": {
+      "functionName": "NdsAicpuStorageBatchRead",
+      "kernelSo": "@NDS_AICPU_STANDARD_KERNEL_SO@",
+      "opKernelLib": "AICPUKernel"
+    }
+  },
+  "NdsAicpuStorageBatchWrite": {
+    "opInfo": {
+      "functionName": "NdsAicpuStorageBatchWrite",
+      "kernelSo": "@NDS_AICPU_STANDARD_KERNEL_SO@",
+      "opKernelLib": "AICPUKernel"
+    }
   }
 }

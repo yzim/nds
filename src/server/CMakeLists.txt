@@ -14,7 +14,7 @@ if(IBVERBS_FOUND)
 
     add_library(nds_server_protocol STATIC protocol.cc)
     target_include_directories(nds_server_protocol PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-    target_link_libraries(nds_server_protocol PUBLIC nds_server_transport nds_protocol)
+    target_link_libraries(nds_server_protocol PUBLIC nds_server_transport nds_storage_protocol)
     target_compile_options(nds_server_protocol PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 else()

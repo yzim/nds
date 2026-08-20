@@ -4,7 +4,7 @@
 #include "endpoint.hh"
 #include "runtime.hh"
 
-#include "nds/connection.hh"
+#include "nds/tcp_bootstrap.hh"
 #include "nds/result.hh"
 
 #include <cstdint>
@@ -31,7 +31,7 @@ public:
     Result<void> open(Runtime *runtime, const TransportConfig &config, const ExecutionConfig &execution);
 
     TcpPeerExchange *bootstrap() noexcept;
-    const nds_qp_info &local_qp_info() const noexcept;
+    const nds::transport::QpInfo &local_qp_info() const noexcept;
     Result<void> ready();
 
     Runtime *runtime() noexcept;
@@ -50,7 +50,7 @@ private:
     MemoryBuffer send_wr_ids_;
     MemoryBuffer receive_wr_ids_;
     TcpPeerExchange bootstrap_;
-    nds_qp_info local_{};
+    nds::transport::QpInfo local_{};
 };
 
 }  // namespace nds::client

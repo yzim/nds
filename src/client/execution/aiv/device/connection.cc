@@ -1,10 +1,10 @@
 #include "api.h"
 #include "internal.h"
 
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaSendImpl(__gm__ const nds_device_transport *transport,
-                                                              __gm__ const nds_device_transfer *transfer,
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaSendImpl(__gm__ const NdsDeviceTransport *transport,
+                                                              const NdsDeviceTransfer *transfer,
                                                               TBuf<> *scratch,
-                                                              __gm__ nds_device_operation_result *result) {
+                                                              __gm__ NdsDeviceOperationResult *result) {
     if (result == nullptr)
         return;
     if (transport == nullptr || transfer == nullptr ||
@@ -12,7 +12,7 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaSendImpl(__gm__ const nds_d
         NdsAivSetResult(result, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
         return;
     }
-    nds_device_send_wr wr{};
+    NdsDeviceSendWr wr{};
     wr.wr_id = transfer->wr_id;
     wr.opcode = NDS_DEVICE_WR_SEND;
     wr.flags = NDS_DEVICE_SEND_SIGNALED;
@@ -22,10 +22,10 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaSendImpl(__gm__ const nds_d
     NdsAivPostSendImpl(&transport->control_qp, &wr, scratch, result);
 }
 
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaRecvImpl(__gm__ const nds_device_transport *transport,
-                                                              __gm__ const nds_device_transfer *transfer,
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaRecvImpl(__gm__ const NdsDeviceTransport *transport,
+                                                              __gm__ const NdsDeviceTransfer *transfer,
                                                               TBuf<> *scratch,
-                                                              __gm__ nds_device_operation_result *result) {
+                                                              __gm__ NdsDeviceOperationResult *result) {
     if (result == nullptr)
         return;
     if (transport == nullptr || transfer == nullptr ||
@@ -33,7 +33,7 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaRecvImpl(__gm__ const nds_d
         NdsAivSetResult(result, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
         return;
     }
-    nds_device_recv_wr wr{};
+    NdsDeviceRecvWr wr{};
     wr.wr_id = transfer->wr_id;
     wr.local.address = transfer->local.address;
     wr.local.length = transfer->local.length;
@@ -41,10 +41,10 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaRecvImpl(__gm__ const nds_d
     NdsAivPostRecvImpl(&transport->control_qp, &wr, scratch, result);
 }
 
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaReadImpl(__gm__ const nds_device_transport *transport,
-                                                              __gm__ const nds_device_transfer *transfer,
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaReadImpl(__gm__ const NdsDeviceTransport *transport,
+                                                              __gm__ const NdsDeviceTransfer *transfer,
                                                               TBuf<> *scratch,
-                                                              __gm__ nds_device_operation_result *result) {
+                                                              __gm__ NdsDeviceOperationResult *result) {
     if (result == nullptr)
         return;
     if (transport == nullptr || transfer == nullptr ||
@@ -52,7 +52,7 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaReadImpl(__gm__ const nds_d
         NdsAivSetResult(result, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
         return;
     }
-    nds_device_send_wr wr{};
+    NdsDeviceSendWr wr{};
     wr.wr_id = transfer->wr_id;
     wr.opcode = NDS_DEVICE_WR_RDMA_READ;
     wr.flags = NDS_DEVICE_SEND_SIGNALED;
@@ -64,10 +64,10 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaReadImpl(__gm__ const nds_d
     NdsAivPostSendImpl(&transport->control_qp, &wr, scratch, result);
 }
 
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaWriteImpl(__gm__ const nds_device_transport *transport,
-                                                               __gm__ const nds_device_transfer *transfer,
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaWriteImpl(__gm__ const NdsDeviceTransport *transport,
+                                                               __gm__ const NdsDeviceTransfer *transfer,
                                                                TBuf<> *scratch,
-                                                               __gm__ nds_device_operation_result *result) {
+                                                               __gm__ NdsDeviceOperationResult *result) {
     if (result == nullptr)
         return;
     if (transport == nullptr || transfer == nullptr ||
@@ -75,7 +75,7 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaWriteImpl(__gm__ const nds_
         NdsAivSetResult(result, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
         return;
     }
-    nds_device_send_wr wr{};
+    NdsDeviceSendWr wr{};
     wr.wr_id = transfer->wr_id;
     wr.opcode = NDS_DEVICE_WR_RDMA_WRITE;
     wr.flags = NDS_DEVICE_SEND_SIGNALED;

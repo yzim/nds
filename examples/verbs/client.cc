@@ -66,7 +66,7 @@ nds::Result<void> post_send(nds::client::Runtime *runtime, nds::client::Transpor
     if (!registered)
         return nds::unexpected(registered.error());
     nds::client::MemoryRegion region = std::move(*registered);
-    const nds_device_send_wr wr{1U, NDS_DEVICE_WR_SEND, NDS_DEVICE_SEND_SIGNALED,
+    const NdsDeviceSendWr wr{1U, NDS_DEVICE_WR_SEND, NDS_DEVICE_SEND_SIGNALED,
                                 {region.address(), static_cast<std::uint32_t>(payload.size()), region.local_key()},
                                 0U, 0U, 0U};
     if (transport->execution().mode == nds::client::NpuExecutionMode::Ra) {
@@ -87,18 +87,18 @@ nds::Result<void> post_send(nds::client::Runtime *runtime, nds::client::Transpor
         return {};
     }
 
-    auto allocated_result = runtime->allocate(sizeof(nds_device_operation_result));
+    auto allocated_result = runtime->allocate(sizeof(NdsDeviceOperationResult));
     if (!allocated_result)
         return nds::unexpected(allocated_result.error());
     nds::client::MemoryBuffer result_buffer = std::move(*allocated_result);
-    const nds_device_operation_result pending{NDS_DEVICE_OPERATION_INVALID_ARGUMENT, NDS_DEVICE_OPERATION_PATH_NONE, 0,
+    const NdsDeviceOperationResult pending{NDS_DEVICE_OPERATION_INVALID_ARGUMENT, NDS_DEVICE_OPERATION_PATH_NONE, 0,
                                               0U};
     if (const auto copied = runtime->copy_to(&result_buffer, &pending, sizeof(pending)); !copied)
         return nds::unexpected(copied.error());
     const auto device_transport = transport->qp()->make_device_transport();
     if (!device_transport)
         return nds::unexpected(device_transport.error());
-    nds_device_post_send_request request{};
+    NdsDevicePostSendRequest request{};
     request.qp = device_transport->control_qp;
     request.wr = wr;
     request.operation_result_address = reinterpret_cast<std::uint64_t>(result_buffer.data());
@@ -124,7 +124,7 @@ nds::Result<void> post_send(nds::client::Runtime *runtime, nds::client::Transpor
             !launched)
             return nds::unexpected(launched.error());
     }
-    nds_device_operation_result completed{};
+    NdsDeviceOperationResult completed{};
     if (const auto copied = runtime->copy_from(&completed, result_buffer, sizeof(completed)); !copied)
         return nds::unexpected(copied.error());
     return completed.status == NDS_DEVICE_OPERATION_SUCCESS

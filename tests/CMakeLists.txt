@@ -8,7 +8,9 @@ function(nds_add_unit_test target)
 endfunction()
 
 nds_add_unit_test(nds_transport_test transport_test.cc)
-target_link_libraries(nds_transport_test PRIVATE nds_transport nds_protocol)
+target_link_libraries(nds_transport_test PRIVATE nds_transport)
+nds_add_unit_test(nds_storage_protocol_test storage_protocol_test.cc)
+target_link_libraries(nds_storage_protocol_test PRIVATE nds_storage_protocol)
 nds_add_unit_test(nds_transport_mtu_test transport_mtu_test.cc)
 target_link_libraries(nds_transport_mtu_test PRIVATE nds_transport)
 nds_add_unit_test(nds_endpoint_test endpoint_test.cc)
@@ -29,6 +31,8 @@ nds_add_unit_test(nds_aicpu_launcher_test aicpu_launcher_test.cc)
 target_link_libraries(nds_aicpu_launcher_test PRIVATE nds_aicpu_launcher)
 nds_add_unit_test(nds_logging_test logging_test.cc)
 target_link_libraries(nds_logging_test PRIVATE nds_logging)
+nds_add_unit_test(nds_storage_batch_test storage_batch_test.cc)
+target_link_libraries(nds_storage_batch_test PRIVATE nds_client_storage)
 
 add_test(NAME integration.nds_aicpu_manifest_test
     COMMAND ${CMAKE_COMMAND}

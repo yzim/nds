@@ -53,41 +53,41 @@ enum {
 
 enum { NDS_RA_ERROR_CAPACITY = 512 };
 
-typedef union nds_ra_ip_address {
+typedef union NdsRaIpAddress {
     struct in_addr ipv4;
     struct in6_addr ipv6;
-} nds_ra_ip_address;
+} NdsRaIpAddress;
 
-typedef struct nds_ra_rdev {
+typedef struct NdsRaRdev {
     unsigned int phy_id;
     int family;
-    nds_ra_ip_address local_ip;
-} nds_ra_rdev;
+    NdsRaIpAddress local_ip;
+} NdsRaRdev;
 
-typedef struct nds_ra_get_interface_config {
+typedef struct NdsRaGetInterfaceConfig {
     unsigned int physical_device_id;
     unsigned int network_mode;
     bool all_interfaces;
-} nds_ra_get_interface_config;
+} NdsRaGetInterfaceConfig;
 
-typedef struct nds_ra_interface_address {
-    nds_ra_ip_address ip;
+typedef struct NdsRaInterfaceAddress {
+    NdsRaIpAddress ip;
     struct in_addr netmask;
-} nds_ra_interface_address;
+} NdsRaInterfaceAddress;
 
-typedef struct nds_ra_interface_info {
+typedef struct NdsRaInterfaceInfo {
     int family;
     int scope_id;
-    nds_ra_interface_address address;
+    NdsRaInterfaceAddress address;
     char name[256];
-} nds_ra_interface_info;
+} NdsRaInterfaceInfo;
 
 #if defined(__cplusplus)
-static_assert(sizeof(nds_ra_get_interface_config) == 12, "HCCP RaGetIfattr ABI must remain 12 bytes");
-static_assert(sizeof(nds_ra_interface_info) == 284, "HCCP InterfaceInfo ABI must remain 284 bytes");
+static_assert(sizeof(NdsRaGetInterfaceConfig) == 12, "HCCP RaGetIfattr ABI must remain 12 bytes");
+static_assert(sizeof(NdsRaInterfaceInfo) == 284, "HCCP InterfaceInfo ABI must remain 284 bytes");
 #else
-_Static_assert(sizeof(nds_ra_get_interface_config) == 12, "HCCP RaGetIfattr ABI must remain 12 bytes");
-_Static_assert(sizeof(nds_ra_interface_info) == 284, "HCCP InterfaceInfo ABI must remain 284 bytes");
+_Static_assert(sizeof(NdsRaGetInterfaceConfig) == 12, "HCCP RaGetIfattr ABI must remain 12 bytes");
+_Static_assert(sizeof(NdsRaInterfaceInfo) == 284, "HCCP InterfaceInfo ABI must remain 284 bytes");
 #endif
 
 /*
@@ -96,50 +96,50 @@ _Static_assert(sizeof(nds_ra_interface_info) == 284, "HCCP InterfaceInfo ABI mus
  * That poller is separate from the service-side verbs completion-channel path
  * used by AI QPs.
  */
-typedef struct nds_ra_rdev_init_info {
+typedef struct NdsRaRdevInitInfo {
     int mode;
     unsigned int notify_type;
     bool enabled_910a_lite;
     bool disabled_lite_thread;
     bool enabled_2mb_lite;
-} nds_ra_rdev_init_info;
+} NdsRaRdevInitInfo;
 
-typedef struct nds_ra_init_config {
+typedef struct NdsRaInitConfig {
     unsigned int phy_id;
     unsigned int nic_position;
     int hdc_type;
     bool enable_hdc_async;
-} nds_ra_init_config;
+} NdsRaInitConfig;
 
-typedef struct nds_ra_mr_info {
+typedef struct NdsRaMrInfo {
     void *address;
     unsigned long long size;
     int access;
     unsigned int local_key;
     unsigned int remote_key;
-} nds_ra_mr_info;
+} NdsRaMrInfo;
 
-typedef struct nds_ra_sge {
+typedef struct NdsRaSge {
     uint64_t address;
     uint32_t length;
     uint32_t local_key;
-} nds_ra_sge;
+} NdsRaSge;
 
-typedef struct nds_ra_send_wr {
-    nds_ra_sge *buffers;
+typedef struct NdsRaSendWr {
+    NdsRaSge *buffers;
     uint16_t buffer_count;
     uint64_t remote_address;
     uint32_t remote_key;
     uint32_t opcode;
     int send_flags;
-} nds_ra_send_wr;
+} NdsRaSendWr;
 
-typedef struct nds_ra_recv_wr {
+typedef struct NdsRaRecvWr {
     uint64_t wr_id;
-    nds_ra_sge memory;
-} nds_ra_recv_wr;
+    NdsRaSge memory;
+} NdsRaRecvWr;
 
-typedef union nds_ra_send_response {
+typedef union NdsRaSendResponse {
     struct {
         uint32_t sq_index;
         uint32_t wqe_index;
@@ -148,15 +148,15 @@ typedef union nds_ra_send_response {
         uint32_t db_index;
         unsigned long db_info;
     } doorbell;
-} nds_ra_send_response;
+} NdsRaSendResponse;
 
-typedef struct nds_ra_cqe_error {
+typedef struct NdsRaCqeError {
     uint32_t status;
     uint32_t qp_number;
     struct timeval time;
-} nds_ra_cqe_error;
+} NdsRaCqeError;
 
-typedef struct nds_ra_completion {
+typedef struct NdsRaCompletion {
     uint64_t wr_id;
     int status;
     int opcode;
@@ -167,14 +167,14 @@ typedef struct nds_ra_completion {
     uint32_t immediate_data_or_invalidated_rkey;
     uint16_t reserved[5];
     uint32_t version;
-} nds_ra_completion;
+} NdsRaCompletion;
 
 /*
  * Locally queried QP attributes. This independently transcribed ABI object is
  * used only to obtain the NPU endpoint data needed by the NDS wire record; it
  * is never transmitted as-is.
  */
-typedef struct nds_ra_qp_attr {
+typedef struct NdsRaQpAttr {
     uint32_t qpn;
     uint32_t udp_sport;
     uint32_t psn;
@@ -182,7 +182,7 @@ typedef struct nds_ra_qp_attr {
     uint8_t gid[16];
     int path_mtu;
     uint8_t feature[64];
-} nds_ra_qp_attr;
+} NdsRaQpAttr;
 
 /*
  * HCCP's local QP description.  This remains an ABI boundary type only:
@@ -192,61 +192,61 @@ typedef struct nds_ra_qp_attr {
 /* CANN 9.0.0 HCCP QpExtAttrs: project-owned transcription with the
  * embedded ibv_qp_init_attr represented as its verified 64-byte ABI image.
  * The AICPU path needs only the initialized fields below. */
-typedef struct nds_ra_qp_cap {
+typedef struct NdsRaQpCap {
     uint32_t max_send_wr;
     uint32_t max_recv_wr;
     uint32_t max_send_sge;
     uint32_t max_recv_sge;
     uint32_t max_inline_data;
-} nds_ra_qp_cap;
+} NdsRaQpCap;
 
-typedef struct nds_ra_qp_init_attr {
+typedef struct NdsRaQpInitAttr {
     void *qp_context;
     void *send_cq;
     void *recv_cq;
     void *srq;
-    nds_ra_qp_cap cap;
+    NdsRaQpCap cap;
     int qp_type;
     int sq_sig_all;
     uint8_t reserved[4];
-} nds_ra_qp_init_attr;
+} NdsRaQpInitAttr;
 
-typedef struct nds_ra_cq_ext_attr {
+typedef struct NdsRaCqExtAttr {
     int send_cq_depth;
     int recv_cq_depth;
     int send_cq_comp_vector;
     int recv_cq_comp_vector;
-} nds_ra_cq_ext_attr;
+} NdsRaCqExtAttr;
 
-typedef struct nds_ra_qos_attr {
+typedef struct NdsRaQosAttr {
     uint8_t traffic_class;
     uint8_t service_level;
     uint8_t reserved[6];
-} nds_ra_qos_attr;
+} NdsRaQosAttr;
 
-typedef struct nds_ra_qp_ext_attrs {
+typedef struct NdsRaQpExtAttrs {
     int qp_mode;
-    nds_ra_cq_ext_attr cq_attr;
-    nds_ra_qp_init_attr qp_attr;
+    NdsRaCqExtAttr cq_attr;
+    NdsRaQpInitAttr qp_attr;
     int version;
     int mem_align;
     uint32_t udp_sport;
     uint32_t data_plane_flag;
     uint32_t reserved[29];
-} nds_ra_qp_ext_attrs;
+} NdsRaQpExtAttrs;
 
-typedef struct nds_ra_ai_qp_info {
+typedef struct NdsRaAiQpInfo {
     uint64_t ai_qp_address;
     uint32_t sq_index;
     uint32_t db_index;
     uint64_t ai_scq_address;
     uint64_t ai_rcq_address;
     uint8_t data_plane_info[336];
-} nds_ra_ai_qp_info;
+} NdsRaAiQpInfo;
 
 /* HCCP v9.0.0 AI-QP dataplane records. They are copied into NDS-owned
  * device records and are never sent to the CPU peer. */
-typedef struct nds_ra_ai_data_plane_wq {
+typedef struct NdsRaAiDataPlaneWq {
     uint32_t wqn;
     uint32_t compatibility_padding;
     uint64_t buffer_address;
@@ -257,9 +257,9 @@ typedef struct nds_ra_ai_data_plane_wq {
     uint64_t software_doorbell_address;
     uint64_t doorbell_register_address;
     uint32_t reserved[8];
-} nds_ra_ai_data_plane_wq;
+} NdsRaAiDataPlaneWq;
 
-typedef struct nds_ra_ai_data_plane_cq {
+typedef struct NdsRaAiDataPlaneCq {
     uint32_t cqn;
     uint32_t compatibility_padding;
     uint64_t buffer_address;
@@ -270,27 +270,27 @@ typedef struct nds_ra_ai_data_plane_cq {
     uint64_t software_doorbell_address;
     uint64_t doorbell_register_address;
     uint32_t reserved[2];
-} nds_ra_ai_data_plane_cq;
+} NdsRaAiDataPlaneCq;
 
-typedef struct nds_ra_ai_data_plane_info {
-    nds_ra_ai_data_plane_wq send_wq;
-    nds_ra_ai_data_plane_wq receive_wq;
-    nds_ra_ai_data_plane_cq send_cq;
-    nds_ra_ai_data_plane_cq receive_cq;
+typedef struct NdsRaAiDataPlaneInfo {
+    NdsRaAiDataPlaneWq send_wq;
+    NdsRaAiDataPlaneWq receive_wq;
+    NdsRaAiDataPlaneCq send_cq;
+    NdsRaAiDataPlaneCq receive_cq;
     uint32_t reserved[8];
-} nds_ra_ai_data_plane_info;
+} NdsRaAiDataPlaneInfo;
 
 #if defined(__cplusplus)
-static_assert(sizeof(nds_ra_ai_data_plane_wq) == 88, "HCCP AiDataPlaneWq ABI must remain 88 bytes");
-static_assert(sizeof(nds_ra_ai_data_plane_cq) == 64, "HCCP AiDataPlaneCq ABI must remain 64 bytes");
-static_assert(sizeof(nds_ra_ai_data_plane_info) == 336, "HCCP AiDataPlaneInfo ABI must remain 336 bytes");
+static_assert(sizeof(NdsRaAiDataPlaneWq) == 88, "HCCP AiDataPlaneWq ABI must remain 88 bytes");
+static_assert(sizeof(NdsRaAiDataPlaneCq) == 64, "HCCP AiDataPlaneCq ABI must remain 64 bytes");
+static_assert(sizeof(NdsRaAiDataPlaneInfo) == 336, "HCCP AiDataPlaneInfo ABI must remain 336 bytes");
 #else
-_Static_assert(sizeof(nds_ra_ai_data_plane_wq) == 88, "HCCP AiDataPlaneWq ABI must remain 88 bytes");
-_Static_assert(sizeof(nds_ra_ai_data_plane_cq) == 64, "HCCP AiDataPlaneCq ABI must remain 64 bytes");
-_Static_assert(sizeof(nds_ra_ai_data_plane_info) == 336, "HCCP AiDataPlaneInfo ABI must remain 336 bytes");
+_Static_assert(sizeof(NdsRaAiDataPlaneWq) == 88, "HCCP AiDataPlaneWq ABI must remain 88 bytes");
+_Static_assert(sizeof(NdsRaAiDataPlaneCq) == 64, "HCCP AiDataPlaneCq ABI must remain 64 bytes");
+_Static_assert(sizeof(NdsRaAiDataPlaneInfo) == 336, "HCCP AiDataPlaneInfo ABI must remain 336 bytes");
 #endif
 
-typedef struct nds_ra_typical_qp {
+typedef struct NdsRaTypicalQp {
     uint32_t qpn;
     uint32_t psn;
     uint32_t gid_index;
@@ -303,38 +303,38 @@ typedef struct nds_ra_typical_qp {
     int version;
     uint32_t reserved[32];
     uint8_t compatibility_reserved_2[4];
-} nds_ra_typical_qp;
+} NdsRaTypicalQp;
 
-typedef int (*nds_ra_init_fn)(nds_ra_init_config *config);
-typedef int (*nds_ra_deinit_fn)(nds_ra_init_config *config);
-typedef int (*nds_ra_rdev_init_fn)(int mode, unsigned int notify_type, nds_ra_rdev rdev, void **rdma_handle);
-typedef int (*nds_ra_rdev_init_v2_fn)(nds_ra_rdev_init_info init_info, nds_ra_rdev rdev, void **rdma_handle);
-typedef int (*nds_ra_rdev_deinit_fn)(void *rdma_handle, unsigned int notify_type);
-typedef int (*nds_ra_rdev_get_port_status_fn)(void *rdma_handle, int *status);
-typedef int (*nds_ra_rdev_get_support_lite_fn)(void *rdma_handle, int *support_lite);
-typedef int (*nds_ra_qp_create_fn)(void *rdma_handle, int flag, int qp_mode, void **qp_handle);
-typedef int (*nds_ra_qp_connect_async_fn)(void *qp_handle, const void *fd_handle);
-typedef int (*nds_ra_typical_qp_create_fn)(void *rdma_handle, int flag, int qp_mode, nds_ra_typical_qp *typical_qp_info,
+typedef int (*NdsRaInitFn)(NdsRaInitConfig *config);
+typedef int (*NdsRaDeinitFn)(NdsRaInitConfig *config);
+typedef int (*NdsRaRdevInitFn)(int mode, unsigned int notify_type, NdsRaRdev rdev, void **rdma_handle);
+typedef int (*NdsRaRdevInitV2Fn)(NdsRaRdevInitInfo init_info, NdsRaRdev rdev, void **rdma_handle);
+typedef int (*NdsRaRdevDeinitFn)(void *rdma_handle, unsigned int notify_type);
+typedef int (*NdsRaRdevGetPortStatusFn)(void *rdma_handle, int *status);
+typedef int (*NdsRaRdevGetSupportLiteFn)(void *rdma_handle, int *support_lite);
+typedef int (*NdsRaQpCreateFn)(void *rdma_handle, int flag, int qp_mode, void **qp_handle);
+typedef int (*NdsRaQpConnectAsyncFn)(void *qp_handle, const void *fd_handle);
+typedef int (*NdsRaTypicalQpCreateFn)(void *rdma_handle, int flag, int qp_mode, NdsRaTypicalQp *typical_qp_info,
                                            void **qp_handle);
-typedef int (*nds_ra_ai_qp_create_fn)(void *rdma_handle, nds_ra_qp_ext_attrs *attrs, nds_ra_ai_qp_info *info,
+typedef int (*NdsRaAiQpCreateFn)(void *rdma_handle, NdsRaQpExtAttrs *attrs, NdsRaAiQpInfo *info,
                                       void **qp_handle);
-typedef int (*nds_ra_set_qp_attr_qos_fn)(void *qp_handle, nds_ra_qos_attr *attr);
-typedef int (*nds_ra_set_qp_attr_timeout_fn)(void *qp_handle, uint32_t *timeout);
-typedef int (*nds_ra_set_qp_attr_retry_count_fn)(void *qp_handle, uint32_t *retry_count);
-typedef int (*nds_ra_typical_qp_modify_fn)(void *qp_handle, nds_ra_typical_qp *local_qp_info,
-                                           nds_ra_typical_qp *remote_qp_info);
-typedef int (*nds_ra_qp_destroy_fn)(void *qp_handle);
-typedef int (*nds_ra_get_qp_attr_fn)(void *qp_handle, nds_ra_qp_attr *attributes);
-typedef int (*nds_ra_get_qp_status_fn)(void *qp_handle, int *status);
-typedef int (*nds_ra_rdev_get_cqe_error_list_fn)(void *rdma_handle, nds_ra_cqe_error *errors, unsigned int *count);
-typedef int (*nds_ra_register_mr_fn)(const void *rdma_handle, nds_ra_mr_info *info, void **mr_handle);
-typedef int (*nds_ra_deregister_mr_fn)(const void *rdma_handle, void *mr_handle);
-typedef int (*nds_ra_typical_send_wr_fn)(void *qp_handle, nds_ra_send_wr *wr, nds_ra_send_response *response);
-typedef int (*nds_ra_recv_wrlist_fn)(void *qp_handle, nds_ra_recv_wr *wr, unsigned int recv_num,
+typedef int (*NdsRaSetQpAttrQosFn)(void *qp_handle, NdsRaQosAttr *attr);
+typedef int (*NdsRaSetQpAttrTimeoutFn)(void *qp_handle, uint32_t *timeout);
+typedef int (*NdsRaSetQpAttrRetryCountFn)(void *qp_handle, uint32_t *retry_count);
+typedef int (*NdsRaTypicalQpModifyFn)(void *qp_handle, NdsRaTypicalQp *local_qp_info,
+                                           NdsRaTypicalQp *remote_qp_info);
+typedef int (*NdsRaQpDestroyFn)(void *qp_handle);
+typedef int (*NdsRaGetQpAttrFn)(void *qp_handle, NdsRaQpAttr *attributes);
+typedef int (*NdsRaGetQpStatusFn)(void *qp_handle, int *status);
+typedef int (*NdsRaRdevGetCqeErrorListFn)(void *rdma_handle, NdsRaCqeError *errors, unsigned int *count);
+typedef int (*NdsRaRegisterMrFn)(const void *rdma_handle, NdsRaMrInfo *info, void **mr_handle);
+typedef int (*NdsRaDeregisterMrFn)(const void *rdma_handle, void *mr_handle);
+typedef int (*NdsRaTypicalSendWrFn)(void *qp_handle, NdsRaSendWr *wr, NdsRaSendResponse *response);
+typedef int (*NdsRaRecvWrlistFn)(void *qp_handle, NdsRaRecvWr *wr, unsigned int recv_num,
                                      unsigned int *complete_num);
-typedef int (*nds_ra_poll_cq_fn)(void *qp_handle, bool is_send_cq, unsigned int max_entries, void *completions);
-typedef int (*nds_ra_get_interface_count_fn)(nds_ra_get_interface_config *config, unsigned int *count);
-typedef int (*nds_ra_get_interfaces_fn)(nds_ra_get_interface_config *config, nds_ra_interface_info *interfaces,
+typedef int (*NdsRaPollCqFn)(void *qp_handle, bool is_send_cq, unsigned int max_entries, void *completions);
+typedef int (*NdsRaGetInterfaceCountFn)(NdsRaGetInterfaceConfig *config, unsigned int *count);
+typedef int (*NdsRaGetInterfacesFn)(NdsRaGetInterfaceConfig *config, NdsRaInterfaceInfo *interfaces,
                                         unsigned int *count);
 
 /*
@@ -344,40 +344,40 @@ typedef int (*nds_ra_get_interfaces_fn)(nds_ra_get_interface_config *config, nds
  * declarations and structure layout have been reviewed. Opaque HCCP handles
  * remain `void *` across this ABI boundary.
  */
-typedef struct nds_ra_api {
+typedef struct NdsRaApi {
     void *library;
-    nds_ra_init_fn ra_init;
-    nds_ra_deinit_fn ra_deinit;
-    nds_ra_rdev_init_fn ra_rdev_init;
-    nds_ra_rdev_init_v2_fn ra_rdev_init_v2;
-    nds_ra_rdev_deinit_fn ra_rdev_deinit;
-    nds_ra_rdev_get_port_status_fn ra_rdev_get_port_status;
-    nds_ra_rdev_get_support_lite_fn ra_rdev_get_support_lite;
-    nds_ra_qp_create_fn ra_qp_create;
-    nds_ra_qp_connect_async_fn ra_qp_connect_async;
-    nds_ra_typical_qp_create_fn ra_typical_qp_create;
-    nds_ra_ai_qp_create_fn ra_ai_qp_create;
-    nds_ra_set_qp_attr_qos_fn ra_set_qp_attr_qos;
-    nds_ra_set_qp_attr_timeout_fn ra_set_qp_attr_timeout;
-    nds_ra_set_qp_attr_retry_count_fn ra_set_qp_attr_retry_count;
-    nds_ra_typical_qp_modify_fn ra_typical_qp_modify;
-    nds_ra_qp_destroy_fn ra_qp_destroy;
-    nds_ra_get_qp_attr_fn ra_get_qp_attr;
-    nds_ra_get_qp_status_fn ra_get_qp_status;
-    nds_ra_rdev_get_cqe_error_list_fn ra_rdev_get_cqe_error_list;
-    nds_ra_register_mr_fn ra_register_mr;
-    nds_ra_deregister_mr_fn ra_deregister_mr;
-    nds_ra_typical_send_wr_fn ra_typical_send_wr;
-    nds_ra_recv_wrlist_fn ra_recv_wrlist;
-    nds_ra_poll_cq_fn ra_poll_cq;
-    nds_ra_get_interface_count_fn ra_get_interface_count;
-    nds_ra_get_interfaces_fn ra_get_interfaces;
+    NdsRaInitFn ra_init;
+    NdsRaDeinitFn ra_deinit;
+    NdsRaRdevInitFn ra_rdev_init;
+    NdsRaRdevInitV2Fn ra_rdev_init_v2;
+    NdsRaRdevDeinitFn ra_rdev_deinit;
+    NdsRaRdevGetPortStatusFn ra_rdev_get_port_status;
+    NdsRaRdevGetSupportLiteFn ra_rdev_get_support_lite;
+    NdsRaQpCreateFn ra_qp_create;
+    NdsRaQpConnectAsyncFn ra_qp_connect_async;
+    NdsRaTypicalQpCreateFn ra_typical_qp_create;
+    NdsRaAiQpCreateFn ra_ai_qp_create;
+    NdsRaSetQpAttrQosFn ra_set_qp_attr_qos;
+    NdsRaSetQpAttrTimeoutFn ra_set_qp_attr_timeout;
+    NdsRaSetQpAttrRetryCountFn ra_set_qp_attr_retry_count;
+    NdsRaTypicalQpModifyFn ra_typical_qp_modify;
+    NdsRaQpDestroyFn ra_qp_destroy;
+    NdsRaGetQpAttrFn ra_get_qp_attr;
+    NdsRaGetQpStatusFn ra_get_qp_status;
+    NdsRaRdevGetCqeErrorListFn ra_rdev_get_cqe_error_list;
+    NdsRaRegisterMrFn ra_register_mr;
+    NdsRaDeregisterMrFn ra_deregister_mr;
+    NdsRaTypicalSendWrFn ra_typical_send_wr;
+    NdsRaRecvWrlistFn ra_recv_wrlist;
+    NdsRaPollCqFn ra_poll_cq;
+    NdsRaGetInterfaceCountFn ra_get_interface_count;
+    NdsRaGetInterfacesFn ra_get_interfaces;
     char error[NDS_RA_ERROR_CAPACITY];
-} nds_ra_api;
+} NdsRaApi;
 
-int nds_ra_open(nds_ra_api *api, const char *library_path);
-void nds_ra_close(nds_ra_api *api);
-const char *nds_ra_error(const nds_ra_api *api);
+int nds_ra_open(NdsRaApi *api, const char *library_path);
+void nds_ra_close(NdsRaApi *api);
+const char *nds_ra_error(const NdsRaApi *api);
 
 #ifdef __cplusplus
 }

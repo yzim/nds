@@ -38,16 +38,16 @@ also registers `e2e.aiv_torch_storage_session` and
 `e2e.aicpu_torch_storage_session`.
 
 Run one bounded, payload-verified case on the approved target. The runner
-accepts the backend (`ra`, `aiv`, or `aicpu`) and operation (`read` or `write`)
-explicitly:
+accepts the backend (`ra`, `aiv`, or `aicpu`) and operation (`read`, `write`,
+`batch-read`, or `batch-write`) explicitly:
 
 ```sh
 env <NDS_E2E_* assignments> \
   tests/e2e/run_storage.sh --backend aicpu --operation read
 ```
 
-Use `--sweep` to run all six backend/operation combinations sequentially; the
-sweep stops at the first failed case. CTest registers the same six cases and
+Use `--sweep` to run all backend/operation combinations sequentially; the
+sweep stops at the first failed case. CTest registers the same cases and
 serializes them with the `ascend_npu0` resource lock:
 
 ```sh
@@ -55,8 +55,9 @@ env <NDS_E2E_* assignments> \
 ctest --test-dir build-e2e --output-on-failure --label-regex '^e2e$'
 ```
 
-Each case transfers 4096 bytes. Read starts the server with its deterministic
-seed pattern, which the client verifies. Write enables server-side payload
+Each single case transfers 4096 bytes; each batch case transfers two 4096-byte
+entries in one command. Read starts the server with its deterministic seed
+pattern, which the client verifies. Write enables server-side payload
 verification. The AICPU case creates a private mount namespace for its
 standard-CP1 package overlay; it does not modify the installed CANN files.
 

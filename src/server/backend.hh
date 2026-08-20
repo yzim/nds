@@ -1,7 +1,7 @@
 #ifndef NDS_CPU_VERBS_BACKEND_HH
 #define NDS_CPU_VERBS_BACKEND_HH
 
-#include "nds/connection.h"
+#include "nds/wire/transport.hh"
 #include "nds/result.hh"
 
 #include <infiniband/verbs.h>
@@ -45,7 +45,7 @@ public:
     VerbsBackend &operator=(const VerbsBackend &) = delete;
 
     Result<void> open(const BackendConfig &config);
-    Result<void> connect(const nds_qp_info &peer);
+    Result<void> connect(const nds::transport::QpInfo &peer);
     Result<RegisteredRegion> register_memory(void *address, std::size_t length, int access);
     Result<void> post_receive(const RegisteredRegion &region);
     Result<void> wait_receive(std::uint32_t timeout_ms);
@@ -54,7 +54,7 @@ public:
                       std::uint32_t length);
     Result<void> write(const RegisteredRegion &local, std::uint64_t remote_address, std::uint32_t remote_key,
                        std::uint32_t length);
-    const nds_qp_info &local_qp_info() const noexcept;
+    const nds::transport::QpInfo &local_qp_info() const noexcept;
 
 private:
     Result<void> transfer(ibv_wr_opcode opcode, const RegisteredRegion &local, std::uint64_t remote_address,
@@ -65,7 +65,7 @@ private:
     ibv_pd *pd_{};
     ibv_cq *cq_{};
     ibv_qp *qp_{};
-    nds_qp_info local_{};
+    nds::transport::QpInfo local_{};
     BackendConfig config_{};
 };
 

@@ -42,7 +42,7 @@ TcpPeerExchange *Transport::bootstrap() noexcept {
     return &bootstrap_;
 }
 
-const nds_qp_info &Transport::local_qp_info() const noexcept {
+const nds::transport::QpInfo &Transport::local_qp_info() const noexcept {
     return local_;
 }
 

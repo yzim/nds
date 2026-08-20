@@ -85,8 +85,8 @@ public:
     Result<void> free_host_pinned_memory(void *host_ptr);
     Result<void> copy_host_to_device(void *device_ptr, const void *host_ptr, std::size_t size);
     Result<void> copy_device_to_host(void *host_ptr, const void *device_ptr, std::size_t size);
-    nds_acl_api &acl_api() noexcept;
-    nds_runtime_api &runtime_api() noexcept;
+    NdsAclApi &acl_api() noexcept;
+    NdsRuntimeApi &runtime_api() noexcept;
 
 private:
     friend struct RuntimeTestAccess;
@@ -94,8 +94,8 @@ private:
     void reset() noexcept;
 
     RuntimeConfig config_{};
-    nds_acl_api acl_{};
-    nds_runtime_api runtime_{};
+    NdsAclApi acl_{};
+    NdsRuntimeApi runtime_{};
     bool acl_initialized_{false};
     bool net_service_open_{false};
     bool initialized_{false};

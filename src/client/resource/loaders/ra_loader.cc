@@ -5,23 +5,23 @@
 #include <stdio.h>
 #include <string.h>
 
-static_assert(sizeof(nds_ra_init_config) == 16, "unexpected RaInitConfig ABI layout");
-static_assert(sizeof(nds_ra_rdev) == 24, "unexpected rdev ABI layout");
-static_assert(sizeof(nds_ra_rdev_init_info) == 12, "unexpected RdevInitInfo ABI layout");
-static_assert(sizeof(nds_ra_mr_info) == 32, "unexpected MrInfoT ABI layout");
-static_assert(sizeof(nds_ra_sge) == 16, "unexpected SgList ABI layout");
-static_assert(sizeof(nds_ra_send_wr) == 40, "unexpected SendWr ABI layout");
-static_assert(sizeof(nds_ra_recv_wr) == 24, "unexpected RecvWrlistData ABI layout");
-static_assert(sizeof(nds_ra_send_response) == 16, "unexpected SendWrRsp ABI layout");
-static_assert(sizeof(nds_ra_cqe_error) == 24, "unexpected CqeErrInfo ABI layout");
-static_assert(sizeof(nds_ra_completion) == 56, "unexpected rdma_lite_wc_v2 ABI layout");
-static_assert(sizeof(nds_ra_qp_attr) == 100, "unexpected QpAttr ABI layout");
-static_assert(sizeof(nds_ra_typical_qp) == 184, "unexpected TypicalQp ABI layout");
-static_assert(sizeof(nds_ra_qp_init_attr) == 64, "unexpected ibv_qp_init_attr ABI layout");
-static_assert(sizeof(nds_ra_qp_ext_attrs) == 224, "unexpected QpExtAttrs ABI layout");
-static_assert(sizeof(nds_ra_ai_qp_info) == 368, "unexpected AiQpInfo ABI layout");
+static_assert(sizeof(NdsRaInitConfig) == 16, "unexpected RaInitConfig ABI layout");
+static_assert(sizeof(NdsRaRdev) == 24, "unexpected rdev ABI layout");
+static_assert(sizeof(NdsRaRdevInitInfo) == 12, "unexpected RdevInitInfo ABI layout");
+static_assert(sizeof(NdsRaMrInfo) == 32, "unexpected MrInfoT ABI layout");
+static_assert(sizeof(NdsRaSge) == 16, "unexpected SgList ABI layout");
+static_assert(sizeof(NdsRaSendWr) == 40, "unexpected SendWr ABI layout");
+static_assert(sizeof(NdsRaRecvWr) == 24, "unexpected RecvWrlistData ABI layout");
+static_assert(sizeof(NdsRaSendResponse) == 16, "unexpected SendWrRsp ABI layout");
+static_assert(sizeof(NdsRaCqeError) == 24, "unexpected CqeErrInfo ABI layout");
+static_assert(sizeof(NdsRaCompletion) == 56, "unexpected rdma_lite_wc_v2 ABI layout");
+static_assert(sizeof(NdsRaQpAttr) == 100, "unexpected QpAttr ABI layout");
+static_assert(sizeof(NdsRaTypicalQp) == 184, "unexpected TypicalQp ABI layout");
+static_assert(sizeof(NdsRaQpInitAttr) == 64, "unexpected ibv_qp_init_attr ABI layout");
+static_assert(sizeof(NdsRaQpExtAttrs) == 224, "unexpected QpExtAttrs ABI layout");
+static_assert(sizeof(NdsRaAiQpInfo) == 368, "unexpected AiQpInfo ABI layout");
 
-static void nds_ra_set_error(nds_ra_api *api, const char *format, ...) {
+static void nds_ra_set_error(NdsRaApi *api, const char *format, ...) {
     va_list arguments;
 
     va_start(arguments, format);
@@ -29,7 +29,7 @@ static void nds_ra_set_error(nds_ra_api *api, const char *format, ...) {
     va_end(arguments);
 }
 
-static int nds_ra_resolve(nds_ra_api *api, const char *name, void *slot, size_t slot_size) {
+static int nds_ra_resolve(NdsRaApi *api, const char *name, void *slot, size_t slot_size) {
     const char *loader_error;
     void *symbol;
 
@@ -49,7 +49,7 @@ static int nds_ra_resolve(nds_ra_api *api, const char *name, void *slot, size_t 
     return 0;
 }
 
-static void nds_ra_resolve_optional(nds_ra_api *api, const char *name, void *slot, size_t slot_size) {
+static void nds_ra_resolve_optional(NdsRaApi *api, const char *name, void *slot, size_t slot_size) {
     const char *loader_error;
     void *symbol;
 
@@ -64,12 +64,12 @@ static void nds_ra_resolve_optional(nds_ra_api *api, const char *name, void *slo
     }
 }
 
-int nds_ra_open(nds_ra_api *api, const char *library_path) {
+int nds_ra_open(NdsRaApi *api, const char *library_path) {
     const char *loader_error;
 
     if (api == nullptr || library_path == nullptr || library_path[0] == '\0') {
         if (api != nullptr) {
-            nds_ra_set_error(api, "an nds_ra_api and a non-empty library path are required");
+            nds_ra_set_error(api, "loader state and a non-empty library path are required");
         }
         return -1;
     }
@@ -125,7 +125,7 @@ int nds_ra_open(nds_ra_api *api, const char *library_path) {
     return 0;
 }
 
-void nds_ra_close(nds_ra_api *api) {
+void nds_ra_close(NdsRaApi *api) {
     if (api == nullptr) {
         return;
     }
@@ -135,6 +135,6 @@ void nds_ra_close(nds_ra_api *api) {
     *api = {};
 }
 
-const char *nds_ra_error(const nds_ra_api *api) {
+const char *nds_ra_error(const NdsRaApi *api) {
     return api == nullptr ? "no loader state" : api->error;
 }

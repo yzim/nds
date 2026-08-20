@@ -13,7 +13,7 @@ namespace {
 struct Config {
     nds::server::ConnectionConfig connection;
     std::uint32_t namespace_bytes{1024U * 1024U};
-    std::uint32_t storage_requests{1U};
+    std::uint32_t storage_commands{1U};
     bool seed_pattern{};
     std::uint32_t verify_write_bytes{};
     std::string log_sink{"stderr"};
@@ -21,14 +21,14 @@ struct Config {
 };
 
 int parse(int argc, char **argv, Config *config, bool *exit_requested) {
-    CLI::App app{"Serve NDS memory-backed storage requests."};
+    CLI::App app{"Serve NDS memory-backed storage commands."};
     app.add_option("--device", config->connection.backend.device_name)->required();
     app.add_option("--gid-index", config->connection.backend.gid_index)->required();
     app.add_option("--listen", config->connection.listen_address, "TCP bootstrap listen address as IPv4:port");
     app.add_option("--ib-port", config->connection.backend.port);
     app.add_option("--namespace-bytes", config->namespace_bytes)->check(CLI::Range(1U, 64U * 1024U * 1024U));
-    app.add_option("--storage-requests", config->storage_requests,
-                   "Number of serial storage requests to serve on one connection")
+    app.add_option("--storage-commands", config->storage_commands,
+                   "Number of serial storage commands to serve on one connection")
         ->check(CLI::Range(1U, 65535U));
     app.add_flag("--seed-pattern", config->seed_pattern, "Initialize the namespace with the NDS test pattern");
     app.add_option("--verify-write-bytes", config->verify_write_bytes,
@@ -68,9 +68,9 @@ int main(int argc, char **argv) {
         for (std::size_t index = 0; index < storage.size(); ++index)
             storage[index] = static_cast<std::uint8_t>(index ^ 0x5aU);
     }
-    if (const auto served = nds::server::serve_requests(&connection, &storage, config.storage_requests, 5000U);
+    if (const auto served = nds::server::serve_commands(&connection, &storage, config.storage_commands, 5000U);
         !served) {
-        NDS_LOG_ERROR("cpu-server", "protocol request failed: {}", served.error().message);
+        NDS_LOG_ERROR("cpu-server", "protocol command failed: {}", served.error().message);
         return EXIT_FAILURE;
     }
     if (config.verify_write_bytes > storage.size()) {
@@ -83,6 +83,6 @@ int main(int argc, char **argv) {
             return EXIT_FAILURE;
         }
     }
-    NDS_LOG_INFO("cpu-server", "completed {} NDS storage commands", config.storage_requests);
+    NDS_LOG_INFO("cpu-server", "completed {} NDS storage commands", config.storage_commands);
     return EXIT_SUCCESS;
 }

@@ -1,4 +1,4 @@
-#include "nds/connection.hh"
+#include "nds/tcp_bootstrap.hh"
 
 #include <arpa/inet.h>
 #include <cerrno>
@@ -11,59 +11,64 @@
 #include <unistd.h>
 #include <utility>
 
-static enum nds_qp_info_result nds_qp_info_validate(const nds_qp_info *info) {
+namespace nds::transport {
+namespace {
+
+CodecResult validate_qp_info(const QpInfo *info) {
     if (info == nullptr) {
-        return NDS_QP_INFO_RESULT_INVALID_RECORD;
+        return CodecResult::InvalidRecord;
     }
     if (info->qp_num == 0U || info->qp_num > UINT32_C(0x00ffffff)) {
-        return NDS_QP_INFO_RESULT_INVALID_RECORD;
+        return CodecResult::InvalidRecord;
     }
     if (info->psn > UINT32_C(0x00ffffff)) {
-        return NDS_QP_INFO_RESULT_INVALID_RECORD;
+        return CodecResult::InvalidRecord;
     }
     if (info->port_num == 0U) {
-        return NDS_QP_INFO_RESULT_INVALID_RECORD;
+        return CodecResult::InvalidRecord;
     }
     if (info->path_mtu == 0U) {
-        return NDS_QP_INFO_RESULT_INVALID_RECORD;
+        return CodecResult::InvalidRecord;
     }
     if (info->traffic_class > UINT8_MAX) {
-        return NDS_QP_INFO_RESULT_INVALID_RECORD;
+        return CodecResult::InvalidRecord;
     }
     if (info->service_level > 15U) {
-        return NDS_QP_INFO_RESULT_INVALID_RECORD;
+        return CodecResult::InvalidRecord;
     }
     if (info->retry_count > 7U || info->retry_timeout > 31U) {
-        return NDS_QP_INFO_RESULT_INVALID_RECORD;
+        return CodecResult::InvalidRecord;
     }
-    return NDS_QP_INFO_RESULT_OK;
+    return CodecResult::Ok;
 }
 
-enum nds_qp_info_result nds_qp_info_encode(const nds_qp_info *info, nds_qp_info_wire *wire) {
-    if (wire == nullptr) {
-        return NDS_QP_INFO_RESULT_INVALID_ARGUMENT;
+}  // namespace
+
+CodecResult encode(const QpInfo *info, wire::QpInfo *encoded) {
+    if (encoded == nullptr) {
+        return CodecResult::InvalidArgument;
     }
-    if (nds_qp_info_validate(info) != NDS_QP_INFO_RESULT_OK) {
-        return NDS_QP_INFO_RESULT_INVALID_RECORD;
+    if (validate_qp_info(info) != CodecResult::Ok) {
+        return CodecResult::InvalidRecord;
     }
 
-    *wire = {};
-    wire->magic = htonl(NDS_QP_INFO_WIRE_MAGIC);
-    wire->version = htons(NDS_QP_INFO_WIRE_VERSION);
-    wire->qp_num = htonl(info->qp_num);
-    wire->psn = htonl(info->psn);
-    wire->port_num = htons(info->port_num);
-    wire->gid_index = htons(info->gid_index);
-    wire->path_mtu = htonl(info->path_mtu);
-    wire->traffic_class = htonl(info->traffic_class);
-    wire->service_level = htonl(info->service_level);
-    wire->retry_count = htonl(info->retry_count);
-    wire->retry_timeout = htonl(info->retry_timeout);
-    memcpy(wire->gid, info->gid, sizeof(wire->gid));
-    return NDS_QP_INFO_RESULT_OK;
+    *encoded = {};
+    encoded->magic = htonl(wire::kQpInfoMagic);
+    encoded->version = htons(wire::kQpInfoVersion);
+    encoded->qp_num = htonl(info->qp_num);
+    encoded->psn = htonl(info->psn);
+    encoded->port_num = htons(info->port_num);
+    encoded->gid_index = htons(info->gid_index);
+    encoded->path_mtu = htonl(info->path_mtu);
+    encoded->traffic_class = htonl(info->traffic_class);
+    encoded->service_level = htonl(info->service_level);
+    encoded->retry_count = htonl(info->retry_count);
+    encoded->retry_timeout = htonl(info->retry_timeout);
+    memcpy(encoded->gid, info->gid, sizeof(encoded->gid));
+    return CodecResult::Ok;
 }
 
-int nds_qp_mtu_is_supported(uint32_t mtu_bytes) {
+int mtu_is_supported(uint32_t mtu_bytes) {
     switch (mtu_bytes) {
         case 256U:
         case 512U:
@@ -76,10 +81,12 @@ int nds_qp_mtu_is_supported(uint32_t mtu_bytes) {
     }
 }
 
-uint32_t nds_qp_mtu_select(uint32_t local_active_mtu, uint32_t peer_reported_mtu) {
+uint32_t select_mtu(uint32_t local_active_mtu, uint32_t peer_reported_mtu) {
     (void)peer_reported_mtu;
-    return nds_qp_mtu_is_supported(local_active_mtu) ? local_active_mtu : 0U;
+    return mtu_is_supported(local_active_mtu) ? local_active_mtu : 0U;
 }
+
+}  // namespace nds::transport
 
 namespace nds {
 namespace {
@@ -198,13 +205,13 @@ Result<void> TcpPeerExchange::write_full(int fd, const void *buffer, std::size_t
     return {};
 }
 
-Result<nds_qp_info> TcpPeerExchange::exchange(int fd, const nds_qp_info &local, bool client_order) {
-    nds_qp_info_wire local_wire{};
-    nds_qp_info_wire peer_wire{};
+Result<nds::transport::QpInfo> TcpPeerExchange::exchange(int fd, const nds::transport::QpInfo &local, bool client_order) {
+    nds::wire::QpInfo local_wire{};
+    nds::wire::QpInfo peer_wire{};
     if (fd < 0) {
         return unexpected(ErrorCode::kTransport, "TCP bootstrap socket is not open");
     }
-    if (nds_qp_info_encode(&local, &local_wire) != 0) {
+    if (nds::transport::encode(&local, &local_wire) != nds::transport::CodecResult::Ok) {
         return unexpected(ErrorCode::kTransport, "cannot encode local QP info");
     }
     if (client_order) {
@@ -218,18 +225,18 @@ Result<nds_qp_info> TcpPeerExchange::exchange(int fd, const nds_qp_info &local, 
         if (const auto result = write_full(fd, &local_wire, sizeof(local_wire)); !result)
             return unexpected(result.error());
     }
-    nds_qp_info peer{};
-    if (nds_qp_info_decode(&peer_wire, &peer) != 0) {
+    nds::transport::QpInfo peer{};
+    if (nds::transport::decode(&peer_wire, &peer) != nds::transport::CodecResult::Ok) {
         return unexpected(ErrorCode::kTransport, "cannot decode peer QP info");
     }
     return peer;
 }
 
-Result<nds_qp_info> TcpPeerExchange::exchange_as_client(const nds_qp_info &local) const {
+Result<nds::transport::QpInfo> TcpPeerExchange::exchange_as_client(const nds::transport::QpInfo &local) const {
     return exchange(fd_, local, true);
 }
 
-Result<nds_qp_info> TcpPeerExchange::exchange_as_server(const nds_qp_info &local) const {
+Result<nds::transport::QpInfo> TcpPeerExchange::exchange_as_server(const nds::transport::QpInfo &local) const {
     return exchange(fd_, local, false);
 }
 
@@ -287,33 +294,37 @@ Result<TcpPeerExchange> TcpPeerExchange::connect(const std::string &ipv4, std::u
 
 }  // namespace nds
 
-enum nds_qp_info_result nds_qp_info_decode(const nds_qp_info_wire *wire, nds_qp_info *info) {
-    nds_qp_info decoded;
+namespace nds::transport {
 
-    if (wire == nullptr || info == nullptr) {
-        return NDS_QP_INFO_RESULT_INVALID_ARGUMENT;
+CodecResult decode(const wire::QpInfo *encoded, QpInfo *info) {
+    QpInfo decoded;
+
+    if (encoded == nullptr || info == nullptr) {
+        return CodecResult::InvalidArgument;
     }
-    if (ntohl(wire->magic) != NDS_QP_INFO_WIRE_MAGIC) {
-        return NDS_QP_INFO_RESULT_INVALID_RECORD;
+    if (ntohl(encoded->magic) != wire::kQpInfoMagic) {
+        return CodecResult::InvalidRecord;
     }
-    if (ntohs(wire->version) != NDS_QP_INFO_WIRE_VERSION) {
-        return NDS_QP_INFO_RESULT_INVALID_RECORD;
+    if (ntohs(encoded->version) != wire::kQpInfoVersion) {
+        return CodecResult::InvalidRecord;
     }
 
     decoded = {};
-    decoded.qp_num = ntohl(wire->qp_num);
-    decoded.psn = ntohl(wire->psn);
-    decoded.port_num = ntohs(wire->port_num);
-    decoded.gid_index = ntohs(wire->gid_index);
-    decoded.path_mtu = ntohl(wire->path_mtu);
-    decoded.traffic_class = ntohl(wire->traffic_class);
-    decoded.service_level = ntohl(wire->service_level);
-    decoded.retry_count = ntohl(wire->retry_count);
-    decoded.retry_timeout = ntohl(wire->retry_timeout);
-    memcpy(decoded.gid, wire->gid, sizeof(decoded.gid));
-    if (nds_qp_info_validate(&decoded) != NDS_QP_INFO_RESULT_OK) {
-        return NDS_QP_INFO_RESULT_INVALID_RECORD;
+    decoded.qp_num = ntohl(encoded->qp_num);
+    decoded.psn = ntohl(encoded->psn);
+    decoded.port_num = ntohs(encoded->port_num);
+    decoded.gid_index = ntohs(encoded->gid_index);
+    decoded.path_mtu = ntohl(encoded->path_mtu);
+    decoded.traffic_class = ntohl(encoded->traffic_class);
+    decoded.service_level = ntohl(encoded->service_level);
+    decoded.retry_count = ntohl(encoded->retry_count);
+    decoded.retry_timeout = ntohl(encoded->retry_timeout);
+    memcpy(decoded.gid, encoded->gid, sizeof(decoded.gid));
+    if (validate_qp_info(&decoded) != CodecResult::Ok) {
+        return CodecResult::InvalidRecord;
     }
     *info = decoded;
-    return NDS_QP_INFO_RESULT_OK;
+    return CodecResult::Ok;
 }
+
+}  // namespace nds::transport

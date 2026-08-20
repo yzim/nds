@@ -8,7 +8,7 @@ source "${runner_dir}/aicpu_overlay.sh"
 usage() {
     cat <<'EOF'
 Usage:
-  run_storage.sh --backend <ra|aiv|aicpu> --operation <read|write>
+  run_storage.sh --backend <ra|aiv|aicpu> --operation <read|write|batch-read|batch-write>
   run_storage.sh --sweep
 
 Run one payload-verified NDS storage case, or sweep every backend and operation.
@@ -28,7 +28,7 @@ require_environment() {
 
 validate_case() {
     case "$1" in ra|aiv|aicpu) ;; *) printf 'unsupported backend: %s\n' "$1" >&2; exit 2 ;; esac
-    case "$2" in read|write) ;; *) printf 'unsupported operation: %s\n' "$2" >&2; exit 2 ;; esac
+    case "$2" in read|write|batch-read|batch-write) ;; *) printf 'unsupported operation: %s\n' "$2" >&2; exit 2 ;; esac
 }
 
 cleanup() {
@@ -80,13 +80,18 @@ run_case() {
     case_dir="$(mktemp -d "${state_dir}/${backend}-${operation}.XXXXXX")"
     local server_log="${case_dir}/server.log"
     local client_log="${case_dir}/client.log"
+    local verify_bytes
     local -a server=("${build}/bin/nds_server" --device "${NDS_E2E_DEVICE}" --gid-index "${NDS_E2E_GID_INDEX}"
         --listen "${NDS_E2E_SERVER_ADDRESS}" --namespace-bytes 1048576 --log-level info)
 
-    if [[ "${operation}" == read ]]; then
+    if [[ "${operation}" == read || "${operation}" == batch-read ]]; then
         server+=(--seed-pattern)
     else
-        server+=(--verify-write-bytes "${bytes}")
+        verify_bytes="${bytes}"
+        if [[ "${operation}" == batch-write ]]; then
+            verify_bytes="$((bytes * 2))"
+        fi
+        server+=(--verify-write-bytes "${verify_bytes}")
     fi
 
     timeout "${case_timeout}" "${server[@]}" >"${server_log}" 2>&1 &
@@ -135,7 +140,7 @@ if [[ "${sweep}" == true ]]; then
         exit 2
     fi
     for backend in ra aiv aicpu; do
-        for operation in read write; do
+        for operation in read write batch-read batch-write; do
             run_case "${backend}" "${operation}"
         done
     done

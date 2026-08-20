@@ -11,7 +11,7 @@
 namespace nds::client {
 
 struct EndpointTestAccess {
-    static void adopt(Endpoint *endpoint, const nds_ra_api &api, void *rdev) {
+    static void adopt(Endpoint *endpoint, const NdsRaApi &api, void *rdev) {
         endpoint->runtime_ = reinterpret_cast<Runtime *>(endpoint);
         endpoint->api_ = api;
         endpoint->rdev_handle_ = rdev;
@@ -47,12 +47,12 @@ struct FakeRa {
     int qp_status{NDS_RA_QP_STATUS_CONNECTED};
     int lite_support{NDS_RA_LITE_ALIGN_4K};
     std::uint32_t cqe_error_count{};
-    nds_ra_qp_ext_attrs ai_attributes{};
-    nds_ra_typical_qp local{};
-    nds_ra_typical_qp remote{};
-    nds_ra_mr_info mr{};
-    nds_ra_send_wr send{};
-    nds_ra_sge send_sge{};
+    NdsRaQpExtAttrs ai_attributes{};
+    NdsRaTypicalQp local{};
+    NdsRaTypicalQp remote{};
+    NdsRaMrInfo mr{};
+    NdsRaSendWr send{};
+    NdsRaSge send_sge{};
 };
 
 FakeRa *fake_state{};
@@ -65,7 +65,7 @@ int fake_rdev_deinit(void *handle, unsigned int notify_type) {
     return 0;
 }
 
-int fake_qp_create(void *rdev, int flag, int mode, nds_ra_typical_qp *, void **handle) {
+int fake_qp_create(void *rdev, int flag, int mode, NdsRaTypicalQp *, void **handle) {
     EXPECT_EQ(rdev, &fake_rdev);
     EXPECT_EQ(flag, NDS_RA_QP_FLAG_RC);
     EXPECT_EQ(mode, NDS_RA_QP_MODE_OPBASE);
@@ -74,14 +74,14 @@ int fake_qp_create(void *rdev, int flag, int mode, nds_ra_typical_qp *, void **h
     return 0;
 }
 
-int fake_ai_qp_create(void *rdev, nds_ra_qp_ext_attrs *attributes, nds_ra_ai_qp_info *info, void **handle) {
+int fake_ai_qp_create(void *rdev, NdsRaQpExtAttrs *attributes, NdsRaAiQpInfo *info, void **handle) {
     EXPECT_EQ(rdev, &fake_rdev);
     ++fake_state->ai_qp_create_calls;
     fake_state->ai_attributes = *attributes;
     info->ai_qp_address = 0x1000U;
     info->ai_scq_address = 0x2000U;
     info->ai_rcq_address = 0x3000U;
-    auto *plane = reinterpret_cast<nds_ra_ai_data_plane_info *>(info->data_plane_info);
+    auto *plane = reinterpret_cast<NdsRaAiDataPlaneInfo *>(info->data_plane_info);
     plane->send_wq = {1U, 0U, 0x10000U, 64U, 64U, 0x11000U, 0x12000U, 0x13000U, 0x14000U, {}};
     plane->receive_wq = {2U, 0U, 0x20000U, 16U, 32U, 0x21000U, 0x22000U, 0x23000U, 0x24000U, {}};
     plane->send_cq = {3U, 0U, 0x30000U, 64U, 64U, 0U, 0x32000U, 0x33000U, 0x34000U, {}};
@@ -90,7 +90,7 @@ int fake_ai_qp_create(void *rdev, nds_ra_qp_ext_attrs *attributes, nds_ra_ai_qp_
     return 0;
 }
 
-int fake_set_qos(void *, nds_ra_qos_attr *) {
+int fake_set_qos(void *, NdsRaQosAttr *) {
     return 0;
 }
 
@@ -104,7 +104,7 @@ int fake_qp_destroy(void *handle) {
     return 0;
 }
 
-int fake_get_qp_attr(void *handle, nds_ra_qp_attr *attributes) {
+int fake_get_qp_attr(void *handle, NdsRaQpAttr *attributes) {
     EXPECT_EQ(handle, &fake_qp);
     attributes->qpn = 0x1234U;
     attributes->psn = 0x4567U;
@@ -113,7 +113,7 @@ int fake_get_qp_attr(void *handle, nds_ra_qp_attr *attributes) {
     return 0;
 }
 
-int fake_modify(void *handle, nds_ra_typical_qp *local, nds_ra_typical_qp *remote) {
+int fake_modify(void *handle, NdsRaTypicalQp *local, NdsRaTypicalQp *remote) {
     EXPECT_EQ(handle, &fake_qp);
     ++fake_state->modify_calls;
     fake_state->local = *local;
@@ -136,7 +136,7 @@ int fake_lite_support(void *, int *support) {
     return 0;
 }
 
-int fake_cqe_errors(void *, nds_ra_cqe_error *errors, unsigned int *count) {
+int fake_cqe_errors(void *, NdsRaCqeError *errors, unsigned int *count) {
     if (*count < fake_state->cqe_error_count)
         return -1;
     for (std::uint32_t index = 0U; index < fake_state->cqe_error_count; ++index) {
@@ -147,7 +147,7 @@ int fake_cqe_errors(void *, nds_ra_cqe_error *errors, unsigned int *count) {
     return 0;
 }
 
-int fake_register_mr(const void *rdev, nds_ra_mr_info *info, void **handle) {
+int fake_register_mr(const void *rdev, NdsRaMrInfo *info, void **handle) {
     EXPECT_EQ(rdev, &fake_rdev);
     ++fake_state->register_calls;
     info->local_key = 0x1111U;
@@ -164,7 +164,7 @@ int fake_deregister_mr(const void *rdev, void *handle) {
     return 0;
 }
 
-int fake_send(void *, nds_ra_send_wr *request, nds_ra_send_response *response) {
+int fake_send(void *, NdsRaSendWr *request, NdsRaSendResponse *response) {
     ++fake_state->send_calls;
     fake_state->send = *request;
     fake_state->send_sge = *request->buffers;
@@ -174,7 +174,7 @@ int fake_send(void *, nds_ra_send_wr *request, nds_ra_send_response *response) {
     return 0;
 }
 
-int fake_recv(void *, nds_ra_recv_wr *, unsigned int count, unsigned int *completed) {
+int fake_recv(void *, NdsRaRecvWr *, unsigned int count, unsigned int *completed) {
     ++fake_state->recv_calls;
     *completed = count;
     return 0;
@@ -185,8 +185,8 @@ int fake_poll(void *, bool, unsigned int, void *) {
     return 0;
 }
 
-nds_ra_api make_api() {
-    nds_ra_api api{};
+NdsRaApi make_api() {
+    NdsRaApi api{};
     api.ra_rdev_deinit = fake_rdev_deinit;
     api.ra_typical_qp_create = fake_qp_create;
     api.ra_ai_qp_create = fake_ai_qp_create;
@@ -208,8 +208,8 @@ nds_ra_api make_api() {
     return api;
 }
 
-nds_qp_info peer_info() {
-    nds_qp_info peer{};
+nds::transport::QpInfo peer_info() {
+    nds::transport::QpInfo peer{};
     peer.qp_num = 0x2000U;
     peer.psn = 0x3000U;
     peer.port_num = 1U;
@@ -324,14 +324,14 @@ TEST(EndpointTest, RaVerbsUseQueuePairExecutionView) {
     ASSERT_TRUE(created);
     auto qp = std::move(*created);
     ASSERT_TRUE(qp.connect(peer_info()));
-    const nds_device_send_wr send{
+    const NdsDeviceSendWr send{
         1U, NDS_DEVICE_WR_SEND, NDS_DEVICE_SEND_SIGNALED, {0x1000U, 64U, 0x99U}, 0U, 0U, 0U};
     EXPECT_TRUE(nds::NdsRaPostSend(&qp, send));
     EXPECT_EQ(fake.send_calls, 1);
     EXPECT_EQ(fake.send.buffers->address, 0x1000U);
     EXPECT_TRUE(nds::NdsRaPostRecv(&qp, {2U, {0x2000U, 64U, 0x88U}}));
     EXPECT_EQ(fake.recv_calls, 1);
-    nds_device_completion_output output{};
+    NdsDeviceCompletionOutput output{};
     const auto polled = nds::NdsRaPollCq(&qp, NDS_DEVICE_SEND_QUEUE, &output);
     EXPECT_TRUE(polled);
     EXPECT_EQ(*polled, 0U);

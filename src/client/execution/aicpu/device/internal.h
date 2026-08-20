@@ -31,11 +31,11 @@ inline void *NdsAicpuResolveSymbol(const char *name) {
     return verbs == nullptr ? nullptr : dlsym(verbs, name);
 }
 
-inline bool NdsAicpuValidQp(const nds_device_qp *qp) {
+inline bool NdsAicpuValidQp(const NdsDeviceQp *qp) {
     return qp != nullptr && qp->abi_version == NDS_DEVICE_QP_ABI_VERSION && qp->size == sizeof(*qp);
 }
 
-inline void NdsAicpuSetResult(nds_device_operation_result *result, uint32_t status, uint32_t path,
+inline void NdsAicpuSetResult(NdsDeviceOperationResult *result, uint32_t status, uint32_t path,
                               int32_t provider_result) {
     result->status = status;
     result->path = path;

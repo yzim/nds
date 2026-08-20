@@ -15,7 +15,7 @@ __aicore__ inline void NdsAivCacheSync(__gm__ uint8_t *address, uint64_t length)
         DataCacheCleanAndInvalid<uint8_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(global[offset]);
 }
 
-__aicore__ inline void NdsAivSetResult(__gm__ nds_device_operation_result *result, uint32_t status) {
+__aicore__ inline void NdsAivSetResult(__gm__ NdsDeviceOperationResult *result, uint32_t status) {
     if (result == nullptr)
         return;
     result->status = status;
@@ -25,7 +25,7 @@ __aicore__ inline void NdsAivSetResult(__gm__ nds_device_operation_result *resul
     NdsAivCacheSync(reinterpret_cast<__gm__ uint8_t *>(result), sizeof(*result));
 }
 
-__aicore__ inline bool NdsAivValidQp(__gm__ const nds_device_qp *qp) {
+__aicore__ inline bool NdsAivValidQp(__gm__ const NdsDeviceQp *qp) {
     return qp != nullptr && qp->abi_version == NDS_DEVICE_QP_ABI_VERSION && qp->size == sizeof(*qp);
 }
 

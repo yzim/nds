@@ -6,22 +6,22 @@
 #include <stddef.h>
 #include <stdint.h>
 
-typedef struct nds_hns_receive_segment {
+typedef struct NdsHnsReceiveSegment {
     uint32_t length;
     uint32_t local_key;
     uint64_t address;
-} nds_hns_receive_segment;
+} NdsHnsReceiveSegment;
 
-typedef struct nds_hns_cqe {
+typedef struct NdsHnsCqe {
     uint32_t byte_4;
     uint32_t immediate_data;
     uint32_t byte_12;
     uint32_t byte_16;
     uint32_t byte_count;
     uint32_t reserved[3];
-} nds_hns_cqe;
+} NdsHnsCqe;
 
-enum nds_hns_sq_opcode {
+enum NdsHnsSqOpcode {
     NDS_HNS_SQ_SEND = 0x0U,
     NDS_HNS_SQ_RDMA_WRITE = 0x3U,
     NDS_HNS_SQ_RDMA_READ = 0x5U,
@@ -39,24 +39,24 @@ static inline int nds_hns_queue_has_space(uint32_t head, uint32_t tail, uint32_t
     return depth > reserved_entries && head - tail < depth - reserved_entries;
 }
 
-static inline void nds_hns_encode_receive_segment(nds_hns_receive_segment *segment, uint64_t address, uint32_t length,
+static inline void nds_hns_encode_receive_segment(NdsHnsReceiveSegment *segment, uint64_t address, uint32_t length,
                                                   uint32_t local_key) {
     segment->length = length;
     segment->local_key = local_key;
     segment->address = address;
 }
 
-static inline int nds_hns_cqe_is_ready(const nds_hns_cqe *cqe, uint32_t consumer, uint32_t depth) {
+static inline int nds_hns_cqe_is_ready(const NdsHnsCqe *cqe, uint32_t consumer, uint32_t depth) {
     const uint32_t owner = (cqe->byte_4 >> 7U) & 1U;
     return depth != 0U && (owner ^ !!(consumer & depth)) != 0U;
 }
 
-static inline uint32_t nds_hns_send_tail_for_cqe(uint32_t tail, uint32_t depth, const nds_hns_cqe *cqe) {
+static inline uint32_t nds_hns_send_tail_for_cqe(uint32_t tail, uint32_t depth, const NdsHnsCqe *cqe) {
     const uint32_t wqe_index = cqe->byte_4 >> 16U;
     return tail + ((wqe_index - tail) & (depth - 1U));
 }
 
-static inline void nds_hns_decode_cqe(const nds_hns_cqe *cqe, uint64_t wr_id, nds_device_completion *completion) {
+static inline void nds_hns_decode_cqe(const NdsHnsCqe *cqe, uint64_t wr_id, NdsDeviceCompletion *completion) {
     completion->wr_id = wr_id;
     completion->status = (int32_t)((cqe->byte_4 >> 8U) & 0xffU);
     completion->opcode = (int32_t)(cqe->byte_4 & 0x1fU);
@@ -69,17 +69,17 @@ static inline void nds_hns_decode_cqe(const nds_hns_cqe *cqe, uint64_t wr_id, nd
 }
 
 #if defined(__cplusplus)
-static_assert(sizeof(nds_hns_receive_segment) == 16, "HNS receive segment ABI changed");
-static_assert(offsetof(nds_hns_receive_segment, length) == 0, "HNS receive length offset changed");
-static_assert(offsetof(nds_hns_receive_segment, local_key) == 4, "HNS receive local-key offset changed");
-static_assert(offsetof(nds_hns_receive_segment, address) == 8, "HNS receive address offset changed");
-static_assert(sizeof(nds_hns_cqe) == 32, "HNS CQE ABI changed");
+static_assert(sizeof(NdsHnsReceiveSegment) == 16, "HNS receive segment ABI changed");
+static_assert(offsetof(NdsHnsReceiveSegment, length) == 0, "HNS receive length offset changed");
+static_assert(offsetof(NdsHnsReceiveSegment, local_key) == 4, "HNS receive local-key offset changed");
+static_assert(offsetof(NdsHnsReceiveSegment, address) == 8, "HNS receive address offset changed");
+static_assert(sizeof(NdsHnsCqe) == 32, "HNS CQE ABI changed");
 #else
-_Static_assert(sizeof(nds_hns_receive_segment) == 16, "HNS receive segment ABI changed");
-_Static_assert(offsetof(nds_hns_receive_segment, length) == 0, "HNS receive length offset changed");
-_Static_assert(offsetof(nds_hns_receive_segment, local_key) == 4, "HNS receive local-key offset changed");
-_Static_assert(offsetof(nds_hns_receive_segment, address) == 8, "HNS receive address offset changed");
-_Static_assert(sizeof(nds_hns_cqe) == 32, "HNS CQE ABI changed");
+_Static_assert(sizeof(NdsHnsReceiveSegment) == 16, "HNS receive segment ABI changed");
+_Static_assert(offsetof(NdsHnsReceiveSegment, length) == 0, "HNS receive length offset changed");
+_Static_assert(offsetof(NdsHnsReceiveSegment, local_key) == 4, "HNS receive local-key offset changed");
+_Static_assert(offsetof(NdsHnsReceiveSegment, address) == 8, "HNS receive address offset changed");
+_Static_assert(sizeof(NdsHnsCqe) == 32, "HNS CQE ABI changed");
 #endif
 
 #endif

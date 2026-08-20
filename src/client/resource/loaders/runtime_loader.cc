@@ -5,10 +5,10 @@
 #include <stdio.h>
 #include <string.h>
 
-static_assert(sizeof(nds_rt_proc_ext_param) == 16, "unexpected rtProcExtParam ABI layout");
-static_assert(sizeof(nds_rt_net_service_open_args) == 16, "unexpected rtNetServiceOpenArgs ABI layout");
+static_assert(sizeof(NdsRtProcExtParam) == 16, "unexpected rtProcExtParam ABI layout");
+static_assert(sizeof(NdsRtNetServiceOpenArgs) == 16, "unexpected rtNetServiceOpenArgs ABI layout");
 
-static void nds_runtime_set_error(nds_runtime_api *api, const char *format, ...) {
+static void nds_runtime_set_error(NdsRuntimeApi *api, const char *format, ...) {
     va_list arguments;
 
     va_start(arguments, format);
@@ -16,7 +16,7 @@ static void nds_runtime_set_error(nds_runtime_api *api, const char *format, ...)
     va_end(arguments);
 }
 
-static int nds_runtime_resolve(nds_runtime_api *api, const char *name, void *slot, size_t slot_size) {
+static int nds_runtime_resolve(NdsRuntimeApi *api, const char *name, void *slot, size_t slot_size) {
     const char *loader_error;
     void *symbol;
 
@@ -36,12 +36,12 @@ static int nds_runtime_resolve(nds_runtime_api *api, const char *name, void *slo
     return 0;
 }
 
-int nds_runtime_open(nds_runtime_api *api, const char *library_path) {
+int nds_runtime_open(NdsRuntimeApi *api, const char *library_path) {
     const char *loader_error;
 
     if (api == nullptr || library_path == nullptr || library_path[0] == '\0') {
         if (api != nullptr) {
-            nds_runtime_set_error(api, "an nds_runtime_api and a non-empty library path are required");
+            nds_runtime_set_error(api, "loader state and a non-empty library path are required");
         }
         return -1;
     }
@@ -73,7 +73,7 @@ int nds_runtime_open(nds_runtime_api *api, const char *library_path) {
     return 0;
 }
 
-void nds_runtime_close(nds_runtime_api *api) {
+void nds_runtime_close(NdsRuntimeApi *api) {
     if (api == nullptr) {
         return;
     }
@@ -83,6 +83,6 @@ void nds_runtime_close(nds_runtime_api *api) {
     *api = {};
 }
 
-const char *nds_runtime_error(const nds_runtime_api *api) {
+const char *nds_runtime_error(const NdsRuntimeApi *api) {
     return api == nullptr ? "no loader state" : api->error;
 }

@@ -5,9 +5,9 @@
 #include <gtest/gtest.h>
 
 TEST(RuntimeLoaderIntegrationTest, ResolvesAndDispatchesDoorbellAbi) {
-    nds_runtime_api api{};
-    nds_rt_proc_ext_param parameter{"--hdcType=18", 12U};
-    nds_rt_net_service_open_args args{&parameter, 1U};
+    NdsRuntimeApi api{};
+    NdsRtProcExtParam parameter{"--hdcType=18", 12U};
+    NdsRtNetServiceOpenArgs args{&parameter, 1U};
 
     EXPECT_NE(nds_runtime_open(&api, ""), 0);
     EXPECT_NE(std::strstr(nds_runtime_error(&api), "non-empty library path"), nullptr);

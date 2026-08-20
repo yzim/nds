@@ -1,82 +1,51 @@
 #include "nds/device_storage.h"
 
 #include <gtest/gtest.h>
-#include <cstdint>
-#include <cstring>
 
 namespace {
 
-nds_device_storage valid_storage() {
-    nds_device_storage storage{};
-    storage.abi_version = NDS_DEVICE_STORAGE_ABI_VERSION;
-    storage.size = sizeof(storage);
-    storage.transport.abi_version = NDS_DEVICE_TRANSPORT_ABI_VERSION;
-    storage.transport.size = sizeof(storage.transport);
-    storage.request_id = 1U;
-    storage.capacity = 4096U;
-    storage.command = {0x1000U, sizeof(nds_protocol_command_wire), 2U};
-    storage.completion = {0x2000U, sizeof(nds_protocol_completion_wire), 3U};
-    return storage;
-}
-
-nds_device_storage_io valid_io(std::uint16_t operation) {
-    nds_device_storage_io io{};
-    io.operation = operation;
-    io.length = 64U;
-    io.offset = 0U;
-    io.data = {0x3000U, 64U, 4U};
-    io.data_rkey = 5U;
-    return io;
+NdsDeviceStorageContext valid_context() {
+    NdsDeviceStorageContext context{};
+    context.abi_version = NDS_DEVICE_STORAGE_ABI_VERSION;
+    context.size = sizeof(context);
+    context.transport.abi_version = NDS_DEVICE_TRANSPORT_ABI_VERSION;
+    context.transport.size = sizeof(context.transport);
+    context.command_buffer = {0x1000U, nds::kStorageCommandBytes, 2U};
+    context.completion = {0x2000U, nds::kStorageCompletionBytes, 3U};
+    context.capacity = 4096U;
+    return context;
 }
 
 }  // namespace
 
-TEST(DeviceStorageTest, ValidatesAndEncodesRequests) {
-    nds_device_storage storage{};
-    nds_device_storage_io io{};
-    EXPECT_TRUE(!nds_device_storage_valid(&storage, &io));
+TEST(DeviceStorageTest, ValidatesSingleOperationCommands) {
+    NdsDeviceStorageContext context = valid_context();
+    nds::StorageReadCommand read{1U, 0U, 64U, {0x3000U, 64U, 4U}};
+    nds::StorageWriteCommand write{1U, 0U, 64U, {0x3000U, 64U, 4U}};
 
-    storage = valid_storage();
-    io = valid_io(NDS_PROTOCOL_WRITE);
-    EXPECT_TRUE(nds_device_storage_valid(&storage, &io));
-    io = valid_io(NDS_PROTOCOL_READ);
-    EXPECT_TRUE(nds_device_storage_valid(&storage, &io));
+    EXPECT_TRUE(nds_device_storage_read_valid(&context, &read));
+    EXPECT_TRUE(nds_device_storage_write_valid(&context, &write));
 
-    io = valid_io(NDS_PROTOCOL_WRITE);
-    io.offset = 4096U;
-    EXPECT_TRUE(!nds_device_storage_valid(&storage, &io));
-    io = valid_io(NDS_PROTOCOL_WRITE);
-    io.length = 4097U;
-    io.data.length = 4097U;
-    EXPECT_TRUE(!nds_device_storage_valid(&storage, &io));
-    io = valid_io(0U);
-    EXPECT_TRUE(!nds_device_storage_valid(&storage, &io));
-    io = valid_io(NDS_PROTOCOL_WRITE);
-    io.data_rkey = 0U;
-    EXPECT_TRUE(!nds_device_storage_valid(&storage, &io));
+    read.offset = context.capacity;
+    EXPECT_FALSE(nds_device_storage_read_valid(&context, &read));
+    write.length = context.capacity + 1U;
+    write.data.length = write.length;
+    EXPECT_FALSE(nds_device_storage_write_valid(&context, &write));
 
-    storage = valid_storage();
-    io = valid_io(NDS_PROTOCOL_WRITE);
-    nds_protocol_command_wire write_command{};
-    nds_protocol_completion_wire pending{};
-    nds_device_storage_encode_command(&storage, &io, &write_command);
-    nds_device_storage_encode_pending(&storage, &pending);
-    EXPECT_TRUE(nds_device_htonl(write_command.magic) == NDS_PROTOCOL_COMMAND_MAGIC);
-    EXPECT_TRUE(nds_device_htons(write_command.operation) == NDS_PROTOCOL_WRITE);
-    EXPECT_TRUE(nds_device_htonll(write_command.request_id) == 1U);
-    EXPECT_TRUE(nds_device_htonl(write_command.data_rkey) == 5U);
-    EXPECT_TRUE(nds_device_htonl(write_command.data_access) == NDS_PROTOCOL_ACCESS_REMOTE_READ);
-    EXPECT_TRUE(!nds_device_storage_completion_done(&pending, 1U, 64U));
+    context.command_buffer.length = nds::kStorageCommandBytes - 1U;
+    EXPECT_FALSE(nds_device_storage_read_valid(&context, &read));
+}
 
-    io = valid_io(NDS_PROTOCOL_READ);
-    nds_protocol_command_wire read_command{};
-    nds_device_storage_encode_command(&storage, &io, &read_command);
-    EXPECT_TRUE(nds_device_htons(read_command.operation) == NDS_PROTOCOL_READ);
-    EXPECT_TRUE(nds_device_htonl(read_command.data_access) == NDS_PROTOCOL_ACCESS_REMOTE_WRITE);
+TEST(DeviceStorageTest, ValidatesBatchOperationCommands) {
+    const NdsDeviceStorageContext context = valid_context();
+    nds::StorageBatchReadCommand read{1U, 2U, 128U, {0x3000U, 2U * nds::kStorageBatchEntryBytes, 4U}};
+    nds::StorageBatchWriteCommand write{1U, 2U, 128U, {0x3000U, 2U * nds::kStorageBatchEntryBytes, 4U}};
 
-    pending.state = nds_device_htons(NDS_PROTOCOL_COMPLETION_COMPLETE);
-    pending.bytes_transferred = nds_device_htonll(64U);
-    EXPECT_TRUE(nds_device_storage_completion_done(&pending, 1U, 64U));
-    EXPECT_TRUE(!nds_device_storage_completion_done(&pending, 2U, 64U));
-    EXPECT_TRUE(!nds_device_storage_completion_done(&pending, 1U, 32U));
+    EXPECT_TRUE(nds_device_storage_batch_read_valid(&context, &read));
+    EXPECT_TRUE(nds_device_storage_batch_write_valid(&context, &write));
+
+    read.entry_count = 0U;
+    EXPECT_FALSE(nds_device_storage_batch_read_valid(&context, &read));
+    write.entries.length = nds::kStorageBatchEntryBytes;
+    EXPECT_FALSE(nds_device_storage_batch_write_valid(&context, &write));
 }

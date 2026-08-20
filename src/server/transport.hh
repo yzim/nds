@@ -3,7 +3,7 @@
 
 #include "backend.hh"
 #include "nds/result.hh"
-#include "nds/connection.hh"
+#include "nds/tcp_bootstrap.hh"
 
 #include <cstdint>
 #include <string>
@@ -39,7 +39,7 @@ public:
 private:
     VerbsBackend backend_;
     TcpPeerExchange bootstrap_;
-    nds_qp_info_wire local_wire_{};
+    nds::wire::QpInfo local_wire_{};
 };
 
 }  // namespace nds::server

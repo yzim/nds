@@ -12,16 +12,16 @@
 extern "C" {
 #endif
 
-struct nds_hns_sge {
+struct NdsHnsSge {
     uint64_t addr;
     uint32_t length;
     uint32_t lkey;
 };
 
-struct nds_hns_send_wr {
+struct NdsHnsSendWr {
     uint64_t wr_id;
-    struct nds_hns_send_wr *next;
-    struct nds_hns_sge *sg_list;
+    struct NdsHnsSendWr *next;
+    struct NdsHnsSge *sg_list;
     int32_t num_sge;
     int32_t opcode;
     uint32_t send_flags;
@@ -34,15 +34,15 @@ struct nds_hns_send_wr {
     uint8_t reserved[72];
 };
 
-struct nds_hns_recv_wr {
+struct NdsHnsRecvWr {
     uint64_t wr_id;
-    struct nds_hns_recv_wr *next;
-    struct nds_hns_sge *sg_list;
+    struct NdsHnsRecvWr *next;
+    struct NdsHnsSge *sg_list;
     int32_t num_sge;
     uint32_t reserved;
 };
 
-struct nds_hns_wc {
+struct NdsHnsWc {
     uint64_t wr_id;
     int32_t status;
     int32_t opcode;
@@ -60,7 +60,7 @@ struct nds_hns_wc {
     uint32_t imm_data;
 };
 
-struct nds_hns_post_send_response {
+struct NdsHnsPostSendResponse {
     unsigned int wqe_index;
     unsigned long db_info;
 };
@@ -72,19 +72,19 @@ enum {
     NDS_HNS_SEND_SIGNALED = 1 << 1,
 };
 
-typedef int (*nds_hns_exp_post_send_fn)(void *qp, struct nds_hns_send_wr *wr, struct nds_hns_send_wr **bad_wr,
-                                        struct nds_hns_post_send_response *response);
-typedef int (*nds_hns_post_recv_fn)(void *qp, struct nds_hns_recv_wr *wr, struct nds_hns_recv_wr **bad_wr);
-typedef int (*nds_hns_poll_cq_fn)(void *cq, int num_entries, struct nds_hns_wc *wc);
+typedef int (*NdsHnsExpPostSendFn)(void *qp, struct NdsHnsSendWr *wr, struct NdsHnsSendWr **bad_wr,
+                                        struct NdsHnsPostSendResponse *response);
+typedef int (*NdsHnsPostRecvFn)(void *qp, struct NdsHnsRecvWr *wr, struct NdsHnsRecvWr **bad_wr);
+typedef int (*NdsHnsPollCqFn)(void *cq, int num_entries, struct NdsHnsWc *wc);
 
 #if defined(__cplusplus)
-static_assert(sizeof(nds_hns_sge) == 16, "HNS SGE ABI changed");
-static_assert(sizeof(nds_hns_send_wr) == 128, "HNS send-WR ABI changed");
-static_assert(sizeof(nds_hns_recv_wr) == 32, "HNS receive-WR ABI changed");
-static_assert(sizeof(nds_hns_wc) == 48, "HNS completion ABI changed");
+static_assert(sizeof(NdsHnsSge) == 16, "HNS SGE ABI changed");
+static_assert(sizeof(NdsHnsSendWr) == 128, "HNS send-WR ABI changed");
+static_assert(sizeof(NdsHnsRecvWr) == 32, "HNS receive-WR ABI changed");
+static_assert(sizeof(NdsHnsWc) == 48, "HNS completion ABI changed");
 #else
-_Static_assert(sizeof(struct nds_hns_sge) == 16, "HNS SGE ABI changed");
-_Static_assert(sizeof(struct nds_hns_send_wr) == 128, "HNS send-WR ABI changed");
+_Static_assert(sizeof(struct NdsHnsSge) == 16, "HNS SGE ABI changed");
+_Static_assert(sizeof(struct NdsHnsSendWr) == 128, "HNS send-WR ABI changed");
 #endif
 
 #ifdef __cplusplus

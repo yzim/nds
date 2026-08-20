@@ -6,10 +6,17 @@ operational commands under ignored `.local/` files.
 
 ## C++ conventions
 
-NDS is C++20. Use `.cc` for C++ sources and `.hh` for C++ headers; use
-C-compatible `.h` headers at runtime or device ABI boundaries. Format with the
-repository `.clang-format` configuration.
+NDS is C++20. Use `.cc` for implementation files. Use `.hh` for internal C++
+headers, including NDS-owned wire records. Use `.h` only for device, loader, or
+future public-SDK ABI boundaries; keep those C-compatible when the boundary
+requires C consumers. Reserve `extern "C"` for
+vendor APIs and loadable device entrypoints that require unmangled symbol
+names. Format with the repository
+`.clang-format` configuration.
 
+- Name every NDS-owned C++ class, struct, and enum in `UpperCamelCase`. Use
+  platform-required spellings only for vendor API declarations and externally
+  named device entrypoints.
 - Pass values, `const T&` inputs, or pointers. Do not use non-const lvalue
   references for output or in/out parameters.
 - Return newly produced values as `Result<T>`, not through output pointers.

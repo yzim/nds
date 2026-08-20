@@ -15,7 +15,7 @@ void entry_barrier() {
 #endif
 }
 
-void set_invalid(nds_device_operation_result *result) {
+void set_invalid(NdsDeviceOperationResult *result) {
     if (result == nullptr)
         return;
     result->status = NDS_DEVICE_OPERATION_INVALID_ARGUMENT;
@@ -30,23 +30,24 @@ bool valid_request(const Request *request, uint64_t result_address) {
            request->size == sizeof(*request) && result_address != 0U;
 }
 
-bool valid_operation_request(const nds_device_operation_request *request) {
+bool valid_operation_request(const NdsDeviceOperationRequest *request) {
     return request != nullptr && request->abi_version == NDS_DEVICE_OPERATIONS_ABI_VERSION &&
            request->size == sizeof(*request) && request->operation_result_address != 0U &&
            request->transport.abi_version == NDS_DEVICE_TRANSPORT_ABI_VERSION;
 }
 
-bool valid_storage_request(const nds_device_storage_request *request) {
+template <typename Args>
+bool valid_storage_args(const Args *request) {
     return request != nullptr && request->abi_version == NDS_DEVICE_STORAGE_ABI_VERSION &&
            request->size == sizeof(*request) && request->operation_result_address != 0U;
 }
 }  // namespace
 
 extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuPostSend(void *args) {
-    auto *request = static_cast<nds_device_post_send_request *>(args);
+    auto *request = static_cast<NdsDevicePostSendRequest *>(args);
     auto *result = request == nullptr
                        ? nullptr
-                       : reinterpret_cast<nds_device_operation_result *>(request->operation_result_address);
+                       : reinterpret_cast<NdsDeviceOperationResult *>(request->operation_result_address);
     if (!valid_request(request, request == nullptr ? 0U : request->operation_result_address)) {
         set_invalid(result);
         return kEntryInvalidArgument;
@@ -56,10 +57,10 @@ extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuPostSend(void
     return status;
 }
 extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuPostRecv(void *args) {
-    auto *request = static_cast<nds_device_post_recv_request *>(args);
+    auto *request = static_cast<NdsDevicePostRecvRequest *>(args);
     auto *result = request == nullptr
                        ? nullptr
-                       : reinterpret_cast<nds_device_operation_result *>(request->operation_result_address);
+                       : reinterpret_cast<NdsDeviceOperationResult *>(request->operation_result_address);
     if (!valid_request(request, request == nullptr ? 0U : request->operation_result_address)) {
         set_invalid(result);
         return kEntryInvalidArgument;
@@ -69,10 +70,10 @@ extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuPostRecv(void
     return status;
 }
 extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuPollCq(void *args) {
-    auto *request = static_cast<nds_device_operation_request *>(args);
+    auto *request = static_cast<NdsDeviceOperationRequest *>(args);
     auto *result = request == nullptr
                        ? nullptr
-                       : reinterpret_cast<nds_device_operation_result *>(request->operation_result_address);
+                       : reinterpret_cast<NdsDeviceOperationResult *>(request->operation_result_address);
     if (!valid_operation_request(request)) {
         set_invalid(result);
         return kEntryInvalidArgument;
@@ -82,10 +83,10 @@ extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuPollCq(void *
     return status;
 }
 extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuRdmaSend(void *args) {
-    auto *request = static_cast<nds_device_operation_request *>(args);
+    auto *request = static_cast<NdsDeviceOperationRequest *>(args);
     auto *result = request == nullptr
                        ? nullptr
-                       : reinterpret_cast<nds_device_operation_result *>(request->operation_result_address);
+                       : reinterpret_cast<NdsDeviceOperationResult *>(request->operation_result_address);
     if (!valid_operation_request(request)) {
         set_invalid(result);
         return kEntryInvalidArgument;
@@ -96,10 +97,10 @@ extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuRdmaSend(void
 }
 
 extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuRdmaRecv(void *args) {
-    auto *request = static_cast<nds_device_operation_request *>(args);
+    auto *request = static_cast<NdsDeviceOperationRequest *>(args);
     auto *result = request == nullptr
                        ? nullptr
-                       : reinterpret_cast<nds_device_operation_result *>(request->operation_result_address);
+                       : reinterpret_cast<NdsDeviceOperationResult *>(request->operation_result_address);
     if (!valid_operation_request(request)) {
         set_invalid(result);
         return kEntryInvalidArgument;
@@ -110,10 +111,10 @@ extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuRdmaRecv(void
 }
 
 extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuRdmaRead(void *args) {
-    auto *request = static_cast<nds_device_operation_request *>(args);
+    auto *request = static_cast<NdsDeviceOperationRequest *>(args);
     auto *result = request == nullptr
                        ? nullptr
-                       : reinterpret_cast<nds_device_operation_result *>(request->operation_result_address);
+                       : reinterpret_cast<NdsDeviceOperationResult *>(request->operation_result_address);
     if (!valid_operation_request(request)) {
         set_invalid(result);
         return kEntryInvalidArgument;
@@ -124,10 +125,10 @@ extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuRdmaRead(void
 }
 
 extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuRdmaWrite(void *args) {
-    auto *request = static_cast<nds_device_operation_request *>(args);
+    auto *request = static_cast<NdsDeviceOperationRequest *>(args);
     auto *result = request == nullptr
                        ? nullptr
-                       : reinterpret_cast<nds_device_operation_result *>(request->operation_result_address);
+                       : reinterpret_cast<NdsDeviceOperationResult *>(request->operation_result_address);
     if (!valid_operation_request(request)) {
         set_invalid(result);
         return kEntryInvalidArgument;
@@ -138,29 +139,57 @@ extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuRdmaWrite(voi
 }
 
 extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuStorageRead(void *args) {
-    auto *request = static_cast<nds_device_storage_request *>(args);
+    auto *request = static_cast<NdsDeviceStorageReadArgs *>(args);
     auto *result = request == nullptr
                        ? nullptr
-                       : reinterpret_cast<nds_device_operation_result *>(request->operation_result_address);
-    if (!valid_storage_request(request)) {
+                       : reinterpret_cast<NdsDeviceOperationResult *>(request->operation_result_address);
+    if (!valid_storage_args(request)) {
         set_invalid(result);
         return kEntryInvalidArgument;
     }
-    const uint32_t status = NdsAicpuStorageReadImpl(&request->storage, &request->io, result);
+    const uint32_t status = NdsAicpuStorageReadImpl(&request->context, &request->command, result);
     entry_barrier();
     return status;
 }
 
 extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuStorageWrite(void *args) {
-    auto *request = static_cast<nds_device_storage_request *>(args);
+    auto *request = static_cast<NdsDeviceStorageWriteArgs *>(args);
     auto *result = request == nullptr
                        ? nullptr
-                       : reinterpret_cast<nds_device_operation_result *>(request->operation_result_address);
-    if (!valid_storage_request(request)) {
+                       : reinterpret_cast<NdsDeviceOperationResult *>(request->operation_result_address);
+    if (!valid_storage_args(request)) {
         set_invalid(result);
         return kEntryInvalidArgument;
     }
-    const uint32_t status = NdsAicpuStorageWriteImpl(&request->storage, &request->io, result);
+    const uint32_t status = NdsAicpuStorageWriteImpl(&request->context, &request->command, result);
+    entry_barrier();
+    return status;
+}
+
+extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuStorageBatchRead(void *args) {
+    auto *request = static_cast<NdsDeviceStorageBatchReadArgs *>(args);
+    auto *result = request == nullptr
+                       ? nullptr
+                       : reinterpret_cast<NdsDeviceOperationResult *>(request->operation_result_address);
+    if (!valid_storage_args(request)) {
+        set_invalid(result);
+        return kEntryInvalidArgument;
+    }
+    const uint32_t status = NdsAicpuStorageBatchReadImpl(&request->context, &request->command, result);
+    entry_barrier();
+    return status;
+}
+
+extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuStorageBatchWrite(void *args) {
+    auto *request = static_cast<NdsDeviceStorageBatchWriteArgs *>(args);
+    auto *result = request == nullptr
+                       ? nullptr
+                       : reinterpret_cast<NdsDeviceOperationResult *>(request->operation_result_address);
+    if (!valid_storage_args(request)) {
+        set_invalid(result);
+        return kEntryInvalidArgument;
+    }
+    const uint32_t status = NdsAicpuStorageBatchWriteImpl(&request->context, &request->command, result);
     entry_barrier();
     return status;
 }

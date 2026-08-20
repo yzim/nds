@@ -8,22 +8,22 @@
 #define NDS_DEVICE_TRANSPORT_ABI_VERSION UINT32_C(1)
 
 /* One peer transport. Future revisions add a data-QP view beside control_qp. */
-typedef struct nds_device_transport {
+typedef struct NdsDeviceTransport {
     uint32_t abi_version;
     uint32_t size;
-    nds_device_qp control_qp;
-} nds_device_transport;
+    NdsDeviceQp control_qp;
+} NdsDeviceTransport;
 
-typedef struct nds_device_transfer {
+typedef struct NdsDeviceTransfer {
     uint64_t wr_id;
-    nds_device_sge local;
+    NdsDeviceSge local;
     uint64_t remote_address;
     uint32_t remote_key;
     uint32_t reserved;
-} nds_device_transfer;
+} NdsDeviceTransfer;
 
-static inline void nds_device_build_send_wr(const nds_device_transfer *transfer, uint32_t opcode,
-                                            nds_device_send_wr *wr) {
+static inline void nds_device_build_send_wr(const NdsDeviceTransfer *transfer, uint32_t opcode,
+                                            NdsDeviceSendWr *wr) {
     wr->wr_id = transfer->wr_id;
     wr->opcode = opcode;
     wr->flags = NDS_DEVICE_SEND_SIGNALED;
@@ -33,17 +33,17 @@ static inline void nds_device_build_send_wr(const nds_device_transfer *transfer,
     wr->reserved = 0U;
 }
 
-static inline void nds_device_build_recv_wr(const nds_device_transfer *transfer, nds_device_recv_wr *wr) {
+static inline void nds_device_build_recv_wr(const NdsDeviceTransfer *transfer, NdsDeviceRecvWr *wr) {
     wr->wr_id = transfer->wr_id;
     wr->local = transfer->local;
 }
 
 #if defined(__cplusplus)
-static_assert(sizeof(nds_device_transport) == 248, "device transport ABI changed");
-static_assert(sizeof(nds_device_transfer) == 40, "device transfer ABI changed");
+static_assert(sizeof(NdsDeviceTransport) == 248, "device transport ABI changed");
+static_assert(sizeof(NdsDeviceTransfer) == 40, "device transfer ABI changed");
 #else
-_Static_assert(sizeof(nds_device_transport) == 248, "device transport ABI changed");
-_Static_assert(sizeof(nds_device_transfer) == 40, "device transfer ABI changed");
+_Static_assert(sizeof(NdsDeviceTransport) == 248, "device transport ABI changed");
+_Static_assert(sizeof(NdsDeviceTransfer) == 40, "device transfer ABI changed");
 #endif
 
 #endif

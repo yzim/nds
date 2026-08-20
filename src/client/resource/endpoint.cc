@@ -111,12 +111,12 @@ QueuePair &QueuePair::operator=(QueuePair &&other) noexcept {
     return *this;
 }
 
-Result<nds_ra_typical_qp> QueuePair::build_typical_qp(const nds_ra_qp_attr &attributes, std::uint32_t traffic_class,
+Result<NdsRaTypicalQp> QueuePair::build_typical_qp(const NdsRaQpAttr &attributes, std::uint32_t traffic_class,
                                                       std::uint32_t service_level, std::uint32_t retry_count,
                                                       std::uint32_t retry_timeout) const {
     if (!is_valid_qp_number(attributes.qpn) || !is_valid_psn(attributes.psn))
         return unexpected(ErrorCode::kInvalidArgument, "invalid QP number or PSN");
-    nds_ra_typical_qp result{};
+    NdsRaTypicalQp result{};
     result.qpn = attributes.qpn;
     result.psn = attributes.psn;
     result.gid_index = attributes.gid_index;
@@ -160,7 +160,7 @@ Result<void> QueuePair::initialize() {
     if (config_.ai_qp_mode < 0)
         config_.ai_qp_mode = execution_ == NpuExecutionMode::Aicpu ? NDS_RA_QP_MODE_NORMAL : NDS_RA_QP_MODE_OPBASE_EXT;
     if (execution_ == NpuExecutionMode::Ra) {
-        nds_ra_typical_qp initial_qp{};
+        NdsRaTypicalQp initial_qp{};
         result = api->ra_typical_qp_create(endpoint_->rdev_handle_, NDS_RA_QP_FLAG_RC, NDS_RA_QP_MODE_OPBASE,
                                            &initial_qp, &handle_);
         if (result != 0 || handle_ == nullptr) {
@@ -168,7 +168,7 @@ Result<void> QueuePair::initialize() {
             return unexpected(ErrorCode::kRa, "RaTypicalQpCreate failed: " + std::to_string(result));
         }
     } else {
-        nds_ra_qp_ext_attrs attributes{};
+        NdsRaQpExtAttrs attributes{};
         attributes.qp_mode = config_.ai_qp_mode;
         attributes.cq_attr.send_cq_depth = static_cast<int>(config_.send_queue_depth);
         attributes.cq_attr.recv_cq_depth = static_cast<int>(config_.receive_queue_depth);
@@ -187,7 +187,7 @@ Result<void> QueuePair::initialize() {
             reset();
             return unexpected(ErrorCode::kRa, "RaAiQpCreate failed: " + std::to_string(result));
         }
-        nds_ra_qos_attr qos{};
+        NdsRaQosAttr qos{};
         qos.traffic_class = static_cast<std::uint8_t>(config_.traffic_class);
         qos.service_level = static_cast<std::uint8_t>(config_.service_level);
         std::uint32_t timeout = config_.retry_timeout;
@@ -208,10 +208,10 @@ Result<void> QueuePair::initialize() {
     return {};
 }
 
-Result<nds_qp_info> QueuePair::local_qp_info() const {
+Result<nds::transport::QpInfo> QueuePair::local_qp_info() const {
     if (!created())
         return unexpected(ErrorCode::kInvalidArgument, "QP has not been created");
-    nds_qp_info info{};
+    nds::transport::QpInfo info{};
     info.qp_num = local_attributes_.qpn;
     info.psn = local_attributes_.psn;
     info.port_num = config_.port_num;
@@ -225,7 +225,7 @@ Result<nds_qp_info> QueuePair::local_qp_info() const {
     return info;
 }
 
-Result<void> QueuePair::connect(const nds_qp_info &peer) {
+Result<void> QueuePair::connect(const nds::transport::QpInfo &peer) {
     if (!created() || connected_)
         return unexpected(ErrorCode::kInvalidArgument, "QP must be created and disconnected before connect");
     if (peer.qp_num == 0U || peer.qp_num > kQpnMask || peer.psn > kPsnMask || peer.port_num == 0U ||
@@ -236,7 +236,7 @@ Result<void> QueuePair::connect(const nds_qp_info &peer) {
                                   config_.retry_timeout);
     if (!local)
         return unexpected(local.error());
-    nds_ra_qp_attr peer_attributes{};
+    NdsRaQpAttr peer_attributes{};
     peer_attributes.qpn = peer.qp_num;
     peer_attributes.psn = peer.psn;
     peer_attributes.gid_index = peer.gid_index;
@@ -282,10 +282,10 @@ Result<int> QueuePair::query_status() {
     return status;
 }
 
-Result<std::vector<nds_ra_cqe_error>> QueuePair::query_cqe_errors() {
+Result<std::vector<NdsRaCqeError>> QueuePair::query_cqe_errors() {
     if (!created() || endpoint_->api_.ra_rdev_get_cqe_error_list == nullptr)
         return unexpected(ErrorCode::kInvalidArgument, "CQE-error query requires a created QP");
-    std::vector<nds_ra_cqe_error> errors(NDS_RA_ERROR_CAPACITY);
+    std::vector<NdsRaCqeError> errors(NDS_RA_ERROR_CAPACITY);
     unsigned int count = static_cast<unsigned int>(errors.size());
     const int result = endpoint_->api_.ra_rdev_get_cqe_error_list(endpoint_->rdev_handle_, errors.data(), &count);
     if (result != 0 || count > errors.size())
@@ -302,10 +302,10 @@ Result<void> QueuePair::set_device_wr_id_storage(std::uint64_t send_address, std
     return {};
 }
 
-Result<nds_device_transport> QueuePair::make_device_transport() const {
+Result<NdsDeviceTransport> QueuePair::make_device_transport() const {
     if (ai_qp_info_.ai_qp_address == 0U || send_wr_ids_ == 0U || receive_wr_ids_ == 0U)
         return unexpected(ErrorCode::kInvalidArgument, "device transport requires an AI QP and WR-ID storage");
-    const auto *source = reinterpret_cast<const nds_ra_ai_data_plane_info *>(ai_qp_info_.data_plane_info);
+    const auto *source = reinterpret_cast<const NdsRaAiDataPlaneInfo *>(ai_qp_info_.data_plane_info);
     if (source->send_wq.buffer_address == 0U || source->receive_wq.buffer_address == 0U)
         return unexpected(ErrorCode::kRa, "HCCP did not return SQ/RQ dataplane information");
     if ((config_.control_flags & QueuePairCallerPollsCq) != 0U &&
@@ -313,8 +313,8 @@ Result<nds_device_transport> QueuePair::make_device_transport() const {
          ai_qp_info_.ai_scq_address == 0U || ai_qp_info_.ai_rcq_address == 0U)) {
         return unexpected(ErrorCode::kRa, "HCCP did not return caller-owned CQ dataplane information");
     }
-    const auto copy_wq = [](const nds_ra_ai_data_plane_wq &input, std::uint64_t wr_ids, bool send) {
-        nds_device_work_queue output{};
+    const auto copy_wq = [](const NdsRaAiDataPlaneWq &input, std::uint64_t wr_ids, bool send) {
+        NdsDeviceWorkQueue output{};
         output.number = input.wqn;
         output.depth = input.depth;
         output.entry_size = input.wqebb_size;
@@ -326,8 +326,8 @@ Result<nds_device_transport> QueuePair::make_device_transport() const {
         output.doorbell_address = send ? input.doorbell_register_address : input.software_doorbell_address;
         return output;
     };
-    const auto copy_cq = [](const nds_ra_ai_data_plane_cq &input) {
-        nds_device_completion_queue output{};
+    const auto copy_cq = [](const NdsRaAiDataPlaneCq &input) {
+        NdsDeviceCompletionQueue output{};
         output.number = input.cqn;
         output.depth = input.depth;
         output.entry_size = input.cqe_size;
@@ -337,7 +337,7 @@ Result<nds_device_transport> QueuePair::make_device_transport() const {
         output.doorbell_address = input.software_doorbell_address;
         return output;
     };
-    nds_device_transport output{};
+    NdsDeviceTransport output{};
     output.abi_version = NDS_DEVICE_TRANSPORT_ABI_VERSION;
     output.size = sizeof(output);
     output.control_qp.abi_version = NDS_DEVICE_QP_ABI_VERSION;
@@ -378,7 +378,7 @@ bool QueuePair::connected() const noexcept {
     return connected_;
 }
 
-const nds_ra_qp_attr &QueuePair::local_attributes() const noexcept {
+const NdsRaQpAttr &QueuePair::local_attributes() const noexcept {
     return local_attributes_;
 }
 
@@ -386,7 +386,7 @@ NpuExecutionMode QueuePair::execution_mode() const noexcept {
     return execution_;
 }
 
-nds_ra_api *QueuePair::ra_api() const noexcept {
+NdsRaApi *QueuePair::ra_api() const noexcept {
     return endpoint_ == nullptr ? nullptr : &endpoint_->api_;
 }
 
@@ -394,7 +394,7 @@ void *QueuePair::handle() const noexcept {
     return handle_;
 }
 
-nds_ra_sge *QueuePair::posted_send_sge() noexcept {
+NdsRaSge *QueuePair::posted_send_sge() noexcept {
     return &posted_send_sge_;
 }
 
@@ -423,7 +423,7 @@ Result<void> Endpoint::open(Runtime *runtime, const EndpointConfig &config) {
         reset();
         return unexpected(ErrorCode::kRa, message);
     }
-    nds_ra_init_config init_config{};
+    NdsRaInitConfig init_config{};
     init_config.phy_id = physical_device_id_;
     init_config.nic_position = NDS_RA_NETWORK_OFFLINE;
     init_config.hdc_type = config_.hdc_type;
@@ -435,7 +435,7 @@ Result<void> Endpoint::open(Runtime *runtime, const EndpointConfig &config) {
     }
     ra_initialized_ = true;
 
-    nds_ra_rdev rdev{};
+    NdsRaRdev rdev{};
     rdev.phy_id = physical_device_id_;
     rdev.family = AF_INET;
     const auto ipv4 = hccn_ipv4(physical_device_id_);
@@ -447,7 +447,7 @@ Result<void> Endpoint::open(Runtime *runtime, const EndpointConfig &config) {
         reset();
         return unexpected(ErrorCode::kInvalidArgument, "endpoint local IPv4 address is invalid");
     }
-    nds_ra_rdev_init_info rdev_init{};
+    NdsRaRdevInitInfo rdev_init{};
     rdev_init.mode = NDS_RA_NETWORK_OFFLINE;
     rdev_init.notify_type = NDS_RA_NOTIFY;
     rdev_init.disabled_lite_thread = false;
@@ -500,7 +500,7 @@ void Endpoint::reset() noexcept {
         (void)api_.ra_rdev_deinit(rdev_handle_, NDS_RA_NOTIFY);
     rdev_handle_ = nullptr;
     if (ra_initialized_) {
-        nds_ra_init_config init_config{};
+        NdsRaInitConfig init_config{};
         init_config.phy_id = physical_device_id_;
         init_config.nic_position = NDS_RA_NETWORK_OFFLINE;
         init_config.hdc_type = config_.hdc_type;

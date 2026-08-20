@@ -1,4 +1,4 @@
-#include "nds/connection.hh"
+#include "nds/tcp_bootstrap.hh"
 
 #include <sys/socket.h>
 #include <unistd.h>
@@ -10,8 +10,8 @@
 
 namespace {
 
-nds_qp_info make_endpoint(std::uint32_t qpn, std::uint32_t psn) {
-    nds_qp_info endpoint{};
+nds::transport::QpInfo make_endpoint(std::uint32_t qpn, std::uint32_t psn) {
+    nds::transport::QpInfo endpoint{};
     endpoint.qp_num = qpn;
     endpoint.psn = psn;
     endpoint.port_num = 1;
@@ -33,7 +33,7 @@ TEST(TransportExchangeIntegrationTest, ExchangesEndpointRecordsOverSocketPair) {
     ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, sockets), 0);
     const auto client = make_endpoint(0x1101, 0x2202);
     const auto server = make_endpoint(0x3303, 0x4404);
-    std::future<nds::Result<nds_qp_info>> server_result = std::async(
+    std::future<nds::Result<nds::transport::QpInfo>> server_result = std::async(
         std::launch::async, [fd = sockets[1], server] { return nds::TcpPeerExchange{fd}.exchange_as_server(server); });
     const auto client_result = nds::TcpPeerExchange{sockets[0]}.exchange_as_client(client);
     const auto remote_result = server_result.get();

@@ -1,7 +1,7 @@
 # NPU Direct Storage (NDS)
 
 NDS is a storage interoperability project for one Ascend NPU RNIC client and
-one CPU-side RoCE server. The NPU submits storage requests; the CPU owns the
+one CPU-side RoCE server. The NPU submits storage commands; the CPU owns the
 memory-backed namespace and data movement through `libibverbs`.
 
 ## Basis
@@ -21,7 +21,7 @@ NDS supports three execution modes across three API layers:
 |---|---|---|---|---|
 | Verbs | `PostSend`, `PostRecv`, `PollCq` | ✓ | ✓ | ✓ |
 | Transport | `RdmaSend`, `RdmaRecv`, `RdmaRead`, `RdmaWrite` | ✓ | ✓ | ✓ |
-| Storage | `StorageRead`, `StorageWrite`, PyTorch | ✓ | ✓ | ✓ |
+| Storage | `StorageRead`, `StorageWrite`, batch Read/Write, PyTorch | ✓ | ✓ | ✓ |
 
 `ra` is the NPU-attached host CANN RA path; `aiv` is an NPU vector-core
 operator; `aicpu` is a standard-CP1 CPU-kernel operator.
