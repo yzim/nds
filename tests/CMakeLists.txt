@@ -13,6 +13,8 @@ nds_add_unit_test(nds_transport_mtu_test transport_mtu_test.cc)
 target_link_libraries(nds_transport_mtu_test PRIVATE nds_transport)
 nds_add_unit_test(nds_endpoint_test endpoint_test.cc)
 target_link_libraries(nds_endpoint_test PRIVATE nds_client_endpoint nds_ra)
+nds_add_unit_test(nds_runtime_test runtime_test.cc)
+target_link_libraries(nds_runtime_test PRIVATE nds_client_runtime)
 nds_add_unit_test(nds_device_hns_codec_test device_hns_codec_test.cc)
 target_include_directories(nds_device_hns_codec_test PRIVATE
     ${PROJECT_SOURCE_DIR}/src/client/include)

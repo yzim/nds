@@ -19,8 +19,13 @@ struct EndpointTestAccess {
 
     static void make_host_buffer(MemoryBuffer *buffer, std::size_t size) {
         buffer->data_ = new std::byte[size];
+        buffer->rdma_data_ = buffer->data_;
         buffer->size_ = size;
         buffer->location_ = MemoryLocation::Host;
+    }
+
+    static void set_rdma_address(MemoryBuffer *buffer, void *address) {
+        buffer->rdma_data_ = address;
     }
 };
 
@@ -292,6 +297,22 @@ TEST(EndpointTest, MemoryRegionOwnsRegistration) {
     }
     EXPECT_EQ(fake.register_calls, 1);
     EXPECT_EQ(fake.deregister_calls, 1);
+}
+
+TEST(EndpointTest, MemoryRegionRegistersMappedHostAddress) {
+    FakeRa fake{};
+    fake_state = &fake;
+    nds::client::Endpoint endpoint;
+    nds::client::EndpointTestAccess::adopt(&endpoint, make_api(), &fake_rdev);
+    nds::client::MemoryBuffer buffer;
+    nds::client::EndpointTestAccess::make_host_buffer(&buffer, 64U);
+    void *const mapped_address = reinterpret_cast<void *>(static_cast<std::uintptr_t>(0x10000U));
+    nds::client::EndpointTestAccess::set_rdma_address(&buffer, mapped_address);
+
+    auto registered = endpoint.reg_mr(buffer, nds::client::MemoryAccess::DirectNpu);
+    ASSERT_TRUE(registered);
+    EXPECT_EQ(fake.mr.address, mapped_address);
+    EXPECT_EQ(registered->address(), reinterpret_cast<std::uint64_t>(mapped_address));
 }
 
 TEST(EndpointTest, RaVerbsUseQueuePairExecutionView) {

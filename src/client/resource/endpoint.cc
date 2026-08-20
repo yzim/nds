@@ -468,10 +468,10 @@ Result<QueuePair> Endpoint::create_qp(const QueuePairConfig &config, NpuExecutio
 }
 
 Result<MemoryRegion> Endpoint::reg_mr(const MemoryBuffer &buffer, MemoryAccess access) {
-    if (!opened() || buffer.data() == nullptr || buffer.size() == 0U || api_.ra_register_mr == nullptr)
+    if (!opened() || buffer.rdma_data() == nullptr || buffer.size() == 0U || api_.ra_register_mr == nullptr)
         return unexpected(ErrorCode::kInvalidArgument, "MR registration requires an open endpoint and buffer");
     MemoryRegion region;
-    region.info_.address = buffer.data();
+    region.info_.address = buffer.rdma_data();
     region.info_.size = buffer.size();
     region.info_.access = static_cast<int>(access);
     const int result = api_.ra_register_mr(rdev_handle_, &region.info_, &region.handle_);

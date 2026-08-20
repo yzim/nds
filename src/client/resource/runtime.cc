@@ -1,10 +1,23 @@
 #include "runtime.hh"
 
 #include <cstring>
+#include <cstdlib>
+#include <limits>
 #include <new>
 #include <utility>
 
 namespace nds::client {
+namespace {
+
+constexpr std::size_t kHostPageSize = 4096U;
+
+Result<std::size_t> page_rounded_size(std::size_t size) {
+    if (size > std::numeric_limits<std::size_t>::max() - (kHostPageSize - 1U))
+        return unexpected(ErrorCode::kInvalidArgument, "host-pinned allocation size is too large");
+    return (size + kHostPageSize - 1U) & ~(kHostPageSize - 1U);
+}
+
+}  // namespace
 
 Runtime::~Runtime() {
     reset();
@@ -114,6 +127,40 @@ Result<void> Runtime::free_device_memory(void *device_ptr) {
     return {};
 }
 
+Result<HostPinnedAllocation> Runtime::allocate_host_pinned_memory(std::size_t size) {
+    if (!initialized_ || size == 0U)
+        return unexpected(ErrorCode::kInvalidArgument,
+                          "host-pinned allocation requires an initialized runtime and nonzero size");
+    if (acl_.host_register == nullptr || acl_.host_unregister == nullptr) {
+        return unexpected(ErrorCode::kUnsupported, "loaded AscendCL does not support aclrtHostRegister");
+    }
+    const auto rounded_size = page_rounded_size(size);
+    if (!rounded_size)
+        return unexpected(rounded_size.error());
+    void *host_ptr = nullptr;
+    if (posix_memalign(&host_ptr, kHostPageSize, *rounded_size) != 0 || host_ptr == nullptr)
+        return unexpected(ErrorCode::kRuntime, "host memory allocation failed");
+    void *device_ptr = nullptr;
+    const int result = acl_.host_register(host_ptr, *rounded_size, NDS_ACL_HOST_REGISTER_MAPPED, &device_ptr);
+    if (result != 0 || device_ptr == nullptr) {
+        std::free(host_ptr);
+        return unexpected(ErrorCode::kRuntime, "aclrtHostRegister failed: " + std::to_string(result));
+    }
+    return HostPinnedAllocation{host_ptr, device_ptr};
+}
+
+Result<void> Runtime::free_host_pinned_memory(void *host_ptr) {
+    if (!initialized_ || host_ptr == nullptr || acl_.host_unregister == nullptr) {
+        return unexpected(ErrorCode::kInvalidArgument,
+                          "host-pinned free requires an initialized runtime with aclrtHostUnregister support");
+    }
+    const int result = acl_.host_unregister(host_ptr);
+    if (result != 0)
+        return unexpected(ErrorCode::kRuntime, "aclrtHostUnregister failed: " + std::to_string(result));
+    std::free(host_ptr);
+    return {};
+}
+
 Result<void> Runtime::copy_host_to_device(void *device_ptr, const void *host_ptr, std::size_t size) {
     const int result =
         (!initialized_ || device_ptr == nullptr || host_ptr == nullptr || size == 0U || acl_.memcpy == nullptr)
@@ -151,6 +198,7 @@ MemoryBuffer::~MemoryBuffer() {
 MemoryBuffer::MemoryBuffer(MemoryBuffer &&other) noexcept
     : runtime_(std::exchange(other.runtime_, nullptr)),
       data_(std::exchange(other.data_, nullptr)),
+      rdma_data_(std::exchange(other.rdma_data_, nullptr)),
       size_(std::exchange(other.size_, 0U)),
       location_(other.location_) {}
 
@@ -159,6 +207,7 @@ MemoryBuffer &MemoryBuffer::operator=(MemoryBuffer &&other) noexcept {
         reset();
         runtime_ = std::exchange(other.runtime_, nullptr);
         data_ = std::exchange(other.data_, nullptr);
+        rdma_data_ = std::exchange(other.rdma_data_, nullptr);
         size_ = std::exchange(other.size_, 0U);
         location_ = other.location_;
     }
@@ -169,17 +218,24 @@ void MemoryBuffer::reset() noexcept {
     if (data_ != nullptr) {
         if (location_ == MemoryLocation::Device && runtime_ != nullptr)
             (void)runtime_->free_device_memory(data_);
+        if (location_ == MemoryLocation::HostPinned && runtime_ != nullptr)
+            (void)runtime_->free_host_pinned_memory(data_);
         if (location_ == MemoryLocation::Host)
             delete[] static_cast<std::byte *>(data_);
     }
     runtime_ = nullptr;
     data_ = nullptr;
+    rdma_data_ = nullptr;
     size_ = 0U;
     location_ = MemoryLocation::Device;
 }
 
 void *MemoryBuffer::data() const noexcept {
     return data_;
+}
+
+void *MemoryBuffer::rdma_data() const noexcept {
+    return rdma_data_;
 }
 
 std::size_t MemoryBuffer::size() const noexcept {
@@ -203,11 +259,20 @@ Result<MemoryBuffer> Runtime::allocate(std::size_t size, MemoryLocation location
         if (!allocated)
             return unexpected(allocated.error());
         buffer.data_ = *allocated;
+        buffer.rdma_data_ = *allocated;
+        buffer.runtime_ = this;
+    } else if (location == MemoryLocation::HostPinned) {
+        auto allocated = allocate_host_pinned_memory(size);
+        if (!allocated)
+            return unexpected(allocated.error());
+        buffer.data_ = allocated->host_address;
+        buffer.rdma_data_ = allocated->device_address;
         buffer.runtime_ = this;
     } else {
         buffer.data_ = new (std::nothrow) std::byte[size];
         if (buffer.data_ == nullptr)
             return unexpected(ErrorCode::kRuntime, "host memory allocation failed");
+        buffer.rdma_data_ = buffer.data_;
     }
     buffer.size_ = size;
     buffer.location_ = location;
@@ -216,10 +281,10 @@ Result<MemoryBuffer> Runtime::allocate(std::size_t size, MemoryLocation location
 
 Result<void> Runtime::copy_to(MemoryBuffer *buffer, const void *source, std::size_t size) {
     if (!initialized_ || buffer == nullptr || buffer->data_ == nullptr || source == nullptr || size > buffer->size_ ||
-        (buffer->location_ == MemoryLocation::Device && buffer->runtime_ != this)) {
+        (buffer->location_ != MemoryLocation::Host && buffer->runtime_ != this)) {
         return unexpected(ErrorCode::kInvalidArgument, "memory copy requires a runtime buffer and valid source");
     }
-    if (buffer->location_ == MemoryLocation::Host) {
+    if (buffer->location_ == MemoryLocation::Host || buffer->location_ == MemoryLocation::HostPinned) {
         std::memcpy(buffer->data_, source, size);
         return {};
     }
@@ -228,10 +293,10 @@ Result<void> Runtime::copy_to(MemoryBuffer *buffer, const void *source, std::siz
 
 Result<void> Runtime::copy_from(void *destination, const MemoryBuffer &buffer, std::size_t size) {
     if (!initialized_ || destination == nullptr || buffer.data_ == nullptr || size > buffer.size_ ||
-        (buffer.location_ == MemoryLocation::Device && buffer.runtime_ != this)) {
+        (buffer.location_ != MemoryLocation::Host && buffer.runtime_ != this)) {
         return unexpected(ErrorCode::kInvalidArgument, "memory copy requires a runtime buffer and valid destination");
     }
-    if (buffer.location_ == MemoryLocation::Host) {
+    if (buffer.location_ == MemoryLocation::Host || buffer.location_ == MemoryLocation::HostPinned) {
         std::memcpy(destination, buffer.data_, size);
         return {};
     }

@@ -12,7 +12,7 @@ current architecture and protocol contract.
   move data, and write the terminal completion record.
 - A storage Write makes the CPU RDMA Read NPU-advertised data into its
   memory-backed namespace; a storage Read makes the CPU RDMA Write namespace
-  data back to NPU memory.
+  data back to NPU memory or a page-locked host client buffer.
 - TCP is bootstrap-only: it exchanges endpoint metadata, namespace capacity,
   and the session-static completion-record descriptor.
 - RA, AIV, and standard-CP1 AICPU implement the NPU command post. The
@@ -27,6 +27,8 @@ current architecture and protocol contract.
   and completion records, and serial Read/Write semantics.
 - Implemented CPU-initiated RDMA Read/Write data movement and terminal
   completion writes.
+- Added a page-locked host client buffer for direct NPU RoCE data transfer
+  through an RA-registered device-visible mapping.
 - Implemented RA, AIV, and AICPU command paths, including device-callable
   transport and storage operations for AIV and AICPU.
 - Added native storage, paired lower-layer examples, persistent Torch storage,

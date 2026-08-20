@@ -35,6 +35,14 @@ static int nds_linked_acl_free_device(void *device_ptr) {
     return (int)aclrtFree(device_ptr);
 }
 
+static int nds_linked_acl_host_register(void *host_ptr, uint64_t size, int type, void **device_ptr) {
+    return (int)aclrtHostRegister(host_ptr, size, (aclrtHostRegisterType)type, device_ptr);
+}
+
+static int nds_linked_acl_host_unregister(void *host_ptr) {
+    return (int)aclrtHostUnregister(host_ptr);
+}
+
 static int nds_linked_acl_memcpy(void *dst, size_t dst_max, const void *src, size_t count, int kind) {
     return (int)aclrtMemcpy(dst, dst_max, src, count, (aclrtMemcpyKind)kind);
 }
@@ -138,6 +146,8 @@ int nds_acl_open(nds_acl_api *api, const char *library_path) {
     api->get_phy_dev_id = nds_linked_acl_get_phy_dev_id;
     api->malloc_device = nds_linked_acl_malloc_device;
     api->free_device = nds_linked_acl_free_device;
+    api->host_register = nds_linked_acl_host_register;
+    api->host_unregister = nds_linked_acl_host_unregister;
     api->memcpy = nds_linked_acl_memcpy;
     api->memset_device = nds_linked_acl_memset_device;
     api->binary_load_from_file = nds_linked_acl_binary_load_from_file;
@@ -185,6 +195,13 @@ int nds_acl_open(nds_acl_api *api, const char *library_path) {
     NDS_ACL_RESOLVE(get_phy_dev_id, "aclrtGetPhyDevIdByLogicDevId");
     NDS_ACL_RESOLVE(malloc_device, "aclrtMalloc");
     NDS_ACL_RESOLVE(free_device, "aclrtFree");
+    /* Page-locked host memory is optional; its absence must not block device-only clients. */
+    (void)nds_acl_resolve(api, "aclrtHostRegister", &api->host_register, sizeof(api->host_register));
+    if (api->host_register == nullptr)
+        api->error[0] = '\0';
+    (void)nds_acl_resolve(api, "aclrtHostUnregister", &api->host_unregister, sizeof(api->host_unregister));
+    if (api->host_unregister == nullptr)
+        api->error[0] = '\0';
     NDS_ACL_RESOLVE(memcpy, "aclrtMemcpy");
     NDS_ACL_RESOLVE(memset_device, "aclrtMemset");
     NDS_ACL_RESOLVE(binary_load_from_file, "aclrtBinaryLoadFromFile");

@@ -78,7 +78,14 @@ diagnostic because the CANN 9.0.0 `TypicalQp` ABI has no NPU path-MTU field.
 The CPU registers its command Receive record, namespace, and completion source
 buffer. The NPU independently registers application, command, and completion
 allocations. An application MR permits CPU remote read and write; commands
-carry its address, rkey, length, and access direction.
+carry its address, rkey, length, and access direction. Client application data
+may be allocated in NPU memory or as page-locked host memory. The latter uses
+AscendCL `aclrtHostRegister`/`aclrtHostUnregister` around an NDS-owned host
+allocation. NDS retains the host address for application copies and registers
+the returned device-visible mapping through RA with `DirectNpu`; both remain
+alive until the storage completion record is observed and its MR is
+deregistered. `aclrtMallocHost` is not suitable because Ascend documents that
+its result cannot be used in the device.
 
 Resources remain valid until the NPU consumes its signaled send CQE, the CPU
 finishes data movement and terminal completion Write, and the NPU observes the

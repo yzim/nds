@@ -13,9 +13,16 @@ namespace nds::client {
 
 class Runtime;
 struct EndpointTestAccess;
+struct RuntimeTestAccess;
+
+struct HostPinnedAllocation {
+    void *host_address{};
+    void *device_address{};
+};
 
 enum class MemoryLocation {
     Host,
+    HostPinned,
     Device,
 };
 
@@ -29,16 +36,19 @@ public:
     MemoryBuffer &operator=(MemoryBuffer &&other) noexcept;
 
     void *data() const noexcept;
+    void *rdma_data() const noexcept;
     std::size_t size() const noexcept;
     MemoryLocation location() const noexcept;
 
 private:
     friend class Runtime;
     friend struct EndpointTestAccess;
+    friend struct RuntimeTestAccess;
     void reset() noexcept;
 
     Runtime *runtime_{};
     void *data_{};
+    void *rdma_data_{};
     std::size_t size_{};
     MemoryLocation location_{MemoryLocation::Device};
 };
@@ -71,12 +81,15 @@ public:
 
     Result<void *> allocate_device_memory(std::size_t size);
     Result<void> free_device_memory(void *device_ptr);
+    Result<HostPinnedAllocation> allocate_host_pinned_memory(std::size_t size);
+    Result<void> free_host_pinned_memory(void *host_ptr);
     Result<void> copy_host_to_device(void *device_ptr, const void *host_ptr, std::size_t size);
     Result<void> copy_device_to_host(void *host_ptr, const void *device_ptr, std::size_t size);
     nds_acl_api &acl_api() noexcept;
     nds_runtime_api &runtime_api() noexcept;
 
 private:
+    friend struct RuntimeTestAccess;
     Result<void> initialize(const RuntimeConfig &config);
     void reset() noexcept;
 

@@ -20,6 +20,8 @@ typedef int (*nds_acl_rt_set_device_fn)(int32_t device_id);
 typedef int (*nds_acl_rt_get_phy_dev_id_fn)(int32_t logic_device_id, int32_t *physical_device_id);
 typedef int (*nds_acl_rt_malloc_fn)(void **device_ptr, size_t size, int policy);
 typedef int (*nds_acl_rt_free_fn)(void *device_ptr);
+typedef int (*nds_acl_rt_host_register_fn)(void *host_ptr, uint64_t size, int type, void **device_ptr);
+typedef int (*nds_acl_rt_host_unregister_fn)(void *host_ptr);
 typedef int (*nds_acl_rt_memcpy_fn)(void *dst, size_t dst_max, const void *src, size_t count, int kind);
 typedef int (*nds_acl_rt_memset_fn)(void *device_ptr, size_t max_count, int32_t value, size_t count);
 typedef void *nds_acl_bin_handle;
@@ -114,6 +116,7 @@ enum {
     NDS_ACL_STREAM_FAST_LAUNCH = 0x1,
     NDS_ACL_STREAM_FAST_SYNC = 0x2,
     NDS_ACL_ENGINE_TYPE_AIV = 1,
+    NDS_ACL_HOST_REGISTER_MAPPED = 0,
 };
 
 enum { NDS_ACL_ERROR_CAPACITY = 512 };
@@ -126,6 +129,9 @@ typedef struct nds_acl_api {
     nds_acl_rt_get_phy_dev_id_fn get_phy_dev_id;
     nds_acl_rt_malloc_fn malloc_device;
     nds_acl_rt_free_fn free_device;
+    /* Optional CANN page-locked host-memory API. */
+    nds_acl_rt_host_register_fn host_register;
+    nds_acl_rt_host_unregister_fn host_unregister;
     nds_acl_rt_memcpy_fn memcpy;
     nds_acl_rt_memset_fn memset_device;
     nds_acl_rt_binary_load_from_file_fn binary_load_from_file;
