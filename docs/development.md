@@ -33,7 +33,7 @@ Formatting is pinned to clang-format 18 through `pre-commit`.
 ```sh
 pre-commit install
 scripts/format.sh
-scripts/check-format.sh
+scripts/format.sh --check
 ```
 
 The default target build runs unit and non-hardware integration tests only:

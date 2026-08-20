@@ -20,7 +20,7 @@ jobs:
       - name: Install pre-commit
         run: python -m pip install pre-commit==4.2.0
       - name: Check formatting
-        run: pre-commit run clang-format --all-files --show-diff-on-failure
+        run: scripts/format.sh --check
 
   unit-and-integration:
     name: unit-and-integration (${{ matrix.build_type }})
