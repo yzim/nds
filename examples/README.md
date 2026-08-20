@@ -22,5 +22,5 @@ lives in `apps/` as the native `nds_client`/`nds_server` pair and the
 `nds_torch.py` frontend. The reusable Torch extension remains in `src/torch`.
 
 Keep future lower-layer behavior in the matching pair and update its E2E runner
-alongside the executable. See [testing](../docs/testing.md) for the
+alongside the executable. See [development](../docs/development.md) for the
 hardware-validation rules.

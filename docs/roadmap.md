@@ -49,7 +49,7 @@ execution-specific work-request implementations remain under
 The server keeps its protocol, transport, and verbs implementation. Shared
 QP identity and TCP bootstrap live in `src/common/connection.*`, and
 shared storage records live in `src/common/protocol.*`.
-See [architecture](architecture.md) for concrete ownership rules.
+See [design](design.md) for concrete ownership rules.
 
 `src/include/nds/` is an internal shared-header boundary. Its `nds/`
 prefix prevents generic names such as `protocol.h` and `connection.h` from
@@ -126,17 +126,23 @@ HCCP-managed AI-QP CQ is an NDS completion API.
 - [x] Implement and validate the common storage protocol contract with RA
   first.
 - [x] Validate the host StorageClient with AIV and AICPU command-Send RMA paths.
-- [ ] Implement device-callable AIV and AICPU Transport APIs.
+- [x] Implement device-callable AIV and AICPU Transport APIs.
   The initial API uses one QP. A later multi-QP transport will reserve one
   control QP and select data QPs round-robin in device code. Define shared
   scheduling and per-QP submission coordination when concurrent device
   transport users are introduced; concurrency is out of scope for the
   initial design.
 - [x] Add device-callable AIV and AICPU storage Read and Write operators.
-- [ ] Switch the host validation executable to launch those storage operators.
+- [x] Switch the host validation executable to launch those storage operators.
 - [x] Validate a deterministic storage Write with RA, AIV, and AICPU.
 - [x] Validate an RA Read of an untouched range.
-- [ ] Validate an AIV and AICPU Read of an untouched range.
+- [x] Validate an AIV and AICPU Read of an untouched range.
+- [ ] Consolidate the CANN/driver loader implementation behind the smallest
+  practical NDS runtime boundary. Keep required symbols fail-closed and ABI
+  structs private, but remove loader/module duplication introduced while
+  bringing up RA, AscendCL, runtime, and DSMI discovery. This is a source
+  organization and ownership refactor; it must not widen the public NDS API
+  or introduce direct vendor-library linkage.
 - [x] Add a multi-command application workflow that writes a deterministic
   payload and reads it back in the same session.
 - [ ] Add an optional two-sided completion mode: NPU pre-posts Receive WRs and

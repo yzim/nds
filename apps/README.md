@@ -21,5 +21,5 @@ has no mode that reinterprets it as a generic receive probe.
 
 All builds and hardware runs must occur only on the approved aarch64 CANN
 target. See the repository [README](../README.md),
-[architecture guide](../docs/architecture.md), and
-[testing guide](../docs/testing.md).
+[design guide](../docs/design.md), and
+[development guide](../docs/development.md).

@@ -14,11 +14,9 @@ The endpoint roles are fixed:
   second NPU.
 
 Start with [README.md](README.md) for the runnable baseline. Technical choices
-belong in `docs/`: [HCCP QP, MR, and runtime ABI](docs/hccp-resources.md),
-[execution modes](docs/npu-backends.md),
-[architecture](docs/architecture.md), [testing](docs/testing.md), and the
-[protocol roadmap](docs/roadmap.md). Source ownership and dependency direction
-are defined in [architecture](docs/architecture.md).
+belong in [design](docs/design.md), [development](docs/development.md),
+[references](docs/references.md), and the [protocol roadmap](docs/roadmap.md).
+Source ownership and dependency direction are defined in [design](docs/design.md).
 
 ## Non-negotiable rules
 
@@ -62,7 +60,7 @@ are defined in [architecture](docs/architecture.md).
   runtime. Keep QPs, MRs, and NPU allocations alive until host CQ completion
   plus the current CPU test-harness check for host RA, or until that check for
   AI-QP modes. Do not describe the CPU check as a general completion API.
-- Follow [C++ code style](docs/code-style.md) for all C++ API, error,
+- Follow [development conventions](docs/development.md) for all C++ API, error,
   ownership, formatting, logging, and CLI conventions. Those rules are
   mandatory. C wire codecs return typed result enums; vendor loader structs may
   retain only their embedded ABI error fields internally and must translate
@@ -78,5 +76,5 @@ network configuration system and verify connectivity in both directions.
 
 Do not represent a package build, stream synchronization, provider resolution,
 or HCCP internal AI-QP CQ handling as an NDS command completion. Completion
-ownership is mode-specific and documented in `docs/npu-backends.md`. Keep claims of
+ownership is mode-specific and documented in `docs/design.md`. Keep claims of
 hardware validation tied to recorded, bounded target experiments.
