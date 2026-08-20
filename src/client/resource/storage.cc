@@ -4,9 +4,11 @@
 #include "aiv/host/launcher.hh"
 #include "ra/ra.hh"
 
+#include <chrono>
 #include <cstddef>
 #include <limits>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -114,6 +116,64 @@ Result<void> submit_device_storage(Runtime *runtime, Transport *transport, const
     return {};
 }
 
+Result<NdsDeviceOperationResult> wait_device_storage(Runtime *runtime, Transport *transport,
+                                                      const MemoryRegion &command_region,
+                                                      const MemoryRegion &completion, std::uint64_t capacity,
+                                                      std::uint64_t command_id, std::uint64_t expected_bytes,
+                                                      std::int32_t timeout_ms) {
+    const auto device_transport = transport->qp()->make_device_transport();
+    if (!device_transport)
+        return unexpected(device_transport.error());
+    NdsDeviceStorageWaitArgs args{};
+    args.abi_version = NDS_DEVICE_STORAGE_ABI_VERSION;
+    args.size = sizeof(args);
+    args.context.abi_version = NDS_DEVICE_STORAGE_ABI_VERSION;
+    args.context.size = sizeof(args.context);
+    args.context.transport = *device_transport;
+    args.context.command_buffer = {command_region.address(), static_cast<std::uint32_t>(command_region.length()),
+                                   command_region.local_key()};
+    args.context.completion = {completion.address(), static_cast<std::uint32_t>(completion.length()),
+                               completion.local_key()};
+    args.context.capacity = capacity;
+    args.command_id = command_id;
+    args.expected_bytes = expected_bytes;
+
+    DeviceAllocation result(runtime);
+    if (const auto allocated = result.allocate(sizeof(NdsDeviceOperationResult)); !allocated)
+        return unexpected(allocated.error());
+    const NdsDeviceOperationResult pending{NDS_DEVICE_OPERATION_INVALID_ARGUMENT, NDS_DEVICE_OPERATION_PATH_NONE, 0,
+                                           0U};
+    if (const auto copied = runtime->copy_host_to_device(result.get(), &pending, sizeof(pending)); !copied)
+        return unexpected(copied.error());
+    args.operation_result_address = reinterpret_cast<std::uint64_t>(result.get());
+
+    if (transport->execution().mode == NpuExecutionMode::Aicpu) {
+        AicpuEntrypointLauncher launcher;
+        if (const auto loaded = launcher.load(&runtime->acl_api(), transport->execution().aicpu_kernel_config); !loaded)
+            return unexpected(loaded.error());
+        if (const auto launched = launcher.launch_storage_wait_and_wait(&args, timeout_ms); !launched)
+            return unexpected(launched.error());
+    } else {
+        AivEntrypointLauncher launcher;
+        if (const auto loaded = launcher.load(&runtime->acl_api(), transport->execution().aiv_kernel); !loaded)
+            return unexpected(loaded.error());
+        DeviceAllocation device_args(runtime);
+        if (const auto allocated = device_args.allocate(sizeof(args)); !allocated)
+            return unexpected(allocated.error());
+        if (const auto copied = runtime->copy_host_to_device(device_args.get(), &args, sizeof(args)); !copied)
+            return unexpected(copied.error());
+        if (const auto launched = launcher.launch_storage_wait_and_wait(
+                reinterpret_cast<std::uint64_t>(device_args.get()), timeout_ms);
+            !launched)
+            return unexpected(launched.error());
+    }
+
+    NdsDeviceOperationResult completed{};
+    if (const auto copied = runtime->copy_device_to_host(&completed, result.get(), sizeof(completed)); !copied)
+        return unexpected(copied.error());
+    return completed;
+}
+
 }  // namespace
 
 Result<void> StorageClient::open(Runtime *runtime, Transport *transport) {
@@ -149,37 +209,59 @@ Result<void> StorageClient::open(Runtime *runtime, Transport *transport) {
     return {};
 }
 
-Result<void> StorageClient::read(std::uint64_t offset, MemoryBuffer *data, std::uint32_t length) {
-    if (!opened_)
-        return unexpected(ErrorCode::kInvalidArgument, "storage read requires an open client");
+Result<StorageCompletionHandle> StorageClient::read(std::uint64_t offset, MemoryBuffer *data, std::uint32_t length) {
+    if (const auto ready = begin_submission(); !ready)
+        return unexpected(ready.error());
     if (const auto valid = validate_io({offset, data, length}); !valid)
         return unexpected(valid.error());
     auto region = transport_->endpoint()->reg_mr(*data, MemoryAccess::DirectNpu);
     if (!region)
         return unexpected(region.error());
-    return execute_storage_read({allocate_command_id(), offset, length,
-                                 {region->address(), region->length(), region->remote_key()}});
+    const std::uint64_t command_id = allocate_command_id();
+    PendingRequest pending{};
+    pending.command_id = command_id;
+    pending.expected_bytes = length;
+    const StorageReadCommand command{command_id, offset, length,
+                                     {region->address(), region->length(), region->remote_key()}};
+    pending.data_regions.push_back(std::move(*region));
+    if (const auto submitted = execute_storage_read(command); !submitted)
+        return unexpected(submitted.error());
+    pending_ = std::move(pending);
+    return StorageCompletionHandle{command_id};
 }
 
-Result<void> StorageClient::write(std::uint64_t offset, MemoryBuffer *data, std::uint32_t length) {
-    if (!opened_)
-        return unexpected(ErrorCode::kInvalidArgument, "storage write requires an open client");
+Result<StorageCompletionHandle> StorageClient::write(std::uint64_t offset, MemoryBuffer *data, std::uint32_t length) {
+    if (const auto ready = begin_submission(); !ready)
+        return unexpected(ready.error());
     if (const auto valid = validate_io({offset, data, length}); !valid)
         return unexpected(valid.error());
     auto region = transport_->endpoint()->reg_mr(*data, MemoryAccess::DirectNpu);
     if (!region)
         return unexpected(region.error());
-    return execute_storage_write({allocate_command_id(), offset, length,
-                                  {region->address(), region->length(), region->remote_key()}});
+    const std::uint64_t command_id = allocate_command_id();
+    PendingRequest pending{};
+    pending.command_id = command_id;
+    pending.expected_bytes = length;
+    const StorageWriteCommand command{command_id, offset, length,
+                                      {region->address(), region->length(), region->remote_key()}};
+    pending.data_regions.push_back(std::move(*region));
+    if (const auto submitted = execute_storage_write(command); !submitted)
+        return unexpected(submitted.error());
+    pending_ = std::move(pending);
+    return StorageCompletionHandle{command_id};
 }
 
-Result<void> StorageClient::read_batch(std::span<const StorageIo> requests) {
-    if (!opened_ || requests.empty())
+Result<StorageCompletionHandle> StorageClient::read_batch(std::span<const StorageIo> requests) {
+    if (const auto ready = begin_submission(); !ready)
+        return unexpected(ready.error());
+    if (requests.empty())
         return unexpected(ErrorCode::kInvalidArgument, "storage batch read requires at least one request");
     if (requests.size() > kStorageMaxBatchEntries)
         return unexpected(ErrorCode::kInvalidArgument, "storage batch read exceeds the descriptor limit");
-    std::vector<MemoryRegion> regions;
-    regions.reserve(requests.size());
+    const std::uint64_t command_id = allocate_command_id();
+    PendingRequest pending{};
+    pending.command_id = command_id;
+    pending.data_regions.reserve(requests.size());
     std::uint64_t total_length{};
     for (const StorageIo &request : requests) {
         if (const auto valid = validate_io(request); !valid)
@@ -190,36 +272,47 @@ Result<void> StorageClient::read_batch(std::span<const StorageIo> requests) {
         auto region = transport_->endpoint()->reg_mr(*request.data, MemoryAccess::DirectNpu);
         if (!region)
             return unexpected(region.error());
-        regions.push_back(std::move(*region));
+        pending.data_regions.push_back(std::move(*region));
     }
     std::vector<uint8_t> bytes(requests.size() * kStorageBatchEntryBytes);
     for (std::size_t index = 0U; index < requests.size(); ++index) {
         const StorageBatchReadEntry entry{requests[index].offset, requests[index].length,
-                                          {regions[index].address(), regions[index].length(),
-                                           regions[index].remote_key()}};
+                                          {pending.data_regions[index].address(), pending.data_regions[index].length(),
+                                           pending.data_regions[index].remote_key()}};
         if (serialize_storage_batch_read_entry(entry, bytes.data() + index * kStorageBatchEntryBytes,
                                                kStorageBatchEntryBytes) != StorageSerdeResult::Ok)
             return unexpected(ErrorCode::kProtocol, "invalid storage batch-read entry");
     }
-    auto buffer = runtime_->allocate(bytes.size());
-    if (!buffer)
-        return unexpected(buffer.error());
-    if (const auto copied = runtime_->copy_to(&*buffer, bytes.data(), bytes.size()); !copied)
+    auto descriptor_buffer = runtime_->allocate(bytes.size());
+    if (!descriptor_buffer)
+        return unexpected(descriptor_buffer.error());
+    if (const auto copied = runtime_->copy_to(&*descriptor_buffer, bytes.data(), bytes.size()); !copied)
         return unexpected(copied.error());
-    auto region = transport_->endpoint()->reg_mr(*buffer, MemoryAccess::DirectNpu);
+    auto region = transport_->endpoint()->reg_mr(*descriptor_buffer, MemoryAccess::DirectNpu);
     if (!region)
         return unexpected(region.error());
-    return execute_storage_batch_read({allocate_command_id(), requests.size(), total_length,
-                                       {region->address(), region->length(), region->remote_key()}});
+    pending.expected_bytes = total_length;
+    const StorageBatchReadCommand command{command_id, requests.size(), total_length,
+                                          {region->address(), region->length(), region->remote_key()}};
+    pending.descriptor_buffer = std::move(*descriptor_buffer);
+    pending.descriptor_region = std::move(*region);
+    if (const auto submitted = execute_storage_batch_read(command); !submitted)
+        return unexpected(submitted.error());
+    pending_ = std::move(pending);
+    return StorageCompletionHandle{command_id};
 }
 
-Result<void> StorageClient::write_batch(std::span<const StorageIo> requests) {
-    if (!opened_ || requests.empty())
+Result<StorageCompletionHandle> StorageClient::write_batch(std::span<const StorageIo> requests) {
+    if (const auto ready = begin_submission(); !ready)
+        return unexpected(ready.error());
+    if (requests.empty())
         return unexpected(ErrorCode::kInvalidArgument, "storage batch write requires at least one request");
     if (requests.size() > kStorageMaxBatchEntries)
         return unexpected(ErrorCode::kInvalidArgument, "storage batch write exceeds the descriptor limit");
-    std::vector<MemoryRegion> regions;
-    regions.reserve(requests.size());
+    const std::uint64_t command_id = allocate_command_id();
+    PendingRequest pending{};
+    pending.command_id = command_id;
+    pending.data_regions.reserve(requests.size());
     std::uint64_t total_length{};
     for (const StorageIo &request : requests) {
         if (const auto valid = validate_io(request); !valid)
@@ -230,27 +323,34 @@ Result<void> StorageClient::write_batch(std::span<const StorageIo> requests) {
         auto region = transport_->endpoint()->reg_mr(*request.data, MemoryAccess::DirectNpu);
         if (!region)
             return unexpected(region.error());
-        regions.push_back(std::move(*region));
+        pending.data_regions.push_back(std::move(*region));
     }
     std::vector<uint8_t> bytes(requests.size() * kStorageBatchEntryBytes);
     for (std::size_t index = 0U; index < requests.size(); ++index) {
         const StorageBatchWriteEntry entry{requests[index].offset, requests[index].length,
-                                           {regions[index].address(), regions[index].length(),
-                                            regions[index].remote_key()}};
+                                           {pending.data_regions[index].address(), pending.data_regions[index].length(),
+                                            pending.data_regions[index].remote_key()}};
         if (serialize_storage_batch_write_entry(entry, bytes.data() + index * kStorageBatchEntryBytes,
                                                 kStorageBatchEntryBytes) != StorageSerdeResult::Ok)
             return unexpected(ErrorCode::kProtocol, "invalid storage batch-write entry");
     }
-    auto buffer = runtime_->allocate(bytes.size());
-    if (!buffer)
-        return unexpected(buffer.error());
-    if (const auto copied = runtime_->copy_to(&*buffer, bytes.data(), bytes.size()); !copied)
+    auto descriptor_buffer = runtime_->allocate(bytes.size());
+    if (!descriptor_buffer)
+        return unexpected(descriptor_buffer.error());
+    if (const auto copied = runtime_->copy_to(&*descriptor_buffer, bytes.data(), bytes.size()); !copied)
         return unexpected(copied.error());
-    auto region = transport_->endpoint()->reg_mr(*buffer, MemoryAccess::DirectNpu);
+    auto region = transport_->endpoint()->reg_mr(*descriptor_buffer, MemoryAccess::DirectNpu);
     if (!region)
         return unexpected(region.error());
-    return execute_storage_batch_write({allocate_command_id(), requests.size(), total_length,
-                                        {region->address(), region->length(), region->remote_key()}});
+    pending.expected_bytes = total_length;
+    const StorageBatchWriteCommand command{command_id, requests.size(), total_length,
+                                           {region->address(), region->length(), region->remote_key()}};
+    pending.descriptor_buffer = std::move(*descriptor_buffer);
+    pending.descriptor_region = std::move(*region);
+    if (const auto submitted = execute_storage_batch_write(command); !submitted)
+        return unexpected(submitted.error());
+    pending_ = std::move(pending);
+    return StorageCompletionHandle{command_id};
 }
 
 std::uint64_t StorageClient::capacity() const noexcept {
@@ -263,6 +363,62 @@ Result<void> StorageClient::validate_io(const StorageIo &request) const {
     if (request.offset > capacity_ || request.length > capacity_ - request.offset)
         return unexpected(ErrorCode::kProtocol, "requested storage range exceeds namespace capacity");
     return {};
+}
+
+Result<void> StorageClient::begin_submission() {
+    if (!opened_)
+        return unexpected(ErrorCode::kInvalidArgument, "storage submission requires an open client");
+    if (pending_.has_value())
+        return unexpected(ErrorCode::kInvalidArgument, "storage client already has one command in flight");
+    return {};
+}
+
+Result<void> StorageClient::wait(StorageCompletionHandle handle, std::uint32_t timeout_ms) {
+    if (!opened_ || !pending_.has_value() || handle.command_id == 0U || handle.command_id != pending_->command_id)
+        return unexpected(ErrorCode::kInvalidArgument, "storage wait requires the current completion handle");
+    if (timeout_ms == 0U || timeout_ms > static_cast<std::uint32_t>(std::numeric_limits<std::int32_t>::max()))
+        return unexpected(ErrorCode::kInvalidArgument, "storage wait requires a positive timeout");
+    if (transport_->execution().mode == NpuExecutionMode::Ra) {
+        const auto completion = observe_completion(handle.command_id, pending_->expected_bytes, timeout_ms);
+        if (!completion)
+            return unexpected(completion.error());
+        pending_.reset();
+        if (completion->status != StorageStatus::Success)
+            return unexpected(ErrorCode::kProtocol, "storage completion returned a failure status");
+        return {};
+    }
+    const auto completed = wait_device_storage(runtime_, transport_, command_region_, completion_region_, capacity_,
+                                                handle.command_id, pending_->expected_bytes,
+                                                static_cast<std::int32_t>(timeout_ms));
+    if (!completed)
+        return unexpected(completed.error());
+    if (completed->status == NDS_DEVICE_OPERATION_SUCCESS ||
+        (completed->reserved & NDS_DEVICE_OPERATION_TERMINAL) != 0U)
+        pending_.reset();
+    if (completed->status != NDS_DEVICE_OPERATION_SUCCESS)
+        return unexpected(ErrorCode::kProtocol, "device storage wait returned a failure status");
+    return {};
+}
+
+Result<StorageCompletion> StorageClient::observe_completion(std::uint64_t command_id, std::uint64_t expected_bytes,
+                                                             std::uint32_t timeout_ms) {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+    while (std::chrono::steady_clock::now() < deadline) {
+        uint8_t bytes[kStorageCompletionBytes]{};
+        if (const auto copied = runtime_->copy_device_to_host(bytes, completion_buffer_.data(), sizeof(bytes)); !copied)
+            return unexpected(copied.error());
+        StorageCompletion completion{};
+        if (deserialize_storage_completion(bytes, sizeof(bytes), &completion) != StorageSerdeResult::Ok)
+            return unexpected(ErrorCode::kProtocol, "invalid storage completion record");
+        if (completion.state != StorageCompletionState::Complete) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            continue;
+        }
+        if (completion.command_id != command_id || completion.bytes_transferred != expected_bytes)
+            return unexpected(ErrorCode::kProtocol, "storage completion does not match the submitted command");
+        return completion;
+    }
+    return unexpected(ErrorCode::kProtocol, "timed out waiting for storage completion");
 }
 
 std::uint64_t StorageClient::allocate_command_id() noexcept {

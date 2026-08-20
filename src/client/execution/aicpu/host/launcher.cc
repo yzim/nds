@@ -263,6 +263,17 @@ Result<void> AicpuEntrypointLauncher::launch_storage_batch_write_and_wait(NdsDev
                                    "NdsAicpuStorageBatchWrite", timeout_ms);
 }
 
+Result<void> AicpuEntrypointLauncher::launch_storage_wait_and_wait(NdsDeviceStorageWaitArgs *args,
+                                                                    std::int32_t timeout_ms) {
+    if (args != nullptr) {
+        args->abi_version = NDS_DEVICE_STORAGE_ABI_VERSION;
+        args->size = sizeof(*args);
+    }
+    return launch_storage_and_wait(args, sizeof(*args), args == nullptr ? nullptr : &args->context,
+                                   args == nullptr ? 0U : args->operation_result_address, "NdsAicpuStorageWait",
+                                   timeout_ms);
+}
+
 void AicpuEntrypointLauncher::reset() noexcept {
     if (acl_ != nullptr && stream_ != nullptr && acl_->destroy_stream != nullptr) {
         (void)acl_->destroy_stream(stream_);

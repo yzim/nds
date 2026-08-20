@@ -75,5 +75,12 @@
       "kernelSo": "@NDS_AICPU_STANDARD_KERNEL_SO@",
       "opKernelLib": "AICPUKernel"
     }
+  },
+  "NdsAicpuStorageWait": {
+    "opInfo": {
+      "functionName": "NdsAicpuStorageWait",
+      "kernelSo": "@NDS_AICPU_STANDARD_KERNEL_SO@",
+      "opKernelLib": "AICPUKernel"
+    }
   }
 }

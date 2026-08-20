@@ -95,6 +95,10 @@ its result cannot be used in the device.
 
 AI-QPs omit `NDS_RA_AI_CALLER_POLLS_CQ` by default. HCCP owns send and receive
 CQ consumption; NDS does not interpret HCCP CQ activity as storage completion.
+The client `Transport` layer does not poll a CQ or provide synchronous
+transport completion. This does not affect the current serial storage path,
+which waits for the CPU-written protocol completion record, but it leaves
+transport-local CQ error and credit ownership for later design.
 The explicit NDS `PollCq(is_send_cq)` operation remains available only for a
 future caller-owned-CQ configuration that opts into that RA flag. Its selector
 matches CANN RA `RaPollCq`: `true` selects the send CQ and `false` the receive CQ.
@@ -118,6 +122,16 @@ CPU to RDMA Read NPU application data into its namespace; a storage Read causes
 the CPU to RDMA Write namespace data to that buffer. The CPU posts the data
 operation and terminal completion Write in order on the same QP.
 
+`StorageClient::read`, `write`, and their batch variants submit a command and
+return a `StorageCompletionHandle`. `StorageClient::wait(handle, timeout_ms)`
+observes the CPU-written `StorageCompletion` record and validates its command
+ID, status, and byte count. It never depends on a client CQ. One client permits
+one live handle: it retains the command resources, application MRs, and batch
+descriptor allocation until the terminal record is observed. A timeout leaves
+the handle live, so those resources remain valid and the caller can wait again.
+A matching terminal failure releases the handle's resources before `wait`
+returns that failure.
+
 `StorageClient::read_batch` and `StorageClient::write_batch` each submit one
 cross-endpoint command. Its `BATCH_READ` or `BATCH_WRITE` record identifies an
 NPU-registered descriptor array and total payload bytes; the CPU RDMA Reads the
@@ -129,10 +143,11 @@ it does not introduce command pipelining.
 The CPU polls its verbs CQ for command Receive and terminal completion Write.
 The CPU-written NDS completion record is the storage completion. An RA local
 CQE, HCCP AI-QP CQ activity, ACL synchronization, provider resolution, or an
-operator launch is not NDS storage completion. RA observes the record through
-bounded device-to-host copies. AIV performs explicit cache synchronization and
-copies global-memory bytes into a local buffer before deserialization; AICPU
-uses ordered volatile reads before the same deserializer.
+operator launch is not NDS storage completion. `StorageClient::wait` observes
+the record through bounded device-to-host copies for RA. AIV and AICPU launch
+their separate device wait operator, which deserializes the same record in
+device code; the host stream timeout bounds that operator but is not the
+storage completion signal.
 
 The four command semantics are explicit across execution environments:
 

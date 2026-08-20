@@ -193,3 +193,19 @@ extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuStorageBatchW
     entry_barrier();
     return status;
 }
+
+extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuStorageWait(void *args) {
+    auto *request = static_cast<NdsDeviceStorageWaitArgs *>(args);
+    auto *result = request == nullptr
+                       ? nullptr
+                       : reinterpret_cast<NdsDeviceOperationResult *>(request->operation_result_address);
+    if (!valid_storage_args(request) ||
+        !nds_device_storage_wait_valid(&request->context, request->command_id, request->expected_bytes)) {
+        set_invalid(result);
+        return kEntryInvalidArgument;
+    }
+    const uint32_t status =
+        NdsAicpuStorageWaitImpl(&request->context, request->command_id, request->expected_bytes, result);
+    entry_barrier();
+    return status;
+}

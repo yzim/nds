@@ -49,6 +49,15 @@ typedef struct NdsDeviceStorageBatchWriteArgs {
     uint64_t operation_result_address;
 } NdsDeviceStorageBatchWriteArgs;
 
+typedef struct NdsDeviceStorageWaitArgs {
+    uint32_t abi_version;
+    uint32_t size;
+    NdsDeviceStorageContext context;
+    uint64_t command_id;
+    uint64_t expected_bytes;
+    uint64_t operation_result_address;
+} NdsDeviceStorageWaitArgs;
+
 static inline int nds_device_storage_context_valid(const NdsDeviceStorageContext *context) {
     return context != nullptr && context->abi_version == NDS_DEVICE_STORAGE_ABI_VERSION &&
            context->size == sizeof(*context) && context->transport.abi_version == NDS_DEVICE_TRANSPORT_ABI_VERSION &&
@@ -90,10 +99,16 @@ static inline int nds_device_storage_batch_write_valid(const NdsDeviceStorageCon
            command->entries.length >= command->entry_count * nds::kStorageBatchEntryBytes;
 }
 
+static inline int nds_device_storage_wait_valid(const NdsDeviceStorageContext *context, uint64_t command_id,
+                                                uint64_t expected_bytes) {
+    return nds_device_storage_context_valid(context) && command_id != 0U && expected_bytes != 0U;
+}
+
 static_assert(sizeof(NdsDeviceStorageContext) == 296, "device storage context ABI changed");
 static_assert(sizeof(NdsDeviceStorageReadArgs) == 360, "device storage read ABI changed");
 static_assert(sizeof(NdsDeviceStorageWriteArgs) == 360, "device storage write ABI changed");
 static_assert(sizeof(NdsDeviceStorageBatchReadArgs) == 360, "device storage batch-read ABI changed");
 static_assert(sizeof(NdsDeviceStorageBatchWriteArgs) == 360, "device storage batch-write ABI changed");
+static_assert(sizeof(NdsDeviceStorageWaitArgs) == 328, "device storage wait ABI changed");
 
 #endif

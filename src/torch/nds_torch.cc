@@ -82,7 +82,9 @@ void Session::read_(const ::torch::Tensor &output, std::int64_t offset) {
     check_tensor(output);
     TORCH_CHECK(offset >= 0, "storage offset must be nonnegative");
     auto buffer = value_or_throw(runtime_.allocate(output.nbytes()));
-    check(storage_.read(static_cast<std::uint64_t>(offset), &buffer, static_cast<std::uint32_t>(output.nbytes())));
+    const auto completion = value_or_throw(
+        storage_.read(static_cast<std::uint64_t>(offset), &buffer, static_cast<std::uint32_t>(output.nbytes())));
+    check(storage_.wait(completion, 5000U));
     check(runtime_.copy_from(output.data_ptr(), buffer, output.nbytes()));
 }
 
@@ -91,7 +93,9 @@ void Session::write(const ::torch::Tensor &input, std::int64_t offset) {
     TORCH_CHECK(offset >= 0, "storage offset must be nonnegative");
     auto buffer = value_or_throw(runtime_.allocate(input.nbytes()));
     check(runtime_.copy_to(&buffer, input.data_ptr(), input.nbytes()));
-    check(storage_.write(static_cast<std::uint64_t>(offset), &buffer, static_cast<std::uint32_t>(input.nbytes())));
+    const auto completion = value_or_throw(
+        storage_.write(static_cast<std::uint64_t>(offset), &buffer, static_cast<std::uint32_t>(input.nbytes())));
+    check(storage_.wait(completion, 5000U));
 }
 
 std::int64_t Session::capacity() const {

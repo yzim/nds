@@ -7,7 +7,8 @@ current architecture and protocol contract.
 
 ## Current Baseline
 
-- One connected RC QP carries one command at a time.
+- One connected RC QP carries one command at a time. Storage submission returns
+  one completion handle, and a protocol-record wait resolves it.
 - The NPU sends storage commands; the CPU uses `libibverbs` to receive them,
   move data, and write the terminal completion record.
 - A storage Write makes the CPU RDMA Read NPU-advertised data into its
@@ -83,7 +84,9 @@ designed as transport and protocol behavior, not application-side parallel
 loops:
 
 1. Define queue depth, credits, receive-WR replenishment, command IDs,
-   completion demultiplexing, per-command timeouts, and error handling.
+   completion demultiplexing, per-command timeouts, and error handling. Define
+   client transport-local CQ ownership and error handling: normal AI-QPs
+   currently let HCCP consume CQs, while `Transport` does not poll them.
 2. Define QP selection, whether command and data QPs separate, and the
    synchronization required by concurrent device submitters.
 3. Add multiple in-flight commands and multiple QPs only with a bounded test

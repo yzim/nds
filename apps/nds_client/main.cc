@@ -15,6 +15,7 @@
 namespace {
 
 constexpr std::uint64_t kMaxTransferBytes = 64U * 1024U;
+constexpr std::uint32_t kStorageCompletionTimeoutMs = 5000U;
 struct ClientConfig {
     nds::client::RuntimeConfig runtime;
     nds::client::TransportConfig transport;
@@ -146,7 +147,7 @@ int main(int argc, char **argv) {
         }
     }
 
-    nds::Result<void> result;
+    nds::Result<nds::client::StorageCompletionHandle> result;
     if (batch)
         result = read ? client.read_batch(requests) : client.write_batch(requests);
     else
@@ -154,6 +155,10 @@ int main(int argc, char **argv) {
                       : client.write(config.offset, &buffers.front(), config.bytes);
     if (!result) {
         NDS_LOG_ERROR("npu-client", "storage {} failed: {}", config.operation, result.error().message);
+        return EXIT_FAILURE;
+    }
+    if (const auto completed = client.wait(*result, kStorageCompletionTimeoutMs); !completed) {
+        NDS_LOG_ERROR("npu-client", "storage {} completion failed: {}", config.operation, completed.error().message);
         return EXIT_FAILURE;
     }
     if (read) {

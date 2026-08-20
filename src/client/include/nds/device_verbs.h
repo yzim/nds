@@ -29,6 +29,10 @@ enum NdsDeviceOperationPath {
     NDS_DEVICE_OPERATION_PATH_PROVIDER = 2U,
 };
 
+enum NdsDeviceOperationFlags {
+    NDS_DEVICE_OPERATION_TERMINAL = 1U << 0,
+};
+
 enum NdsDeviceSendFlags {
     NDS_DEVICE_SEND_SIGNALED = 1U << 0,
 };

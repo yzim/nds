@@ -5,8 +5,8 @@
 namespace {
 
 template <typename Request, typename Serialize>
-uint32_t execute(const NdsDeviceStorageContext *context, const Request *command, uint64_t expected_bytes,
-                 Serialize serialize, NdsDeviceOperationResult *result) {
+uint32_t execute(const NdsDeviceStorageContext *context, const Request *command, Serialize serialize,
+                 NdsDeviceOperationResult *result) {
     if (result == nullptr)
         return kNdsAicpuInvalidArgument;
     uint8_t pending[nds::kStorageCompletionBytes]{};
@@ -33,8 +33,13 @@ uint32_t execute(const NdsDeviceStorageContext *context, const Request *command,
                                      0U,
                                      0U};
     const uint32_t sent = NdsAicpuRdmaSendImpl(&context->transport, &transfer, result);
-    if (sent != kNdsAicpuSuccess || result->status != NDS_DEVICE_OPERATION_SUCCESS)
-        return sent;
+    return sent;
+}
+
+uint32_t wait_for_completion(const NdsDeviceStorageContext *context, uint64_t command_id, uint64_t expected_bytes,
+                             NdsDeviceOperationResult *result) {
+    if (result == nullptr || !nds_device_storage_wait_valid(context, command_id, expected_bytes))
+        return kNdsAicpuInvalidArgument;
     auto *completion = reinterpret_cast<volatile uint8_t *>(context->completion.address);
     for (;;) {
         uint8_t observed[nds::kStorageCompletionBytes]{};
@@ -42,13 +47,19 @@ uint32_t execute(const NdsDeviceStorageContext *context, const Request *command,
             observed[index] = completion[index];
         NdsAicpuBarrier();
         nds::StorageCompletion decoded{};
-        if (nds::deserialize_storage_completion(observed, sizeof(observed), &decoded) ==
-                nds::StorageSerdeResult::Ok &&
-            decoded.state == nds::StorageCompletionState::Complete && decoded.command_id == command->command_id &&
-            decoded.status == nds::StorageStatus::Success && decoded.bytes_transferred == expected_bytes) {
-            NdsAicpuSetResult(result, NDS_DEVICE_OPERATION_SUCCESS, NDS_DEVICE_OPERATION_PATH_DIRECT, 0);
+        if (nds::deserialize_storage_completion(observed, sizeof(observed), &decoded) != nds::StorageSerdeResult::Ok ||
+            decoded.state != nds::StorageCompletionState::Complete)
+            continue;
+        if (decoded.command_id != command_id || decoded.bytes_transferred != expected_bytes) {
+            NdsAicpuSetResult(result, NDS_DEVICE_OPERATION_INVALID_ARGUMENT, NDS_DEVICE_OPERATION_PATH_NONE, 0);
             return kNdsAicpuSuccess;
         }
+        NdsAicpuSetResult(result, decoded.status == nds::StorageStatus::Success ? NDS_DEVICE_OPERATION_SUCCESS
+                                                                                  : NDS_DEVICE_OPERATION_PROVIDER_FAILED,
+                          NDS_DEVICE_OPERATION_PATH_DIRECT, 0);
+        result->reserved = NDS_DEVICE_OPERATION_TERMINAL;
+        NdsAicpuBarrier();
+        return kNdsAicpuSuccess;
     }
 }
 
@@ -62,7 +73,7 @@ extern "C" uint32_t NdsAicpuStorageReadImpl(const NdsDeviceStorageContext *conte
             NdsAicpuSetResult(result, NDS_DEVICE_OPERATION_INVALID_ARGUMENT, NDS_DEVICE_OPERATION_PATH_NONE, 0);
         return result == nullptr ? kNdsAicpuInvalidArgument : kNdsAicpuSuccess;
     }
-    return execute(context, command, command->length, nds::serialize_storage_read, result);
+    return execute(context, command, nds::serialize_storage_read, result);
 }
 
 extern "C" uint32_t NdsAicpuStorageWriteImpl(const NdsDeviceStorageContext *context,
@@ -73,7 +84,7 @@ extern "C" uint32_t NdsAicpuStorageWriteImpl(const NdsDeviceStorageContext *cont
             NdsAicpuSetResult(result, NDS_DEVICE_OPERATION_INVALID_ARGUMENT, NDS_DEVICE_OPERATION_PATH_NONE, 0);
         return result == nullptr ? kNdsAicpuInvalidArgument : kNdsAicpuSuccess;
     }
-    return execute(context, command, command->length, nds::serialize_storage_write, result);
+    return execute(context, command, nds::serialize_storage_write, result);
 }
 
 extern "C" uint32_t NdsAicpuStorageBatchReadImpl(const NdsDeviceStorageContext *context,
@@ -84,7 +95,7 @@ extern "C" uint32_t NdsAicpuStorageBatchReadImpl(const NdsDeviceStorageContext *
             NdsAicpuSetResult(result, NDS_DEVICE_OPERATION_INVALID_ARGUMENT, NDS_DEVICE_OPERATION_PATH_NONE, 0);
         return result == nullptr ? kNdsAicpuInvalidArgument : kNdsAicpuSuccess;
     }
-    return execute(context, command, command->total_length, nds::serialize_storage_batch_read, result);
+    return execute(context, command, nds::serialize_storage_batch_read, result);
 }
 
 extern "C" uint32_t NdsAicpuStorageBatchWriteImpl(const NdsDeviceStorageContext *context,
@@ -95,5 +106,10 @@ extern "C" uint32_t NdsAicpuStorageBatchWriteImpl(const NdsDeviceStorageContext 
             NdsAicpuSetResult(result, NDS_DEVICE_OPERATION_INVALID_ARGUMENT, NDS_DEVICE_OPERATION_PATH_NONE, 0);
         return result == nullptr ? kNdsAicpuInvalidArgument : kNdsAicpuSuccess;
     }
-    return execute(context, command, command->total_length, nds::serialize_storage_batch_write, result);
+    return execute(context, command, nds::serialize_storage_batch_write, result);
+}
+
+extern "C" uint32_t NdsAicpuStorageWaitImpl(const NdsDeviceStorageContext *context, uint64_t command_id,
+                                              uint64_t expected_bytes, NdsDeviceOperationResult *result) {
+    return wait_for_completion(context, command_id, expected_bytes, result);
 }

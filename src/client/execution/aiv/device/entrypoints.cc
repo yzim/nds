@@ -203,6 +203,16 @@ extern "C" __global__ __aicore__ void NdsAivStorageBatchWrite(GM_ADDR request_ad
     NdsAivStorageBatchWriteImpl(&request->context, &request->command, &scratch, result);
 }
 
+extern "C" __global__ __aicore__ void NdsAivStorageWait(GM_ADDR request_address) {
+    __gm__ auto *request = reinterpret_cast<__gm__ NdsDeviceStorageWaitArgs *>(request_address);
+    __gm__ auto *result =
+        request == nullptr ? nullptr
+                           : reinterpret_cast<__gm__ NdsDeviceOperationResult *>(request->operation_result_address);
+    if (!ValidStorageArgs(request))
+        return SetInvalid(result);
+    NdsAivStorageWaitImpl(&request->context, request->command_id, request->expected_bytes, result);
+}
+
 static const struct FunLevelKType NdsAivPostSend_kernel_type_section
     __attribute__((used, section(".ascend.meta.NdsAivPostSend"))) = {{F_TYPE_KTYPE, sizeof(unsigned int), K_TYPE_AIV}};
 static const struct FunLevelKType NdsAivPostRecv_kernel_type_section
@@ -225,3 +235,5 @@ static const struct FunLevelKType NdsAivStorageBatchRead_kernel_type_section __a
     used, section(".ascend.meta.NdsAivStorageBatchRead"))) = {{F_TYPE_KTYPE, sizeof(unsigned int), K_TYPE_AIV}};
 static const struct FunLevelKType NdsAivStorageBatchWrite_kernel_type_section __attribute__((
     used, section(".ascend.meta.NdsAivStorageBatchWrite"))) = {{F_TYPE_KTYPE, sizeof(unsigned int), K_TYPE_AIV}};
+static const struct FunLevelKType NdsAivStorageWait_kernel_type_section
+    __attribute__((used, section(".ascend.meta.NdsAivStorageWait"))) = {{F_TYPE_KTYPE, sizeof(unsigned int), K_TYPE_AIV}};

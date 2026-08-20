@@ -36,6 +36,8 @@ uint32_t NdsAicpuStorageBatchReadImpl(const NdsDeviceStorageContext *context,
 uint32_t NdsAicpuStorageBatchWriteImpl(const NdsDeviceStorageContext *context,
                                        const nds::StorageBatchWriteCommand *command,
                                        NdsDeviceOperationResult *result);
+uint32_t NdsAicpuStorageWaitImpl(const NdsDeviceStorageContext *context, uint64_t command_id,
+                                 uint64_t expected_bytes, NdsDeviceOperationResult *result);
 
 #ifdef __cplusplus
 }

@@ -29,6 +29,7 @@ public:
                                                     std::int32_t completion_timeout_ms);
     Result<void> launch_storage_batch_write_and_wait(NdsDeviceStorageBatchWriteArgs *args,
                                                      std::int32_t completion_timeout_ms);
+    Result<void> launch_storage_wait_and_wait(NdsDeviceStorageWaitArgs *args, std::int32_t completion_timeout_ms);
     void reset() noexcept;
     bool loaded() const noexcept;
 

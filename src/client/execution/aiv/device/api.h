@@ -50,5 +50,8 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivStorageBatchReadImpl(
 NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivStorageBatchWriteImpl(
     __gm__ const NdsDeviceStorageContext *context, __gm__ const nds::StorageBatchWriteCommand *command,
     AscendC::TBuf<> *scratch, __gm__ NdsDeviceOperationResult *result);
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivStorageWaitImpl(__gm__ const NdsDeviceStorageContext *context,
+                                                                 uint64_t command_id, uint64_t expected_bytes,
+                                                                 __gm__ NdsDeviceOperationResult *result);
 
 #endif

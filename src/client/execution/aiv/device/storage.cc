@@ -41,7 +41,7 @@ __aicore__ inline bool BatchCommandValid(__gm__ const NdsDeviceStorageContext *c
 }
 
 __aicore__ inline void ExecuteSerialized(__gm__ const NdsDeviceStorageContext *context, uint64_t command_id,
-                                         uint64_t expected_bytes, const uint8_t *command_bytes, TBuf<> *scratch,
+                                         const uint8_t *command_bytes, TBuf<> *scratch,
                                          __gm__ NdsDeviceOperationResult *result) {
     uint8_t pending[nds::kStorageCompletionBytes]{};
     const nds::StorageCompletion pending_completion{command_id, nds::StorageCompletionState::Pending,
@@ -59,21 +59,34 @@ __aicore__ inline void ExecuteSerialized(__gm__ const NdsDeviceStorageContext *c
                                       context->command_buffer.local_key},
                                      0U, 0U, 0U};
     NdsAivRdmaSendImpl(&context->transport, &transfer, scratch, result);
-    if (result->status != NDS_DEVICE_OPERATION_SUCCESS)
+}
+
+__aicore__ inline void WaitForCompletion(__gm__ const NdsDeviceStorageContext *context, uint64_t command_id,
+                                         uint64_t expected_bytes, __gm__ NdsDeviceOperationResult *result) {
+    if (!ContextValid(context) || command_id == 0U || expected_bytes == 0U) {
+        NdsAivSetResult(result, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
         return;
+    }
     __gm__ const uint8_t *completion = reinterpret_cast<__gm__ const uint8_t *>(context->completion.address);
     for (;;) {
         uint8_t observed[nds::kStorageCompletionBytes]{};
         NdsAivCacheSync(reinterpret_cast<__gm__ uint8_t *>(context->completion.address), sizeof(observed));
         LoadBytes(completion, observed, sizeof(observed));
         nds::StorageCompletion decoded{};
-        if (nds::deserialize_storage_completion(observed, sizeof(observed), &decoded) ==
-                nds::StorageSerdeResult::Ok &&
-            decoded.state == nds::StorageCompletionState::Complete && decoded.command_id == command_id &&
-            decoded.status == nds::StorageStatus::Success && decoded.bytes_transferred == expected_bytes) {
-            NdsAivSetResult(result, NDS_DEVICE_OPERATION_SUCCESS);
+        if (nds::deserialize_storage_completion(observed, sizeof(observed), &decoded) != nds::StorageSerdeResult::Ok ||
+            decoded.state != nds::StorageCompletionState::Complete)
+            continue;
+        if (decoded.command_id != command_id || decoded.bytes_transferred != expected_bytes) {
+            NdsAivSetResult(result, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
             return;
         }
+        NdsAivSetResult(result, decoded.status == nds::StorageStatus::Success ? NDS_DEVICE_OPERATION_SUCCESS
+                                                                                : NDS_DEVICE_OPERATION_PROVIDER_FAILED);
+        if (result != nullptr) {
+            result->reserved = NDS_DEVICE_OPERATION_TERMINAL;
+            NdsAivCacheSync(reinterpret_cast<__gm__ uint8_t *>(result), sizeof(*result));
+        }
+        return;
     }
 }
 
@@ -99,7 +112,7 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivStorageReadImpl(
         NdsAivSetResult(result, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
         return;
     }
-    ExecuteSerialized(context, local.command_id, local.length, command_bytes, scratch, result);
+    ExecuteSerialized(context, local.command_id, command_bytes, scratch, result);
 }
 
 NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivStorageWriteImpl(
@@ -122,7 +135,7 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivStorageWriteImpl(
         NdsAivSetResult(result, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
         return;
     }
-    ExecuteSerialized(context, local.command_id, local.length, command_bytes, scratch, result);
+    ExecuteSerialized(context, local.command_id, command_bytes, scratch, result);
 }
 
 NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivStorageBatchReadImpl(
@@ -147,7 +160,7 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivStorageBatchReadImpl(
         NdsAivSetResult(result, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
         return;
     }
-    ExecuteSerialized(context, local.command_id, local.total_length, command_bytes, scratch, result);
+    ExecuteSerialized(context, local.command_id, command_bytes, scratch, result);
 }
 
 NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivStorageBatchWriteImpl(
@@ -172,5 +185,11 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivStorageBatchWriteImpl(
         NdsAivSetResult(result, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
         return;
     }
-    ExecuteSerialized(context, local.command_id, local.total_length, command_bytes, scratch, result);
+    ExecuteSerialized(context, local.command_id, command_bytes, scratch, result);
+}
+
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivStorageWaitImpl(__gm__ const NdsDeviceStorageContext *context,
+                                                                 uint64_t command_id, uint64_t expected_bytes,
+                                                                 __gm__ NdsDeviceOperationResult *result) {
+    WaitForCompletion(context, command_id, expected_bytes, result);
 }

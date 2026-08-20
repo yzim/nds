@@ -49,3 +49,13 @@ TEST(DeviceStorageTest, ValidatesBatchOperationCommands) {
     write.entries.length = nds::kStorageBatchEntryBytes;
     EXPECT_FALSE(nds_device_storage_batch_write_valid(&context, &write));
 }
+
+TEST(DeviceStorageTest, ValidatesCompletionWait) {
+    NdsDeviceStorageContext context = valid_context();
+
+    EXPECT_TRUE(nds_device_storage_wait_valid(&context, 1U, 64U));
+    EXPECT_FALSE(nds_device_storage_wait_valid(&context, 0U, 64U));
+    EXPECT_FALSE(nds_device_storage_wait_valid(&context, 1U, 0U));
+    context.completion.length = nds::kStorageCompletionBytes - 1U;
+    EXPECT_FALSE(nds_device_storage_wait_valid(&context, 1U, 64U));
+}
