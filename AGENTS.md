@@ -18,6 +18,22 @@ belong in [design](docs/design.md), [development](docs/development.md),
 [references](docs/references.md), and the [protocol roadmap](docs/roadmap.md).
 Source ownership and dependency direction are defined in [design](docs/design.md).
 
+## Documentation maintenance
+
+- Keep `README.md` as a short project entry point. It links to detailed guides;
+  it does not duplicate architecture, lifecycle, completion, or workflow rules.
+- `docs/design.md` owns current technical contracts; `docs/development.md` owns
+  contributor workflow; `docs/roadmap.md` owns delivered and planned project
+  work; `docs/references.md` owns evidence provenance and limits.
+- Keep `apps/README.md`, `examples/README.md`, and `tests/e2e/README.md`
+  limited to their directory-local workflows. Link to the authoritative guide
+  for shared policy.
+- Update the owning document and all affected links when a contract, workflow,
+  or project state changes. Consolidate completed work rather than retaining
+  long historical checklists.
+- Keep target-specific status, topology, commands, and evidence in ignored
+  `.local/` files, not tracked documentation.
+
 ## Non-negotiable rules
 
 - Never build or test NDS on this Mac. The Mac is the source and Git authority

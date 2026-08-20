@@ -1,170 +1,93 @@
 # Roadmap
 
 NDS is evolving from a bounded RoCE interoperability harness into a
-storage-oriented protocol between an NPU initiator and a CPU target. This page
-records the protocol direction and distinguishes the implemented single-command
-baseline from later concurrency work.
+storage-oriented protocol between one NPU initiator and one CPU target. This
+page records work that changes the project; [design](design.md) owns the
+current architecture and protocol contract.
 
-## Target Model
+## Current Baseline
 
-The NPU sends storage commands to the CPU with RDMA Send. The CPU receives a
-command, executes it against a memory-backed namespace, and reports completion
-to the NPU through a completion flag. The CPU performs the data movement:
+- One connected RC QP carries one command at a time.
+- The NPU sends storage commands; the CPU uses `libibverbs` to receive them,
+  move data, and write the terminal completion record.
+- A storage Write makes the CPU RDMA Read NPU-advertised data into its
+  memory-backed namespace; a storage Read makes the CPU RDMA Write namespace
+  data back to NPU memory.
+- TCP is bootstrap-only: it exchanges endpoint metadata, namespace capacity,
+  and the session-static completion-record descriptor.
+- RA, AIV, and standard-CP1 AICPU implement the NPU command post. The
+  CPU-written NDS completion record remains the protocol completion in every
+  mode.
 
-- A storage Write causes the CPU to RDMA Read data from NPU-advertised memory.
-- A storage Read causes the CPU to RDMA Write namespace data to
-  NPU-advertised memory.
+## Delivered Work
 
-The NPU does not issue RDMA Read or RDMA Write for storage data. The initial
-CPU namespace is an in-memory byte-addressable region. Commands carry an
-offset and length; persistence and a block-device backend are later work.
+- Defined endpoint-local ownership across runtime, transport, storage, and
+  execution code; shared wire records remain NDS-owned.
+- Implemented a memory-backed namespace with range validation, fixed command
+  and completion records, and serial Read/Write semantics.
+- Implemented CPU-initiated RDMA Read/Write data movement and terminal
+  completion writes.
+- Implemented RA, AIV, and AICPU command paths, including device-callable
+  transport and storage operations for AIV and AICPU.
+- Added native storage, paired lower-layer examples, persistent Torch storage,
+  and opt-in bounded E2E coverage.
 
-The CPU configures namespace capacity at startup and advertises that capacity
-to the NPU during bootstrap. The NPU rejects an out-of-range request before it
-sends the command. The CPU repeats the authoritative range check before it
-accesses namespace memory and returns a range error through the completion
-record. Both checks are required. The initial memory-backed namespace is
-zero-initialized, so a Read of an unwritten range has defined contents.
+## Active Engineering Work
 
-TCP is bootstrap-only: it exchanges QP metadata, CPU namespace capacity, and
-the session-static NPU completion-flag MR descriptor. It does not carry storage
-commands, statuses, or payload data. The CPU does not send protocol requests
-to the NPU.
+### Bootstrap Configuration
 
-The implementation is organized by responsibility:
+- Consolidate duplicated bootstrap configuration across native applications,
+  examples, Torch sessions, and E2E runners.
+- Keep private addresses, paths, and target-specific invocation under `.local/`
+  or environment variables; tracked code must not acquire private topology.
+- Preserve the NDS-owned TCP wire boundary and avoid exposing vendor handles or
+  device-local queue data through configuration.
 
-1. RMA: RA, AIV, and AICPU submit opcodes on a selected protocol resource and
-   own their local completion capabilities.
-2. Transport: owns connected QPs, MRs, buffers, and peer metadata and exposes
-   Send and one-sided data operations.
-3. StorageClient: owns storage bootstrap, command records, request sequencing,
-   namespace bounds, and protocol completion.
-4. Application: chooses workloads and validates transferred data.
+### Host-To-Device ABI
 
-The current source tree implements these boundaries independently in
-`src/client` and `src/server`. The NPU-attached client has `storage.*`,
-`transport.*`, `rma.*`, and a `main.cc` application entry point. Its
-execution-specific work-request implementations remain under
-`client/execution/`.
-The server keeps its protocol, transport, and verbs implementation. Shared
-QP identity and TCP bootstrap live in `src/common/connection.*`, and
-shared storage records live in `src/common/protocol.*`.
-See [design](design.md) for concrete ownership rules.
+- Replace temporary execution accessors with explicit, value-like, non-owning
+  RA/AIV/AICPU execution-resource views.
+- Keep host C++ objects and HCCP/provider handles out of device-visible records.
+- Version and validate NDS device records; make transfer ownership, alignment,
+  and lifetime explicit before changing queue geometry or launch behavior.
 
-`src/include/nds/` is an internal shared-header boundary. Its `nds/`
-prefix prevents generic names such as `protocol.h` and `connection.h` from
-colliding across targets. It is not yet an installed or versioned external
-NDS SDK; any public-library surface will be designed separately when NDS needs
-one.
+### Runtime Loaders
 
-The selected NPU execution mode posts the protocol command with RDMA Send. The CPU
-uses ordinary `libibverbs` for its command Receive, storage-data RDMA
-Read/Write, completion-flag RDMA Write, and explicit CQ polling. CPU completion
-ownership is therefore uniform across NPU execution modes.
+- Consolidate duplicated CANN, runtime, RA, and device-discovery loader code
+  behind the smallest practical NDS runtime boundary.
+- Preserve fail-closed required-symbol resolution, one-release-per-process
+  loading, private ABI structs, and the CPU executable's CANN-free boundary.
+- Do not introduce direct vendor-library linkage or widen the public NDS API.
 
-## Completion Model
+### Performance
 
-The first revision uses a one-sided completion flag, modeled after HCOMM's
-transport flag flow. Each command advertises an NPU-registered completion
-record. After receiving the command and completing its CPU-initiated RDMA Read
-or Write, the CPU RDMA Writes the completion record into that NPU memory. The
-NPU waits for the record to reach its requested terminal value before reusing
-the command or data buffer.
+- Define an opt-in target benchmark plan before optimizing: workload, payload
+  sizes, warmup, iteration count, backend, topology, and success criteria.
+- Measure end-to-end latency and throughput separately from control-path,
+  device-post, CPU data-movement, and completion-observation costs.
+- Compare changes only against recorded baselines on the same target and report
+  correctness, resource use, and variance with the result. Do not represent a
+  faster local step as end-to-end storage performance.
 
-This deliberately avoids an NPU Receive WR and receive-CQ dependency in the
-first storage path. It is not an RNIC CQ completion: CPU must still actively
-poll its send CQ before writing the terminal completion flag, and the NPU must
-not treat operator launch or HCCP background processing as command completion.
-Each storage implementation must state how it safely observes the completion
-record in its execution environment.
+## Protocol Evolution
 
-NDS owns separate internal NPU allocations and MRs for command records and
-completion records. The completion-flag MR descriptor is exchanged once during
-TCP bootstrap. Application data is supplied separately and registered as its
-own MR; protocol code must not partition or take ownership of an application's
-data allocation. Each storage command carries that application's data-MR
-descriptor, as NVMe-oF carries a per-command data descriptor.
+The initial serial session deliberately proves ordering, receive ownership,
+memory lifetime, and teardown before queue management. Later work must be
+designed as transport and protocol behavior, not application-side parallel
+loops:
 
-For the first revision, an application data MR permits both CPU remote read
-and CPU remote write, in addition to local write. This lets one registration
-serve storage Write and Read. A later policy interface may narrow access by
-command or application.
+1. Define queue depth, credits, receive-WR replenishment, request IDs,
+   completion demultiplexing, per-command timeouts, and error handling.
+2. Define QP selection, whether command and data QPs separate, and the
+   synchronization required by concurrent device submitters.
+3. Add multiple in-flight commands and multiple QPs only with a bounded test
+   matrix and explicit resource-lifetime rules.
+4. Evaluate an optional two-sided completion mode in which the NPU pre-posts
+   Receives and polls its receive CQ for CPU completion Sends. This is not
+   required for the current serial completion-record path.
 
-The registered command buffer contains one fixed-size record:
+## Later Scope
 
-```text
-request_id, operation (Read or Write), namespace offset, length,
-NPU data address, NPU data rkey
-```
-
-The completion record contains `request_id`, terminal state, protocol status,
-and `bytes_transferred`. The CPU posts data and then its terminal completion
-flag Write in that order on the same RC QP. Normal success relies on RC QP
-ordering, as in HCOMM's flag flow: the NPU cannot observe the terminal record
-before preceding data movement. A missing terminal record is a timeout or
-transport failure, not success.
-
-The CPU uses one verbs CQ for the initial QP, pre-posts one command Receive WR
-before the NPU can submit, and actively polls that CQ for command receive and
-CPU RDMA send completion. The current host StorageClient observes the NPU
-completion allocation through a bounded device-to-host copy loop. Future AIV
-and AICPU StorageClient implementations must poll the record in device memory
-with correct cache and ordering semantics. They must not pretend that an
-HCCP-managed AI-QP CQ is an NDS completion API.
-
-## Delivery Order
-
-- [x] Introduce the work-request, transport, StorageClient, and application
-  boundaries.
-- [x] Implement a memory-backed CPU namespace with offset-and-length Read and
-  Write commands.
-- [x] Implement NPU Send and CPU Receive for command and completion records.
-- [x] Implement CPU-initiated RDMA Read for storage Write data movement.
-- [x] Implement CPU-initiated RDMA Write for storage Read data movement.
-- [x] Define the initial project-facing completion contract for each NPU
-  execution mode.
-- [x] Implement and validate the common storage protocol contract with RA
-  first.
-- [x] Validate the host StorageClient with AIV and AICPU command-Send RMA paths.
-- [x] Implement device-callable AIV and AICPU Transport APIs.
-  The initial API uses one QP. A later multi-QP transport will reserve one
-  control QP and select data QPs round-robin in device code. Define shared
-  scheduling and per-QP submission coordination when concurrent device
-  transport users are introduced; concurrency is out of scope for the
-  initial design.
-- [x] Add device-callable AIV and AICPU storage Read and Write operators.
-- [x] Switch the host validation executable to launch those storage operators.
-- [x] Validate a deterministic storage Write with RA, AIV, and AICPU.
-- [x] Validate an RA Read of an untouched range.
-- [x] Validate an AIV and AICPU Read of an untouched range.
-- [ ] Consolidate the CANN/driver loader implementation behind the smallest
-  practical NDS runtime boundary. Keep required symbols fail-closed and ABI
-  structs private, but remove loader/module duplication introduced while
-  bringing up RA, AscendCL, runtime, and DSMI discovery. This is a source
-  organization and ownership refactor; it must not widen the public NDS API
-  or introduce direct vendor-library linkage.
-- [x] Add a multi-command application workflow that writes a deterministic
-  payload and reads it back in the same session.
-- [ ] Add an optional two-sided completion mode: NPU pre-posts Receive WRs and
-  actively polls its receive CQ for CPU completion Send records. This is the
-  NVMe-oF-like direction for scalable command queues, but is not required for
-  the initial serial storage path.
-
-## Concurrency Roadmap
-
-The first protocol revision permits exactly one outstanding command on one RC
-QP for each NPU-to-CPU session. That QP carries NPU Send commands, CPU receive
-WRs, CPU-initiated RDMA Read/Write data movement, and CPU completion-flag
-Writes. NDS owns one fixed-size registered NPU command record; the application
-data buffer capacity bounds a command's transfer length. This is intentional:
-it proves command ordering, receive ownership, memory lifetime, and teardown
-before adding queue management.
-
-Later revisions must support multiple in-flight commands and multiple RDMA QPs
-within one NPU-to-CPU session. They may separate command and data QPs or stripe
-data across a selected QP set. That requires explicit command identifiers,
-queue depth and credit negotiation, receive-WR replenishment, completion
-demultiplexing, a registered command queue, per-command timeout/error handling,
-and QP selection policy.
-Those features must be designed as protocol and transport behavior, not added
-as application-side parallel loops.
+Persistence, a block-device namespace backend, narrower per-command memory
+access policy, and a versioned public SDK are deferred until the serial protocol
+and concurrency contracts are stable.
