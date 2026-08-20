@@ -6,7 +6,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define NDS_DEVICE_OPERATIONS_ABI_VERSION UINT32_C(3)
+#define NDS_DEVICE_OPERATIONS_ABI_VERSION UINT32_C(4)
 
 enum NdsDeviceOperation {
     NDS_DEVICE_RDMA_SEND = 1U,

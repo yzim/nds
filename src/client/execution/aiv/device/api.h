@@ -15,10 +15,9 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPostSendImpl(__gm__ const NdsDe
 NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPostRecvImpl(__gm__ const NdsDeviceQp *qp,
                                                               const NdsDeviceRecvWr *wr, AscendC::TBuf<> *scratch,
                                                               __gm__ NdsDeviceOperationResult *result);
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPollCqImpl(__gm__ const NdsDeviceQp *qp,
-                                                            __gm__ const NdsDevicePollCqRequest *request,
-                                                            AscendC::TBuf<> *scratch,
-                                                            __gm__ NdsDeviceOperationResult *result);
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPollCqImpl(
+    __gm__ const NdsDeviceQp *qp, __gm__ const NdsDevicePollCqRequest *request,
+    AscendC::TBuf<> *scratch, __gm__ NdsDeviceOperationResult *result);
 
 NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaSendImpl(__gm__ const NdsDeviceTransport *transport,
                                                               const NdsDeviceTransfer *transfer,

@@ -19,7 +19,7 @@ NDS supports three execution modes across three API layers:
 
 | Layer | APIs | `ra` | `aiv` | `aicpu` |
 |---|---|---|---|---|
-| Verbs | `PostSend`, `PostRecv`, `PollCq` | ✓ | ✓ | ✓ |
+| Verbs | `PostSend`, `PostRecv`, optional `PollCq(is_send_cq)` | ✓ | ✓ | ✓ |
 | Transport | `RdmaSend`, `RdmaRecv`, `RdmaRead`, `RdmaWrite` | ✓ | ✓ | ✓ |
 | Storage | `StorageRead`, `StorageWrite`, batch Read/Write, PyTorch | ✓ | ✓ | ✓ |
 

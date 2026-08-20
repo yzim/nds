@@ -17,9 +17,8 @@ int ra_opcode(std::uint32_t opcode) {
             return -1;
     }
 }
-}  // namespace
 
-Result<NdsRaSendResponse> NdsRaPostSend(client::QueuePair *qp, const NdsDeviceSendWr &request) {
+Result<NdsRaSendResponse> post_unrung(client::QueuePair *qp, const NdsDeviceSendWr &request) {
     const int opcode = ra_opcode(request.opcode);
     if (qp == nullptr || qp->execution_mode() != client::NpuExecutionMode::Ra || !qp->connected() ||
         qp->ra_api() == nullptr || qp->handle() == nullptr || request.local.address == 0U ||
@@ -45,6 +44,26 @@ Result<NdsRaSendResponse> NdsRaPostSend(client::QueuePair *qp, const NdsDeviceSe
         return unexpected(ErrorCode::kRa, "RaTypicalSendWr failed: " + std::to_string(result));
     return response;
 }
+}  // namespace
+
+Result<void> NdsRaPostSend(client::Runtime *runtime, client::QueuePair *qp, const NdsDeviceSendWr &request) {
+    if (runtime == nullptr)
+        return unexpected(ErrorCode::kInvalidArgument, "RA post requires a runtime");
+    const auto posted = post_unrung(qp, request);
+    if (!posted)
+        return unexpected(posted.error());
+    auto &api = runtime->runtime_api();
+    if (api.set_device == nullptr || api.rdma_db_send == nullptr)
+        return unexpected(ErrorCode::kRuntime, "runtime doorbell ABI is unavailable");
+    if (const int result = api.set_device(static_cast<std::int32_t>(runtime->config().logical_device_id)); result != 0)
+        return unexpected(ErrorCode::kRuntime, "rtSetDevice before rtRDMADBSend failed: " + std::to_string(result));
+    if (const int result =
+            api.rdma_db_send(posted->doorbell.db_index, static_cast<std::uint64_t>(posted->doorbell.db_info), nullptr);
+        result != 0) {
+        return unexpected(ErrorCode::kRuntime, "rtRDMADBSend failed: " + std::to_string(result));
+    }
+    return {};
+}
 
 Result<void> NdsRaPostRecv(client::QueuePair *qp, const NdsDeviceRecvWr &request) {
     if (qp == nullptr || qp->execution_mode() != client::NpuExecutionMode::Ra || !qp->connected() ||
@@ -60,18 +79,17 @@ Result<void> NdsRaPostRecv(client::QueuePair *qp, const NdsDeviceRecvWr &request
     return {};
 }
 
-Result<std::uint32_t> NdsRaPollCq(client::QueuePair *qp, std::uint32_t queue_kind,
+Result<std::uint32_t> NdsRaPollCq(client::QueuePair *qp, bool is_send_cq, std::uint32_t max_completions,
                                   NdsDeviceCompletionOutput *output) {
-    if (qp == nullptr || output == nullptr ||
-        (queue_kind != NDS_DEVICE_SEND_QUEUE && queue_kind != NDS_DEVICE_RECEIVE_QUEUE) ||
+    if (qp == nullptr || output == nullptr || max_completions == 0U || max_completions > NDS_DEVICE_MAX_COMPLETIONS ||
         qp->execution_mode() != client::NpuExecutionMode::Ra || !qp->created() || qp->ra_api() == nullptr ||
         qp->handle() == nullptr) {
-        return unexpected(ErrorCode::kInvalidArgument, "RA CQ poll requires an RA QP, queue kind, and output");
+        return unexpected(ErrorCode::kInvalidArgument,
+                          "RA completion poll requires an RA QP, output, and supported completion limit");
     }
     NdsRaCompletion completions[NDS_DEVICE_MAX_COMPLETIONS]{};
-    const int result = qp->ra_api()->ra_poll_cq(qp->handle(), queue_kind == NDS_DEVICE_SEND_QUEUE,
-                                                NDS_DEVICE_MAX_COMPLETIONS, completions);
-    if (result < 0 || result > static_cast<int>(NDS_DEVICE_MAX_COMPLETIONS)) {
+    const int result = qp->ra_api()->ra_poll_cq(qp->handle(), is_send_cq, max_completions, completions);
+    if (result < 0 || result > static_cast<int>(max_completions)) {
         return unexpected(ErrorCode::kRa, "RaPollCq returned an invalid result: " + std::to_string(result));
     }
     *output = {};

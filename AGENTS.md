@@ -22,17 +22,20 @@ Source ownership and dependency direction are defined in [design](docs/design.md
 
 - Keep `README.md` as a short project entry point. It links to detailed guides;
   it does not duplicate architecture, lifecycle, completion, or workflow rules.
-- `docs/design.md` owns current technical contracts; `docs/development.md` owns
-  contributor workflow; `docs/roadmap.md` owns delivered and planned project
-  work; `docs/references.md` owns evidence provenance and limits.
+- `docs/design.md` owns current technical contracts and durable public design
+  decisions; `docs/development.md` owns contributor workflow; `docs/roadmap.md`
+  owns delivered and planned project work; `docs/references.md` owns evidence
+  provenance and limits.
 - Keep `apps/README.md`, `examples/README.md`, and `tests/e2e/README.md`
   limited to their directory-local workflows. Link to the authoritative guide
   for shared policy.
 - Update the owning document and all affected links when a contract, workflow,
   or project state changes. Consolidate completed work rather than retaining
   long historical checklists.
-- Keep target-specific status, topology, commands, and evidence in ignored
-  `.local/` files, not tracked documentation.
+- Keep current implementation status, active TODOs, handoff notes, and
+  target-specific topology, commands, and evidence in ignored `.local/` files,
+  not tracked documentation. A durable design decision must not exist only in
+  `.local/`.
 
 ## Non-negotiable rules
 

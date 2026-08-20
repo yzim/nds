@@ -74,8 +74,8 @@ context. The selected execution mode determines QP creation:
 | Mode | Creation | QP mode | Purpose |
 |---|---|---|---|
 | `ra` | `RaTypicalQpCreate` | OPBASE (`2`) | RA returns doorbell information. |
-| `aiv` | `RaAiQpCreate` | OPBASE_EXT (`4`) by default | Caller-owned queue and CQ data. |
-| `aicpu` | `RaAiQpCreate` | NORMAL (`0`) | CP1 provider-owned Send path. |
+| `aiv` | `RaAiQpCreate` | OPBASE_EXT (`4`) by default | Caller-owned work queues; HCCP-owned CQs. |
+| `aicpu` | `RaAiQpCreate` | NORMAL (`0`) | CP1 provider-owned Send path; HCCP-owned CQs. |
 
 The CPU creates an independent RC QP and moves it through `INIT`, `RTR`, and
 `RTS`. Its active-port MTU determines `IBV_QP_PATH_MTU`; the peer MTU is
@@ -93,8 +93,17 @@ alive until the storage completion record is observed and its MR is
 deregistered. `aclrtMallocHost` is not suitable because Ascend documents that
 its result cannot be used in the device.
 
-Resources remain valid until the NPU consumes its signaled send CQE, the CPU
-finishes data movement and terminal completion Write, and the NPU observes the
+AI-QPs omit `NDS_RA_AI_CALLER_POLLS_CQ` by default. HCCP owns send and receive
+CQ consumption; NDS does not interpret HCCP CQ activity as storage completion.
+The explicit NDS `PollCq(is_send_cq)` operation remains available only for a
+future caller-owned-CQ configuration that opts into that RA flag. Its selector
+matches CANN RA `RaPollCq`: `true` selects the send CQ and `false` the receive CQ.
+Its successful result is the number of completions copied to the supplied
+output, from zero through the requested limit. RA poll errors become NDS
+errors; device launch and provider status remain in `NdsDeviceOperationResult`.
+
+Resources remain valid through the HCCP-managed local completion path, the CPU
+data movement and terminal completion Write, and NPU observation of the
 completion record. Teardown is reverse ownership order:
 
 ```text
@@ -146,9 +155,27 @@ execution.
 
 | Mode | RDMA-post site | Host launch role | Local completion |
 |---|---|---|---|
-| `ra` | Host CPU: `RaTypicalSendWr`, then `rtRDMADBSend` | Executes the post | RA CQ available |
-| `aiv` | NPU AIV writes WQEs and rings a doorbell | Creates and launches the operation-specific device args | Caller-owned SCQ/RCQ |
-| `aicpu` | Standard CP1 provider posts Send | Creates and launches the operation-specific device args | Caller-owned SCQ/RCQ |
+| `ra` | Host CPU: `NdsRaPostSend` calls `RaTypicalSendWr`, then `rtRDMADBSend` | Executes the post and submission | RA CQ available |
+| `aiv` | NPU AIV writes WQEs and rings a doorbell | Creates and launches the operation-specific device args | HCCP-owned SCQ/RCQ by default; caller-owned polling is opt-in |
+| `aicpu` | Standard CP1 provider posts Send | Creates and launches the operation-specific device args | HCCP-owned SCQ/RCQ by default; caller-owned polling is opt-in |
+
+### Submission
+
+`PostSend` is post-and-submit on every supported backend. It returns success
+only after the work request has been submitted to its transport path; it does
+not expose a deferred-doorbell option.
+
+For RA, `RaTypicalSendWr` prepares a WQE and returns `{dbIndex, dbInfo}`. The
+RA interface has no doorbell-ring call, so NDS immediately invokes the CANN
+runtime `rtRDMADBSend` on the selected runtime stream. This follows HCOMM's
+normal OPBASE send path. HCOMM also batches several prepared WQEs before one
+runtime doorbell when its algorithm explicitly chooses that policy.
+
+AIV directly writes its WQE and doorbell in `PostSend`. AICPU uses the
+standard-CP1 provider's `ibv_exp_post_send`, whose documented ABI has no
+deferred-doorbell control. Do not introduce a common deferred-submission API
+until a measured bottleneck justifies it and a documented AICPU mechanism can
+support its contract.
 
 ### RA
 
@@ -162,7 +189,7 @@ selecting the logical device.
 AIV operates on an NDS-owned device QP and connection, never an HCCP handle or
 host C++ object. The device ABI under `src/client/include/nds/` describes QP,
 work request, CQ, connection, and host-launch records. AIV exposes device
-Send, Receive, Read, Write, and CQ-poll APIs. CANN 9.0.0 requires its loadable
+Send, Receive, Read, Write, and an optional caller-owned `PollCq(is_send_cq)` API. CANN 9.0.0 requires its loadable
 image to be one CCEC translation unit, though standalone objects remain for
 compile and symbol verification.
 
@@ -171,8 +198,8 @@ compile and symbol verification.
 AICPU is an NDS-built standard-CP1 package registered through ACL CPU-kernel
 mode `0`; this means package registration, not a process named CP0. CP1
 dynamically resolves `libhns-rdmav25.so:ibv_exp_post_send` within the device
-environment. Receive and CQ poll use provider symbols when exported and the
-NDS queue-address fallback otherwise. The host process must never load this
+environment. The optional caller-owned CQ poll uses provider symbols when
+exported and the NDS queue-address fallback otherwise. The host process must never load this
 provider. NDS intentionally has no custom-process AICPU mode because CANN does
 not publish the required RNIC mapping/import contract.
 

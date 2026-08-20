@@ -88,18 +88,17 @@ extern "C" uint32_t NdsAicpuPostRecvImpl(const NdsDeviceQp *qp, const NdsDeviceR
 
 extern "C" uint32_t NdsAicpuPollCqImpl(const NdsDeviceQp *qp, const NdsDevicePollCqRequest *request,
                                        NdsDeviceOperationResult *result) {
-    if (!NdsAicpuValidQp(qp) || request == nullptr || result == nullptr || request->completion_output_address == 0U ||
-        request->max_completions == 0U)
+    if (!NdsAicpuValidQp(qp) || request == nullptr || result == nullptr || request->is_send_cq > 1U ||
+        request->completion_output_address == 0U || request->max_completions == 0U)
         return kNdsAicpuInvalidArgument;
+    const bool is_send_cq = request->is_send_cq != 0U;
     auto poll = reinterpret_cast<NdsHnsPollCqFn>(NdsAicpuResolveSymbol("ibv_poll_cq"));
     const uint32_t limit =
         request->max_completions < NDS_DEVICE_MAX_COMPLETIONS ? request->max_completions : NDS_DEVICE_MAX_COMPLETIONS;
     auto *output = reinterpret_cast<NdsDeviceCompletionOutput *>(request->completion_output_address);
     if (poll != nullptr) {
         NdsHnsWc completions[NDS_DEVICE_MAX_COMPLETIONS]{};
-        void *cq =
-            reinterpret_cast<void *>(request->queue_kind == NDS_DEVICE_SEND_QUEUE ? qp->provider_send_cq_address
-                                                                                  : qp->provider_receive_cq_address);
+        void *cq = reinterpret_cast<void *>(is_send_cq ? qp->provider_send_cq_address : qp->provider_receive_cq_address);
         const int count = poll(cq, static_cast<int>(limit), completions);
         if (count < 0) {
             NdsAicpuSetResult(result, NDS_DEVICE_OPERATION_PROVIDER_FAILED, NDS_DEVICE_OPERATION_PATH_PROVIDER, count);
@@ -115,9 +114,8 @@ extern "C" uint32_t NdsAicpuPollCqImpl(const NdsDeviceQp *qp, const NdsDevicePol
         NdsAicpuSetResult(result, NDS_DEVICE_OPERATION_SUCCESS, NDS_DEVICE_OPERATION_PATH_PROVIDER, 0);
         return kNdsAicpuSuccess;
     }
-    const bool receive = request->queue_kind == NDS_DEVICE_RECEIVE_QUEUE;
-    const NdsDeviceCompletionQueue &cq = receive ? qp->receive_cq : qp->send_cq;
-    const NdsDeviceWorkQueue &wq = receive ? qp->receive_queue : qp->send_queue;
+    const NdsDeviceCompletionQueue &cq = is_send_cq ? qp->send_cq : qp->receive_cq;
+    const NdsDeviceWorkQueue &wq = is_send_cq ? qp->send_queue : qp->receive_queue;
     auto *consumer_address = reinterpret_cast<uint32_t *>(cq.consumer_address);
     auto *tail_address = reinterpret_cast<uint32_t *>(wq.tail_address);
     uint32_t consumer = *consumer_address;
@@ -128,7 +126,7 @@ extern "C" uint32_t NdsAicpuPollCqImpl(const NdsDeviceQp *qp, const NdsDevicePol
                                                     static_cast<uint64_t>(cq.entry_size) * (consumer % cq.depth));
         if (!nds_hns_cqe_is_ready(cqe, consumer, cq.depth))
             break;
-        if (!receive)
+        if (is_send_cq)
             tail = nds_hns_send_tail_for_cqe(tail, wq.depth, cqe);
         nds_hns_decode_cqe(cqe, reinterpret_cast<uint64_t *>(wq.wr_id_address)[tail % wq.depth],
                            &output->entries[count++]);

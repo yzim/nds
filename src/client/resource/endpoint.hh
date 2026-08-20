@@ -48,7 +48,8 @@ struct QueuePairConfig {
     int ai_qp_mode{-1};
     std::uint32_t send_queue_depth{32768};
     std::uint32_t receive_queue_depth{128};
-    std::uint32_t control_flags{QueuePairCallerPollsCq};
+    // HCCP consumes AI-QP completions unless a future caller-owned path opts in.
+    std::uint32_t control_flags{};
 };
 
 class Endpoint;

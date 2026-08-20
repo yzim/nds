@@ -6,7 +6,7 @@
 
 #include <stdint.h>
 
-#define NDS_DEVICE_OPERATOR_ARGS_ABI_VERSION UINT32_C(1)
+#define NDS_DEVICE_OPERATOR_ARGS_ABI_VERSION UINT32_C(2)
 
 typedef struct NdsDevicePostSendRequest {
     uint32_t abi_version;

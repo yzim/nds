@@ -5,13 +5,8 @@
 
 #include <stdint.h>
 
-#define NDS_DEVICE_VERBS_ABI_VERSION UINT32_C(1)
+#define NDS_DEVICE_VERBS_ABI_VERSION UINT32_C(2)
 #define NDS_DEVICE_MAX_COMPLETIONS UINT32_C(16)
-
-enum NdsDeviceQueueKind {
-    NDS_DEVICE_SEND_QUEUE = 0U,
-    NDS_DEVICE_RECEIVE_QUEUE = 1U,
-};
 
 enum NdsDeviceWrOpcode {
     NDS_DEVICE_WR_SEND = 0U,
@@ -60,7 +55,7 @@ typedef struct NdsDeviceRecvWr {
 } NdsDeviceRecvWr;
 
 typedef struct NdsDevicePollCqRequest {
-    uint32_t queue_kind;
+    uint32_t is_send_cq;
     uint32_t max_completions;
     uint64_t completion_output_address;
 } NdsDevicePollCqRequest;

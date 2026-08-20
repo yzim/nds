@@ -70,21 +70,7 @@ nds::Result<void> post_send(nds::client::Runtime *runtime, nds::client::Transpor
                                 {region.address(), static_cast<std::uint32_t>(payload.size()), region.local_key()},
                                 0U, 0U, 0U};
     if (transport->execution().mode == nds::client::NpuExecutionMode::Ra) {
-        const auto posted = nds::NdsRaPostSend(transport->qp(), wr);
-        if (!posted)
-            return nds::unexpected(posted.error());
-        auto &api = runtime->runtime_api();
-        if (api.set_device == nullptr || api.rdma_db_send == nullptr)
-            return nds::unexpected(nds::ErrorCode::kRuntime, "runtime doorbell ABI is unavailable");
-        if (const int result = api.set_device(static_cast<std::int32_t>(runtime->config().logical_device_id));
-            result != 0) {
-            return nds::unexpected(nds::ErrorCode::kRuntime, "rtSetDevice failed: " + std::to_string(result));
-        }
-        if (const int result = api.rdma_db_send(posted->doorbell.db_index, posted->doorbell.db_info, nullptr);
-            result != 0) {
-            return nds::unexpected(nds::ErrorCode::kRuntime, "rtRDMADBSend failed: " + std::to_string(result));
-        }
-        return {};
+        return nds::NdsRaPostSend(runtime, transport->qp(), wr);
     }
 
     auto allocated_result = runtime->allocate(sizeof(NdsDeviceOperationResult));

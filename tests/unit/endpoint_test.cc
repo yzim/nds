@@ -41,8 +41,11 @@ struct FakeRa {
     int register_calls{};
     int deregister_calls{};
     int send_calls{};
+    int set_device_calls{};
+    int doorbell_calls{};
     int recv_calls{};
     int poll_calls{};
+    bool last_poll_was_send{};
     int port_status{NDS_RA_PORT_STATUS_ACTIVE};
     int qp_status{NDS_RA_QP_STATUS_CONNECTED};
     int lite_support{NDS_RA_LITE_ALIGN_4K};
@@ -53,6 +56,8 @@ struct FakeRa {
     NdsRaMrInfo mr{};
     NdsRaSendWr send{};
     NdsRaSge send_sge{};
+    std::uint32_t doorbell_index{};
+    std::uint64_t doorbell_info{};
 };
 
 FakeRa *fake_state{};
@@ -169,8 +174,22 @@ int fake_send(void *, NdsRaSendWr *request, NdsRaSendResponse *response) {
     fake_state->send = *request;
     fake_state->send_sge = *request->buffers;
     fake_state->send.buffers = &fake_state->send_sge;
-    response->wqe.sq_index = 17U;
-    response->wqe.wqe_index = 23U;
+    response->doorbell.db_index = 17U;
+    response->doorbell.db_info = 0x100000017U;
+    return 0;
+}
+
+int fake_set_device(std::int32_t logical_device_id) {
+    EXPECT_EQ(logical_device_id, 0);
+    ++fake_state->set_device_calls;
+    return 0;
+}
+
+int fake_doorbell(std::uint32_t index, std::uint64_t info, void *stream) {
+    EXPECT_EQ(stream, nullptr);
+    ++fake_state->doorbell_calls;
+    fake_state->doorbell_index = index;
+    fake_state->doorbell_info = info;
     return 0;
 }
 
@@ -180,8 +199,9 @@ int fake_recv(void *, NdsRaRecvWr *, unsigned int count, unsigned int *completed
     return 0;
 }
 
-int fake_poll(void *, bool, unsigned int, void *) {
+int fake_poll(void *, bool is_send_cq, unsigned int, void *) {
     ++fake_state->poll_calls;
+    fake_state->last_poll_was_send = is_send_cq;
     return 0;
 }
 
@@ -270,6 +290,7 @@ TEST(EndpointTest, ProducesAiQueuePairDeviceView) {
     auto qp = std::move(*created);
     EXPECT_EQ(fake.ai_qp_create_calls, 1);
     EXPECT_EQ(fake.ai_attributes.qp_mode, NDS_RA_QP_MODE_OPBASE_EXT);
+    EXPECT_EQ(fake.ai_attributes.data_plane_flag, 0U);
     ASSERT_TRUE(qp.set_device_wr_id_storage(0x50000U, 0x60000U));
     const auto transport = qp.make_device_transport();
     ASSERT_TRUE(transport);
@@ -324,17 +345,29 @@ TEST(EndpointTest, RaVerbsUseQueuePairExecutionView) {
     ASSERT_TRUE(created);
     auto qp = std::move(*created);
     ASSERT_TRUE(qp.connect(peer_info()));
+    nds::client::Runtime runtime;
+    runtime.runtime_api().set_device = fake_set_device;
+    runtime.runtime_api().rdma_db_send = fake_doorbell;
     const NdsDeviceSendWr send{
         1U, NDS_DEVICE_WR_SEND, NDS_DEVICE_SEND_SIGNALED, {0x1000U, 64U, 0x99U}, 0U, 0U, 0U};
-    EXPECT_TRUE(nds::NdsRaPostSend(&qp, send));
+    EXPECT_TRUE(nds::NdsRaPostSend(&runtime, &qp, send));
     EXPECT_EQ(fake.send_calls, 1);
     EXPECT_EQ(fake.send.buffers->address, 0x1000U);
+    EXPECT_EQ(fake.set_device_calls, 1);
+    EXPECT_EQ(fake.doorbell_calls, 1);
+    EXPECT_EQ(fake.doorbell_index, 17U);
+    EXPECT_EQ(fake.doorbell_info, 0x100000017U);
     EXPECT_TRUE(nds::NdsRaPostRecv(&qp, {2U, {0x2000U, 64U, 0x88U}}));
     EXPECT_EQ(fake.recv_calls, 1);
     NdsDeviceCompletionOutput output{};
-    const auto polled = nds::NdsRaPollCq(&qp, NDS_DEVICE_SEND_QUEUE, &output);
+    const auto polled = nds::NdsRaPollCq(&qp, true, 1U, &output);
     EXPECT_TRUE(polled);
     EXPECT_EQ(*polled, 0U);
+    EXPECT_TRUE(fake.last_poll_was_send);
+    const auto receive_polled = nds::NdsRaPollCq(&qp, false, 1U, &output);
+    EXPECT_TRUE(receive_polled);
+    EXPECT_EQ(*receive_polled, 0U);
+    EXPECT_FALSE(fake.last_poll_was_send);
 }
 
 TEST(EndpointTest, RejectsInvalidQueueDepthAndPeer) {
