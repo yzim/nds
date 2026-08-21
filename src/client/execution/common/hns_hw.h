@@ -31,24 +31,24 @@ typedef struct NdsHnsHwCqe {
 } NdsHnsHwCqe;
 
 enum NdsHnsHwSqOpcode {
-    NDS_HNSHW_SQ_SEND = 0x0U,
-    NDS_HNSHW_SQ_RDMA_WRITE = 0x3U,
-    NDS_HNSHW_SQ_RDMA_READ = 0x5U,
-    NDS_HNSHW_SQ_INVALID = 0xffffffffU,
+    NDS_HNS_HW_SQ_SEND = 0x0U,
+    NDS_HNS_HW_SQ_RDMA_WRITE = 0x3U,
+    NDS_HNS_HW_SQ_RDMA_READ = 0x5U,
+    NDS_HNS_HW_SQ_INVALID = 0xffffffffU,
 };
 
 /* HNS SQ WQE word0 bit 8: request a completion (SF). The AIV writer drives it
  * from NDS_DEVICE_SEND_SIGNALED so unsignaled WRs do not produce a CQE. */
 enum NdsHnsHwSqFlag {
-    NDS_HNSHW_SQ_SIGNALED = 1U << 8U,
+    NDS_HNS_HW_SQ_SIGNALED = 1U << 8U,
 };
 
-#define NDS_HNSHW_SQ_OPCODE_FROM_DEVICE(opcode)    \
+#define NDS_HNS_HW_SQ_OPCODE_FROM_DEVICE(opcode)    \
     ((opcode) == NDS_DEVICE_WR_SEND              \
-         ? NDS_HNSHW_SQ_SEND                       \
+         ? NDS_HNS_HW_SQ_SEND                       \
          : ((opcode) == NDS_DEVICE_WR_RDMA_WRITE \
-                ? NDS_HNSHW_SQ_RDMA_WRITE          \
-                : ((opcode) == NDS_DEVICE_WR_RDMA_READ ? NDS_HNSHW_SQ_RDMA_READ : NDS_HNSHW_SQ_INVALID)))
+                ? NDS_HNS_HW_SQ_RDMA_WRITE          \
+                : ((opcode) == NDS_DEVICE_WR_RDMA_READ ? NDS_HNS_HW_SQ_RDMA_READ : NDS_HNS_HW_SQ_INVALID)))
 
 static inline int nds_hns_hw_queue_has_space(uint32_t head, uint32_t tail, uint32_t depth, uint32_t reserved_entries) {
     return depth > reserved_entries && head - tail < depth - reserved_entries;

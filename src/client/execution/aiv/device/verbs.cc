@@ -60,8 +60,8 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPostSendImpl(__gm__ const NdsDe
         reinterpret_cast<__gm__ uint8_t *>(queue->buffer_address + (uint64_t)queue->entry_size * (head % queue->depth));
     __gm__ HnsRoceRcSqWqe *wqe = reinterpret_cast<__gm__ HnsRoceRcSqWqe *>(wqe_address);
     const uint32_t owner = (head >> 15U) & 1U;
-    const uint32_t hns_opcode = NDS_HNSHW_SQ_OPCODE_FROM_DEVICE(wr->opcode);
-    const uint32_t signaled = (wr->flags & NDS_DEVICE_SEND_SIGNALED) != 0U ? NDS_HNSHW_SQ_SIGNALED : 0U;
+    const uint32_t hns_opcode = NDS_HNS_HW_SQ_OPCODE_FROM_DEVICE(wr->opcode);
+    const uint32_t signaled = (wr->flags & NDS_DEVICE_SEND_SIGNALED) != 0U ? NDS_HNS_HW_SQ_SIGNALED : 0U;
     wqe->byte_4 = hns_opcode | (((~owner) << 7U) & (1U << 7U)) | signaled;
     wqe->message_length = wr->local.length;
     wqe->immediate_data = 0U;
