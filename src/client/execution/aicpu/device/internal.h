@@ -31,15 +31,12 @@ inline void *NdsAicpuResolveSymbol(const char *name) {
 }
 
 inline bool NdsAicpuValidQp(const NdsDeviceQp *qp) {
-    return qp != nullptr && qp->abi_version == NDS_DEVICE_QP_ABI_VERSION && qp->size == sizeof(*qp);
+    return qp != nullptr;
 }
 
-inline void NdsAicpuSetResult(NdsDeviceOperationResult *result, uint32_t status, uint32_t path,
-                              int32_t provider_result) {
-    result->status = status;
-    result->path = path;
-    result->provider_result = provider_result;
-    result->reserved = 0U;
+inline void NdsAicpuSetReturnValue(int32_t *return_value, uint32_t status) {
+    if (return_value != nullptr)
+        *return_value = status == NDS_DEVICE_OPERATION_SUCCESS ? 0 : -static_cast<int32_t>(status);
     NdsAicpuBarrier();
 }
 

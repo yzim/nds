@@ -19,7 +19,7 @@ struct HnsRoceSge {
     uint64_t local_address;
 };
 
-__aicore__ inline void StoreU64(TBuf<> *scratch, uint64_t address, uint64_t value) {
+__aicore__ inline void StoreU64(uint64_t address, uint64_t value, TBuf<> *scratch) {
     LocalTensor<uint64_t> local = scratch->GetWithOffset<uint64_t>(1U, 0U);
     local.SetValue(0U, value);
     GlobalTensor<uint64_t> global;
@@ -35,15 +35,16 @@ __aicore__ inline void StoreU32(uint64_t address, uint32_t value) {
 }
 }  // namespace
 
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPostSendImpl(__gm__ const NdsDeviceQp *qp, const NdsDeviceSendWr *wr,
-                                                              TBuf<> *scratch,
-                                                              __gm__ NdsDeviceOperationResult *result) {
-    if (result == nullptr)
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPostSendImpl(__gm__ const NdsDeviceQp *qp,
+                                                              const NdsDeviceSendWr *wr,
+                                                              __gm__ int32_t *return_value,
+                                                              TBuf<> *scratch) {
+    if (return_value == nullptr)
         return;
     if (!NdsAivValidQp(qp) || wr == nullptr || scratch == nullptr ||
         (wr->opcode != NDS_DEVICE_WR_SEND && wr->opcode != NDS_DEVICE_WR_RDMA_READ &&
          wr->opcode != NDS_DEVICE_WR_RDMA_WRITE)) {
-        NdsAivSetResult(result, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
+        NdsAivSetReturnValue(return_value, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
         return;
     }
     __gm__ const NdsDeviceWorkQueue *queue = &qp->send_queue;
@@ -53,7 +54,7 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPostSendImpl(__gm__ const NdsDe
     const uint32_t head = *head_address;
     NdsAivCacheSync(reinterpret_cast<__gm__ uint8_t *>(tail_address), sizeof(uint32_t));
     if ((head - *tail_address) >= queue->depth - 1U) {
-        NdsAivSetResult(result, NDS_DEVICE_OPERATION_QUEUE_FULL);
+        NdsAivSetReturnValue(return_value, NDS_DEVICE_OPERATION_QUEUE_FULL);
         return;
     }
     __gm__ uint8_t *wqe_address =
@@ -87,18 +88,19 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPostSendImpl(__gm__ const NdsDe
     PipeBarrier<PIPE_ALL>();
     const uint64_t doorbell =
         (uint64_t)queue->number | ((uint64_t)(next & 0xffffU) << 32U) | ((uint64_t)qp->service_level << 48U);
-    StoreU64(scratch, queue->doorbell_address, doorbell);
-    NdsAivSetResult(result, NDS_DEVICE_OPERATION_SUCCESS);
+    StoreU64(queue->doorbell_address, doorbell, scratch);
+    NdsAivSetReturnValue(return_value, NDS_DEVICE_OPERATION_SUCCESS);
 }
 
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPostRecvImpl(__gm__ const NdsDeviceQp *qp, const NdsDeviceRecvWr *wr,
-                                                              TBuf<> *scratch,
-                                                              __gm__ NdsDeviceOperationResult *result) {
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPostRecvImpl(__gm__ const NdsDeviceQp *qp,
+                                                              const NdsDeviceRecvWr *wr,
+                                                              __gm__ int32_t *return_value,
+                                                              TBuf<> *scratch) {
     (void)scratch;
-    if (result == nullptr)
+    if (return_value == nullptr)
         return;
     if (!NdsAivValidQp(qp) || wr == nullptr) {
-        NdsAivSetResult(result, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
+        NdsAivSetReturnValue(return_value, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
         return;
     }
     __gm__ const NdsDeviceWorkQueue *queue = &qp->receive_queue;
@@ -108,7 +110,7 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPostRecvImpl(__gm__ const NdsDe
     NdsAivCacheSync(reinterpret_cast<__gm__ uint8_t *>(tail_address), sizeof(uint32_t));
     const uint32_t head = *head_address;
     if ((head - *tail_address) >= queue->depth) {
-        NdsAivSetResult(result, NDS_DEVICE_OPERATION_QUEUE_FULL);
+        NdsAivSetReturnValue(return_value, NDS_DEVICE_OPERATION_QUEUE_FULL);
         return;
     }
     __gm__ HnsRoceSge *sge = reinterpret_cast<__gm__ HnsRoceSge *>(queue->buffer_address +
@@ -124,22 +126,20 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPostRecvImpl(__gm__ const NdsDe
     const uint32_t next = head + 1U;
     StoreU32(queue->doorbell_address, next & 0xffffU);
     StoreU32(queue->head_address, next);
-    NdsAivSetResult(result, NDS_DEVICE_OPERATION_SUCCESS);
+    NdsAivSetReturnValue(return_value, NDS_DEVICE_OPERATION_SUCCESS);
 }
 
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPollCqImpl(__gm__ const NdsDeviceQp *qp,
-                                                            __gm__ const NdsDevicePollCqRequest *request,
-                                                            TBuf<> *scratch, __gm__ NdsDeviceOperationResult *result) {
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPollCqImpl(
+    __gm__ const NdsDeviceQp *qp, uint32_t is_send_cq_value, uint32_t max_completions,
+    __gm__ NdsDeviceWc *wc, __gm__ int32_t *return_value, TBuf<> *scratch) {
     (void)scratch;
-    if (result == nullptr)
-        return;
-    if (!NdsAivValidQp(qp) || request == nullptr || request->is_send_cq > 1U || request->max_completions == 0U ||
-        request->completion_output_address == 0U) {
-        NdsAivSetResult(result, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
+    if (!NdsAivValidQp(qp) || is_send_cq_value > 1U || max_completions == 0U || wc == nullptr ||
+        return_value == nullptr) {
+        NdsAivSetReturnValue(return_value, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
         return;
     }
-    const bool is_send_cq = request->is_send_cq != 0U;
-    __gm__ const NdsDeviceCompletionQueue *cq = is_send_cq ? &qp->send_cq : &qp->receive_cq;
+    const bool is_send_cq = is_send_cq_value != 0U;
+    __gm__ const NdsDeviceCq *cq = is_send_cq ? &qp->send_cq : &qp->receive_cq;
     __gm__ const NdsDeviceWorkQueue *wq = is_send_cq ? &qp->send_queue : &qp->receive_queue;
     __gm__ uint32_t *consumer_address = reinterpret_cast<__gm__ uint32_t *>(cq->consumer_address);
     __gm__ uint32_t *tail_address = reinterpret_cast<__gm__ uint32_t *>(wq->tail_address);
@@ -147,11 +147,9 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPollCqImpl(__gm__ const NdsDevi
     uint32_t consumer = *consumer_address;
     NdsAivCacheSync(reinterpret_cast<__gm__ uint8_t *>(tail_address), sizeof(uint32_t));
     uint32_t tail = *tail_address;
-    __gm__ NdsDeviceCompletionOutput *output =
-        reinterpret_cast<__gm__ NdsDeviceCompletionOutput *>(request->completion_output_address);
     uint32_t count = 0U;
     const uint32_t limit =
-        request->max_completions < NDS_DEVICE_MAX_COMPLETIONS ? request->max_completions : NDS_DEVICE_MAX_COMPLETIONS;
+        max_completions < NDS_DEVICE_MAX_COMPLETIONS ? max_completions : NDS_DEVICE_MAX_COMPLETIONS;
     while (count < limit) {
         __gm__ NdsHnsHwCqe *cqe = reinterpret_cast<__gm__ NdsHnsHwCqe *>(
             cq->buffer_address + (uint64_t)cq->entry_size * (consumer % cq->depth));
@@ -162,7 +160,7 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPollCqImpl(__gm__ const NdsDevi
         const uint32_t wqe_index = cqe->byte_4 >> 16U;
         if (is_send_cq)
             tail += (wqe_index - tail) & (wq->depth - 1U);
-        __gm__ NdsDeviceCompletion *completion = &output->entries[count++];
+        __gm__ NdsDeviceWc *completion = &wc[count++];
         completion->wr_id = reinterpret_cast<__gm__ uint64_t *>(wq->wr_id_address)[tail % wq->depth];
         completion->status = (cqe->byte_4 >> 8U) & 0xffU;
         completion->opcode = cqe->byte_4 & 0x1fU;
@@ -175,11 +173,10 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPollCqImpl(__gm__ const NdsDevi
         ++consumer;
         ++tail;
     }
-    output->count = count;
+    StoreU32(reinterpret_cast<uint64_t>(return_value), count);
     if (count != 0U) {
         StoreU32(cq->consumer_address, consumer);
         StoreU32(wq->tail_address, tail);
         StoreU32(cq->doorbell_address, consumer & 0x00ffffffU);
     }
-    NdsAivSetResult(result, NDS_DEVICE_OPERATION_SUCCESS);
 }

@@ -359,7 +359,7 @@ TEST(EndpointTest, RaVerbsUseQueuePairExecutionView) {
     EXPECT_EQ(fake.doorbell_info, 0x100000017U);
     EXPECT_TRUE(nds::NdsRaPostRecv(&qp, {2U, {0x2000U, 64U, 0x88U}}));
     EXPECT_EQ(fake.recv_calls, 1);
-    NdsDeviceCompletionOutput output{};
+    NdsDeviceWc output[NDS_DEVICE_MAX_COMPLETIONS]{};
     const auto polled = nds::NdsRaPollCq(&qp, true, 1U, &output);
     EXPECT_TRUE(polled);
     EXPECT_EQ(*polled, 0U);

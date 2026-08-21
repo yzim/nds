@@ -59,7 +59,7 @@ TEST(DeviceHnsCodecTest, CompletionDecode) {
     cqe.byte_12 = UINT32_C(0xff345678);
     cqe.byte_16 = UINT32_C(0x7e000000);
     cqe.byte_count = 4096U;
-    NdsDeviceCompletion completion{};
+    NdsDeviceWc completion{};
     nds_hns_hw_decode_cqe(&cqe, UINT64_C(0x1020304050607080), &completion);
     EXPECT_TRUE(completion.wr_id == UINT64_C(0x1020304050607080));
     EXPECT_TRUE(completion.status == 0x5a);

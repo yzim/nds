@@ -80,8 +80,8 @@ Result<void> NdsRaPostRecv(client::QueuePair *qp, const NdsDeviceRecvWr &request
 }
 
 Result<std::uint32_t> NdsRaPollCq(client::QueuePair *qp, bool is_send_cq, std::uint32_t max_completions,
-                                  NdsDeviceCompletionOutput *output) {
-    if (qp == nullptr || output == nullptr || max_completions == 0U || max_completions > NDS_DEVICE_MAX_COMPLETIONS ||
+                                  NdsDeviceWc *wc) {
+    if (qp == nullptr || wc == nullptr || max_completions == 0U || max_completions > NDS_DEVICE_MAX_COMPLETIONS ||
         qp->execution_mode() != client::NpuExecutionMode::Ra || !qp->created() || qp->ra_api() == nullptr ||
         qp->handle() == nullptr) {
         return unexpected(ErrorCode::kInvalidArgument,
@@ -92,21 +92,19 @@ Result<std::uint32_t> NdsRaPollCq(client::QueuePair *qp, bool is_send_cq, std::u
     if (result < 0 || result > static_cast<int>(max_completions)) {
         return unexpected(ErrorCode::kRa, "RaPollCq returned an invalid result: " + std::to_string(result));
     }
-    *output = {};
-    output->count = static_cast<std::uint32_t>(result);
     for (int index = 0; index < result; ++index) {
         const NdsRaCompletion &source = completions[index];
-        output->entries[index] = {source.wr_id,
-                                  source.status,
-                                  source.opcode,
-                                  source.vendor_error,
-                                  source.byte_length,
-                                  source.qp_number,
-                                  source.flags,
-                                  source.immediate_data_or_invalidated_rkey,
-                                  0U};
+        wc[index] = {source.wr_id,
+                     source.status,
+                     source.opcode,
+                     source.vendor_error,
+                     source.byte_length,
+                     source.qp_number,
+                     source.flags,
+                     source.immediate_data_or_invalidated_rkey,
+                     0U};
     }
-    return output->count;
+    return static_cast<std::uint32_t>(result);
 }
 
 }  // namespace nds

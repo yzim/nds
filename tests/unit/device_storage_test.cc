@@ -6,10 +6,6 @@ namespace {
 
 NdsDeviceStorageContext valid_context() {
     NdsDeviceStorageContext context{};
-    context.abi_version = NDS_DEVICE_STORAGE_ABI_VERSION;
-    context.size = sizeof(context);
-    context.transport.abi_version = NDS_DEVICE_TRANSPORT_ABI_VERSION;
-    context.transport.size = sizeof(context.transport);
     context.command_buffer = {0x1000U, nds::kStorageCommandBytes, 2U};
     context.completion = {0x2000U, nds::kStorageCompletionBytes, 3U};
     context.capacity = 4096U;

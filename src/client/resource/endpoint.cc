@@ -327,7 +327,7 @@ Result<NdsDeviceTransport> QueuePair::make_device_transport() const {
         return output;
     };
     const auto copy_cq = [](const NdsRaAiDataPlaneCq &input) {
-        NdsDeviceCompletionQueue output{};
+        NdsDeviceCq output{};
         output.number = input.cqn;
         output.depth = input.depth;
         output.entry_size = input.cqe_size;
@@ -338,10 +338,6 @@ Result<NdsDeviceTransport> QueuePair::make_device_transport() const {
         return output;
     };
     NdsDeviceTransport output{};
-    output.abi_version = NDS_DEVICE_TRANSPORT_ABI_VERSION;
-    output.size = sizeof(output);
-    output.control_qp.abi_version = NDS_DEVICE_QP_ABI_VERSION;
-    output.control_qp.size = sizeof(output.control_qp);
     output.control_qp.flags = (config_.control_flags & QueuePairCallerPollsCq) != 0U
                                   ? static_cast<std::uint32_t>(NDS_DEVICE_QP_CALLER_POLLS_CQ)
                                   : 0U;
