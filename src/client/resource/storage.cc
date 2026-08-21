@@ -17,6 +17,11 @@ namespace {
 
 constexpr std::uint32_t kCompletionTimeoutMs = 5000U;
 
+struct DeviceStorageWaitResult {
+    std::int32_t return_value;
+    bool terminal;
+};
+
 class DeviceAllocation {
 public:
     explicit DeviceAllocation(Runtime *runtime) : runtime_(runtime) {}
@@ -66,10 +71,6 @@ Result<void> submit_device_storage(Runtime *runtime, Transport *transport, const
     if (!device_transport)
         return unexpected(device_transport.error());
     Args args{};
-    args.abi_version = NDS_DEVICE_STORAGE_ABI_VERSION;
-    args.size = sizeof(args);
-    args.context.abi_version = NDS_DEVICE_STORAGE_ABI_VERSION;
-    args.context.size = sizeof(args.context);
     args.context.transport = *device_transport;
     args.context.command_buffer = {command_region.address(), static_cast<std::uint32_t>(command_region.length()),
                                    command_region.local_key()};
@@ -78,14 +79,7 @@ Result<void> submit_device_storage(Runtime *runtime, Transport *transport, const
     args.context.capacity = capacity;
     args.command = command;
 
-    DeviceAllocation result(runtime);
-    if (const auto allocated = result.allocate(sizeof(NdsDeviceOperationResult)); !allocated)
-        return unexpected(allocated.error());
-    const NdsDeviceOperationResult pending{NDS_DEVICE_OPERATION_INVALID_ARGUMENT, NDS_DEVICE_OPERATION_PATH_NONE, 0,
-                                           0U};
-    if (const auto copied = runtime->copy_host_to_device(result.get(), &pending, sizeof(pending)); !copied)
-        return unexpected(copied.error());
-    args.operation_result_address = reinterpret_cast<std::uint64_t>(result.get());
+    args.return_value = std::numeric_limits<std::int32_t>::min();
 
     if (transport->execution().mode == NpuExecutionMode::Aicpu) {
         AicpuEntrypointLauncher launcher;
@@ -106,29 +100,24 @@ Result<void> submit_device_storage(Runtime *runtime, Transport *transport, const
                 reinterpret_cast<std::uint64_t>(device_args.get()), operation, kCompletionTimeoutMs);
             !launched)
             return unexpected(launched.error());
+        if (const auto copied = runtime->copy_device_to_host(&args, device_args.get(), sizeof(args)); !copied)
+            return unexpected(copied.error());
     }
 
-    NdsDeviceOperationResult completed{};
-    if (const auto copied = runtime->copy_device_to_host(&completed, result.get(), sizeof(completed)); !copied)
-        return unexpected(copied.error());
-    if (completed.status != NDS_DEVICE_OPERATION_SUCCESS)
+    if (args.return_value != 0)
         return unexpected(ErrorCode::kRuntime, "device storage operation failed");
     return {};
 }
 
-Result<NdsDeviceOperationResult> wait_device_storage(Runtime *runtime, Transport *transport,
-                                                      const MemoryRegion &command_region,
-                                                      const MemoryRegion &completion, std::uint64_t capacity,
-                                                      std::uint64_t command_id, std::uint64_t expected_bytes,
-                                                      std::int32_t timeout_ms) {
+Result<DeviceStorageWaitResult> wait_device_storage(Runtime *runtime, Transport *transport,
+                                                     const MemoryRegion &command_region,
+                                                     const MemoryRegion &completion, std::uint64_t capacity,
+                                                     std::uint64_t command_id, std::uint64_t expected_bytes,
+                                                     std::int32_t timeout_ms) {
     const auto device_transport = transport->qp()->make_device_transport();
     if (!device_transport)
         return unexpected(device_transport.error());
     NdsDeviceStorageWaitArgs args{};
-    args.abi_version = NDS_DEVICE_STORAGE_ABI_VERSION;
-    args.size = sizeof(args);
-    args.context.abi_version = NDS_DEVICE_STORAGE_ABI_VERSION;
-    args.context.size = sizeof(args.context);
     args.context.transport = *device_transport;
     args.context.command_buffer = {command_region.address(), static_cast<std::uint32_t>(command_region.length()),
                                    command_region.local_key()};
@@ -138,14 +127,7 @@ Result<NdsDeviceOperationResult> wait_device_storage(Runtime *runtime, Transport
     args.command_id = command_id;
     args.expected_bytes = expected_bytes;
 
-    DeviceAllocation result(runtime);
-    if (const auto allocated = result.allocate(sizeof(NdsDeviceOperationResult)); !allocated)
-        return unexpected(allocated.error());
-    const NdsDeviceOperationResult pending{NDS_DEVICE_OPERATION_INVALID_ARGUMENT, NDS_DEVICE_OPERATION_PATH_NONE, 0,
-                                           0U};
-    if (const auto copied = runtime->copy_host_to_device(result.get(), &pending, sizeof(pending)); !copied)
-        return unexpected(copied.error());
-    args.operation_result_address = reinterpret_cast<std::uint64_t>(result.get());
+    args.return_value = std::numeric_limits<std::int32_t>::min();
 
     if (transport->execution().mode == NpuExecutionMode::Aicpu) {
         AicpuEntrypointLauncher launcher;
@@ -166,12 +148,21 @@ Result<NdsDeviceOperationResult> wait_device_storage(Runtime *runtime, Transport
                 reinterpret_cast<std::uint64_t>(device_args.get()), timeout_ms);
             !launched)
             return unexpected(launched.error());
+        if (const auto copied = runtime->copy_device_to_host(&args, device_args.get(), sizeof(args)); !copied)
+            return unexpected(copied.error());
     }
-
-    NdsDeviceOperationResult completed{};
-    if (const auto copied = runtime->copy_device_to_host(&completed, result.get(), sizeof(completed)); !copied)
+    std::uint8_t completion_bytes[kStorageCompletionBytes]{};
+    if (const auto copied = runtime->copy_device_to_host(completion_bytes,
+                                                         reinterpret_cast<void *>(completion.address()),
+                                                         sizeof(completion_bytes));
+        !copied)
         return unexpected(copied.error());
-    return completed;
+    StorageCompletion observed{};
+    const bool terminal = deserialize_storage_completion(completion_bytes, sizeof(completion_bytes), &observed) ==
+                              StorageSerdeResult::Ok &&
+                          observed.state == StorageCompletionState::Complete && observed.command_id == command_id &&
+                          observed.bytes_transferred == expected_bytes;
+    return DeviceStorageWaitResult{args.return_value, terminal};
 }
 
 }  // namespace
@@ -392,10 +383,9 @@ Result<void> StorageClient::wait(StorageCompletionHandle handle, std::uint32_t t
                                                 static_cast<std::int32_t>(timeout_ms));
     if (!completed)
         return unexpected(completed.error());
-    if (completed->status == NDS_DEVICE_OPERATION_SUCCESS ||
-        (completed->reserved & NDS_DEVICE_OPERATION_TERMINAL) != 0U)
+    if (completed->terminal)
         pending_.reset();
-    if (completed->status != NDS_DEVICE_OPERATION_SUCCESS)
+    if (completed->return_value != 0)
         return unexpected(ErrorCode::kProtocol, "device storage wait returned a failure status");
     return {};
 }

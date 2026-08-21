@@ -11,6 +11,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <limits>
 #include <string>
 #include <utility>
 
@@ -73,21 +74,13 @@ nds::Result<void> post_send(nds::client::Runtime *runtime, nds::client::Transpor
         return nds::NdsRaPostSend(runtime, transport->qp(), wr);
     }
 
-    auto allocated_result = runtime->allocate(sizeof(NdsDeviceOperationResult));
-    if (!allocated_result)
-        return nds::unexpected(allocated_result.error());
-    nds::client::MemoryBuffer result_buffer = std::move(*allocated_result);
-    const NdsDeviceOperationResult pending{NDS_DEVICE_OPERATION_INVALID_ARGUMENT, NDS_DEVICE_OPERATION_PATH_NONE, 0,
-                                              0U};
-    if (const auto copied = runtime->copy_to(&result_buffer, &pending, sizeof(pending)); !copied)
-        return nds::unexpected(copied.error());
     const auto device_transport = transport->qp()->make_device_transport();
     if (!device_transport)
         return nds::unexpected(device_transport.error());
-    NdsDevicePostSendRequest request{};
+    NdsDevicePostSendArgs request{};
     request.qp = device_transport->control_qp;
     request.wr = wr;
-    request.operation_result_address = reinterpret_cast<std::uint64_t>(result_buffer.data());
+    request.return_value = std::numeric_limits<std::int32_t>::min();
     if (transport->execution().mode == nds::client::NpuExecutionMode::Aicpu) {
         nds::AicpuEntrypointLauncher launcher;
         if (const auto loaded = launcher.load(&runtime->acl_api(), transport->execution().aicpu_kernel_config); !loaded)
@@ -96,8 +89,6 @@ nds::Result<void> post_send(nds::client::Runtime *runtime, nds::client::Transpor
             return nds::unexpected(launched.error());
     } else {
         nds::AivEntrypointLauncher launcher;
-        request.abi_version = NDS_DEVICE_OPERATOR_ARGS_ABI_VERSION;
-        request.size = sizeof(request);
         if (const auto loaded = launcher.load(&runtime->acl_api(), transport->execution().aiv_kernel); !loaded)
             return nds::unexpected(loaded.error());
         auto request_buffer = runtime->allocate(sizeof(request));
@@ -109,11 +100,10 @@ nds::Result<void> post_send(nds::client::Runtime *runtime, nds::client::Transpor
                 launcher.launch_post_send_and_wait(reinterpret_cast<std::uint64_t>(request_buffer->data()), 5000);
             !launched)
             return nds::unexpected(launched.error());
+        if (const auto copied = runtime->copy_from(&request, *request_buffer, sizeof(request)); !copied)
+            return nds::unexpected(copied.error());
     }
-    NdsDeviceOperationResult completed{};
-    if (const auto copied = runtime->copy_from(&completed, result_buffer, sizeof(completed)); !copied)
-        return nds::unexpected(copied.error());
-    return completed.status == NDS_DEVICE_OPERATION_SUCCESS
+    return request.return_value == 0
                ? nds::Result<void>{}
                : nds::unexpected(nds::ErrorCode::kRuntime, "device verbs Send failed");
 }

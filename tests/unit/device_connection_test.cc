@@ -1,4 +1,4 @@
-#include "nds/device_operations.h"
+#include "nds/device_verbs.h"
 
 #include <gtest/gtest.h>
 #include <cstdint>

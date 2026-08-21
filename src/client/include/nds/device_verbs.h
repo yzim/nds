@@ -3,9 +3,7 @@
 
 #include <stdint.h>
 
-#define NDS_DEVICE_VERBS_ABI_VERSION UINT32_C(2)
 #define NDS_DEVICE_MAX_COMPLETIONS UINT32_C(16)
-#define NDS_DEVICE_QP_ABI_VERSION UINT32_C(1)
 
 enum NdsDeviceQpMode {
     NDS_DEVICE_QP_MODE_NORMAL = 0,
@@ -35,7 +33,7 @@ typedef struct NdsDeviceWorkQueue {
     uint64_t wr_id_address;
 } NdsDeviceWorkQueue;
 
-typedef struct NdsDeviceCompletionQueue {
+typedef struct NdsDeviceCq {
     uint32_t number;
     uint32_t depth;
     uint32_t entry_size;
@@ -43,11 +41,9 @@ typedef struct NdsDeviceCompletionQueue {
     uint64_t buffer_address;
     uint64_t consumer_address;
     uint64_t doorbell_address;
-} NdsDeviceCompletionQueue;
+} NdsDeviceCq;
 
 typedef struct NdsDeviceQp {
-    uint32_t abi_version;
-    uint32_t size;
     uint32_t flags;
     int32_t qp_mode;
     uint32_t service_level;
@@ -57,8 +53,8 @@ typedef struct NdsDeviceQp {
     uint64_t provider_receive_cq_address;
     NdsDeviceWorkQueue send_queue;
     NdsDeviceWorkQueue receive_queue;
-    NdsDeviceCompletionQueue send_cq;
-    NdsDeviceCompletionQueue receive_cq;
+    NdsDeviceCq send_cq;
+    NdsDeviceCq receive_cq;
 } NdsDeviceQp;
 
 enum NdsDeviceWrOpcode {
@@ -67,6 +63,8 @@ enum NdsDeviceWrOpcode {
     NDS_DEVICE_WR_RDMA_WRITE = 2U,
 };
 
+/* Negative values of these normalized codes are reported through an Args
+ * envelope's return_value. They intentionally carry no provider diagnostics. */
 enum NdsDeviceOperationStatus {
     NDS_DEVICE_OPERATION_SUCCESS = 0U,
     NDS_DEVICE_OPERATION_INVALID_ARGUMENT = 1U,
@@ -74,16 +72,6 @@ enum NdsDeviceOperationStatus {
     NDS_DEVICE_OPERATION_PROVIDER_FAILED = 3U,
     NDS_DEVICE_OPERATION_QUEUE_FULL = 4U,
     NDS_DEVICE_OPERATION_UNSUPPORTED = 5U,
-};
-
-enum NdsDeviceOperationPath {
-    NDS_DEVICE_OPERATION_PATH_NONE = 0U,
-    NDS_DEVICE_OPERATION_PATH_DIRECT = 1U,
-    NDS_DEVICE_OPERATION_PATH_PROVIDER = 2U,
-};
-
-enum NdsDeviceOperationFlags {
-    NDS_DEVICE_OPERATION_TERMINAL = 1U << 0,
 };
 
 enum NdsDeviceSendFlags {
@@ -97,8 +85,8 @@ typedef struct NdsDeviceSge {
 } NdsDeviceSge;
 
 /* One RDMA data-movement work request, shared across RA, AIV, and AICPU. It is
- * the caller-facing WR unit carried in NdsDeviceOperationRequest for AIV/AICPU
- * and passed to the RA connection layer. Provider structs (NdsRaSendWr,
+ * the caller-facing WR unit passed to the RA connection layer and carried by
+ * the AIV/AICPU launch envelopes. Provider structs (NdsRaSendWr,
  * NdsHnsSendWr, the raw HNS WQE) are internal translations and are not
  * caller-visible. */
 typedef struct NdsDeviceSendWr {
@@ -116,20 +104,7 @@ typedef struct NdsDeviceRecvWr {
     NdsDeviceSge local;
 } NdsDeviceRecvWr;
 
-typedef struct NdsDevicePollCqRequest {
-    uint32_t is_send_cq;
-    uint32_t max_completions;
-    uint64_t completion_output_address;
-} NdsDevicePollCqRequest;
-
-typedef struct NdsDeviceOperationResult {
-    uint32_t status;
-    uint32_t path;
-    int32_t provider_result;
-    uint32_t reserved;
-} NdsDeviceOperationResult;
-
-typedef struct NdsDeviceCompletion {
+typedef struct NdsDeviceWc {
     uint64_t wr_id;
     int32_t status;
     int32_t opcode;
@@ -139,36 +114,57 @@ typedef struct NdsDeviceCompletion {
     uint32_t flags;
     uint32_t immediate_data_or_invalidated_rkey;
     uint32_t reserved;
-} NdsDeviceCompletion;
+} NdsDeviceWc;
 
-typedef struct NdsDeviceCompletionOutput {
-    uint32_t count;
+/* Operator-launch ABI envelopes. The payload fields mirror the verbs APIs;
+ * they are not a second device-side verbs interface. return_value is zero on
+ * success, a negative NDS operation error for post operations, or the count
+ * of WCs written by PollCq. */
+typedef struct NdsDevicePostSendArgs {
+    NdsDeviceQp qp;
+    NdsDeviceSendWr wr;
+    int32_t return_value;
     uint32_t reserved;
-    NdsDeviceCompletion entries[NDS_DEVICE_MAX_COMPLETIONS];
-} NdsDeviceCompletionOutput;
+} NdsDevicePostSendArgs;
+
+typedef struct NdsDevicePostRecvArgs {
+    NdsDeviceQp qp;
+    NdsDeviceRecvWr wr;
+    int32_t return_value;
+    uint32_t reserved;
+} NdsDevicePostRecvArgs;
+
+typedef struct NdsDevicePollCqArgs {
+    NdsDeviceQp qp;
+    uint32_t is_send_cq;
+    uint32_t max_completions;
+    uint64_t wc_address;
+    int32_t return_value;
+    uint32_t reserved;
+} NdsDevicePollCqArgs;
 
 #if defined(__cplusplus)
 static_assert(sizeof(NdsDeviceWorkQueue) == 56, "device WQ ABI changed");
-static_assert(sizeof(NdsDeviceCompletionQueue) == 40, "device CQ ABI changed");
-static_assert(sizeof(NdsDeviceQp) == 240, "device QP ABI changed");
+static_assert(sizeof(NdsDeviceCq) == 40, "device CQ ABI changed");
+static_assert(sizeof(NdsDeviceQp) == 232, "device QP ABI changed");
 static_assert(sizeof(NdsDeviceSge) == 16, "device SGE ABI changed");
 static_assert(sizeof(NdsDeviceSendWr) == 48, "device send WR ABI changed");
 static_assert(sizeof(NdsDeviceRecvWr) == 24, "device receive WR ABI changed");
-static_assert(sizeof(NdsDevicePollCqRequest) == 16, "device CQ request ABI changed");
-static_assert(sizeof(NdsDeviceCompletion) == 40, "device completion ABI changed");
-static_assert(sizeof(NdsDeviceCompletionOutput) == 648, "device completion output ABI changed");
-static_assert(sizeof(NdsDeviceOperationResult) == 16, "device operation result ABI changed");
+static_assert(sizeof(NdsDeviceWc) == 40, "device WC ABI changed");
+static_assert(sizeof(NdsDevicePostSendArgs) == 288, "device post-send operator ABI changed");
+static_assert(sizeof(NdsDevicePostRecvArgs) == 264, "device post-recv operator ABI changed");
+static_assert(sizeof(NdsDevicePollCqArgs) == 256, "device poll-CQ operator ABI changed");
 #else
 _Static_assert(sizeof(NdsDeviceWorkQueue) == 56, "device WQ ABI changed");
-_Static_assert(sizeof(NdsDeviceCompletionQueue) == 40, "device CQ ABI changed");
-_Static_assert(sizeof(NdsDeviceQp) == 240, "device QP ABI changed");
+_Static_assert(sizeof(NdsDeviceCq) == 40, "device CQ ABI changed");
+_Static_assert(sizeof(NdsDeviceQp) == 232, "device QP ABI changed");
 _Static_assert(sizeof(NdsDeviceSge) == 16, "device SGE ABI changed");
 _Static_assert(sizeof(NdsDeviceSendWr) == 48, "device send WR ABI changed");
 _Static_assert(sizeof(NdsDeviceRecvWr) == 24, "device receive WR ABI changed");
-_Static_assert(sizeof(NdsDevicePollCqRequest) == 16, "device CQ request ABI changed");
-_Static_assert(sizeof(NdsDeviceCompletion) == 40, "device completion ABI changed");
-_Static_assert(sizeof(NdsDeviceCompletionOutput) == 648, "device completion output ABI changed");
-_Static_assert(sizeof(NdsDeviceOperationResult) == 16, "device operation result ABI changed");
+_Static_assert(sizeof(NdsDeviceWc) == 40, "device WC ABI changed");
+_Static_assert(sizeof(NdsDevicePostSendArgs) == 288, "device post-send operator ABI changed");
+_Static_assert(sizeof(NdsDevicePostRecvArgs) == 264, "device post-recv operator ABI changed");
+_Static_assert(sizeof(NdsDevicePollCqArgs) == 256, "device poll-CQ operator ABI changed");
 #endif
 
 #endif

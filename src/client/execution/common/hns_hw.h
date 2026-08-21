@@ -71,7 +71,7 @@ static inline uint32_t nds_hns_hw_send_tail_for_cqe(uint32_t tail, uint32_t dept
     return tail + ((wqe_index - tail) & (depth - 1U));
 }
 
-static inline void nds_hns_hw_decode_cqe(const NdsHnsHwCqe *cqe, uint64_t wr_id, NdsDeviceCompletion *completion) {
+static inline void nds_hns_hw_decode_cqe(const NdsHnsHwCqe *cqe, uint64_t wr_id, NdsDeviceWc *completion) {
     completion->wr_id = wr_id;
     completion->status = (int32_t)((cqe->byte_4 >> 8U) & 0xffU);
     completion->opcode = (int32_t)(cqe->byte_4 & 0x1fU);

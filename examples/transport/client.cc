@@ -11,6 +11,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <limits>
 #include <string>
 #include <utility>
 
@@ -75,47 +76,34 @@ nds::Result<void> send(nds::client::Runtime *runtime, nds::client::Transport *tr
     const auto device_transport = transport->qp()->make_device_transport();
     if (!device_transport)
         return nds::unexpected(device_transport.error());
-    auto allocated_result = runtime->allocate(sizeof(NdsDeviceOperationResult));
-    if (!allocated_result)
-        return nds::unexpected(allocated_result.error());
-    nds::client::MemoryBuffer result_buffer = std::move(*allocated_result);
-    const NdsDeviceOperationResult pending{NDS_DEVICE_OPERATION_INVALID_ARGUMENT, NDS_DEVICE_OPERATION_PATH_NONE, 0,
-                                              0U};
-    if (const auto copied = runtime->copy_to(&result_buffer, &pending, sizeof(pending)); !copied)
-        return nds::unexpected(copied.error());
-    NdsDeviceOperationRequest request{};
-    request.transport = *device_transport;
-    request.operation = NDS_DEVICE_RDMA_SEND;
-    request.parameters.send_wr = transfer;
-    request.operation_result_address = reinterpret_cast<std::uint64_t>(result_buffer.data());
+    NdsDevicePostSendArgs request{};
+    request.qp = device_transport->control_qp;
+    request.wr = transfer;
+    request.return_value = std::numeric_limits<std::int32_t>::min();
     if (transport->execution().mode == nds::client::NpuExecutionMode::Aicpu) {
         nds::AicpuEntrypointLauncher launcher;
         if (const auto loaded = launcher.load(&runtime->acl_api(), transport->execution().aicpu_kernel_config); !loaded)
             return nds::unexpected(loaded.error());
-        if (const auto launched = launcher.launch_and_wait(&request, 5000); !launched)
+        if (const auto launched = launcher.launch_post_send_and_wait(&request, 5000); !launched)
             return nds::unexpected(launched.error());
     } else {
         nds::AivEntrypointLauncher launcher;
         if (const auto loaded = launcher.load(&runtime->acl_api(), transport->execution().aiv_kernel); !loaded)
             return nds::unexpected(loaded.error());
-        auto device_request = launcher.make_device_request(request);
-        if (!device_request)
-            return nds::unexpected(device_request.error());
-        auto request_buffer = runtime->allocate(sizeof(*device_request));
+        auto request_buffer = runtime->allocate(sizeof(request));
         if (!request_buffer)
             return nds::unexpected(request_buffer.error());
-        if (const auto copied = runtime->copy_to(&*request_buffer, &*device_request, sizeof(*device_request)); !copied)
+        if (const auto copied = runtime->copy_to(&*request_buffer, &request, sizeof(request)); !copied)
             return nds::unexpected(copied.error());
-        if (const auto launched = launcher.launch_and_wait(reinterpret_cast<std::uint64_t>(request_buffer->data()),
-                                                           request.operation, 5000);
+        if (const auto launched =
+                launcher.launch_post_send_and_wait(reinterpret_cast<std::uint64_t>(request_buffer->data()), 5000);
             !launched) {
             return nds::unexpected(launched.error());
         }
+        if (const auto copied = runtime->copy_from(&request, *request_buffer, sizeof(request)); !copied)
+            return nds::unexpected(copied.error());
     }
-    NdsDeviceOperationResult completed{};
-    if (const auto copied = runtime->copy_from(&completed, result_buffer, sizeof(completed)); !copied)
-        return nds::unexpected(copied.error());
-    return completed.status == NDS_DEVICE_OPERATION_SUCCESS
+    return request.return_value == 0
                ? nds::Result<void>{}
                : nds::unexpected(nds::ErrorCode::kRuntime, "device transport Send failed");
 }

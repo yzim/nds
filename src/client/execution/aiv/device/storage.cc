@@ -16,10 +16,7 @@ __aicore__ inline void LoadBytes(const __gm__ uint8_t *source, uint8_t *destinat
 }
 
 __aicore__ inline bool ContextValid(__gm__ const NdsDeviceStorageContext *context) {
-    return context != nullptr && context->abi_version == NDS_DEVICE_STORAGE_ABI_VERSION &&
-           context->size == sizeof(NdsDeviceStorageContext) &&
-           context->transport.abi_version == NDS_DEVICE_TRANSPORT_ABI_VERSION &&
-           context->transport.size == sizeof(NdsDeviceTransport) && context->command_buffer.address != 0U &&
+    return context != nullptr && context->command_buffer.address != 0U &&
            context->command_buffer.local_key != 0U && context->command_buffer.length >= nds::kStorageCommandBytes &&
            context->completion.address != 0U && context->completion.local_key != 0U &&
            context->completion.length >= nds::kStorageCompletionBytes && context->capacity != 0U;
@@ -41,14 +38,14 @@ __aicore__ inline bool BatchCommandValid(__gm__ const NdsDeviceStorageContext *c
 }
 
 __aicore__ inline void ExecuteSerialized(__gm__ const NdsDeviceStorageContext *context, uint64_t command_id,
-                                         const uint8_t *command_bytes, TBuf<> *scratch,
-                                         __gm__ NdsDeviceOperationResult *result) {
+                                         const uint8_t *command_bytes, __gm__ int32_t *return_value,
+                                         TBuf<> *scratch) {
     uint8_t pending[nds::kStorageCompletionBytes]{};
     const nds::StorageCompletion pending_completion{command_id, nds::StorageCompletionState::Pending,
                                                     nds::StorageStatus::Success, 0U};
     if (nds::serialize_storage_completion(pending_completion, pending, sizeof(pending)) !=
         nds::StorageSerdeResult::Ok) {
-        NdsAivSetResult(result, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
+        NdsAivSetReturnValue(return_value, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
         return;
     }
     StoreBytes(reinterpret_cast<__gm__ uint8_t *>(context->completion.address), pending, sizeof(pending));
@@ -62,13 +59,13 @@ __aicore__ inline void ExecuteSerialized(__gm__ const NdsDeviceStorageContext *c
                                     0U,
                                     0U,
                                     0U};
-    NdsAivRdmaSendImpl(&context->transport, &transfer, scratch, result);
+    NdsAivRdmaSendImpl(&context->transport, &transfer, return_value, scratch);
 }
 
 __aicore__ inline void WaitForCompletion(__gm__ const NdsDeviceStorageContext *context, uint64_t command_id,
-                                         uint64_t expected_bytes, __gm__ NdsDeviceOperationResult *result) {
+                                         uint64_t expected_bytes, __gm__ int32_t *return_value) {
     if (!ContextValid(context) || command_id == 0U || expected_bytes == 0U) {
-        NdsAivSetResult(result, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
+        NdsAivSetReturnValue(return_value, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
         return;
     }
     __gm__ const uint8_t *completion = reinterpret_cast<__gm__ const uint8_t *>(context->completion.address);
@@ -81,15 +78,12 @@ __aicore__ inline void WaitForCompletion(__gm__ const NdsDeviceStorageContext *c
             decoded.state != nds::StorageCompletionState::Complete)
             continue;
         if (decoded.command_id != command_id || decoded.bytes_transferred != expected_bytes) {
-            NdsAivSetResult(result, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
+            NdsAivSetReturnValue(return_value, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
             return;
         }
-        NdsAivSetResult(result, decoded.status == nds::StorageStatus::Success ? NDS_DEVICE_OPERATION_SUCCESS
-                                                                                : NDS_DEVICE_OPERATION_PROVIDER_FAILED);
-        if (result != nullptr) {
-            result->reserved = NDS_DEVICE_OPERATION_TERMINAL;
-            NdsAivCacheSync(reinterpret_cast<__gm__ uint8_t *>(result), sizeof(*result));
-        }
+        NdsAivSetReturnValue(return_value, decoded.status == nds::StorageStatus::Success
+                                               ? NDS_DEVICE_OPERATION_SUCCESS
+                                               : NDS_DEVICE_OPERATION_PROVIDER_FAILED);
         return;
     }
 }
@@ -97,103 +91,103 @@ __aicore__ inline void WaitForCompletion(__gm__ const NdsDeviceStorageContext *c
 }  // namespace
 
 NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivStorageReadImpl(
-    __gm__ const NdsDeviceStorageContext *context, __gm__ const nds::StorageReadCommand *command, TBuf<> *scratch,
-    __gm__ NdsDeviceOperationResult *result) {
-    if (result == nullptr)
+    __gm__ const NdsDeviceStorageContext *context, __gm__ const nds::StorageReadCommand *command,
+    __gm__ int32_t *return_value, TBuf<> *scratch) {
+    if (return_value == nullptr)
         return;
     if (command == nullptr) {
-        NdsAivSetResult(result, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
+        NdsAivSetReturnValue(return_value, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
         return;
     }
     const nds::StorageReadCommand local{command->command_id, command->offset, command->length,
                                         {command->data.address, command->data.length, command->data.remote_key}};
     if (!SingleCommandValid(context, local.command_id, local.offset, local.length, local.data)) {
-        NdsAivSetResult(result, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
+        NdsAivSetReturnValue(return_value, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
         return;
     }
     uint8_t command_bytes[nds::kStorageCommandBytes]{};
     if (nds::serialize_storage_read(local, command_bytes, sizeof(command_bytes)) != nds::StorageSerdeResult::Ok) {
-        NdsAivSetResult(result, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
+        NdsAivSetReturnValue(return_value, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
         return;
     }
-    ExecuteSerialized(context, local.command_id, command_bytes, scratch, result);
+    ExecuteSerialized(context, local.command_id, command_bytes, return_value, scratch);
 }
 
 NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivStorageWriteImpl(
-    __gm__ const NdsDeviceStorageContext *context, __gm__ const nds::StorageWriteCommand *command, TBuf<> *scratch,
-    __gm__ NdsDeviceOperationResult *result) {
-    if (result == nullptr)
+    __gm__ const NdsDeviceStorageContext *context, __gm__ const nds::StorageWriteCommand *command,
+    __gm__ int32_t *return_value, TBuf<> *scratch) {
+    if (return_value == nullptr)
         return;
     if (command == nullptr) {
-        NdsAivSetResult(result, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
+        NdsAivSetReturnValue(return_value, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
         return;
     }
     const nds::StorageWriteCommand local{command->command_id, command->offset, command->length,
                                          {command->data.address, command->data.length, command->data.remote_key}};
     if (!SingleCommandValid(context, local.command_id, local.offset, local.length, local.data)) {
-        NdsAivSetResult(result, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
+        NdsAivSetReturnValue(return_value, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
         return;
     }
     uint8_t command_bytes[nds::kStorageCommandBytes]{};
     if (nds::serialize_storage_write(local, command_bytes, sizeof(command_bytes)) != nds::StorageSerdeResult::Ok) {
-        NdsAivSetResult(result, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
+        NdsAivSetReturnValue(return_value, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
         return;
     }
-    ExecuteSerialized(context, local.command_id, command_bytes, scratch, result);
+    ExecuteSerialized(context, local.command_id, command_bytes, return_value, scratch);
 }
 
 NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivStorageBatchReadImpl(
     __gm__ const NdsDeviceStorageContext *context, __gm__ const nds::StorageBatchReadCommand *command,
-    TBuf<> *scratch, __gm__ NdsDeviceOperationResult *result) {
-    if (result == nullptr)
+    __gm__ int32_t *return_value, TBuf<> *scratch) {
+    if (return_value == nullptr)
         return;
     if (command == nullptr) {
-        NdsAivSetResult(result, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
+        NdsAivSetReturnValue(return_value, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
         return;
     }
     const nds::StorageBatchReadCommand local{
         command->command_id, command->entry_count, command->total_length,
         {command->entries.address, command->entries.length, command->entries.remote_key}};
     if (!BatchCommandValid(context, local.command_id, local.entry_count, local.total_length, local.entries)) {
-        NdsAivSetResult(result, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
+        NdsAivSetReturnValue(return_value, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
         return;
     }
     uint8_t command_bytes[nds::kStorageCommandBytes]{};
     if (nds::serialize_storage_batch_read(local, command_bytes, sizeof(command_bytes)) !=
         nds::StorageSerdeResult::Ok) {
-        NdsAivSetResult(result, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
+        NdsAivSetReturnValue(return_value, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
         return;
     }
-    ExecuteSerialized(context, local.command_id, command_bytes, scratch, result);
+    ExecuteSerialized(context, local.command_id, command_bytes, return_value, scratch);
 }
 
 NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivStorageBatchWriteImpl(
     __gm__ const NdsDeviceStorageContext *context, __gm__ const nds::StorageBatchWriteCommand *command,
-    TBuf<> *scratch, __gm__ NdsDeviceOperationResult *result) {
-    if (result == nullptr)
+    __gm__ int32_t *return_value, TBuf<> *scratch) {
+    if (return_value == nullptr)
         return;
     if (command == nullptr) {
-        NdsAivSetResult(result, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
+        NdsAivSetReturnValue(return_value, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
         return;
     }
     const nds::StorageBatchWriteCommand local{
         command->command_id, command->entry_count, command->total_length,
         {command->entries.address, command->entries.length, command->entries.remote_key}};
     if (!BatchCommandValid(context, local.command_id, local.entry_count, local.total_length, local.entries)) {
-        NdsAivSetResult(result, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
+        NdsAivSetReturnValue(return_value, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
         return;
     }
     uint8_t command_bytes[nds::kStorageCommandBytes]{};
     if (nds::serialize_storage_batch_write(local, command_bytes, sizeof(command_bytes)) !=
         nds::StorageSerdeResult::Ok) {
-        NdsAivSetResult(result, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
+        NdsAivSetReturnValue(return_value, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
         return;
     }
-    ExecuteSerialized(context, local.command_id, command_bytes, scratch, result);
+    ExecuteSerialized(context, local.command_id, command_bytes, return_value, scratch);
 }
 
 NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivStorageWaitImpl(__gm__ const NdsDeviceStorageContext *context,
                                                                  uint64_t command_id, uint64_t expected_bytes,
-                                                                 __gm__ NdsDeviceOperationResult *result) {
-    WaitForCompletion(context, command_id, expected_bytes, result);
+                                                                 __gm__ int32_t *return_value) {
+    WaitForCompletion(context, command_id, expected_bytes, return_value);
 }
