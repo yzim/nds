@@ -32,12 +32,12 @@ typedef struct NdsDeviceOperationRequest {
 } NdsDeviceOperationRequest;
 
 #if defined(__cplusplus)
-static_assert(sizeof(NdsDeviceOperationParameters) == 40, "device operation parameters ABI changed");
-static_assert(sizeof(NdsDeviceOperationRequest) == 312, "device operation ABI changed");
+static_assert(sizeof(NdsDeviceOperationParameters) == 48, "device operation parameters ABI changed");
+static_assert(sizeof(NdsDeviceOperationRequest) == 320, "device operation ABI changed");
 static_assert(offsetof(NdsDeviceOperationRequest, transport) == 16, "device operation transport offset changed");
 #else
-_Static_assert(sizeof(NdsDeviceOperationParameters) == 40, "device operation parameters ABI changed");
-_Static_assert(sizeof(NdsDeviceOperationRequest) == 312, "device operation ABI changed");
+_Static_assert(sizeof(NdsDeviceOperationParameters) == 48, "device operation parameters ABI changed");
+_Static_assert(sizeof(NdsDeviceOperationRequest) == 320, "device operation ABI changed");
 _Static_assert(offsetof(NdsDeviceOperationRequest, transport) == 16, "device operation transport offset changed");
 #endif
 

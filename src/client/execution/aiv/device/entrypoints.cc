@@ -34,6 +34,20 @@ __aicore__ inline bool ValidOperationRequest(__gm__ const NdsDeviceOperationRequ
            request->transport.abi_version == NDS_DEVICE_TRANSPORT_ABI_VERSION;
 }
 
+__aicore__ inline NdsDeviceSendWr LocalSendWr(__gm__ const NdsDeviceSendWr *wr) {
+    NdsDeviceSendWr local{};
+    local.wr_id = wr->wr_id;
+    local.opcode = wr->opcode;
+    local.flags = wr->flags;
+    local.local.address = wr->local.address;
+    local.local.length = wr->local.length;
+    local.local.local_key = wr->local.local_key;
+    local.remote_address = wr->remote_address;
+    local.remote_key = wr->remote_key;
+    local.reserved = wr->reserved;
+    return local;
+}
+
 template <typename Args>
 __aicore__ inline bool ValidStorageArgs(__gm__ const Args *request) {
     return request != nullptr && request->abi_version == NDS_DEVICE_STORAGE_ABI_VERSION &&
@@ -102,7 +116,8 @@ extern "C" __global__ __aicore__ void NdsAivRdmaSend(GM_ADDR request_address) {
     TPipe pipe;
     TBuf<> scratch;
     pipe.InitBuffer(scratch, 64U);
-    NdsAivRdmaSendImpl(&request->transport, &request->parameters.send_wr, &scratch, result);
+    NdsDeviceSendWr send_wr = LocalSendWr(&request->parameters.send_wr);
+    NdsAivRdmaSendImpl(&request->transport, &send_wr, &scratch, result);
 }
 
 extern "C" __global__ __aicore__ void NdsAivRdmaRecv(GM_ADDR request_address) {
@@ -115,7 +130,8 @@ extern "C" __global__ __aicore__ void NdsAivRdmaRecv(GM_ADDR request_address) {
     TPipe pipe;
     TBuf<> scratch;
     pipe.InitBuffer(scratch, 64U);
-    NdsAivRdmaRecvImpl(&request->transport, &request->parameters.send_wr, &scratch, result);
+    NdsDeviceSendWr send_wr = LocalSendWr(&request->parameters.send_wr);
+    NdsAivRdmaRecvImpl(&request->transport, &send_wr, &scratch, result);
 }
 
 extern "C" __global__ __aicore__ void NdsAivRdmaRead(GM_ADDR request_address) {
@@ -128,7 +144,8 @@ extern "C" __global__ __aicore__ void NdsAivRdmaRead(GM_ADDR request_address) {
     TPipe pipe;
     TBuf<> scratch;
     pipe.InitBuffer(scratch, 64U);
-    NdsAivRdmaReadImpl(&request->transport, &request->parameters.send_wr, &scratch, result);
+    NdsDeviceSendWr send_wr = LocalSendWr(&request->parameters.send_wr);
+    NdsAivRdmaReadImpl(&request->transport, &send_wr, &scratch, result);
 }
 
 extern "C" __global__ __aicore__ void NdsAivRdmaWrite(GM_ADDR request_address) {
@@ -141,7 +158,8 @@ extern "C" __global__ __aicore__ void NdsAivRdmaWrite(GM_ADDR request_address) {
     TPipe pipe;
     TBuf<> scratch;
     pipe.InitBuffer(scratch, 64U);
-    NdsAivRdmaWriteImpl(&request->transport, &request->parameters.send_wr, &scratch, result);
+    NdsDeviceSendWr send_wr = LocalSendWr(&request->parameters.send_wr);
+    NdsAivRdmaWriteImpl(&request->transport, &send_wr, &scratch, result);
 }
 
 extern "C" __global__ __aicore__ void NdsAivStorageRead(GM_ADDR request_address) {

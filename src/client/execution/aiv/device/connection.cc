@@ -16,7 +16,7 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaSendImpl(__gm__ const NdsDe
 }
 
 NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaRecvImpl(__gm__ const NdsDeviceTransport *transport,
-                                                              __gm__ const NdsDeviceSendWr *wr,
+                                                              const NdsDeviceSendWr *wr,
                                                               TBuf<> *scratch,
                                                               __gm__ NdsDeviceOperationResult *result) {
     if (result == nullptr)
@@ -28,12 +28,14 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaRecvImpl(__gm__ const NdsDe
     }
     NdsDeviceRecvWr recv{};
     recv.wr_id = wr->wr_id;
-    recv.local = wr->local;
+    recv.local.address = wr->local.address;
+    recv.local.length = wr->local.length;
+    recv.local.local_key = wr->local.local_key;
     NdsAivPostRecvImpl(&transport->control_qp, &recv, scratch, result);
 }
 
 NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaReadImpl(__gm__ const NdsDeviceTransport *transport,
-                                                              __gm__ const NdsDeviceSendWr *wr,
+                                                              const NdsDeviceSendWr *wr,
                                                               TBuf<> *scratch,
                                                               __gm__ NdsDeviceOperationResult *result) {
     if (result == nullptr)
@@ -47,7 +49,7 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaReadImpl(__gm__ const NdsDe
 }
 
 NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaWriteImpl(__gm__ const NdsDeviceTransport *transport,
-                                                               __gm__ const NdsDeviceSendWr *wr,
+                                                               const NdsDeviceSendWr *wr,
                                                                TBuf<> *scratch,
                                                                __gm__ NdsDeviceOperationResult *result) {
     if (result == nullptr)
