@@ -1,6 +1,6 @@
 #include "api.h"
 #include "internal.h"
-#include "hns_hw_abi.h"
+#include "hns_hw.h"
 
 namespace {
 struct HnsRoceRcSqWqe {
@@ -60,8 +60,8 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPostSendImpl(__gm__ const NdsDe
         reinterpret_cast<__gm__ uint8_t *>(queue->buffer_address + (uint64_t)queue->entry_size * (head % queue->depth));
     __gm__ HnsRoceRcSqWqe *wqe = reinterpret_cast<__gm__ HnsRoceRcSqWqe *>(wqe_address);
     const uint32_t owner = (head >> 15U) & 1U;
-    const uint32_t hns_opcode = NDS_HNS_SQ_OPCODE_FROM_DEVICE(wr->opcode);
-    const uint32_t signaled = (wr->flags & NDS_DEVICE_SEND_SIGNALED) != 0U ? NDS_HNS_SQ_SIGNALED : 0U;
+    const uint32_t hns_opcode = NDS_HNSHW_SQ_OPCODE_FROM_DEVICE(wr->opcode);
+    const uint32_t signaled = (wr->flags & NDS_DEVICE_SEND_SIGNALED) != 0U ? NDS_HNSHW_SQ_SIGNALED : 0U;
     wqe->byte_4 = hns_opcode | (((~owner) << 7U) & (1U << 7U)) | signaled;
     wqe->message_length = wr->local.length;
     wqe->immediate_data = 0U;
@@ -148,9 +148,9 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPollCqImpl(
     const uint32_t limit =
         request->max_completions < NDS_DEVICE_MAX_COMPLETIONS ? request->max_completions : NDS_DEVICE_MAX_COMPLETIONS;
     while (count < limit) {
-        __gm__ NdsHnsCqe *cqe = reinterpret_cast<__gm__ NdsHnsCqe *>(
+        __gm__ NdsHnsHwCqe *cqe = reinterpret_cast<__gm__ NdsHnsHwCqe *>(
             cq->buffer_address + (uint64_t)cq->entry_size * (consumer % cq->depth));
-        NdsAivCacheSync(reinterpret_cast<__gm__ uint8_t *>(cqe), sizeof(NdsHnsCqe));
+        NdsAivCacheSync(reinterpret_cast<__gm__ uint8_t *>(cqe), sizeof(NdsHnsHwCqe));
         const uint32_t owner = (cqe->byte_4 >> 7U) & 1U;
         if ((owner ^ !!(consumer & cq->depth)) == 0U)
             break;

@@ -1,4 +1,4 @@
-#include "hns_hw_abi.h"
+#include "hns_hw.h"
 
 #include <gtest/gtest.h>
 #include <cstdint>
@@ -8,8 +8,8 @@
 namespace {
 
 TEST(DeviceHnsCodecTest, ReceiveSegmentHardwareLayout) {
-    NdsHnsReceiveSegment segment{};
-    nds_hns_encode_receive_segment(&segment, UINT64_C(0x1122334455667788), UINT32_C(0xa1b2c3d4), UINT32_C(0x55667788));
+    NdsHnsHwWqeDataSeg segment{};
+    nds_hns_hw_encode_wqe_data_seg(&segment, UINT64_C(0x1122334455667788), UINT32_C(0xa1b2c3d4), UINT32_C(0x55667788));
     EXPECT_TRUE(segment.length == UINT32_C(0xa1b2c3d4));
     EXPECT_TRUE(segment.local_key == UINT32_C(0x55667788));
     EXPECT_TRUE(segment.address == UINT64_C(0x1122334455667788));
@@ -22,45 +22,45 @@ TEST(DeviceHnsCodecTest, ReceiveSegmentHardwareLayout) {
 }
 
 TEST(DeviceHnsCodecTest, QueueCapacityAndCounterWrap) {
-    EXPECT_TRUE(nds_hns_queue_has_space(0U, 0U, 8U, 0U));
-    EXPECT_TRUE(nds_hns_queue_has_space(7U, 0U, 8U, 0U));
-    EXPECT_TRUE(!nds_hns_queue_has_space(8U, 0U, 8U, 0U));
-    EXPECT_TRUE(nds_hns_queue_has_space(6U, 0U, 8U, 1U));
-    EXPECT_TRUE(!nds_hns_queue_has_space(7U, 0U, 8U, 1U));
-    EXPECT_TRUE(!nds_hns_queue_has_space(0U, 0U, 0U, 0U));
-    EXPECT_TRUE(!nds_hns_queue_has_space(0U, 0U, 1U, 1U));
-    EXPECT_TRUE(nds_hns_queue_has_space(1U, std::numeric_limits<std::uint32_t>::max() - 1U, 8U, 0U));
+    EXPECT_TRUE(nds_hns_hw_queue_has_space(0U, 0U, 8U, 0U));
+    EXPECT_TRUE(nds_hns_hw_queue_has_space(7U, 0U, 8U, 0U));
+    EXPECT_TRUE(!nds_hns_hw_queue_has_space(8U, 0U, 8U, 0U));
+    EXPECT_TRUE(nds_hns_hw_queue_has_space(6U, 0U, 8U, 1U));
+    EXPECT_TRUE(!nds_hns_hw_queue_has_space(7U, 0U, 8U, 1U));
+    EXPECT_TRUE(!nds_hns_hw_queue_has_space(0U, 0U, 0U, 0U));
+    EXPECT_TRUE(!nds_hns_hw_queue_has_space(0U, 0U, 1U, 1U));
+    EXPECT_TRUE(nds_hns_hw_queue_has_space(1U, std::numeric_limits<std::uint32_t>::max() - 1U, 8U, 0U));
 }
 
 TEST(DeviceHnsCodecTest, CqeOwnerPhase) {
-    NdsHnsCqe cqe{};
+    NdsHnsHwCqe cqe{};
     cqe.byte_4 = 1U << 7U;
-    EXPECT_TRUE(nds_hns_cqe_is_ready(&cqe, 0U, 8U));
-    EXPECT_TRUE(!nds_hns_cqe_is_ready(&cqe, 8U, 8U));
+    EXPECT_TRUE(nds_hns_hw_cqe_is_ready(&cqe, 0U, 8U));
+    EXPECT_TRUE(!nds_hns_hw_cqe_is_ready(&cqe, 8U, 8U));
     cqe.byte_4 = 0U;
-    EXPECT_TRUE(!nds_hns_cqe_is_ready(&cqe, 0U, 8U));
-    EXPECT_TRUE(nds_hns_cqe_is_ready(&cqe, 8U, 8U));
-    EXPECT_TRUE(!nds_hns_cqe_is_ready(&cqe, 0U, 0U));
+    EXPECT_TRUE(!nds_hns_hw_cqe_is_ready(&cqe, 0U, 8U));
+    EXPECT_TRUE(nds_hns_hw_cqe_is_ready(&cqe, 8U, 8U));
+    EXPECT_TRUE(!nds_hns_hw_cqe_is_ready(&cqe, 0U, 0U));
 }
 
 TEST(DeviceHnsCodecTest, SendTailWrap) {
-    NdsHnsCqe cqe{};
+    NdsHnsHwCqe cqe{};
     cqe.byte_4 = 1U << 16U;
-    EXPECT_TRUE(nds_hns_send_tail_for_cqe(0U, 8U, &cqe) == 1U);
-    EXPECT_TRUE(nds_hns_send_tail_for_cqe(6U, 8U, &cqe) == 9U);
+    EXPECT_TRUE(nds_hns_hw_send_tail_for_cqe(0U, 8U, &cqe) == 1U);
+    EXPECT_TRUE(nds_hns_hw_send_tail_for_cqe(6U, 8U, &cqe) == 9U);
     cqe.byte_4 = 7U << 16U;
-    EXPECT_TRUE(nds_hns_send_tail_for_cqe(9U, 8U, &cqe) == 15U);
+    EXPECT_TRUE(nds_hns_hw_send_tail_for_cqe(9U, 8U, &cqe) == 15U);
 }
 
 TEST(DeviceHnsCodecTest, CompletionDecode) {
-    NdsHnsCqe cqe{};
+    NdsHnsHwCqe cqe{};
     cqe.byte_4 = (UINT32_C(0x4321) << 16U) | (UINT32_C(0x5a) << 8U) | 0x13U;
     cqe.immediate_data = UINT32_C(0xaabbccdd);
     cqe.byte_12 = UINT32_C(0xff345678);
     cqe.byte_16 = UINT32_C(0x7e000000);
     cqe.byte_count = 4096U;
     NdsDeviceCompletion completion{};
-    nds_hns_decode_cqe(&cqe, UINT64_C(0x1020304050607080), &completion);
+    nds_hns_hw_decode_cqe(&cqe, UINT64_C(0x1020304050607080), &completion);
     EXPECT_TRUE(completion.wr_id == UINT64_C(0x1020304050607080));
     EXPECT_TRUE(completion.status == 0x5a);
     EXPECT_TRUE(completion.opcode == 0x13);
@@ -72,10 +72,10 @@ TEST(DeviceHnsCodecTest, CompletionDecode) {
 }
 
 TEST(DeviceHnsCodecTest, MapsDeviceOpcodes) {
-    EXPECT_EQ(NDS_HNS_SQ_OPCODE_FROM_DEVICE(NDS_DEVICE_WR_SEND), NDS_HNS_SQ_SEND);
-    EXPECT_EQ(NDS_HNS_SQ_OPCODE_FROM_DEVICE(NDS_DEVICE_WR_RDMA_WRITE), NDS_HNS_SQ_RDMA_WRITE);
-    EXPECT_EQ(NDS_HNS_SQ_OPCODE_FROM_DEVICE(NDS_DEVICE_WR_RDMA_READ), NDS_HNS_SQ_RDMA_READ);
-    EXPECT_EQ(NDS_HNS_SQ_OPCODE_FROM_DEVICE(99U), NDS_HNS_SQ_INVALID);
+    EXPECT_EQ(NDS_HNSHW_SQ_OPCODE_FROM_DEVICE(NDS_DEVICE_WR_SEND), NDS_HNSHW_SQ_SEND);
+    EXPECT_EQ(NDS_HNSHW_SQ_OPCODE_FROM_DEVICE(NDS_DEVICE_WR_RDMA_WRITE), NDS_HNSHW_SQ_RDMA_WRITE);
+    EXPECT_EQ(NDS_HNSHW_SQ_OPCODE_FROM_DEVICE(NDS_DEVICE_WR_RDMA_READ), NDS_HNSHW_SQ_RDMA_READ);
+    EXPECT_EQ(NDS_HNSHW_SQ_OPCODE_FROM_DEVICE(99U), NDS_HNSHW_SQ_INVALID);
 }
 
 }  // namespace

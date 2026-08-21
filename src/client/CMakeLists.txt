@@ -122,7 +122,7 @@ if(NDS_BUILD_AIV_KERNEL)
             "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_operator_args.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_transport.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_verbs.h"
-            "${CMAKE_CURRENT_SOURCE_DIR}/execution/common/hns_hw_abi.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/execution/common/hns_hw.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_storage.h"
             "${PROJECT_SOURCE_DIR}/src/include/nds/storage_protocol.hh"
         VERBATIM)
@@ -167,12 +167,12 @@ if(NDS_BUILD_AICPU_KERNEL)
             "${NDS_AICPU_DEVICE_DIR}/storage.cc"
             "${NDS_AICPU_DEVICE_DIR}/api.h"
             "${NDS_AICPU_DEVICE_DIR}/internal.h"
-            "${NDS_AICPU_DEVICE_DIR}/libhns_abi.h"
+            "${NDS_AICPU_DEVICE_DIR}/hns_api.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_operations.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_operator_args.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_transport.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_verbs.h"
-            "${CMAKE_CURRENT_SOURCE_DIR}/execution/common/hns_hw_abi.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/execution/common/hns_hw.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_storage.h"
             "${PROJECT_SOURCE_DIR}/src/include/nds/storage_protocol.hh"
         VERBATIM)

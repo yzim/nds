@@ -1,7 +1,7 @@
 #include "api.h"
 #include "internal.h"
-#include "libhns_abi.h"
-#include "hns_hw_abi.h"
+#include "hns_api.h"
+#include "hns_hw.h"
 
 namespace {
 int32_t provider_opcode(uint32_t opcode) {
@@ -70,14 +70,14 @@ extern "C" uint32_t NdsAicpuPostRecvImpl(const NdsDeviceQp *qp, const NdsDeviceR
     const NdsDeviceWorkQueue &queue = qp->receive_queue;
     auto *head = reinterpret_cast<uint32_t *>(queue.head_address);
     auto *tail = reinterpret_cast<uint32_t *>(queue.tail_address);
-    if (!nds_hns_queue_has_space(*head, *tail, queue.depth, 0U)) {
+    if (!nds_hns_hw_queue_has_space(*head, *tail, queue.depth, 0U)) {
         NdsAicpuSetResult(result, NDS_DEVICE_OPERATION_QUEUE_FULL, NDS_DEVICE_OPERATION_PATH_DIRECT, 0);
         return kNdsAicpuSuccess;
     }
     const uint32_t index = *head % queue.depth;
-    auto *segment = reinterpret_cast<NdsHnsReceiveSegment *>(queue.buffer_address +
+    auto *segment = reinterpret_cast<NdsHnsHwWqeDataSeg *>(queue.buffer_address +
                                                                 static_cast<uint64_t>(queue.entry_size) * index);
-    nds_hns_encode_receive_segment(segment, wr->local.address, wr->local.length, wr->local.local_key);
+    nds_hns_hw_encode_wqe_data_seg(segment, wr->local.address, wr->local.length, wr->local.local_key);
     reinterpret_cast<uint64_t *>(queue.wr_id_address)[index] = wr->wr_id;
     NdsAicpuBarrier();
     ++*head;
@@ -122,13 +122,13 @@ extern "C" uint32_t NdsAicpuPollCqImpl(const NdsDeviceQp *qp, const NdsDevicePol
     uint32_t tail = *tail_address;
     uint32_t count = 0U;
     while (count < limit) {
-        auto *cqe = reinterpret_cast<NdsHnsCqe *>(cq.buffer_address +
+        auto *cqe = reinterpret_cast<NdsHnsHwCqe *>(cq.buffer_address +
                                                     static_cast<uint64_t>(cq.entry_size) * (consumer % cq.depth));
-        if (!nds_hns_cqe_is_ready(cqe, consumer, cq.depth))
+        if (!nds_hns_hw_cqe_is_ready(cqe, consumer, cq.depth))
             break;
         if (is_send_cq)
-            tail = nds_hns_send_tail_for_cqe(tail, wq.depth, cqe);
-        nds_hns_decode_cqe(cqe, reinterpret_cast<uint64_t *>(wq.wr_id_address)[tail % wq.depth],
+            tail = nds_hns_hw_send_tail_for_cqe(tail, wq.depth, cqe);
+        nds_hns_hw_decode_cqe(cqe, reinterpret_cast<uint64_t *>(wq.wr_id_address)[tail % wq.depth],
                            &output->entries[count++]);
         ++consumer;
         ++tail;

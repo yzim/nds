@@ -1,10 +1,13 @@
-#ifndef NDS_LIBHNS_ABI_H
-#define NDS_LIBHNS_ABI_H
+#ifndef NDS_HNS_API_H
+#define NDS_HNS_API_H
 
 /*
- * Minimal layouts used by CANN-9.0.0's device HNS provider. The AICPU sysroot
- * ships neither a public RNIC-post API nor libibverbs headers. This is a
- * version-pinned provider boundary, not a replacement libibverbs interface.
+ * Software-side HNS provider ABI (the ibv_exp_post_send / ibv_poll_cq
+ * contract). Layouts are NDS-owned re-declarations of the version-pinned
+ * CANN 9.0.0 provider boundary, learned from HCOMM's vendored rdma-core fork
+ * (third_party/rdma-core-42.7/providers/hns/) and the installed libhns on the
+ * target. The AICPU sysroot ships neither a public RNIC-post API nor
+ * libibverbs headers. This is not a replacement libibverbs interface.
  */
 #include <stdint.h>
 
