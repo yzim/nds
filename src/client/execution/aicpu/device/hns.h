@@ -1,12 +1,14 @@
-#ifndef NDS_HNS_API_H
-#define NDS_HNS_API_H
+#ifndef NDS_HNS_H
+#define NDS_HNS_H
 
 /*
  * Software-side HNS provider ABI (the ibv_exp_post_send / ibv_poll_cq
- * contract). Layouts are NDS-owned re-declarations of the version-pinned
- * CANN 9.0.0 provider boundary, learned from HCOMM's vendored rdma-core fork
- * (third_party/rdma-core-42.7/providers/hns/) and the installed libhns on the
- * target. The AICPU sysroot ships neither a public RNIC-post API nor
+ * contract): the WR, SGE, WC, and provider fn-ptr layouts. Contrast with
+ * hns_hw.h, which holds the NIC-side WQE/CQE byte format. Layouts are
+ * NDS-owned re-declarations of the version-pinned CANN 9.0.0 provider
+ * boundary, learned from HCOMM's vendored rdma-core fork
+ * (third_party/rdma-core-42.7/providers/hns/) and the installed libhns on
+ * the target. The AICPU sysroot ships neither a public RNIC-post API nor
  * libibverbs headers. This is not a replacement libibverbs interface.
  */
 #include <stdint.h>

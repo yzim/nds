@@ -1,6 +1,6 @@
 #include "api.h"
 #include "internal.h"
-#include "hns_api.h"
+#include "hns.h"
 #include "hns_hw.h"
 
 namespace {

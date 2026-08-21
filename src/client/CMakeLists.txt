@@ -167,7 +167,7 @@ if(NDS_BUILD_AICPU_KERNEL)
             "${NDS_AICPU_DEVICE_DIR}/storage.cc"
             "${NDS_AICPU_DEVICE_DIR}/api.h"
             "${NDS_AICPU_DEVICE_DIR}/internal.h"
-            "${NDS_AICPU_DEVICE_DIR}/hns_api.h"
+            "${NDS_AICPU_DEVICE_DIR}/hns.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_operations.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_operator_args.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_transport.h"
