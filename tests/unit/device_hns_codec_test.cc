@@ -1,4 +1,4 @@
-#include "nds/device_hns_codec.h"
+#include "hns_hw_abi.h"
 
 #include <gtest/gtest.h>
 #include <cstdint>

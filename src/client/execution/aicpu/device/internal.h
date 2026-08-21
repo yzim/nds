@@ -1,7 +1,6 @@
 #ifndef NDS_AICPU_DEVICE_INTERNAL_H
 #define NDS_AICPU_DEVICE_INTERNAL_H
 
-#include "nds/device_qp.h"
 #include "nds/device_verbs.h"
 
 #include <dlfcn.h>

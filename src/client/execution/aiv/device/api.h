@@ -20,19 +20,19 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPollCqImpl(
     AscendC::TBuf<> *scratch, __gm__ NdsDeviceOperationResult *result);
 
 NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaSendImpl(__gm__ const NdsDeviceTransport *transport,
-                                                              const NdsDeviceTransfer *transfer,
+                                                              const NdsDeviceSendWr *wr,
                                                               AscendC::TBuf<> *scratch,
                                                               __gm__ NdsDeviceOperationResult *result);
 NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaRecvImpl(__gm__ const NdsDeviceTransport *transport,
-                                                              __gm__ const NdsDeviceTransfer *transfer,
+                                                              __gm__ const NdsDeviceSendWr *wr,
                                                               AscendC::TBuf<> *scratch,
                                                               __gm__ NdsDeviceOperationResult *result);
 NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaReadImpl(__gm__ const NdsDeviceTransport *transport,
-                                                              __gm__ const NdsDeviceTransfer *transfer,
+                                                              __gm__ const NdsDeviceSendWr *wr,
                                                               AscendC::TBuf<> *scratch,
                                                               __gm__ NdsDeviceOperationResult *result);
 NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaWriteImpl(__gm__ const NdsDeviceTransport *transport,
-                                                               __gm__ const NdsDeviceTransfer *transfer,
+                                                               __gm__ const NdsDeviceSendWr *wr,
                                                                AscendC::TBuf<> *scratch,
                                                                __gm__ NdsDeviceOperationResult *result);
 

@@ -17,7 +17,7 @@ enum NdsDeviceOperation {
 };
 
 typedef union NdsDeviceOperationParameters {
-    NdsDeviceTransfer transfer;
+    NdsDeviceSendWr send_wr;
     NdsDevicePollCqRequest poll_cq;
 } NdsDeviceOperationParameters;
 

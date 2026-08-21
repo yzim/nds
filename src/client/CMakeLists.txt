@@ -101,6 +101,7 @@ if(NDS_BUILD_AIV_KERNEL)
             -I${NDS_CANN_ROOT}/aarch64-linux/asc/impl/basic_api -I${NDS_CANN_ROOT}/aarch64-linux/asc/impl/micro_api
             -I${NDS_CANN_ROOT}/aarch64-linux/ascendc/include -I${NDS_CANN_ROOT}/aarch64-linux/ascendc/include/highlevel_api
             -I${NDS_AIV_DEVICE_DIR}
+            -I${CMAKE_CURRENT_SOURCE_DIR}/execution/common
             -I${CMAKE_CURRENT_SOURCE_DIR}/include
             -I${PROJECT_SOURCE_DIR}/src/include)
     add_custom_command(
@@ -121,8 +122,7 @@ if(NDS_BUILD_AIV_KERNEL)
             "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_operator_args.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_transport.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_verbs.h"
-            "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_qp.h"
-            "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_hns_codec.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/execution/common/hns_hw_abi.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_storage.h"
             "${PROJECT_SOURCE_DIR}/src/include/nds/storage_protocol.hh"
         VERBATIM)
@@ -153,6 +153,7 @@ if(NDS_BUILD_AICPU_KERNEL)
         COMMAND "${NDS_AICPU_COMPILER}" -x c++ -shared -fPIC -O2 -std=c++17
             -D_GLIBCXX_USE_CXX11_ABI=1 -D_FORTIFY_SOURCE=2 -D_GNU_SOURCE -fvisibility=hidden -fstack-protector-strong
             -fno-common -fno-strict-aliasing -Wall -Wextra -Werror -I${NDS_AICPU_DEVICE_DIR}
+            -I${CMAKE_CURRENT_SOURCE_DIR}/execution/common
             -I${CMAKE_CURRENT_SOURCE_DIR}/include
             -I${PROJECT_SOURCE_DIR}/src/include
             ${NDS_AICPU_DEVICE_DIR}/entrypoints.cc
@@ -166,13 +167,12 @@ if(NDS_BUILD_AICPU_KERNEL)
             "${NDS_AICPU_DEVICE_DIR}/storage.cc"
             "${NDS_AICPU_DEVICE_DIR}/api.h"
             "${NDS_AICPU_DEVICE_DIR}/internal.h"
-            "${NDS_AICPU_DEVICE_DIR}/hns_abi.h"
+            "${NDS_AICPU_DEVICE_DIR}/libhns_abi.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_operations.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_operator_args.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_transport.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_verbs.h"
-            "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_qp.h"
-            "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_hns_codec.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/execution/common/hns_hw_abi.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_storage.h"
             "${PROJECT_SOURCE_DIR}/src/include/nds/storage_protocol.hh"
         VERBATIM)

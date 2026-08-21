@@ -1,7 +1,7 @@
 #include "api.h"
 #include "internal.h"
-#include "hns_abi.h"
-#include "nds/device_hns_codec.h"
+#include "libhns_abi.h"
+#include "hns_hw_abi.h"
 
 namespace {
 int32_t provider_opcode(uint32_t opcode) {

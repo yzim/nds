@@ -1,6 +1,6 @@
 #include "api.h"
 #include "internal.h"
-#include "nds/device_hns_codec.h"
+#include "hns_hw_abi.h"
 
 namespace {
 struct HnsRoceRcSqWqe {
@@ -61,7 +61,8 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPostSendImpl(__gm__ const NdsDe
     __gm__ HnsRoceRcSqWqe *wqe = reinterpret_cast<__gm__ HnsRoceRcSqWqe *>(wqe_address);
     const uint32_t owner = (head >> 15U) & 1U;
     const uint32_t hns_opcode = NDS_HNS_SQ_OPCODE_FROM_DEVICE(wr->opcode);
-    wqe->byte_4 = hns_opcode | (((~owner) << 7U) & (1U << 7U)) | (1U << 8U);
+    const uint32_t signaled = (wr->flags & NDS_DEVICE_SEND_SIGNALED) != 0U ? NDS_HNS_SQ_SIGNALED : 0U;
+    wqe->byte_4 = hns_opcode | (((~owner) << 7U) & (1U << 7U)) | signaled;
     wqe->message_length = wr->local.length;
     wqe->immediate_data = 0U;
     wqe->sge_count = 1U << 24U;

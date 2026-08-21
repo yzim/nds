@@ -26,12 +26,14 @@ uint32_t execute(const NdsDeviceStorageContext *context, const Request *command,
     for (uint32_t index = 0U; index < sizeof(command_bytes); ++index)
         command_address[index] = command_bytes[index];
     NdsAicpuBarrier();
-    const NdsDeviceTransfer transfer{command->command_id,
-                                     {context->command_buffer.address, nds::kStorageCommandBytes,
-                                      context->command_buffer.local_key},
-                                     0U,
-                                     0U,
-                                     0U};
+    const NdsDeviceSendWr transfer{command->command_id,
+                                    NDS_DEVICE_WR_SEND,
+                                    NDS_DEVICE_SEND_SIGNALED,
+                                    {context->command_buffer.address, nds::kStorageCommandBytes,
+                                     context->command_buffer.local_key},
+                                    0U,
+                                    0U,
+                                    0U};
     const uint32_t sent = NdsAicpuRdmaSendImpl(&context->transport, &transfer, result);
     return sent;
 }

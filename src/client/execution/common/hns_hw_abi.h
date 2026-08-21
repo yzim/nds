@@ -1,5 +1,5 @@
-#ifndef NDS_DEVICE_HNS_CODEC_H
-#define NDS_DEVICE_HNS_CODEC_H
+#ifndef NDS_HNS_HW_ABI_H
+#define NDS_HNS_HW_ABI_H
 
 #include "nds/device_verbs.h"
 
@@ -26,6 +26,12 @@ enum NdsHnsSqOpcode {
     NDS_HNS_SQ_RDMA_WRITE = 0x3U,
     NDS_HNS_SQ_RDMA_READ = 0x5U,
     NDS_HNS_SQ_INVALID = 0xffffffffU,
+};
+
+/* HNS SQ WQE word0 bit 8: request a completion (SF). The AIV writer drives it
+ * from NDS_DEVICE_SEND_SIGNALED so unsignaled WRs do not produce a CQE. */
+enum NdsHnsSqFlag {
+    NDS_HNS_SQ_SIGNALED = 1U << 8U,
 };
 
 #define NDS_HNS_SQ_OPCODE_FROM_DEVICE(opcode)    \

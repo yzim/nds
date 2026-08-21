@@ -33,10 +33,10 @@ Result<std::uint32_t> NdsRaPollCq(client::QueuePair *qp, bool is_send_cq, std::u
                                   NdsDeviceCompletionOutput *output);
 
 /* Connection layer. Send/Read/Write build a work request and submit it. */
-Result<void> NdsRaRdmaSend(const RaConnection &connection, const NdsDeviceTransfer &transfer);
-Result<void> NdsRaRdmaRecv(const RaConnection &connection, const NdsDeviceTransfer &transfer);
-Result<void> NdsRaRdmaRead(const RaConnection &connection, const NdsDeviceTransfer &transfer);
-Result<void> NdsRaRdmaWrite(const RaConnection &connection, const NdsDeviceTransfer &transfer);
+Result<void> NdsRaRdmaSend(const RaConnection &connection, const NdsDeviceSendWr &wr);
+Result<void> NdsRaRdmaRecv(const RaConnection &connection, const NdsDeviceSendWr &wr);
+Result<void> NdsRaRdmaRead(const RaConnection &connection, const NdsDeviceSendWr &wr);
+Result<void> NdsRaRdmaWrite(const RaConnection &connection, const NdsDeviceSendWr &wr);
 
 /* Storage layer. Completion is the CPU-written NDS protocol record. */
 Result<void> NdsRaStorageRead(const RaStorageContext &context, const StorageReadCommand &command);

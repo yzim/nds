@@ -17,13 +17,13 @@ uint32_t NdsAicpuPostRecvImpl(const NdsDeviceQp *qp, const NdsDeviceRecvWr *wr,
 uint32_t NdsAicpuPollCqImpl(const NdsDeviceQp *qp, const NdsDevicePollCqRequest *request,
                             NdsDeviceOperationResult *result);
 
-uint32_t NdsAicpuRdmaSendImpl(const NdsDeviceTransport *transport, const NdsDeviceTransfer *transfer,
+uint32_t NdsAicpuRdmaSendImpl(const NdsDeviceTransport *transport, const NdsDeviceSendWr *wr,
                               NdsDeviceOperationResult *result);
-uint32_t NdsAicpuRdmaRecvImpl(const NdsDeviceTransport *transport, const NdsDeviceTransfer *transfer,
+uint32_t NdsAicpuRdmaRecvImpl(const NdsDeviceTransport *transport, const NdsDeviceSendWr *wr,
                               NdsDeviceOperationResult *result);
-uint32_t NdsAicpuRdmaReadImpl(const NdsDeviceTransport *transport, const NdsDeviceTransfer *transfer,
+uint32_t NdsAicpuRdmaReadImpl(const NdsDeviceTransport *transport, const NdsDeviceSendWr *wr,
                               NdsDeviceOperationResult *result);
-uint32_t NdsAicpuRdmaWriteImpl(const NdsDeviceTransport *transport, const NdsDeviceTransfer *transfer,
+uint32_t NdsAicpuRdmaWriteImpl(const NdsDeviceTransport *transport, const NdsDeviceSendWr *wr,
                                NdsDeviceOperationResult *result);
 
 uint32_t NdsAicpuStorageReadImpl(const NdsDeviceStorageContext *context, const nds::StorageReadCommand *command,

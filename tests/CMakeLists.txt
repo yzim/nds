@@ -19,7 +19,8 @@ nds_add_unit_test(nds_runtime_test runtime_test.cc)
 target_link_libraries(nds_runtime_test PRIVATE nds_client_runtime)
 nds_add_unit_test(nds_device_hns_codec_test device_hns_codec_test.cc)
 target_include_directories(nds_device_hns_codec_test PRIVATE
-    ${PROJECT_SOURCE_DIR}/src/client/include)
+    ${PROJECT_SOURCE_DIR}/src/client/include
+    ${PROJECT_SOURCE_DIR}/src/client/execution/common)
 nds_add_unit_test(nds_device_connection_test device_connection_test.cc)
 target_include_directories(nds_device_connection_test PRIVATE
     ${PROJECT_SOURCE_DIR}/src/client/include)

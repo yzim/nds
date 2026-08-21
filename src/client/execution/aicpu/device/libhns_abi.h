@@ -1,5 +1,5 @@
-#ifndef NDS_AICPU_HNS_ABI_H
-#define NDS_AICPU_HNS_ABI_H
+#ifndef NDS_LIBHNS_ABI_H
+#define NDS_LIBHNS_ABI_H
 
 /*
  * Minimal layouts used by CANN-9.0.0's device HNS provider. The AICPU sysroot

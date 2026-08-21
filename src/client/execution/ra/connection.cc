@@ -7,29 +7,24 @@ Result<void> post(client::Runtime *runtime, client::QueuePair *qp, const NdsDevi
 }
 }  // namespace
 
-Result<void> NdsRaRdmaSend(const RaConnection &connection, const NdsDeviceTransfer &transfer) {
-    NdsDeviceSendWr request{};
-    nds_device_build_send_wr(&transfer, NDS_DEVICE_WR_SEND, &request);
+Result<void> NdsRaRdmaSend(const RaConnection &connection, const NdsDeviceSendWr &request) {
     return post(connection.runtime, connection.qp, request);
 }
 
-Result<void> NdsRaRdmaRecv(const RaConnection &connection, const NdsDeviceTransfer &transfer) {
+Result<void> NdsRaRdmaRecv(const RaConnection &connection, const NdsDeviceSendWr &request) {
     if (connection.runtime == nullptr || connection.qp == nullptr)
         return unexpected(ErrorCode::kInvalidArgument, "RA receive requires a runtime and QP");
-    NdsDeviceRecvWr request{};
-    nds_device_build_recv_wr(&transfer, &request);
-    return NdsRaPostRecv(connection.qp, request);
+    NdsDeviceRecvWr recv{};
+    recv.wr_id = request.wr_id;
+    recv.local = request.local;
+    return NdsRaPostRecv(connection.qp, recv);
 }
 
-Result<void> NdsRaRdmaRead(const RaConnection &connection, const NdsDeviceTransfer &transfer) {
-    NdsDeviceSendWr request{};
-    nds_device_build_send_wr(&transfer, NDS_DEVICE_WR_RDMA_READ, &request);
+Result<void> NdsRaRdmaRead(const RaConnection &connection, const NdsDeviceSendWr &request) {
     return post(connection.runtime, connection.qp, request);
 }
 
-Result<void> NdsRaRdmaWrite(const RaConnection &connection, const NdsDeviceTransfer &transfer) {
-    NdsDeviceSendWr request{};
-    nds_device_build_send_wr(&transfer, NDS_DEVICE_WR_RDMA_WRITE, &request);
+Result<void> NdsRaRdmaWrite(const RaConnection &connection, const NdsDeviceSendWr &request) {
     return post(connection.runtime, connection.qp, request);
 }
 

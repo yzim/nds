@@ -91,7 +91,7 @@ extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuRdmaSend(void
         set_invalid(result);
         return kEntryInvalidArgument;
     }
-    const uint32_t status = NdsAicpuRdmaSendImpl(&request->transport, &request->parameters.transfer, result);
+    const uint32_t status = NdsAicpuRdmaSendImpl(&request->transport, &request->parameters.send_wr, result);
     entry_barrier();
     return status;
 }
@@ -105,7 +105,7 @@ extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuRdmaRecv(void
         set_invalid(result);
         return kEntryInvalidArgument;
     }
-    const uint32_t status = NdsAicpuRdmaRecvImpl(&request->transport, &request->parameters.transfer, result);
+    const uint32_t status = NdsAicpuRdmaRecvImpl(&request->transport, &request->parameters.send_wr, result);
     entry_barrier();
     return status;
 }
@@ -119,7 +119,7 @@ extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuRdmaRead(void
         set_invalid(result);
         return kEntryInvalidArgument;
     }
-    const uint32_t status = NdsAicpuRdmaReadImpl(&request->transport, &request->parameters.transfer, result);
+    const uint32_t status = NdsAicpuRdmaReadImpl(&request->transport, &request->parameters.send_wr, result);
     entry_barrier();
     return status;
 }
@@ -133,7 +133,7 @@ extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuRdmaWrite(voi
         set_invalid(result);
         return kEntryInvalidArgument;
     }
-    const uint32_t status = NdsAicpuRdmaWriteImpl(&request->transport, &request->parameters.transfer, result);
+    const uint32_t status = NdsAicpuRdmaWriteImpl(&request->transport, &request->parameters.send_wr, result);
     entry_barrier();
     return status;
 }

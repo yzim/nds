@@ -4,19 +4,20 @@
 #include <cstdint>
 
 TEST(DeviceConnectionTest, BuildsWorkRequests) {
-    NdsDeviceTransfer transfer{
-        UINT64_C(0x55), {UINT64_C(0x1000), 4096U, UINT32_C(0x77)}, UINT64_C(0x2000), UINT32_C(0x88), 0U};
-    NdsDeviceSendWr send{};
-    nds_device_build_send_wr(&transfer, NDS_DEVICE_WR_RDMA_WRITE, &send);
-    EXPECT_TRUE(send.wr_id == transfer.wr_id);
+    const NdsDeviceSendWr send{
+        UINT64_C(0x55), NDS_DEVICE_WR_RDMA_WRITE, NDS_DEVICE_SEND_SIGNALED,
+        {UINT64_C(0x1000), 4096U, UINT32_C(0x77)}, UINT64_C(0x2000), UINT32_C(0x88), 0U};
+    EXPECT_TRUE(send.wr_id == UINT64_C(0x55));
     EXPECT_TRUE(send.opcode == NDS_DEVICE_WR_RDMA_WRITE);
     EXPECT_TRUE(send.flags == NDS_DEVICE_SEND_SIGNALED);
-    EXPECT_TRUE(send.local.address == transfer.local.address);
-    EXPECT_TRUE(send.remote_address == transfer.remote_address);
-    EXPECT_TRUE(send.remote_key == transfer.remote_key);
+    EXPECT_TRUE(send.local.address == UINT64_C(0x1000));
+    EXPECT_TRUE(send.local.length == 4096U);
+    EXPECT_TRUE(send.local.local_key == UINT32_C(0x77));
+    EXPECT_TRUE(send.remote_address == UINT64_C(0x2000));
+    EXPECT_TRUE(send.remote_key == UINT32_C(0x88));
 
-    NdsDeviceRecvWr receive{};
-    nds_device_build_recv_wr(&transfer, &receive);
-    EXPECT_TRUE(receive.wr_id == transfer.wr_id);
-    EXPECT_TRUE(receive.local.length == transfer.local.length);
+    const NdsDeviceRecvWr receive{UINT64_C(0x55), {UINT64_C(0x1000), 4096U, UINT32_C(0x77)}};
+    EXPECT_TRUE(receive.wr_id == UINT64_C(0x55));
+    EXPECT_TRUE(receive.local.length == 4096U);
+    EXPECT_TRUE(receive.local.local_key == UINT32_C(0x77));
 }

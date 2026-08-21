@@ -54,10 +54,14 @@ __aicore__ inline void ExecuteSerialized(__gm__ const NdsDeviceStorageContext *c
     StoreBytes(reinterpret_cast<__gm__ uint8_t *>(context->completion.address), pending, sizeof(pending));
     StoreBytes(reinterpret_cast<__gm__ uint8_t *>(context->command_buffer.address), command_bytes,
                nds::kStorageCommandBytes);
-    const NdsDeviceTransfer transfer{command_id,
-                                     {context->command_buffer.address, nds::kStorageCommandBytes,
-                                      context->command_buffer.local_key},
-                                     0U, 0U, 0U};
+    const NdsDeviceSendWr transfer{command_id,
+                                    NDS_DEVICE_WR_SEND,
+                                    NDS_DEVICE_SEND_SIGNALED,
+                                    {context->command_buffer.address, nds::kStorageCommandBytes,
+                                     context->command_buffer.local_key},
+                                    0U,
+                                    0U,
+                                    0U};
     NdsAivRdmaSendImpl(&context->transport, &transfer, scratch, result);
 }
 

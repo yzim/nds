@@ -66,8 +66,9 @@ nds::Result<void> send(nds::client::Runtime *runtime, nds::client::Transport *tr
     if (!registered)
         return nds::unexpected(registered.error());
     nds::client::MemoryRegion region = std::move(*registered);
-    const NdsDeviceTransfer transfer{
-        1U, {region.address(), static_cast<std::uint32_t>(payload.size()), region.local_key()}, 0U, 0U, 0U};
+    const NdsDeviceSendWr transfer{
+        1U, NDS_DEVICE_WR_SEND, NDS_DEVICE_SEND_SIGNALED,
+        {region.address(), static_cast<std::uint32_t>(payload.size()), region.local_key()}, 0U, 0U, 0U};
     if (transport->execution().mode == nds::client::NpuExecutionMode::Ra)
         return nds::NdsRaRdmaSend({runtime, transport->qp()}, transfer);
 
@@ -85,7 +86,7 @@ nds::Result<void> send(nds::client::Runtime *runtime, nds::client::Transport *tr
     NdsDeviceOperationRequest request{};
     request.transport = *device_transport;
     request.operation = NDS_DEVICE_RDMA_SEND;
-    request.parameters.transfer = transfer;
+    request.parameters.send_wr = transfer;
     request.operation_result_address = reinterpret_cast<std::uint64_t>(result_buffer.data());
     if (transport->execution().mode == nds::client::NpuExecutionMode::Aicpu) {
         nds::AicpuEntrypointLauncher launcher;

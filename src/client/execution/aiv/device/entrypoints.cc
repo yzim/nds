@@ -102,14 +102,7 @@ extern "C" __global__ __aicore__ void NdsAivRdmaSend(GM_ADDR request_address) {
     TPipe pipe;
     TBuf<> scratch;
     pipe.InitBuffer(scratch, 64U);
-    const NdsDeviceTransfer transfer{request->parameters.transfer.wr_id,
-                                     {request->parameters.transfer.local.address,
-                                      request->parameters.transfer.local.length,
-                                      request->parameters.transfer.local.local_key},
-                                     request->parameters.transfer.remote_address,
-                                     request->parameters.transfer.remote_key,
-                                     request->parameters.transfer.reserved};
-    NdsAivRdmaSendImpl(&request->transport, &transfer, &scratch, result);
+    NdsAivRdmaSendImpl(&request->transport, &request->parameters.send_wr, &scratch, result);
 }
 
 extern "C" __global__ __aicore__ void NdsAivRdmaRecv(GM_ADDR request_address) {
@@ -122,7 +115,7 @@ extern "C" __global__ __aicore__ void NdsAivRdmaRecv(GM_ADDR request_address) {
     TPipe pipe;
     TBuf<> scratch;
     pipe.InitBuffer(scratch, 64U);
-    NdsAivRdmaRecvImpl(&request->transport, &request->parameters.transfer, &scratch, result);
+    NdsAivRdmaRecvImpl(&request->transport, &request->parameters.send_wr, &scratch, result);
 }
 
 extern "C" __global__ __aicore__ void NdsAivRdmaRead(GM_ADDR request_address) {
@@ -135,7 +128,7 @@ extern "C" __global__ __aicore__ void NdsAivRdmaRead(GM_ADDR request_address) {
     TPipe pipe;
     TBuf<> scratch;
     pipe.InitBuffer(scratch, 64U);
-    NdsAivRdmaReadImpl(&request->transport, &request->parameters.transfer, &scratch, result);
+    NdsAivRdmaReadImpl(&request->transport, &request->parameters.send_wr, &scratch, result);
 }
 
 extern "C" __global__ __aicore__ void NdsAivRdmaWrite(GM_ADDR request_address) {
@@ -148,7 +141,7 @@ extern "C" __global__ __aicore__ void NdsAivRdmaWrite(GM_ADDR request_address) {
     TPipe pipe;
     TBuf<> scratch;
     pipe.InitBuffer(scratch, 64U);
-    NdsAivRdmaWriteImpl(&request->transport, &request->parameters.transfer, &scratch, result);
+    NdsAivRdmaWriteImpl(&request->transport, &request->parameters.send_wr, &scratch, result);
 }
 
 extern "C" __global__ __aicore__ void NdsAivStorageRead(GM_ADDR request_address) {
