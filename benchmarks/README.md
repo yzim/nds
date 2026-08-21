@@ -28,7 +28,13 @@ an NPU HBM registration published by the passive peer. The CPU path submits a
 single linked WQE window with only the final WR signaled and polls that final
 CQE. `--in-flight` controls the window and the server's CPU QP send depth.
 These results measure CPU-RNIC submission and completion, not AICPU operator
-execution.
+execution. `--qps` is a temporary benchmark-only harness: it creates one
+independent transport and TCP port per QP (`base_port + index`) and aggregates
+concurrent workers. The NPU peer launches one child process per QP because the
+current RA lifecycle rejects repeated `RaInit` in one process. It does not
+represent the official multi-QP `Transport` API; production multi-QP support
+remains a roadmap item with explicit QP selection, CQ ownership, credits, and
+resource-lifetime rules.
 
 `nds_aicpu_verbs_bench_client` and `nds_aiv_verbs_bench_client` measure the
 same RDMA Read/Write workload through the AICPU and AIV device kernel paths.
