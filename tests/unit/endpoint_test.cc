@@ -360,11 +360,11 @@ TEST(EndpointTest, RaVerbsUseQueuePairExecutionView) {
     EXPECT_TRUE(nds::NdsRaPostRecv(&qp, {2U, {0x2000U, 64U, 0x88U}}));
     EXPECT_EQ(fake.recv_calls, 1);
     NdsDeviceWc output[NDS_DEVICE_MAX_COMPLETIONS]{};
-    const auto polled = nds::NdsRaPollCq(&qp, true, 1U, &output);
+    const auto polled = nds::NdsRaPollCq(&qp, true, 1U, output);
     EXPECT_TRUE(polled);
     EXPECT_EQ(*polled, 0U);
     EXPECT_TRUE(fake.last_poll_was_send);
-    const auto receive_polled = nds::NdsRaPollCq(&qp, false, 1U, &output);
+    const auto receive_polled = nds::NdsRaPollCq(&qp, false, 1U, output);
     EXPECT_TRUE(receive_polled);
     EXPECT_EQ(*receive_polled, 0U);
     EXPECT_FALSE(fake.last_poll_was_send);

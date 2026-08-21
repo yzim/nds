@@ -26,7 +26,7 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaSendImpl(__gm__ const NdsDe
                                                               __gm__ int32_t *return_value,
                                                               AscendC::TBuf<> *scratch);
 NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaRecvImpl(__gm__ const NdsDeviceTransport *transport,
-                                                              const NdsDeviceSendWr *wr,
+                                                              const NdsDeviceRecvWr *wr,
                                                               __gm__ int32_t *return_value,
                                                               AscendC::TBuf<> *scratch);
 NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaReadImpl(__gm__ const NdsDeviceTransport *transport,

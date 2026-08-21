@@ -11,13 +11,6 @@
 
 namespace nds {
 
-enum class StorageOperation {
-    Read,
-    Write,
-    BatchRead,
-    BatchWrite,
-};
-
 /* Loads the AIV binary and launches its typed operator entries. */
 class AivEntrypointLauncher {
 public:

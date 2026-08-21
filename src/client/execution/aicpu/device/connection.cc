@@ -18,14 +18,11 @@ extern "C" uint32_t NdsAicpuRdmaSendImpl(const NdsDeviceTransport *transport, co
     return post(transport, wr, return_value);
 }
 
-extern "C" uint32_t NdsAicpuRdmaRecvImpl(const NdsDeviceTransport *transport, const NdsDeviceSendWr *wr,
+extern "C" uint32_t NdsAicpuRdmaRecvImpl(const NdsDeviceTransport *transport, const NdsDeviceRecvWr *wr,
                                          int32_t *return_value) {
-    if (!valid_transport(transport, wr, return_value))
+    if (transport == nullptr || wr == nullptr || return_value == nullptr)
         return kNdsAicpuInvalidArgument;
-    NdsDeviceRecvWr recv{};
-    recv.wr_id = wr->wr_id;
-    recv.local = wr->local;
-    return NdsAicpuPostRecvImpl(&transport->control_qp, &recv, return_value);
+    return NdsAicpuPostRecvImpl(&transport->control_qp, wr, return_value);
 }
 
 extern "C" uint32_t NdsAicpuRdmaReadImpl(const NdsDeviceTransport *transport, const NdsDeviceSendWr *wr,
