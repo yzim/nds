@@ -97,7 +97,12 @@ extern "C" __global__ __aicore__ void NdsAivRdmaRecv(GM_ADDR request_address) {
     TPipe pipe;
     TBuf<> scratch;
     pipe.InitBuffer(scratch, 64U);
-    NdsAivRdmaRecvImpl(&request->transport, &request->wr, &request->return_value, &scratch);
+    NdsDeviceRecvWr recv{};
+    recv.wr_id = request->wr.wr_id;
+    recv.local.address = request->wr.local.address;
+    recv.local.length = request->wr.local.length;
+    recv.local.local_key = request->wr.local.local_key;
+    NdsAivRdmaRecvImpl(&request->transport, &recv, &request->return_value, &scratch);
 }
 
 extern "C" __global__ __aicore__ void NdsAivRdmaRead(GM_ADDR request_address) {

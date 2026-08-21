@@ -19,7 +19,7 @@ uint32_t NdsAicpuPollCqImpl(const NdsDeviceQp *qp, uint32_t is_send_cq, uint32_t
 
 uint32_t NdsAicpuRdmaSendImpl(const NdsDeviceTransport *transport, const NdsDeviceSendWr *wr,
                               int32_t *return_value);
-uint32_t NdsAicpuRdmaRecvImpl(const NdsDeviceTransport *transport, const NdsDeviceSendWr *wr,
+uint32_t NdsAicpuRdmaRecvImpl(const NdsDeviceTransport *transport, const NdsDeviceRecvWr *wr,
                               int32_t *return_value);
 uint32_t NdsAicpuRdmaReadImpl(const NdsDeviceTransport *transport, const NdsDeviceSendWr *wr,
                               int32_t *return_value);
