@@ -34,6 +34,8 @@ nds_add_unit_test(nds_logging_test logging_test.cc)
 target_link_libraries(nds_logging_test PRIVATE nds_logging)
 nds_add_unit_test(nds_storage_batch_test storage_batch_test.cc)
 target_link_libraries(nds_storage_batch_test PRIVATE nds_client_storage)
+nds_add_unit_test(nds_ra_verbs_benchmark_wire_test ra_verbs_benchmark_wire_test.cc)
+target_include_directories(nds_ra_verbs_benchmark_wire_test PRIVATE ${PROJECT_SOURCE_DIR}/benchmarks)
 
 add_test(NAME integration.nds_aicpu_manifest_test
     COMMAND ${CMAKE_COMMAND}

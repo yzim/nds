@@ -26,7 +26,11 @@ struct RaStorageContext {
     std::uint64_t capacity{};
 };
 
-/* Verbs layer. PostSend posts and submits one RA work request. */
+/* Verbs layer. PostSend posts and submits one RA work request. The prepare and
+ * ring forms support a bounded multi-WR window with one final doorbell. */
+Result<NdsRaSendResponse> NdsRaPrepareSend(client::QueuePair *qp, const NdsDeviceSendWr &wr);
+Result<NdsRaSendResponse> NdsRaPrepareSend(client::QueuePair *qp, const NdsDeviceSendWr &wr, NdsRaSge *sge);
+Result<void> NdsRaRingSend(client::Runtime *runtime, const NdsRaSendResponse &response);
 Result<void> NdsRaPostSend(client::Runtime *runtime, client::QueuePair *qp, const NdsDeviceSendWr &wr);
 Result<void> NdsRaPostRecv(client::QueuePair *qp, const NdsDeviceRecvWr &wr);
 Result<std::uint32_t> NdsRaPollCq(client::QueuePair *qp, bool is_send_cq, std::uint32_t max_completions,

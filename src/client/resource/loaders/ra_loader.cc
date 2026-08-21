@@ -11,6 +11,7 @@ static_assert(sizeof(NdsRaRdevInitInfo) == 12, "unexpected RdevInitInfo ABI layo
 static_assert(sizeof(NdsRaMrInfo) == 32, "unexpected MrInfoT ABI layout");
 static_assert(sizeof(NdsRaSge) == 16, "unexpected SgList ABI layout");
 static_assert(sizeof(NdsRaSendWr) == 40, "unexpected SendWr ABI layout");
+static_assert(sizeof(NdsRaSendWrV2) == 56, "unexpected SendWrV2 ABI layout");
 static_assert(sizeof(NdsRaRecvWr) == 24, "unexpected RecvWrlistData ABI layout");
 static_assert(sizeof(NdsRaSendResponse) == 16, "unexpected SendWrRsp ABI layout");
 static_assert(sizeof(NdsRaCqeError) == 24, "unexpected CqeErrInfo ABI layout");
@@ -115,6 +116,7 @@ int nds_ra_open(NdsRaApi *api, const char *library_path) {
     NDS_RESOLVE(ra_register_mr, "RaRegisterMr");
     NDS_RESOLVE(ra_deregister_mr, "RaDeregisterMr");
     NDS_RESOLVE(ra_typical_send_wr, "RaTypicalSendWr");
+    nds_ra_resolve_optional(api, "RaSendWrV2", &api->ra_send_wr_v2, sizeof(api->ra_send_wr_v2));
     NDS_RESOLVE(ra_recv_wrlist, "RaRecvWrlist");
     NDS_RESOLVE(ra_poll_cq, "RaPollCq");
     NDS_RESOLVE(ra_get_interface_count, "RaGetIfnum");

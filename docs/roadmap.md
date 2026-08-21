@@ -79,8 +79,15 @@ current architecture and protocol contract.
 
 ### Performance
 
-- Define an opt-in target benchmark plan before optimizing: workload, payload
-  sizes, warmup, iteration count, backend, topology, and success criteria.
+- The opt-in RA verbs benchmark measures serial direct RDMA Read and Write
+  between NPU memory and CPU DRAM. It excludes setup, uses bounded warmups and
+  iterations, posts bounded windows with one final signaled completion, and
+  emits a JSON result with its backend and workload metadata.
+- Treat one-doorbell multi-WR submission as a write-only experimental path:
+  HCOMM applies it to RDMA Write and Write-with-immediate payload requests;
+  the NDS raw-RA read experiment returned `IBV_WC_REM_INV_REQ_ERR`.
+- Establish a payload matrix, repeated samples, variance reporting, and
+  same-target baseline comparison before optimizing or comparing backends.
 - Measure end-to-end latency and throughput separately from control-path,
   device-post, CPU data-movement, and completion-observation costs.
 - Compare changes only against recorded baselines on the same target and report

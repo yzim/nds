@@ -16,7 +16,7 @@ if(NDS_DEVICE_KIND STREQUAL "aicpu")
     set(nm_args -D -g)
     set(symbols
         NdsAicpuPostSend NdsAicpuPostRecv NdsAicpuPollCq
-        NdsAicpuRdmaSend NdsAicpuRdmaRecv NdsAicpuRdmaRead NdsAicpuRdmaWrite
+        NdsAicpuRdmaSend NdsAicpuRdmaRecv NdsAicpuRdmaRead NdsAicpuRdmaWrite NdsAicpuRdmaBenchmark
         NdsAicpuStorageRead NdsAicpuStorageWrite
         NdsAicpuStorageBatchRead NdsAicpuStorageBatchWrite)
 elseif(NDS_DEVICE_KIND STREQUAL "aiv")

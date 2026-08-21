@@ -101,6 +101,21 @@ Result<void> Connection::write(const RegisteredRegion &local, std::uint64_t addr
         return unexpected(written.error());
     return {};
 }
+
+Result<void> Connection::read_window(const RegisteredRegion &local, std::uint64_t address, std::uint32_t key,
+                                     std::uint32_t length, std::uint32_t request_count) {
+    if (const auto read = backend_.read_window(local, address, key, length, request_count); !read)
+        return unexpected(read.error());
+    return {};
+}
+
+Result<void> Connection::write_window(const RegisteredRegion &local, std::uint64_t address, std::uint32_t key,
+                                      std::uint32_t length, std::uint32_t request_count) {
+    if (const auto written = backend_.write_window(local, address, key, length, request_count); !written)
+        return unexpected(written.error());
+    return {};
+}
+
 TcpPeerExchange *Connection::bootstrap() noexcept {
     return &bootstrap_;
 }

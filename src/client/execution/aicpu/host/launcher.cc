@@ -150,6 +150,13 @@ Result<void> AicpuEntrypointLauncher::launch_rdma_write_and_wait(NdsDeviceRdmaWr
                                     completion_timeout_ms);
 }
 
+Result<void> AicpuEntrypointLauncher::launch_rdma_benchmark_and_wait(NdsDeviceRdmaBenchmarkArgs *args,
+                                                                       std::int32_t completion_timeout_ms) {
+    if (args == nullptr)
+        return unexpected(ErrorCode::kInvalidArgument, "NDS AICPU RDMA benchmark args have invalid metadata");
+    return launch_operator_and_wait(args, sizeof(*args), "NdsAicpuRdmaBenchmark", completion_timeout_ms);
+}
+
 Result<void> AicpuEntrypointLauncher::launch_storage_and_wait(
     void *args, std::size_t size, const NdsDeviceStorageContext *context, const char *operator_name,
     std::int32_t completion_timeout_ms) {

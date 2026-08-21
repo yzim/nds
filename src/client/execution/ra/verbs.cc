@@ -18,7 +18,7 @@ int ra_opcode(std::uint32_t opcode) {
     }
 }
 
-Result<NdsRaSendResponse> post_unrung(client::QueuePair *qp, const NdsDeviceSendWr &request) {
+Result<NdsRaSendResponse> prepare_send(client::QueuePair *qp, const NdsDeviceSendWr &request, NdsRaSge *sge) {
     const int opcode = ra_opcode(request.opcode);
     if (qp == nullptr || qp->execution_mode() != client::NpuExecutionMode::Ra || !qp->connected() ||
         qp->ra_api() == nullptr || qp->handle() == nullptr || request.local.address == 0U ||
@@ -29,8 +29,23 @@ Result<NdsRaSendResponse> post_unrung(client::QueuePair *qp, const NdsDeviceSend
                           "RA post requires a connected RA QP, valid local SGE, supported opcode, "
                           "and matching remote-memory metadata");
     }
-    NdsRaSge *local = qp->posted_send_sge();
+    NdsRaSge *local = sge == nullptr ? qp->posted_send_sge() : sge;
     *local = {request.local.address, request.local.length, request.local.local_key};
+    if (qp->ra_api()->ra_send_wr_v2 != nullptr) {
+        NdsRaSendWrV2 wr{};
+        wr.wr_id = request.wr_id;
+        wr.buffers = local;
+        wr.buffer_count = 1U;
+        wr.remote_address = request.remote_address;
+        wr.remote_key = request.remote_key;
+        wr.opcode = static_cast<std::uint32_t>(opcode);
+        wr.send_flags = (request.flags & NDS_DEVICE_SEND_SIGNALED) != 0U ? NDS_RA_SEND_SIGNALED : 0;
+        NdsRaSendResponse response{};
+        const int result = qp->ra_api()->ra_send_wr_v2(qp->handle(), &wr, &response);
+        if (result != 0)
+            return unexpected(ErrorCode::kRa, "RaSendWrV2 failed: " + std::to_string(result));
+        return response;
+    }
     NdsRaSendWr wr{};
     wr.buffers = local;
     wr.buffer_count = 1U;
@@ -46,23 +61,35 @@ Result<NdsRaSendResponse> post_unrung(client::QueuePair *qp, const NdsDeviceSend
 }
 }  // namespace
 
-Result<void> NdsRaPostSend(client::Runtime *runtime, client::QueuePair *qp, const NdsDeviceSendWr &request) {
+Result<NdsRaSendResponse> NdsRaPrepareSend(client::QueuePair *qp, const NdsDeviceSendWr &request) {
+    return prepare_send(qp, request, nullptr);
+}
+
+Result<NdsRaSendResponse> NdsRaPrepareSend(client::QueuePair *qp, const NdsDeviceSendWr &request, NdsRaSge *sge) {
+    return prepare_send(qp, request, sge);
+}
+
+Result<void> NdsRaRingSend(client::Runtime *runtime, const NdsRaSendResponse &response) {
     if (runtime == nullptr)
-        return unexpected(ErrorCode::kInvalidArgument, "RA post requires a runtime");
-    const auto posted = post_unrung(qp, request);
-    if (!posted)
-        return unexpected(posted.error());
+        return unexpected(ErrorCode::kInvalidArgument, "RA doorbell requires a runtime");
     auto &api = runtime->runtime_api();
     if (api.set_device == nullptr || api.rdma_db_send == nullptr)
         return unexpected(ErrorCode::kRuntime, "runtime doorbell ABI is unavailable");
     if (const int result = api.set_device(static_cast<std::int32_t>(runtime->config().logical_device_id)); result != 0)
         return unexpected(ErrorCode::kRuntime, "rtSetDevice before rtRDMADBSend failed: " + std::to_string(result));
     if (const int result =
-            api.rdma_db_send(posted->doorbell.db_index, static_cast<std::uint64_t>(posted->doorbell.db_info), nullptr);
+        api.rdma_db_send(response.doorbell.db_index, static_cast<std::uint64_t>(response.doorbell.db_info), nullptr);
         result != 0) {
         return unexpected(ErrorCode::kRuntime, "rtRDMADBSend failed: " + std::to_string(result));
     }
     return {};
+}
+
+Result<void> NdsRaPostSend(client::Runtime *runtime, client::QueuePair *qp, const NdsDeviceSendWr &request) {
+    const auto posted = NdsRaPrepareSend(qp, request);
+    if (!posted)
+        return unexpected(posted.error());
+    return NdsRaRingSend(runtime, *posted);
 }
 
 Result<void> NdsRaPostRecv(client::QueuePair *qp, const NdsDeviceRecvWr &request) {

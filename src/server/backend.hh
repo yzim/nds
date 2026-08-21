@@ -16,6 +16,10 @@ struct BackendConfig {
     std::string device_name;
     std::uint8_t port{1U};
     std::uint32_t gid_index{};
+    std::uint32_t send_queue_depth{16U};
+    std::uint32_t receive_queue_depth{16U};
+    std::uint32_t max_rd_atomic{1U};
+    std::uint32_t max_dest_rd_atomic{1U};
 };
 
 class RegisteredRegion {
@@ -54,11 +58,17 @@ public:
                       std::uint32_t length);
     Result<void> write(const RegisteredRegion &local, std::uint64_t remote_address, std::uint32_t remote_key,
                        std::uint32_t length);
+    Result<void> read_window(const RegisteredRegion &local, std::uint64_t remote_address, std::uint32_t remote_key,
+                             std::uint32_t length, std::uint32_t request_count);
+    Result<void> write_window(const RegisteredRegion &local, std::uint64_t remote_address, std::uint32_t remote_key,
+                              std::uint32_t length, std::uint32_t request_count);
     const nds::transport::QpInfo &local_qp_info() const noexcept;
 
 private:
     Result<void> transfer(ibv_wr_opcode opcode, const RegisteredRegion &local, std::uint64_t remote_address,
                           std::uint32_t remote_key, std::uint32_t length);
+    Result<void> transfer_window(ibv_wr_opcode opcode, const RegisteredRegion &local, std::uint64_t remote_address,
+                                 std::uint32_t remote_key, std::uint32_t length, std::uint32_t request_count);
     Result<void> poll(ibv_wc_opcode opcode, std::uint32_t timeout_ms);
 
     ibv_context *context_{};

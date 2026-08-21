@@ -34,6 +34,10 @@ public:
                       std::uint32_t length);
     Result<void> write(const RegisteredRegion &local, std::uint64_t remote_address, std::uint32_t remote_key,
                        std::uint32_t length);
+    Result<void> read_window(const RegisteredRegion &local, std::uint64_t remote_address, std::uint32_t remote_key,
+                             std::uint32_t length, std::uint32_t request_count);
+    Result<void> write_window(const RegisteredRegion &local, std::uint64_t remote_address, std::uint32_t remote_key,
+                              std::uint32_t length, std::uint32_t request_count);
     TcpPeerExchange *bootstrap() noexcept;
 
 private:

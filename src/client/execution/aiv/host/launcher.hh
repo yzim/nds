@@ -21,6 +21,9 @@ public:
 
     Result<void> load(NdsAclApi *acl, const std::string &kernel_path);
     Result<void> launch_post_send_and_wait(std::uint64_t device_request_address, std::int32_t completion_timeout_ms);
+    Result<void> launch_rdma_read_and_wait(std::uint64_t device_request_address, std::int32_t completion_timeout_ms);
+    Result<void> launch_rdma_write_and_wait(std::uint64_t device_request_address, std::int32_t completion_timeout_ms);
+    Result<void> launch_poll_cq_and_wait(std::uint64_t device_request_address, std::int32_t completion_timeout_ms);
     Result<void> launch_storage_and_wait(std::uint64_t device_request_address, StorageOperation operation,
                                          std::int32_t completion_timeout_ms);
     Result<void> launch_storage_wait_and_wait(std::uint64_t device_request_address,
@@ -29,6 +32,8 @@ public:
     bool loaded() const noexcept;
 
 private:
+    Result<void> launch_kernel_and_wait(const char *operator_name, std::uint64_t device_request_address,
+                                        std::int32_t completion_timeout_ms);
     NdsAclApi *acl_{};
     NdsAclBinHandle binary_{};
     NdsAclFuncHandle function_{};

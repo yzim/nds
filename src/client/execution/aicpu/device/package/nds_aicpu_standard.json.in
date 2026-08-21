@@ -48,6 +48,13 @@
       "opKernelLib": "AICPUKernel"
     }
   },
+  "NdsAicpuRdmaBenchmark": {
+    "opInfo": {
+      "functionName": "NdsAicpuRdmaBenchmark",
+      "kernelSo": "@NDS_AICPU_STANDARD_KERNEL_SO@",
+      "opKernelLib": "AICPUKernel"
+    }
+  },
   "NdsAicpuStorageRead": {
     "opInfo": {
       "functionName": "NdsAicpuStorageRead",

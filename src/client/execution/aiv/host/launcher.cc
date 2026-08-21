@@ -58,14 +58,16 @@ Result<void> AivEntrypointLauncher::load(NdsAclApi *acl, const std::string &kern
     return {};
 }
 
-Result<void> AivEntrypointLauncher::launch_post_send_and_wait(std::uint64_t device_request_address,
-                                                              std::int32_t completion_timeout_ms) {
-    if (!loaded() || device_request_address == 0U || completion_timeout_ms <= 0) {
+Result<void> AivEntrypointLauncher::launch_kernel_and_wait(const char *operator_name,
+                                                            std::uint64_t device_request_address,
+                                                            std::int32_t completion_timeout_ms) {
+    if (!loaded() || operator_name == nullptr || device_request_address == 0U || completion_timeout_ms <= 0) {
         return unexpected(ErrorCode::kInvalidArgument,
-                          "NDS AIV PostSend launch requires a loaded binary, request address, and positive timeout");
+                          "NDS AIV launch requires a loaded binary, request address, and positive timeout");
     }
-    if (acl_->binary_get_function(binary_, "NdsAivPostSend", &function_) != 0 || function_ == nullptr) {
-        return unexpected(ErrorCode::kRuntime, "NDS AIV binary does not expose NdsAivPostSend");
+    if (acl_->binary_get_function(binary_, operator_name, &function_) != 0 || function_ == nullptr) {
+        return unexpected(ErrorCode::kRuntime,
+                          "NDS AIV binary does not expose " + std::string(operator_name));
     }
     NdsAclLaunchKernelAttr attributes[2]{};
     attributes[0].id = NDS_ACL_LAUNCH_KERNEL_ATTR_SCHEM_MODE;
@@ -73,17 +75,40 @@ Result<void> AivEntrypointLauncher::launch_post_send_and_wait(std::uint64_t devi
     attributes[1].id = NDS_ACL_LAUNCH_KERNEL_ATTR_ENGINE_TYPE;
     attributes[1].value.engine_type = NDS_ACL_ENGINE_TYPE_AIV;
     NdsAclLaunchKernelConfig config{attributes, 2U};
-    if (const int result = acl_->launch_kernel_with_host_args(function_, 1U, stream_, &config, &device_request_address,
-                                                              sizeof(device_request_address), nullptr, 0U);
+    if (const int result = acl_->launch_kernel_with_host_args(function_, 1U, stream_, &config,
+                                                              &device_request_address, sizeof(device_request_address),
+                                                              nullptr, 0U);
         result != 0) {
         return unexpected(ErrorCode::kRuntime,
-                          "aclrtLaunchKernelWithHostArgs(NdsAivPostSend) failed: " + std::to_string(result));
+                          "aclrtLaunchKernelWithHostArgs(" + std::string(operator_name) + ") failed: " +
+                              std::to_string(result));
     }
     if (const int result = acl_->synchronize_stream_with_timeout(stream_, completion_timeout_ms); result != 0) {
         return unexpected(ErrorCode::kRuntime,
-                          "aclrtSynchronizeStreamWithTimeout after NdsAivPostSend failed: " + std::to_string(result));
+                          "aclrtSynchronizeStreamWithTimeout after " + std::string(operator_name) + " failed: " +
+                              std::to_string(result));
     }
     return {};
+}
+
+Result<void> AivEntrypointLauncher::launch_post_send_and_wait(std::uint64_t device_request_address,
+                                                              std::int32_t completion_timeout_ms) {
+    return launch_kernel_and_wait("NdsAivPostSend", device_request_address, completion_timeout_ms);
+}
+
+Result<void> AivEntrypointLauncher::launch_rdma_read_and_wait(std::uint64_t device_request_address,
+                                                              std::int32_t completion_timeout_ms) {
+    return launch_kernel_and_wait("NdsAivRdmaRead", device_request_address, completion_timeout_ms);
+}
+
+Result<void> AivEntrypointLauncher::launch_rdma_write_and_wait(std::uint64_t device_request_address,
+                                                               std::int32_t completion_timeout_ms) {
+    return launch_kernel_and_wait("NdsAivRdmaWrite", device_request_address, completion_timeout_ms);
+}
+
+Result<void> AivEntrypointLauncher::launch_poll_cq_and_wait(std::uint64_t device_request_address,
+                                                             std::int32_t completion_timeout_ms) {
+    return launch_kernel_and_wait("NdsAivPollCq", device_request_address, completion_timeout_ms);
 }
 
 Result<void> AivEntrypointLauncher::launch_storage_and_wait(std::uint64_t device_request_address,

@@ -3,6 +3,7 @@
 
 #include "nds/acl_loader.h"
 #include "nds/device_transport.h"
+#include "nds/device_benchmark.h"
 #include "nds/device_storage.h"
 #include "nds/result.hh"
 
@@ -27,6 +28,8 @@ public:
     Result<void> launch_rdma_recv_and_wait(NdsDeviceRdmaRecvArgs *args, std::int32_t completion_timeout_ms);
     Result<void> launch_rdma_read_and_wait(NdsDeviceRdmaReadArgs *args, std::int32_t completion_timeout_ms);
     Result<void> launch_rdma_write_and_wait(NdsDeviceRdmaWriteArgs *args, std::int32_t completion_timeout_ms);
+    Result<void> launch_rdma_benchmark_and_wait(NdsDeviceRdmaBenchmarkArgs *args,
+                                                std::int32_t completion_timeout_ms);
     Result<void> launch_storage_read_and_wait(NdsDeviceStorageReadArgs *args, std::int32_t completion_timeout_ms);
     Result<void> launch_storage_write_and_wait(NdsDeviceStorageWriteArgs *args, std::int32_t completion_timeout_ms);
     Result<void> launch_storage_batch_read_and_wait(NdsDeviceStorageBatchReadArgs *args,

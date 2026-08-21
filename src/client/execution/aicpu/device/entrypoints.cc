@@ -109,6 +109,14 @@ extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuRdmaWrite(voi
     entry_barrier();
     return status;
 }
+extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuRdmaBenchmark(void *args) {
+    auto *request = static_cast<NdsDeviceRdmaBenchmarkArgs *>(args);
+    if (!valid_rdma_request(request))
+        return kEntryInvalidArgument;
+    const uint32_t status = NdsAicpuRdmaBenchmarkImpl(request);
+    entry_barrier();
+    return status;
+}
 
 extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuStorageRead(void *args) {
     auto *request = static_cast<NdsDeviceStorageReadArgs *>(args);

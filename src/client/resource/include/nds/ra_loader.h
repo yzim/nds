@@ -134,6 +134,20 @@ typedef struct NdsRaSendWr {
     int send_flags;
 } NdsRaSendWr;
 
+typedef struct NdsRaSendWrV2 {
+    uint64_t wr_id;
+    NdsRaSge *buffers;
+    uint16_t buffer_count;
+    uint16_t reserved0;
+    uint32_t reserved1;
+    uint64_t remote_address;
+    uint32_t remote_key;
+    uint32_t opcode;
+    int send_flags;
+    uint32_t reserved2;
+    uint64_t reserved3;
+} NdsRaSendWrV2;
+
 typedef struct NdsRaRecvWr {
     uint64_t wr_id;
     NdsRaSge memory;
@@ -330,6 +344,7 @@ typedef int (*NdsRaRdevGetCqeErrorListFn)(void *rdma_handle, NdsRaCqeError *erro
 typedef int (*NdsRaRegisterMrFn)(const void *rdma_handle, NdsRaMrInfo *info, void **mr_handle);
 typedef int (*NdsRaDeregisterMrFn)(const void *rdma_handle, void *mr_handle);
 typedef int (*NdsRaTypicalSendWrFn)(void *qp_handle, NdsRaSendWr *wr, NdsRaSendResponse *response);
+typedef int (*NdsRaSendWrV2Fn)(void *qp_handle, NdsRaSendWrV2 *wr, NdsRaSendResponse *response);
 typedef int (*NdsRaRecvWrlistFn)(void *qp_handle, NdsRaRecvWr *wr, unsigned int recv_num,
                                      unsigned int *complete_num);
 typedef int (*NdsRaPollCqFn)(void *qp_handle, bool is_send_cq, unsigned int max_entries, void *completions);
@@ -368,6 +383,7 @@ typedef struct NdsRaApi {
     NdsRaRegisterMrFn ra_register_mr;
     NdsRaDeregisterMrFn ra_deregister_mr;
     NdsRaTypicalSendWrFn ra_typical_send_wr;
+    NdsRaSendWrV2Fn ra_send_wr_v2;
     NdsRaRecvWrlistFn ra_recv_wrlist;
     NdsRaPollCqFn ra_poll_cq;
     NdsRaGetInterfaceCountFn ra_get_interface_count;

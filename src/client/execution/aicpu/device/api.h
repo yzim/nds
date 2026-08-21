@@ -2,6 +2,7 @@
 #define NDS_AICPU_DEVICE_API_H
 
 #include "nds/device_transport.h"
+#include "nds/device_benchmark.h"
 #include "nds/device_storage.h"
 
 #include <stdint.h>
@@ -25,6 +26,7 @@ uint32_t NdsAicpuRdmaReadImpl(const NdsDeviceTransport *transport, const NdsDevi
                               int32_t *return_value);
 uint32_t NdsAicpuRdmaWriteImpl(const NdsDeviceTransport *transport, const NdsDeviceSendWr *wr,
                                int32_t *return_value);
+uint32_t NdsAicpuRdmaBenchmarkImpl(const NdsDeviceRdmaBenchmarkArgs *args);
 
 uint32_t NdsAicpuStorageReadImpl(const NdsDeviceStorageContext *context, const nds::StorageReadCommand *command,
                                  int32_t *return_value);

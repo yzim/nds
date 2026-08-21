@@ -155,11 +155,13 @@ if(NDS_BUILD_AICPU_KERNEL)
             -I${CMAKE_CURRENT_SOURCE_DIR}/include
             -I${PROJECT_SOURCE_DIR}/src/include
             ${NDS_AICPU_DEVICE_DIR}/entrypoints.cc
+            ${NDS_AICPU_DEVICE_DIR}/benchmark.cc
             ${NDS_AICPU_DEVICE_DIR}/verbs.cc
             ${NDS_AICPU_DEVICE_DIR}/connection.cc
             ${NDS_AICPU_DEVICE_DIR}/storage.cc
             -ldl -Wl,-Bsymbolic-functions,-z,relro,-z,now,-z,noexecstack -o ${NDS_AICPU_STANDARD_KERNEL}
         DEPENDS "${NDS_AICPU_DEVICE_DIR}/entrypoints.cc"
+            "${NDS_AICPU_DEVICE_DIR}/benchmark.cc"
             "${NDS_AICPU_DEVICE_DIR}/verbs.cc"
             "${NDS_AICPU_DEVICE_DIR}/connection.cc"
             "${NDS_AICPU_DEVICE_DIR}/storage.cc"
@@ -167,6 +169,7 @@ if(NDS_BUILD_AICPU_KERNEL)
             "${NDS_AICPU_DEVICE_DIR}/internal.h"
             "${NDS_AICPU_DEVICE_DIR}/hns.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_transport.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_benchmark.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_verbs.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/execution/common/hns_hw.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_storage.h"

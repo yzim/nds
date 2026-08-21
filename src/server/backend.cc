@@ -6,14 +6,14 @@
 #include <cerrno>
 #include <chrono>
 #include <cstring>
+#include <limits>
 #include <thread>
 #include <utility>
 #include <unistd.h>
+#include <vector>
 
 namespace nds::server {
 namespace {
-
-constexpr std::uint32_t kQpDepth = 16U;
 
 std::uint32_t make_psn() {
     timespec now{};
@@ -116,16 +116,19 @@ Result<void> VerbsBackend::open(const BackendConfig &config) {
     }
     context_ = ibv_open_device(selected);
     ibv_free_device_list(devices);
-    if (context_ == nullptr || (pd_ = ibv_alloc_pd(context_)) == nullptr ||
-        (cq_ = ibv_create_cq(context_, static_cast<int>(kQpDepth * 2U), nullptr, nullptr, 0)) == nullptr) {
+    if (context_ == nullptr || (pd_ = ibv_alloc_pd(context_)) == nullptr || config.send_queue_depth == 0U ||
+        config.receive_queue_depth == 0U || config.send_queue_depth > std::numeric_limits<int>::max() / 2U ||
+        config.receive_queue_depth > std::numeric_limits<int>::max() / 2U ||
+        (cq_ = ibv_create_cq(context_, static_cast<int>(config.send_queue_depth + config.receive_queue_depth), nullptr,
+                              nullptr, 0)) == nullptr) {
         return unexpected(ErrorCode::kVerbs, std::strerror(errno));
     }
     ibv_qp_init_attr init{};
     init.send_cq = cq_;
     init.recv_cq = cq_;
     init.qp_type = IBV_QPT_RC;
-    init.cap.max_send_wr = kQpDepth;
-    init.cap.max_recv_wr = kQpDepth;
+    init.cap.max_send_wr = config.send_queue_depth;
+    init.cap.max_recv_wr = config.receive_queue_depth;
     init.cap.max_send_sge = 1U;
     init.cap.max_recv_sge = 1U;
     qp_ = ibv_create_qp(pd_, &init);
@@ -165,7 +168,7 @@ Result<void> VerbsBackend::connect(const nds::transport::QpInfo &peer) {
     attr.path_mtu = mtu;
     attr.dest_qp_num = peer.qp_num;
     attr.rq_psn = peer.psn;
-    attr.max_dest_rd_atomic = 1U;
+    attr.max_dest_rd_atomic = config_.max_dest_rd_atomic;
     attr.min_rnr_timer = 12U;
     attr.ah_attr.is_global = 1;
     std::memcpy(&attr.ah_attr.grh.dgid, peer.gid, nds::wire::kGidBytes);
@@ -185,7 +188,7 @@ Result<void> VerbsBackend::connect(const nds::transport::QpInfo &peer) {
     attr.retry_cnt = 7U;
     attr.rnr_retry = 7U;
     attr.sq_psn = local_.psn;
-    attr.max_rd_atomic = 1U;
+    attr.max_rd_atomic = config_.max_rd_atomic;
     if (ibv_modify_qp(qp_, &attr,
                       IBV_QP_STATE | IBV_QP_TIMEOUT | IBV_QP_RETRY_CNT | IBV_QP_RNR_RETRY | IBV_QP_SQ_PSN |
                           IBV_QP_MAX_QP_RD_ATOMIC) != 0) {
@@ -257,19 +260,34 @@ Result<void> VerbsBackend::send(const RegisteredRegion &local, std::uint32_t len
 
 Result<void> VerbsBackend::transfer(ibv_wr_opcode opcode, const RegisteredRegion &local, std::uint64_t remote_address,
                                     std::uint32_t remote_key, std::uint32_t length) {
-    ibv_sge sge{reinterpret_cast<std::uintptr_t>(local.address()), length, local.local_key()};
-    ibv_send_wr wr{};
-    ibv_send_wr *bad = nullptr;
-    wr.wr_id = 2U;
-    wr.sg_list = &sge;
-    wr.num_sge = 1;
-    wr.opcode = opcode;
-    wr.send_flags = IBV_SEND_SIGNALED;
-    wr.wr.rdma.remote_addr = remote_address;
-    wr.wr.rdma.rkey = remote_key;
-    if (ibv_post_send(qp_, &wr, &bad) != 0) {
-        return unexpected(ErrorCode::kVerbs, std::strerror(errno));
+    return transfer_window(opcode, local, remote_address, remote_key, length, 1U);
+}
+
+Result<void> VerbsBackend::transfer_window(ibv_wr_opcode opcode, const RegisteredRegion &local,
+                                           std::uint64_t remote_address, std::uint32_t remote_key,
+                                           std::uint32_t length, std::uint32_t request_count) {
+    if (length == 0U || request_count == 0U || request_count > config_.send_queue_depth ||
+        static_cast<std::uint64_t>(length) * request_count > local.length()) {
+        return unexpected(ErrorCode::kInvalidArgument, "invalid verbs transfer window");
     }
+    std::vector<ibv_sge> sges(request_count);
+    std::vector<ibv_send_wr> wrs(request_count);
+    for (std::uint32_t index = 0U; index < request_count; ++index) {
+        sges[index] = {reinterpret_cast<std::uintptr_t>(local.address()) + static_cast<std::uint64_t>(index) * length,
+                       length, local.local_key()};
+        wrs[index] = {};
+        wrs[index].wr_id = 2U + index;
+        wrs[index].sg_list = &sges[index];
+        wrs[index].num_sge = 1;
+        wrs[index].opcode = opcode;
+        wrs[index].send_flags = index + 1U == request_count ? static_cast<int>(IBV_SEND_SIGNALED) : 0;
+        wrs[index].wr.rdma.remote_addr = remote_address + static_cast<std::uint64_t>(index) * length;
+        wrs[index].wr.rdma.rkey = remote_key;
+        wrs[index].next = index + 1U == request_count ? nullptr : &wrs[index + 1U];
+    }
+    ibv_send_wr *bad = nullptr;
+    if (ibv_post_send(qp_, &wrs[0], &bad) != 0)
+        return unexpected(ErrorCode::kVerbs, std::strerror(errno));
     return poll(opcode == IBV_WR_RDMA_READ ? IBV_WC_RDMA_READ : IBV_WC_RDMA_WRITE, 5000U);
 }
 
@@ -281,6 +299,18 @@ Result<void> VerbsBackend::read(const RegisteredRegion &local, std::uint64_t rem
 Result<void> VerbsBackend::write(const RegisteredRegion &local, std::uint64_t remote_address, std::uint32_t remote_key,
                                  std::uint32_t length) {
     return transfer(IBV_WR_RDMA_WRITE, local, remote_address, remote_key, length);
+}
+
+Result<void> VerbsBackend::read_window(const RegisteredRegion &local, std::uint64_t remote_address,
+                                       std::uint32_t remote_key, std::uint32_t length,
+                                       std::uint32_t request_count) {
+    return transfer_window(IBV_WR_RDMA_READ, local, remote_address, remote_key, length, request_count);
+}
+
+Result<void> VerbsBackend::write_window(const RegisteredRegion &local, std::uint64_t remote_address,
+                                        std::uint32_t remote_key, std::uint32_t length,
+                                        std::uint32_t request_count) {
+    return transfer_window(IBV_WR_RDMA_WRITE, local, remote_address, remote_key, length, request_count);
 }
 
 const nds::transport::QpInfo &VerbsBackend::local_qp_info() const noexcept {
