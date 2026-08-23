@@ -12,7 +12,9 @@ extern "C" {
 #endif
 
 uint32_t NdsAicpuPostSendImpl(const NdsDeviceQp *qp, const NdsDeviceSendWr *wr,
-                              int32_t *return_value);
+                              int32_t *return_value, NdsDeviceDoorbell *doorbell);
+uint32_t NdsAicpuPostSendListImpl(const NdsDeviceQp *qp, const NdsDeviceSendWr *wrs, uint32_t count,
+                                  int32_t *return_value);
 uint32_t NdsAicpuPostRecvImpl(const NdsDeviceQp *qp, const NdsDeviceRecvWr *wr,
                               int32_t *return_value);
 uint32_t NdsAicpuPollCqImpl(const NdsDeviceQp *qp, uint32_t is_send_cq, uint32_t max_completions,

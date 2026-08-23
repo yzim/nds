@@ -36,6 +36,9 @@ Source ownership and dependency direction are defined in [design](docs/design.md
   target-specific topology, commands, and evidence in ignored `.local/` files,
   not tracked documentation. A durable design decision must not exist only in
   `.local/`.
+- Before analysis, implementation, or hardware validation, inspect relevant
+  ignored `.local/` state when it exists. Treat it as current local context;
+  do not assume tracked source or documentation contains the complete status.
 
 ## Non-negotiable rules
 

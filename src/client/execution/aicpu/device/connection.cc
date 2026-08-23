@@ -9,7 +9,7 @@ bool valid_transport(const NdsDeviceTransport *transport, const NdsDeviceSendWr 
 uint32_t post(const NdsDeviceTransport *transport, const NdsDeviceSendWr *wr, int32_t *return_value) {
     if (!valid_transport(transport, wr, return_value))
         return kNdsAicpuInvalidArgument;
-    return NdsAicpuPostSendImpl(&transport->control_qp, wr, return_value);
+    return NdsAicpuPostSendImpl(&transport->control_qp, wr, return_value, nullptr);
 }
 }  // namespace
 

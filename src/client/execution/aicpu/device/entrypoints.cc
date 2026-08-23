@@ -40,7 +40,9 @@ extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuPostSend(void
         set_invalid(request == nullptr ? nullptr : &request->return_value);
         return kEntryInvalidArgument;
     }
-    const uint32_t status = NdsAicpuPostSendImpl(&request->qp, &request->wr, &request->return_value);
+    const uint32_t status =
+        NdsAicpuPostSendImpl(&request->qp, &request->wr, &request->return_value,
+                             reinterpret_cast<NdsDeviceDoorbell *>(request->doorbell_address));
     entry_barrier();
     return status;
 }

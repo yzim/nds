@@ -141,12 +141,6 @@ Result<void> QueuePair::initialize() {
         execution_ != NpuExecutionMode::Aiv) {
         return unexpected(ErrorCode::kInvalidArgument, "QP execution mode is invalid");
     }
-    if (execution_ == NpuExecutionMode::Aicpu && config_.ai_qp_mode >= 0 &&
-        config_.ai_qp_mode != NDS_RA_QP_MODE_NORMAL) {
-        return unexpected(ErrorCode::kInvalidArgument,
-                          "AICPU execution requires a NORMAL AI QP so the provider owns Send doorbells");
-    }
-
     auto *api = &endpoint_->api_;
     if (api->ra_qp_destroy == nullptr || api->ra_get_qp_attr == nullptr || api->ra_typical_qp_modify == nullptr ||
         (execution_ == NpuExecutionMode::Ra && api->ra_typical_qp_create == nullptr) ||
@@ -285,11 +279,16 @@ Result<int> QueuePair::query_status() {
 Result<std::vector<NdsRaCqeError>> QueuePair::query_cqe_errors() {
     if (!created() || endpoint_->api_.ra_rdev_get_cqe_error_list == nullptr)
         return unexpected(ErrorCode::kInvalidArgument, "CQE-error query requires a created QP");
-    std::vector<NdsRaCqeError> errors(NDS_RA_ERROR_CAPACITY);
+    // The provider may retain one diagnostic entry per failed WQE; the ABI's
+    // error-string capacity is not a practical upper bound for this list.
+    constexpr std::size_t kDiagnosticCapacity = 8192U;
+    std::vector<NdsRaCqeError> errors(kDiagnosticCapacity);
     unsigned int count = static_cast<unsigned int>(errors.size());
     const int result = endpoint_->api_.ra_rdev_get_cqe_error_list(endpoint_->rdev_handle_, errors.data(), &count);
     if (result != 0 || count > errors.size())
-        return unexpected(ErrorCode::kRa, "RaRdevGetCqeErrInfoList failed or exceeded error capacity");
+        return unexpected(ErrorCode::kRa, "RaRdevGetCqeErrInfoList failed: result=" + std::to_string(result) +
+                                             ", count=" + std::to_string(count) +
+                                             ", capacity=" + std::to_string(errors.size()));
     errors.resize(count);
     return errors;
 }
@@ -343,6 +342,7 @@ Result<NdsDeviceTransport> QueuePair::make_device_transport() const {
                                   : 0U;
     output.control_qp.qp_mode = config_.ai_qp_mode;
     output.control_qp.service_level = config_.service_level;
+    output.control_qp.doorbell_index = ai_qp_info_.db_index;
     output.control_qp.provider_qp_address = ai_qp_info_.ai_qp_address;
     output.control_qp.provider_send_cq_address = ai_qp_info_.ai_scq_address;
     output.control_qp.provider_receive_cq_address = ai_qp_info_.ai_rcq_address;

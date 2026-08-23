@@ -116,12 +116,14 @@ if(NDS_BUILD_AIV_KERNEL)
             "${NDS_AIV_DEVICE_DIR}/verbs.cc"
             "${NDS_AIV_DEVICE_DIR}/connection.cc"
             "${NDS_AIV_DEVICE_DIR}/storage.cc"
+            "${NDS_AIV_DEVICE_DIR}/benchmark.cc"
             "${NDS_AIV_DEVICE_DIR}/api.h"
             "${NDS_AIV_DEVICE_DIR}/internal.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_transport.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_verbs.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/execution/common/hns_hw.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_storage.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_benchmark.h"
             "${PROJECT_SOURCE_DIR}/src/include/nds/storage_protocol.hh"
         VERBATIM)
     add_custom_target(nds_aiv_kernel ALL DEPENDS "${NDS_AIV_OBJECT}")

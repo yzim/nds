@@ -106,6 +106,11 @@ Result<void> AivEntrypointLauncher::launch_rdma_write_and_wait(std::uint64_t dev
     return launch_kernel_and_wait("NdsAivRdmaWrite", device_request_address, completion_timeout_ms);
 }
 
+Result<void> AivEntrypointLauncher::launch_rdma_benchmark_and_wait(std::uint64_t device_request_address,
+                                                                    std::int32_t completion_timeout_ms) {
+    return launch_kernel_and_wait("NdsAivRdmaBenchmark", device_request_address, completion_timeout_ms);
+}
+
 Result<void> AivEntrypointLauncher::launch_poll_cq_and_wait(std::uint64_t device_request_address,
                                                              std::int32_t completion_timeout_ms) {
     return launch_kernel_and_wait("NdsAivPollCq", device_request_address, completion_timeout_ms);

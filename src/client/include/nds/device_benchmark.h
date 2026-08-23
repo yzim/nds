@@ -19,6 +19,21 @@ enum NdsDeviceBenchmarkStatus {
     NDS_DEVICE_BENCHMARK_COMPLETION_FAILED = 5U,
 };
 
+enum NdsDeviceBenchmarkPostMode {
+    NDS_DEVICE_BENCHMARK_POST_INDIVIDUAL = 0U,
+    NDS_DEVICE_BENCHMARK_POST_LINKED = 1U,
+};
+
+/* post_mode packs backend-specific benchmark controls without changing the launch ABI.
+ * AICPU uses the low byte for NdsDeviceBenchmarkPostMode.  AIV uses that byte
+ * as its doorbell interval; both backends use the signal interval byte. */
+enum {
+    NDS_DEVICE_BENCHMARK_POST_MODE_MASK = 0xffU,
+    NDS_DEVICE_BENCHMARK_POLL_BATCH_SHIFT = 8U,
+    NDS_DEVICE_BENCHMARK_SIGNAL_EVERY_SHIFT = 16U,
+    NDS_DEVICE_BENCHMARK_LINKED_WRS_SHIFT = 24U,
+};
+
 typedef struct NdsDeviceRdmaBenchmarkArgs {
     NdsDeviceTransport transport;
     uint64_t local_address;
@@ -32,8 +47,11 @@ typedef struct NdsDeviceRdmaBenchmarkArgs {
     uint32_t max_wrs_per_window;
     uint32_t operation;
     uint64_t result_address;
+    uint64_t request_offsets_address;
+    uint64_t remote_request_offsets_address;
+    uint64_t request_offset_start;
     int32_t return_value;
-    uint32_t reserved;
+    uint32_t post_mode;
 } NdsDeviceRdmaBenchmarkArgs;
 
 typedef struct NdsDeviceRdmaBenchmarkResult {
@@ -48,10 +66,10 @@ typedef struct NdsDeviceRdmaBenchmarkResult {
 } NdsDeviceRdmaBenchmarkResult;
 
 #if defined(__cplusplus)
-static_assert(sizeof(NdsDeviceRdmaBenchmarkArgs) == 296, "device RDMA benchmark args ABI changed");
+static_assert(sizeof(NdsDeviceRdmaBenchmarkArgs) == 320, "device RDMA benchmark args ABI changed");
 static_assert(sizeof(NdsDeviceRdmaBenchmarkResult) == 48, "device RDMA benchmark result ABI changed");
 #else
-_Static_assert(sizeof(NdsDeviceRdmaBenchmarkArgs) == 296, "device RDMA benchmark args ABI changed");
+_Static_assert(sizeof(NdsDeviceRdmaBenchmarkArgs) == 320, "device RDMA benchmark args ABI changed");
 _Static_assert(sizeof(NdsDeviceRdmaBenchmarkResult) == 48, "device RDMA benchmark result ABI changed");
 #endif
 

@@ -7,7 +7,18 @@ namespace nds::wire {
 
 inline constexpr uint32_t kQpInfoMagic = UINT32_C(0x4e445331); // "NDS1"
 inline constexpr uint16_t kQpInfoVersion = UINT16_C(3);
+inline constexpr uint32_t kQpInfoBatchMagic = UINT32_C(0x4e445342); // "NDSB"
+inline constexpr uint32_t kMaxQpInfoBatch = 1024U;
 inline constexpr uint32_t kGidBytes = 16U;
+
+struct __attribute__((packed)) QpInfoBatchHeader {
+    uint32_t magic;
+    uint16_t version;
+    uint16_t reserved;
+    uint32_t count;
+};
+
+static_assert(sizeof(QpInfoBatchHeader) == 12, "NDS RC QP batch header must remain fixed");
 
 /*
  * Peer RC QP identity exchanged on TCP so each side can connect. Integer

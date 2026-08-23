@@ -16,6 +16,10 @@ current architecture and protocol contract.
   data back to NPU memory or a page-locked host client buffer.
 - TCP is bootstrap-only: it exchanges endpoint metadata, namespace capacity,
   and the session-static completion-record descriptor.
+- `Transport` can own a bounded set of indexed QPs and exchange their endpoint
+  records over one TCP bootstrap socket. Storage still uses the first QP and
+  remains serial until command scheduling and completion demultiplexing are
+  designed.
 - RA, AIV, and standard-CP1 AICPU implement the NPU command post. The
   CPU-written NDS completion record remains the protocol completion in every
   mode.
@@ -107,8 +111,10 @@ loops:
    currently let HCCP consume CQs, while `Transport` does not poll them.
 2. Define QP selection, whether command and data QPs separate, and the
    synchronization required by concurrent device submitters.
-3. Add multiple in-flight commands and multiple QPs only with a bounded test
-   matrix and explicit resource-lifetime rules.
+3. Expand multiple in-flight commands and the multi-QP test matrix with
+   explicit resource-lifetime rules. The transport-level multi-QP ownership and
+   single-socket bootstrap are delivered; command scheduling, QP selection by
+   storage, credits, and completion demultiplexing remain future work.
 4. Evaluate an optional two-sided completion mode in which the NPU pre-posts
    Receives and polls its receive CQ for CPU completion Sends. This is not
    required for the current serial completion-record path.

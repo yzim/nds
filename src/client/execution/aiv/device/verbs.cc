@@ -80,9 +80,11 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPostSendImpl(__gm__ const NdsDe
     NdsAivCacheSync(wqe_address, sizeof(HnsRoceRcSqWqe) + sizeof(HnsRoceSge));
     PipeBarrier<PIPE_ALL>();
     const uint32_t next = head + 1U;
-    const uint64_t doorbell =
-        (uint64_t)queue->number | ((uint64_t)(next & 0xffffU) << 32U) | ((uint64_t)qp->service_level << 48U);
-    StoreU64(queue->doorbell_address, doorbell, scratch);
+    if ((wr->flags & NDS_DEVICE_SEND_DEFER_DOORBELL) == 0U) {
+        const uint64_t doorbell =
+            (uint64_t)queue->number | ((uint64_t)(next & 0xffffU) << 32U) | ((uint64_t)qp->service_level << 48U);
+        StoreU64(queue->doorbell_address, doorbell, scratch);
+    }
     StoreU32(queue->head_address, next);
     NdsAivSetReturnValue(return_value, NDS_DEVICE_OPERATION_SUCCESS);
 }

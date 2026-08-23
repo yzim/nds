@@ -47,7 +47,7 @@ typedef struct NdsDeviceQp {
     uint32_t flags;
     int32_t qp_mode;
     uint32_t service_level;
-    uint32_t reserved;
+    uint32_t doorbell_index;
     uint64_t provider_qp_address;
     uint64_t provider_send_cq_address;
     uint64_t provider_receive_cq_address;
@@ -76,6 +76,7 @@ enum NdsDeviceOperationStatus {
 
 enum NdsDeviceSendFlags {
     NDS_DEVICE_SEND_SIGNALED = 1U << 0,
+    NDS_DEVICE_SEND_DEFER_DOORBELL = 1U << 1,
 };
 
 typedef struct NdsDeviceSge {
@@ -116,6 +117,15 @@ typedef struct NdsDeviceWc {
     uint32_t reserved;
 } NdsDeviceWc;
 
+/* The standard-CP1 provider returns this descriptor after it prepares an
+ * OPBASE WQE.  The host may submit it through the public runtime doorbell ABI.
+ */
+typedef struct NdsDeviceDoorbell {
+    uint32_t index;
+    uint32_t reserved;
+    uint64_t info;
+} NdsDeviceDoorbell;
+
 /* Operator-launch ABI envelopes. The payload fields mirror the verbs APIs;
  * they are not a second device-side verbs interface. return_value is zero on
  * success, a negative NDS operation error for post operations, or the count
@@ -125,6 +135,8 @@ typedef struct NdsDevicePostSendArgs {
     NdsDeviceSendWr wr;
     int32_t return_value;
     uint32_t reserved;
+    uint64_t doorbell_address;
+    uint64_t reserved2;
 } NdsDevicePostSendArgs;
 
 typedef struct NdsDevicePostRecvArgs {
@@ -151,7 +163,8 @@ static_assert(sizeof(NdsDeviceSge) == 16, "device SGE ABI changed");
 static_assert(sizeof(NdsDeviceSendWr) == 48, "device send WR ABI changed");
 static_assert(sizeof(NdsDeviceRecvWr) == 24, "device receive WR ABI changed");
 static_assert(sizeof(NdsDeviceWc) == 40, "device WC ABI changed");
-static_assert(sizeof(NdsDevicePostSendArgs) == 288, "device post-send operator ABI changed");
+static_assert(sizeof(NdsDeviceDoorbell) == 16, "device doorbell ABI changed");
+static_assert(sizeof(NdsDevicePostSendArgs) == 304, "device post-send operator ABI changed");
 static_assert(sizeof(NdsDevicePostRecvArgs) == 264, "device post-recv operator ABI changed");
 static_assert(sizeof(NdsDevicePollCqArgs) == 256, "device poll-CQ operator ABI changed");
 #else
@@ -162,7 +175,8 @@ _Static_assert(sizeof(NdsDeviceSge) == 16, "device SGE ABI changed");
 _Static_assert(sizeof(NdsDeviceSendWr) == 48, "device send WR ABI changed");
 _Static_assert(sizeof(NdsDeviceRecvWr) == 24, "device receive WR ABI changed");
 _Static_assert(sizeof(NdsDeviceWc) == 40, "device WC ABI changed");
-_Static_assert(sizeof(NdsDevicePostSendArgs) == 288, "device post-send operator ABI changed");
+_Static_assert(sizeof(NdsDeviceDoorbell) == 16, "device doorbell ABI changed");
+_Static_assert(sizeof(NdsDevicePostSendArgs) == 304, "device post-send operator ABI changed");
 _Static_assert(sizeof(NdsDevicePostRecvArgs) == 264, "device post-recv operator ABI changed");
 _Static_assert(sizeof(NdsDevicePollCqArgs) == 256, "device poll-CQ operator ABI changed");
 #endif

@@ -71,12 +71,24 @@ Result<void> AicpuEntrypointLauncher::launch_operator_and_wait(void *args, std::
     }
     NdsAclArgsHandle arguments{};
     NdsAclParamHandle parameter_handle{};
-    if (acl_->kernel_args_init(function_, &arguments) != 0 || arguments == nullptr ||
-        acl_->kernel_args_append(arguments, args, size, &parameter_handle) != 0 ||
-        acl_->kernel_args_finalize(arguments) != 0) {
-        if (arguments != nullptr)
-            (void)acl_->kernel_args_finalize(arguments);
-        return unexpected(ErrorCode::kRuntime, "failed to construct NDS AICPU operator arguments");
+    const int initialized = acl_->kernel_args_init(function_, &arguments);
+    if (initialized != 0 || arguments == nullptr) {
+        return unexpected(ErrorCode::kRuntime,
+                          "aclrtKernelArgsInit(" + std::string(operator_name) + ") failed: " +
+                              std::to_string(initialized));
+    }
+    const int appended = acl_->kernel_args_append(arguments, args, size, &parameter_handle);
+    if (appended != 0) {
+        (void)acl_->kernel_args_finalize(arguments);
+        return unexpected(ErrorCode::kRuntime,
+                          "aclrtKernelArgsAppend(" + std::string(operator_name) + ", bytes=" +
+                              std::to_string(size) + ") failed: " + std::to_string(appended));
+    }
+    const int finalized = acl_->kernel_args_finalize(arguments);
+    if (finalized != 0) {
+        return unexpected(ErrorCode::kRuntime,
+                          "aclrtKernelArgsFinalize(" + std::string(operator_name) + ") failed: " +
+                              std::to_string(finalized));
     }
     NdsAclLaunchKernelAttr attribute{};
     attribute.id = NDS_ACL_LAUNCH_KERNEL_ATTR_TIMEOUT;

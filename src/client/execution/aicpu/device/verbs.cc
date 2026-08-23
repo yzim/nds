@@ -4,6 +4,8 @@
 #include "hns_hw.h"
 
 namespace {
+constexpr uint32_t kMaxLinkedWrs = 16U;
+
 int32_t provider_opcode(uint32_t opcode) {
     if (opcode == NDS_DEVICE_WR_SEND)
         return NDS_HNS_WR_SEND;
@@ -16,7 +18,7 @@ int32_t provider_opcode(uint32_t opcode) {
 }  // namespace
 
 extern "C" uint32_t NdsAicpuPostSendImpl(const NdsDeviceQp *qp, const NdsDeviceSendWr *wr,
-                                         int32_t *return_value) {
+                                         int32_t *return_value, NdsDeviceDoorbell *doorbell) {
     if (return_value == nullptr)
         return kNdsAicpuInvalidArgument;
     if (!NdsAicpuValidQp(qp) || wr == nullptr) {
@@ -28,7 +30,7 @@ extern "C" uint32_t NdsAicpuPostSendImpl(const NdsDeviceQp *qp, const NdsDeviceS
         NdsAicpuSetReturnValue(return_value, NDS_DEVICE_OPERATION_UNSUPPORTED);
         return kNdsAicpuSuccess;
     }
-    if (qp->qp_mode != NDS_DEVICE_QP_MODE_NORMAL) {
+    if (qp->qp_mode != NDS_DEVICE_QP_MODE_NORMAL && qp->qp_mode != NDS_DEVICE_QP_MODE_OPBASE_EXT) {
         NdsAicpuSetReturnValue(return_value, NDS_DEVICE_OPERATION_UNSUPPORTED);
         return kNdsAicpuSuccess;
     }
@@ -50,6 +52,61 @@ extern "C" uint32_t NdsAicpuPostSendImpl(const NdsDeviceQp *qp, const NdsDeviceS
     NdsHnsSendWr *bad = nullptr;
     NdsHnsPostSendResponse response{};
     const int provider_result = post(reinterpret_cast<void *>(qp->provider_qp_address), &provider_wr, &bad, &response);
+    if (doorbell != nullptr) {
+        doorbell->index = qp->doorbell_index;
+        doorbell->reserved = static_cast<uint32_t>(provider_result);
+        doorbell->info = static_cast<uint64_t>(response.db_info);
+        NdsAicpuBarrier();
+    }
+    NdsAicpuSetReturnValue(return_value,
+                           provider_result == 0 ? NDS_DEVICE_OPERATION_SUCCESS : NDS_DEVICE_OPERATION_PROVIDER_FAILED);
+    return kNdsAicpuSuccess;
+}
+
+extern "C" uint32_t NdsAicpuPostSendListImpl(const NdsDeviceQp *qp, const NdsDeviceSendWr *wrs, uint32_t count,
+                                             int32_t *return_value) {
+    if (return_value == nullptr)
+        return kNdsAicpuInvalidArgument;
+    if (!NdsAicpuValidQp(qp) || wrs == nullptr || count == 0U || count > kMaxLinkedWrs) {
+        NdsAicpuSetReturnValue(return_value, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
+        return kNdsAicpuSuccess;
+    }
+    if (qp->qp_mode != NDS_DEVICE_QP_MODE_NORMAL && qp->qp_mode != NDS_DEVICE_QP_MODE_OPBASE_EXT) {
+        NdsAicpuSetReturnValue(return_value, NDS_DEVICE_OPERATION_UNSUPPORTED);
+        return kNdsAicpuSuccess;
+    }
+    auto post = reinterpret_cast<NdsHnsExpPostSendFn>(NdsAicpuResolveSymbol("ibv_exp_post_send"));
+    if (post == nullptr) {
+        NdsAicpuSetReturnValue(return_value, NDS_DEVICE_OPERATION_SYMBOL_UNAVAILABLE);
+        return kNdsAicpuSuccess;
+    }
+
+    NdsHnsSge sges[kMaxLinkedWrs]{};
+    NdsHnsSendWr provider_wrs[kMaxLinkedWrs]{};
+    for (uint32_t index = 0U; index < count; ++index) {
+        const NdsDeviceSendWr &wr = wrs[index];
+        const int32_t opcode = provider_opcode(wr.opcode);
+        if (opcode < 0) {
+            NdsAicpuSetReturnValue(return_value, NDS_DEVICE_OPERATION_UNSUPPORTED);
+            return kNdsAicpuSuccess;
+        }
+        sges[index] = {wr.local.address, wr.local.length, wr.local.local_key};
+        provider_wrs[index].wr_id = wr.wr_id;
+        provider_wrs[index].next = index + 1U < count ? &provider_wrs[index + 1U] : nullptr;
+        provider_wrs[index].sg_list = &sges[index];
+        provider_wrs[index].num_sge = 1;
+        provider_wrs[index].opcode = opcode;
+        provider_wrs[index].send_flags = (wr.flags & NDS_DEVICE_SEND_SIGNALED) != 0U
+                                              ? static_cast<uint32_t>(NDS_HNS_SEND_SIGNALED)
+                                              : 0U;
+        provider_wrs[index].rdma.remote_addr = wr.remote_address;
+        provider_wrs[index].rdma.rkey = wr.remote_key;
+    }
+
+    NdsHnsSendWr *bad = nullptr;
+    NdsHnsPostSendResponse response{};
+    const int provider_result =
+        post(reinterpret_cast<void *>(qp->provider_qp_address), &provider_wrs[0], &bad, &response);
     NdsAicpuSetReturnValue(return_value,
                            provider_result == 0 ? NDS_DEVICE_OPERATION_SUCCESS : NDS_DEVICE_OPERATION_PROVIDER_FAILED);
     return kNdsAicpuSuccess;

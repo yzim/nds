@@ -7,6 +7,7 @@
 #include "verbs.cc"
 #include "connection.cc"
 #include "storage.cc"
+#include "benchmark.cc"
 
 using namespace AscendC;
 
@@ -127,6 +128,16 @@ extern "C" __global__ __aicore__ void NdsAivRdmaWrite(GM_ADDR request_address) {
     NdsAivRdmaWriteImpl(&request->transport, &send_wr, &request->return_value, &scratch);
 }
 
+extern "C" __global__ __aicore__ void NdsAivRdmaBenchmark(GM_ADDR request_address) {
+    __gm__ auto *request = reinterpret_cast<__gm__ NdsDeviceRdmaBenchmarkArgs *>(request_address);
+    if (request == nullptr)
+        return;
+    TPipe pipe;
+    TBuf<> scratch;
+    pipe.InitBuffer(scratch, 64U);
+    NdsAivRdmaBenchmarkImpl(request, &scratch);
+}
+
 extern "C" __global__ __aicore__ void NdsAivStorageRead(GM_ADDR request_address) {
     __gm__ auto *request = reinterpret_cast<__gm__ NdsDeviceStorageReadArgs *>(request_address);
     if (!ValidStorageArgs(request))
@@ -188,6 +199,8 @@ static const struct FunLevelKType NdsAivRdmaRead_kernel_type_section
     __attribute__((used, section(".ascend.meta.NdsAivRdmaRead"))) = {{F_TYPE_KTYPE, sizeof(unsigned int), K_TYPE_AIV}};
 static const struct FunLevelKType NdsAivRdmaWrite_kernel_type_section
     __attribute__((used, section(".ascend.meta.NdsAivRdmaWrite"))) = {{F_TYPE_KTYPE, sizeof(unsigned int), K_TYPE_AIV}};
+static const struct FunLevelKType NdsAivRdmaBenchmark_kernel_type_section
+    __attribute__((used, section(".ascend.meta.NdsAivRdmaBenchmark"))) = {{F_TYPE_KTYPE, sizeof(unsigned int), K_TYPE_AIV}};
 static const struct FunLevelKType NdsAivStorageRead_kernel_type_section __attribute__((
     used, section(".ascend.meta.NdsAivStorageRead"))) = {{F_TYPE_KTYPE, sizeof(unsigned int), K_TYPE_AIV}};
 static const struct FunLevelKType NdsAivStorageWrite_kernel_type_section __attribute__((

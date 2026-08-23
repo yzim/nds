@@ -4,6 +4,7 @@
 #include "kernel_operator.h"
 #include "nds/device_transport.h"
 #include "nds/device_storage.h"
+#include "nds/device_benchmark.h"
 
 #ifndef NDS_AIV_DEVICE_API_LINKAGE
 #define NDS_AIV_DEVICE_API_LINKAGE extern "C"
@@ -37,6 +38,8 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaWriteImpl(__gm__ const NdsD
                                                                const NdsDeviceSendWr *wr,
                                                                __gm__ int32_t *return_value,
                                                                AscendC::TBuf<> *scratch);
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaBenchmarkImpl(
+    __gm__ NdsDeviceRdmaBenchmarkArgs *args, AscendC::TBuf<> *scratch);
 
 NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivStorageReadImpl(__gm__ const NdsDeviceStorageContext *context,
                                                                  __gm__ const nds::StorageReadCommand *command,

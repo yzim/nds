@@ -23,8 +23,13 @@ host CPU, AICPU, and AIV. Backend and transport code do not depend on storage
 command semantics.
 
 `Runtime` owns AscendCL, network-service lifecycle, NPU allocation/copy, and
-memory services. `Transport` borrows the runtime and owns an `Endpoint`, one
-QP, peer metadata, the TCP channel, and required AI-QP WR-ID storage.
+memory services. `Transport` borrows the runtime and owns an `Endpoint`, a
+bounded set of QPs, peer metadata, one TCP channel, and per-QP AI-QP WR-ID
+storage. `qp_count == 1` retains the original single-record bootstrap. A
+multi-QP transport exchanges one framed batch of NDS-owned QP records on that
+same TCP channel, connects records by index, and exposes explicit indexed QP
+selection. It does not expose provider queue objects or create one control
+connection per QP.
 `Endpoint` owns the RA lifecycle and rdev. `StorageClient` borrows the runtime
 and transport, owns protocol buffers and command sequencing, and registers
 them through the endpoint.
@@ -69,13 +74,42 @@ aclInit -> aclrtSetDevice -> rtOpenNetService(--hdcType=18)
 ```
 
 The offline path uses `NETWORK_OFFLINE`, `NOTIFY (1)`, and an enabled Lite
-context. The selected execution mode determines QP creation:
+context. QP mode is an HCCP provider submission-mode selector, separate from
+the RC QP transport type and separate from whether code executes on AIV or
+AICPU. In particular, an AIV kernel is not by itself an OPBASE workflow.
 
-| Mode | Creation | QP mode | Purpose |
-|---|---|---|---|
-| `ra` | `RaTypicalQpCreate` | OPBASE (`2`) | RA returns doorbell information. |
-| `aiv` | `RaAiQpCreate` | OPBASE_EXT (`4`) by default | Caller-owned work queues; HCCP-owned CQs. |
-| `aicpu` | `RaAiQpCreate` | NORMAL (`0`) | CP1 provider-owned Send path; HCCP-owned CQs. |
+| Numeric mode | HCOMM name | HCOMM use on 910B/910_93 |
+|---:|---|---|
+| `0` | NORMAL | AIV direct RoCE explicitly selects this mode to bypass the STARS scheduling submission path. |
+| `2` | OPBASE | Operator-based workflow QP on pre-extended platforms; HCOMM typical RA QPs use it. |
+| `4` | OPBASE_EXT | Extended operator-based workflow QP on 910B/910_93; HCOMM selects it for device-NIC OPBASE workflows and when its AICPU mode is enabled. |
+
+Here, “operator-based workflow” is HCOMM terminology for a communication task
+submitted through its runtime/operator workflow. It does not mean an arbitrary
+NDS AIV operator which directly writes a WQE. `NORMAL` does not mean a
+non-RDMA QP: all three entries above remain RC RoCE QPs.
+
+NDS currently creates these QPs:
+
+| NDS execution mode | Creation | Current NDS default | HCOMM direct-NPU reference |
+|---|---|---:|---:|
+| `ra` | `RaTypicalQpCreate` | OPBASE (`2`) | OPBASE (`2`) |
+| `aiv` | `RaAiQpCreate` | OPBASE_EXT (`4`) | NORMAL (`0`) |
+| `aicpu` | `RaAiQpCreate` | NORMAL (`0`) | OPBASE_EXT (`4`) |
+
+The AIV and AICPU defaults are reversed relative to the cited HCOMM paths.
+This is an NDS compatibility gap, not an evidence-backed reason to reinterpret
+the numeric modes. Do not change a production default without an explicitly
+scoped target validation of creation, submission, CQ ownership, and teardown.
+The NPU-peer AIV benchmark may select `NORMAL` explicitly for direct-RoCE
+experiments; that override does not change the endpoint default.
+The analogous AICPU `OPBASE_EXT` mode requires the provider-returned doorbell
+descriptor to be submitted with `rtRDMADBSend`; changing only the numeric mode
+does not progress. The benchmark has a correctness-only host-operator probe
+that performs this sequence across an AICPU post, a host copy/ring, and an
+AICPU poll. It is not a production transport path or a bandwidth comparison
+with HCOMM, whose private dispatcher appends the doorbell task without those
+round trips.
 
 The CPU creates an independent RC QP and moves it through `INIT`, `RTR`, and
 `RTS`. Its active-port MTU determines `IBV_QP_PATH_MTU`; the peer MTU is
@@ -189,7 +223,9 @@ runtime `rtRDMADBSend` on the selected runtime stream. This follows HCOMM's
 normal OPBASE send path. HCOMM also batches several prepared WQEs before one
 runtime doorbell when its algorithm explicitly chooses that policy.
 
-AIV directly writes its WQE and doorbell in `PostSend`. AICPU uses the
+AIV directly writes its WQE and doorbell in `PostSend`. Its device benchmark
+can defer the doorbell for non-final WQEs and ring a final grouped WQE; this is
+an AIV-specific benchmark mechanism, not a common backend contract. AICPU uses the
 standard-CP1 provider's `ibv_exp_post_send`, whose documented ABI has no
 deferred-doorbell control. Do not introduce a common deferred-submission API
 until a measured bottleneck justifies it and a documented AICPU mechanism can
@@ -227,6 +263,9 @@ environment. The optional caller-owned CQ poll uses provider symbols when
 exported and the NDS queue-address fallback otherwise. The host process must never load this
 provider. NDS intentionally has no custom-process AICPU mode because CANN does
 not publish the required RNIC mapping/import contract.
+ACL execution contexts are thread-local on the target; an AICPU launcher and
+its stream must be created and used by the same worker thread, after that
+thread binds the logical device.
 
 ## Runtime ABI boundary
 

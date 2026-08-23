@@ -87,6 +87,11 @@ Keep hardware claims tied to recorded bounded target experiments.
 The paired lower-layer examples build with `-DNDS_BUILD_HARDWARE_PROBES=ON`.
 Storage remains the application-level test path under `apps/`.
 
+Before interpreting or extending a hardware performance result, read the
+current ignored ledgers `.local/benchmark-results.md` and `.local/status.md`.
+They record prior target experiments, configurations, failures, and known
+limitations that are not suitable for tracked documentation.
+
 ## PyTorch wrapper
 
 The optional `_nds_torch` extension in `src/torch` owns runtime, endpoint, QP,

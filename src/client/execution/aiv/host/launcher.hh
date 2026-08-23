@@ -3,6 +3,7 @@
 
 #include "nds/acl_loader.h"
 #include "nds/device_storage.h"
+#include "nds/device_benchmark.h"
 #include "nds/ra_loader.h"
 #include "nds/result.hh"
 
@@ -23,6 +24,8 @@ public:
     Result<void> launch_post_send_and_wait(std::uint64_t device_request_address, std::int32_t completion_timeout_ms);
     Result<void> launch_rdma_read_and_wait(std::uint64_t device_request_address, std::int32_t completion_timeout_ms);
     Result<void> launch_rdma_write_and_wait(std::uint64_t device_request_address, std::int32_t completion_timeout_ms);
+    Result<void> launch_rdma_benchmark_and_wait(std::uint64_t device_request_address,
+                                                std::int32_t completion_timeout_ms);
     Result<void> launch_poll_cq_and_wait(std::uint64_t device_request_address, std::int32_t completion_timeout_ms);
     Result<void> launch_storage_and_wait(std::uint64_t device_request_address, StorageOperation operation,
                                          std::int32_t completion_timeout_ms);
