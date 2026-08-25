@@ -22,11 +22,14 @@ enum NdsDeviceBenchmarkStatus {
 enum NdsDeviceBenchmarkPostMode {
     NDS_DEVICE_BENCHMARK_POST_INDIVIDUAL = 0U,
     NDS_DEVICE_BENCHMARK_POST_LINKED = 1U,
+    NDS_DEVICE_BENCHMARK_POST_RAW_SQ = 2U,
 };
 
 /* post_mode packs backend-specific benchmark controls without changing the launch ABI.
- * AICPU uses the low byte for NdsDeviceBenchmarkPostMode.  AIV uses that byte
- * as its doorbell interval; both backends use the signal interval byte. */
+ * AICPU uses the low byte for NdsDeviceBenchmarkPostMode. AIV uses that byte
+ * as its doorbell interval; both backends use the signal interval byte. AICPU
+ * raw-SQ mode uses the linked-WR byte as its deferred-MMIO interval because
+ * linked-WR count is unused in that mode. */
 enum {
     NDS_DEVICE_BENCHMARK_POST_MODE_MASK = 0xffU,
     NDS_DEVICE_BENCHMARK_POLL_BATCH_SHIFT = 8U,

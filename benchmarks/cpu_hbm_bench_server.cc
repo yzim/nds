@@ -18,6 +18,9 @@
 #include <limits>
 #include <memory>
 #include <mutex>
+#include <numeric>
+#include <random>
+#include <span>
 #include <string>
 #include <thread>
 #include <utility>
@@ -25,18 +28,22 @@
 
 namespace {
 
-constexpr std::uint32_t kMaxInFlight = 1024U;
+constexpr std::uint32_t kMaxInFlight = 8192U;
 constexpr std::uint32_t kMaxQps = 8U;
+constexpr std::uint64_t kRandomOffsetSeed = UINT64_C(0x4e44534350554842);
 
 struct Config {
     nds::server::ConnectionConfig connection;
     nds::benchmark::Operation operation{nds::benchmark::Operation::Read};
     std::uint32_t bytes{};
+    std::uint64_t mr_bytes{};
     std::uint32_t in_flight{64U};
     std::uint32_t qps{1U};
     std::uint32_t max_rd_atomic{16U};
+    std::uint32_t post_batch{};
     std::uint32_t warmup{2U};
     std::uint32_t iterations{100U};
+    bool random_addresses{};
 };
 
 nds::Result<Config> parse(int argc, char **argv) {
@@ -49,11 +56,17 @@ nds::Result<Config> parse(int argc, char **argv) {
     app.add_option("--ib-port", config.connection.backend.port);
     app.add_option("--operation", operation)->required()->check(CLI::IsMember({"read", "write"}));
     app.add_option("--bytes", config.bytes)->required()->check(CLI::Range(1U, UINT32_MAX));
+    app.add_option("--mr-bytes", config.mr_bytes, "Registered MR size per endpoint; zero selects the minimum.");
     app.add_option("--in-flight", config.in_flight)->check(CLI::Range(1U, kMaxInFlight));
     app.add_option("--qps", config.qps)->check(CLI::Range(1U, kMaxQps));
     app.add_option("--max-rd-atomic", config.max_rd_atomic)->check(CLI::Range(1U, kMaxInFlight));
+    app.add_option("--post-batch", config.post_batch,
+                   "Maximum linked WRs per ibv_post_send; zero posts one list per completion window.")
+        ->check(CLI::Range(0U, kMaxInFlight));
     app.add_option("--warmup", config.warmup)->check(CLI::Range(0U, UINT32_MAX));
     app.add_option("--iterations", config.iterations)->check(CLI::Range(1U, UINT32_MAX));
+    app.add_flag("--random-addresses", config.random_addresses,
+                 "Use unique reproducible offsets within the registered MRs.");
     try {
         app.parse(argc, argv);
     } catch (const CLI::ParseError &error) {
@@ -64,6 +77,8 @@ nds::Result<Config> parse(int argc, char **argv) {
     config.connection.backend.send_queue_depth = config.in_flight;
     config.connection.backend.receive_queue_depth = 16U;
     config.connection.backend.max_rd_atomic = config.max_rd_atomic;
+    if (config.post_batch == 0U)
+        config.post_batch = config.in_flight;
     return config;
 }
 
@@ -75,25 +90,57 @@ nds::Result<std::string> indexed_address(const std::string &base, std::uint32_t 
 }
 
 nds::Result<std::size_t> total_bytes(const Config &config) {
-    if (config.in_flight == 0U || config.bytes > std::numeric_limits<std::size_t>::max() / config.in_flight)
+    const std::uint64_t operation_count = static_cast<std::uint64_t>(config.warmup) + config.iterations;
+    const std::uint64_t required_operations = config.random_addresses ? operation_count : config.in_flight;
+    if (required_operations == 0U || config.bytes > std::numeric_limits<std::size_t>::max() / required_operations)
         return nds::unexpected(nds::ErrorCode::kInvalidArgument, "benchmark buffer size overflows address space");
-    return static_cast<std::size_t>(config.bytes) * config.in_flight;
+    const std::size_t minimum = static_cast<std::size_t>(config.bytes) * required_operations;
+    if (config.mr_bytes == 0U)
+        return minimum;
+    if (config.mr_bytes < minimum || config.mr_bytes > std::numeric_limits<std::size_t>::max())
+        return nds::unexpected(nds::ErrorCode::kInvalidArgument, "benchmark MR size is invalid");
+    return static_cast<std::size_t>(config.mr_bytes);
+}
+
+nds::Result<std::vector<std::uint64_t>> make_offsets(const Config &config, std::size_t memory_bytes,
+                                                      std::uint32_t qp_index) {
+    const std::uint64_t count = static_cast<std::uint64_t>(config.warmup) + config.iterations;
+    std::vector<std::uint64_t> offsets(static_cast<std::size_t>(count));
+    if (!config.random_addresses) {
+        for (std::uint64_t index = 0U; index < count; ++index)
+            offsets[static_cast<std::size_t>(index)] = (index % config.in_flight) * config.bytes;
+        return offsets;
+    }
+    const std::uint64_t slots = memory_bytes / config.bytes;
+    if (slots < count)
+        return nds::unexpected(nds::ErrorCode::kInvalidArgument, "MR does not contain enough unique request slots");
+    std::vector<std::uint64_t> indices(static_cast<std::size_t>(slots));
+    std::iota(indices.begin(), indices.end(), 0U);
+    std::mt19937_64 generator(kRandomOffsetSeed + qp_index);
+    std::shuffle(indices.begin(), indices.end(), generator);
+    for (std::uint64_t index = 0U; index < count; ++index)
+        offsets[static_cast<std::size_t>(index)] = indices[static_cast<std::size_t>(index)] * config.bytes;
+    return offsets;
 }
 
 nds::Result<void> transfer_window(nds::server::Connection *connection, const nds::server::RegisteredRegion &local,
                                  const nds::benchmark::RemoteMemory &remote, const Config &config,
-                                 std::uint32_t request_count) {
+                                 std::span<const std::uint64_t> offsets) {
     if (config.operation == nds::benchmark::Operation::Read)
-        return connection->read_window(local, remote.address, remote.remote_key, config.bytes, request_count);
-    return connection->write_window(local, remote.address, remote.remote_key, config.bytes, request_count);
+        return connection->read_window_offsets(local, remote.address, remote.remote_key, config.bytes, offsets,
+                                               config.post_batch);
+    return connection->write_window_offsets(local, remote.address, remote.remote_key, config.bytes, offsets,
+                                             config.post_batch);
 }
 
 nds::Result<void> run_operations(nds::server::Connection *connection, const nds::server::RegisteredRegion &local,
                                  const nds::benchmark::RemoteMemory &remote, const Config &config,
+                                 const std::vector<std::uint64_t> &offsets, std::uint64_t first_operation,
                                  std::uint32_t operations) {
     for (std::uint32_t completed = 0U; completed < operations;) {
         const std::uint32_t window = std::min(config.in_flight, operations - completed);
-        if (const auto transferred = transfer_window(connection, local, remote, config, window); !transferred)
+        const auto window_offsets = std::span(offsets).subspan(first_operation + completed, window);
+        if (const auto transferred = transfer_window(connection, local, remote, config, window_offsets); !transferred)
             return nds::unexpected(transferred.error());
         completed += window;
     }
@@ -107,6 +154,7 @@ struct Worker {
     nds::server::RegisteredRegion local;
     nds::benchmark::RemoteMemory remote{};
     std::vector<std::byte> memory;
+    std::vector<std::uint64_t> offsets;
 };
 
 void save_error(std::string *error_message, std::mutex *error_mutex, std::atomic_bool *failed,
@@ -184,6 +232,12 @@ int main(int argc, char **argv) {
             return EXIT_FAILURE;
         }
         worker.local = std::move(*local);
+        auto offsets = make_offsets(*config, *memory_bytes, index);
+        if (!offsets) {
+            NDS_LOG_ERROR("cpu-hbm-server", "QP {} address generation failed: {}", index, offsets.error().message);
+            return EXIT_FAILURE;
+        }
+        worker.offsets = std::move(*offsets);
     }
 
     std::string error_message;
@@ -200,7 +254,7 @@ int main(int argc, char **argv) {
         threads.emplace_back([worker_ptr, &config = *config, &error_message, &error_mutex, &failed, &start_barrier,
                               &end_barrier] {
             const auto warmup = run_operations(worker_ptr->connection.get(), worker_ptr->local, worker_ptr->remote,
-                                                config, config.warmup);
+                                                config, worker_ptr->offsets, 0U, config.warmup);
             if (!warmup) {
                 save_error(&error_message, &error_mutex, &failed, "warmup failed: " + warmup.error().message);
             }
@@ -208,7 +262,7 @@ int main(int argc, char **argv) {
             if (!failed.load()) {
                 if (const auto measured = run_operations(worker_ptr->connection.get(), worker_ptr->local,
                                                          worker_ptr->remote,
-                                                         config, config.iterations);
+                                                         config, worker_ptr->offsets, config.warmup, config.iterations);
                     !measured) {
                     save_error(&error_message, &error_mutex, &failed, "measurement failed: " + measured.error().message);
                 }
@@ -239,7 +293,10 @@ int main(int argc, char **argv) {
     }
     std::cout << std::fixed << std::setprecision(3) << "{\"backend\":\"cpu-initiated\",\"operation\":\""
               << nds::benchmark::operation_name(config->operation) << "\",\"bytes\":" << config->bytes
+              << ",\"mr_bytes\":" << *memory_bytes << ",\"address_policy\":\""
+              << (config->random_addresses ? "random-unique" : "cyclic-contiguous") << "\""
               << ",\"in_flight\":" << config->in_flight << ",\"qps\":" << config->qps
+              << ",\"post_batch\":" << config->post_batch
               << ",\"warmup\":" << config->warmup
               << ",\"iterations\":" << config->iterations << ",\"completion_policy\":\"final-wr-signaled\""
               << ",\"elapsed_ns\":"

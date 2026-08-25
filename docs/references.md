@@ -14,10 +14,6 @@ Use this order of evidence for a change:
 3. Matching CANN 9.0.0 and HCOMM source for lifecycle and data-layout intent.
 4. Upstream rdma-core and public Ascend documentation for generic concepts.
 
-Do not copy, vendor, or link private CANN, HCCP, HCOMM, HCCL, or HNS provider
-implementation code. Keep vendor ABI use behind NDS loaders and the AICPU
-device boundary.
-
 ## Primary sources
 
 - [HCOMM](https://gitcode.com/cann/hcomm): HCCP lifecycle, RA/AI-QP intent,

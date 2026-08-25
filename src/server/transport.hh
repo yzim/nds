@@ -6,6 +6,7 @@
 #include "nds/tcp_bootstrap.hh"
 
 #include <cstdint>
+#include <span>
 #include <string>
 
 namespace nds::server {
@@ -38,6 +39,12 @@ public:
                              std::uint32_t length, std::uint32_t request_count);
     Result<void> write_window(const RegisteredRegion &local, std::uint64_t remote_address, std::uint32_t remote_key,
                               std::uint32_t length, std::uint32_t request_count);
+    Result<void> read_window_offsets(const RegisteredRegion &local, std::uint64_t remote_address,
+                                     std::uint32_t remote_key, std::uint32_t length,
+                                     std::span<const std::uint64_t> offsets, std::uint32_t post_batch);
+    Result<void> write_window_offsets(const RegisteredRegion &local, std::uint64_t remote_address,
+                                      std::uint32_t remote_key, std::uint32_t length,
+                                      std::span<const std::uint64_t> offsets, std::uint32_t post_batch);
     TcpPeerExchange *bootstrap() noexcept;
 
 private:

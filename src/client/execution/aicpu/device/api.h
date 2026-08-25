@@ -13,6 +13,8 @@ extern "C" {
 
 uint32_t NdsAicpuPostSendImpl(const NdsDeviceQp *qp, const NdsDeviceSendWr *wr,
                               int32_t *return_value, NdsDeviceDoorbell *doorbell);
+uint32_t NdsAicpuPostSendRawImpl(const NdsDeviceQp *qp, const NdsDeviceSendWr *wr, int32_t *return_value);
+uint32_t NdsAicpuPostSendBatchImpl(const NdsDevicePostSendBatchArgs *args);
 uint32_t NdsAicpuPostSendListImpl(const NdsDeviceQp *qp, const NdsDeviceSendWr *wrs, uint32_t count,
                                   int32_t *return_value);
 uint32_t NdsAicpuPostRecvImpl(const NdsDeviceQp *qp, const NdsDeviceRecvWr *wr,

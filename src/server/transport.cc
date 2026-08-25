@@ -116,6 +116,22 @@ Result<void> Connection::write_window(const RegisteredRegion &local, std::uint64
     return {};
 }
 
+Result<void> Connection::read_window_offsets(const RegisteredRegion &local, std::uint64_t address, std::uint32_t key,
+                                             std::uint32_t length, std::span<const std::uint64_t> offsets,
+                                             std::uint32_t post_batch) {
+    if (const auto read = backend_.read_window_offsets(local, address, key, length, offsets, post_batch); !read)
+        return unexpected(read.error());
+    return {};
+}
+
+Result<void> Connection::write_window_offsets(const RegisteredRegion &local, std::uint64_t address, std::uint32_t key,
+                                              std::uint32_t length, std::span<const std::uint64_t> offsets,
+                                              std::uint32_t post_batch) {
+    if (const auto written = backend_.write_window_offsets(local, address, key, length, offsets, post_batch); !written)
+        return unexpected(written.error());
+    return {};
+}
+
 TcpPeerExchange *Connection::bootstrap() noexcept {
     return &bootstrap_;
 }

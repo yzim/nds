@@ -291,6 +291,45 @@ Result<void> VerbsBackend::transfer_window(ibv_wr_opcode opcode, const Registere
     return poll(opcode == IBV_WR_RDMA_READ ? IBV_WC_RDMA_READ : IBV_WC_RDMA_WRITE, 5000U);
 }
 
+Result<void> VerbsBackend::transfer_window_offsets(ibv_wr_opcode opcode, const RegisteredRegion &local,
+                                                   std::uint64_t remote_address, std::uint32_t remote_key,
+                                                   std::uint32_t length, std::span<const std::uint64_t> offsets,
+                                                   std::uint32_t post_batch) {
+    if (length == 0U || offsets.empty() || offsets.size() > config_.send_queue_depth || post_batch == 0U) {
+        return unexpected(ErrorCode::kInvalidArgument, "invalid verbs transfer offsets");
+    }
+    for (const std::uint64_t offset : offsets) {
+        if (offset > local.length() || length > local.length() - offset)
+            return unexpected(ErrorCode::kInvalidArgument, "verbs transfer offset exceeds local region");
+    }
+    for (std::size_t first = 0U; first < offsets.size();) {
+        const std::size_t count = std::min<std::size_t>(post_batch, offsets.size() - first);
+        if (offset_sge_cache_.size() < count)
+            offset_sge_cache_.resize(count);
+        if (offset_wr_cache_.size() < count)
+            offset_wr_cache_.resize(count);
+        for (std::size_t index = 0U; index < count; ++index) {
+            const std::uint64_t offset = offsets[first + index];
+            offset_sge_cache_[index] = {reinterpret_cast<std::uintptr_t>(local.address()) + offset, length,
+                                        local.local_key()};
+            auto &wr = offset_wr_cache_[index];
+            wr.wr_id = 2U + first + index;
+            wr.sg_list = &offset_sge_cache_[index];
+            wr.num_sge = 1;
+            wr.opcode = opcode;
+            wr.send_flags = first + index + 1U == offsets.size() ? static_cast<int>(IBV_SEND_SIGNALED) : 0;
+            wr.wr.rdma.remote_addr = remote_address + offset;
+            wr.wr.rdma.rkey = remote_key;
+            wr.next = index + 1U == count ? nullptr : &offset_wr_cache_[index + 1U];
+        }
+        ibv_send_wr *bad = nullptr;
+        if (ibv_post_send(qp_, &offset_wr_cache_[0], &bad) != 0)
+            return unexpected(ErrorCode::kVerbs, std::strerror(errno));
+        first += count;
+    }
+    return poll(opcode == IBV_WR_RDMA_READ ? IBV_WC_RDMA_READ : IBV_WC_RDMA_WRITE, 5000U);
+}
+
 Result<void> VerbsBackend::read(const RegisteredRegion &local, std::uint64_t remote_address, std::uint32_t remote_key,
                                 std::uint32_t length) {
     return transfer(IBV_WR_RDMA_READ, local, remote_address, remote_key, length);
@@ -311,6 +350,18 @@ Result<void> VerbsBackend::write_window(const RegisteredRegion &local, std::uint
                                         std::uint32_t remote_key, std::uint32_t length,
                                         std::uint32_t request_count) {
     return transfer_window(IBV_WR_RDMA_WRITE, local, remote_address, remote_key, length, request_count);
+}
+
+Result<void> VerbsBackend::read_window_offsets(const RegisteredRegion &local, std::uint64_t remote_address,
+                                               std::uint32_t remote_key, std::uint32_t length,
+                                               std::span<const std::uint64_t> offsets, std::uint32_t post_batch) {
+    return transfer_window_offsets(IBV_WR_RDMA_READ, local, remote_address, remote_key, length, offsets, post_batch);
+}
+
+Result<void> VerbsBackend::write_window_offsets(const RegisteredRegion &local, std::uint64_t remote_address,
+                                                std::uint32_t remote_key, std::uint32_t length,
+                                                std::span<const std::uint64_t> offsets, std::uint32_t post_batch) {
+    return transfer_window_offsets(IBV_WR_RDMA_WRITE, local, remote_address, remote_key, length, offsets, post_batch);
 }
 
 const nds::transport::QpInfo &VerbsBackend::local_qp_info() const noexcept {

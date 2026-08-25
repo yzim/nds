@@ -114,6 +114,13 @@ Result<void> AicpuEntrypointLauncher::launch_post_send_and_wait(NdsDevicePostSen
                                     completion_timeout_ms);
 }
 
+Result<void> AicpuEntrypointLauncher::launch_post_send_batch_and_wait(NdsDevicePostSendBatchArgs *args,
+                                                                      std::int32_t completion_timeout_ms) {
+    if (args == nullptr)
+        return unexpected(ErrorCode::kInvalidArgument, "NDS AICPU batch post args have invalid metadata");
+    return launch_operator_and_wait(args, sizeof(*args), "NdsAicpuPostSendBatch", completion_timeout_ms);
+}
+
 Result<void> AicpuEntrypointLauncher::launch_post_recv_and_wait(NdsDevicePostRecvArgs *args,
                                                                 std::int32_t completion_timeout_ms) {
     if (args == nullptr)

@@ -15,7 +15,7 @@ endforeach()
 if(NDS_DEVICE_KIND STREQUAL "aicpu")
     set(nm_args -D -g)
     set(symbols
-        NdsAicpuPostSend NdsAicpuPostRecv NdsAicpuPollCq
+        NdsAicpuPostSend NdsAicpuPostSendBatch NdsAicpuPostRecv NdsAicpuPollCq
         NdsAicpuRdmaSend NdsAicpuRdmaRecv NdsAicpuRdmaRead NdsAicpuRdmaWrite NdsAicpuRdmaBenchmark
         NdsAicpuStorageRead NdsAicpuStorageWrite
         NdsAicpuStorageBatchRead NdsAicpuStorageBatchWrite)

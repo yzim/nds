@@ -22,6 +22,7 @@ struct Config {
     nds::server::ConnectionConfig connection;
     nds::benchmark::Operation operation{nds::benchmark::Operation::Read};
     std::uint32_t bytes{};
+    std::uint64_t mr_bytes{};
     std::uint32_t in_flight{kDefaultInFlight};
 };
 
@@ -35,6 +36,7 @@ nds::Result<Config> parse(int argc, char **argv) {
     app.add_option("--ib-port", config.connection.backend.port);
     app.add_option("--operation", operation)->required()->check(CLI::IsMember({"read", "write"}));
     app.add_option("--bytes", config.bytes)->required()->check(CLI::Range(1U, UINT32_MAX));
+    app.add_option("--mr-bytes", config.mr_bytes, "Registered MR size; zero selects the window minimum.");
     app.add_option("--in-flight", config.in_flight)->check(CLI::Range(1U, kMaxInFlight));
     try {
         app.parse(argc, argv);
@@ -49,7 +51,12 @@ nds::Result<Config> parse(int argc, char **argv) {
 nds::Result<std::size_t> total_bytes(const Config &config) {
     if (config.in_flight == 0U || config.bytes > std::numeric_limits<std::size_t>::max() / config.in_flight)
         return nds::unexpected(nds::ErrorCode::kInvalidArgument, "benchmark buffer size overflows address space");
-    return static_cast<std::size_t>(config.bytes) * config.in_flight;
+    const std::size_t minimum = static_cast<std::size_t>(config.bytes) * config.in_flight;
+    if (config.mr_bytes == 0U)
+        return minimum;
+    if (config.mr_bytes < minimum || config.mr_bytes > std::numeric_limits<std::size_t>::max())
+        return nds::unexpected(nds::ErrorCode::kInvalidArgument, "benchmark MR size is invalid");
+    return static_cast<std::size_t>(config.mr_bytes);
 }
 
 }  // namespace

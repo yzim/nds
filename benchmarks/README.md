@@ -22,6 +22,13 @@ runtime, QP, and MR setup and includes RA post plus completion observation.
 CANN RA's send ABI does not preserve an application WR ID, so the RA benchmark
 validates completion status.
 
+`nds_cpu_multi_verbs_bench_server` is a passive standard-`libibverbs` CPU
+server for `nds_npu_peer_verbs_bench` client runs. It uses the same batched QP
+and MR wire exchange as the NPU peer benchmark, creates one CPU RC QP and CPU
+DRAM MR per requested QP, and does not submit data-plane work. It permits an
+NPU client benchmark to compare a CPU-RNIC DRAM target with an NPU-RNIC HBM
+target while preserving the client-side QP count and workload geometry.
+
 `nds_cpu_hbm_bench_server` and `nds_cpu_hbm_bench_peer` reverse the direction:
 the CPU server owns the timed loop and issues RDMA Read or Write directly to
 an NPU HBM registration published by the passive peer. The CPU path submits a
@@ -35,6 +42,24 @@ current RA lifecycle rejects repeated `RaInit` in one process. It does not
 represent the official multi-QP `Transport` API; production multi-QP support
 remains a roadmap item with explicit QP selection, CQ ownership, credits, and
 resource-lifetime rules.
+Pass matching `--mr-bytes` values to both programs to register a larger CPU
+and NPU HBM region. With `--random-addresses`, the server selects one unique,
+reproducible offset per warmup and measured operation and applies it to both
+regions. The MR must contain at least `bytes * (warmup + iterations)` bytes;
+address generation and MR registration are outside the timed interval.
+`--post-batch` controls the maximum linked list submitted through each CPU
+`ibv_post_send`; it defaults to the full completion window. The server signals
+only the final WQE of the entire window and polls that one CQE after all lists
+are posted. Unlike RA, CPU verbs has no public deferred-doorbell API, so every
+`ibv_post_send` is also a submission event.
+The CPU verbs backend retains one SGE/WR cache per QP sized to the largest
+submitted post list, so repeated random-address windows do not allocate those
+host records in their timed path.
+Pass `--host-pinned` to `nds_cpu_hbm_bench_peer` to allocate page-locked host
+memory with `aclrtHostRegister` and register its returned NPU-visible mapping
+through RA. This is an opt-in CPU-to-NPU-RNIC control that excludes NPU HBM
+from the remote data target; the allocation, host registration, and RA MR
+registration remain outside the timed interval.
 
 `nds_npu_peer_verbs_bench` exercises the transport's multi-QP path between
 two NPUs. One `Transport` owns all QPs and one TCP control socket exchanges the
@@ -55,6 +80,14 @@ window WQE count to prepare all WQEs, ring once, and signal only the final WQE.
 `--ring-last` remains a compatibility shorthand for setting both. This is a
 temporary benchmark workaround, not the official transport CQ-ownership
 design.
+Pass `--server-host-pinned` only to the server role to allocate the published
+MR as page-locked host memory through `aclrtHostRegister` and register the
+returned NPU-visible mapping through the server NPU RNIC. Conversely,
+`--client-host-pinned` is client-only and makes that client buffer the
+page-locked local source/target for the submitted requests; the server keeps
+its normal NPU HBM allocation. Both options work with RA, AICPU, or AIV.
+Allocation, host registration, and MR registration are outside the timed
+interval.
 
 Pass `--backend aicpu --aicpu-kernel-config <CP1-overlay-config>` to exercise
 the same peer transport through AICPU operators. The default
@@ -72,9 +105,11 @@ client source and server destination different unique permutations; it is not
 the default shared-offset random path.
 `--aicpu-qp-mode opbase-ext` is a diagnostic comparison only. It requires
 `--aicpu-runner host-operators --operation write`: AICPU returns the provider
-doorbell descriptor, the host invokes `rtRDMADBSend`, and AICPU polls. This
-confirms the mode's ordering contract but adds a host/operator round trip per
-WQE; keep `normal` as the benchmark default.
+doorbell descriptor, the host invokes `rtRDMADBSend`, and AICPU polls. For
+sequential one-WQE Writes with matching signal and doorbell groups, the
+diagnostic posts the group's individual provider WQEs inside one AICPU
+operator and returns only its final descriptor. Other shapes retain the
+per-WQE operator diagnostic behavior. Keep `normal` as the benchmark default.
 
 Pass `--backend aiv --aiv-kernel <kernel-object>` to run the AIV-resident
 peer loop. For direct-RoCE experiments, `--aiv-qp-mode normal` is the default
@@ -89,10 +124,14 @@ same RDMA Read/Write workload through the AICPU and AIV device kernel paths.
 Each WQE post is a device kernel launch, and completions are polled through
 a separate device PollCq kernel. The benchmarks require the caller-owned CQ
 flag (`NDS_RA_AI_CALLER_POLLS_CQ`). These legacy single-operation clients do
-not expose grouped-doorbell controls. That limitation is their CLI surface,
-not an AIV device-path limitation: the NPU-peer AIV benchmark exposes grouped
-doorbells as described above. The AICPU provider's `ibv_exp_post_send` has no
-documented generic deferred-doorbell ABI.
+not expose grouped-doorbell controls in normal-QP mode. The AICPU client also
+accepts the constrained `opbase-ext` batch diagnostic for contiguous one-WQE
+Writes with matching signal and doorbell groups; it posts the group directly
+on AICPU and sends the final provider descriptor through the host runtime.
+That limitation is otherwise the CLI surface, not an AIV device-path
+limitation: the NPU-peer AIV benchmark exposes grouped doorbells as described
+above. The AICPU provider's `ibv_exp_post_send` has no documented generic
+deferred-doorbell ABI.
 The AICPU client must run with the standard-CP1 package overlay used by
 `tests/e2e/run_with_aicpu_package.sh`; loading only the generated JSON does not
 install its kernel shared object into CANN's package namespace. AICPU operator

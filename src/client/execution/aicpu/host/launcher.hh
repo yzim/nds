@@ -22,6 +22,8 @@ public:
 
     Result<void> load(NdsAclApi *acl, const std::string &kernel_config_path);
     Result<void> launch_post_send_and_wait(NdsDevicePostSendArgs *args, std::int32_t completion_timeout_ms);
+    Result<void> launch_post_send_batch_and_wait(NdsDevicePostSendBatchArgs *args,
+                                                 std::int32_t completion_timeout_ms);
     Result<void> launch_post_recv_and_wait(NdsDevicePostRecvArgs *args, std::int32_t completion_timeout_ms);
     Result<void> launch_poll_cq_and_wait(NdsDevicePollCqArgs *args, std::int32_t completion_timeout_ms);
     Result<void> launch_rdma_send_and_wait(NdsDeviceRdmaSendArgs *args, std::int32_t completion_timeout_ms);

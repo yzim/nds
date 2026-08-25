@@ -1,6 +1,7 @@
 #include "rdma_benchmark_wire.hh"
 
 #include "aicpu/host/launcher.hh"
+#include "ra/ra.hh"
 #include "nds/logging.hh"
 #include "runtime.hh"
 #include "transport.hh"
@@ -15,6 +16,9 @@
 #include <iomanip>
 #include <iostream>
 #include <limits>
+#include <numeric>
+#include <random>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -25,6 +29,7 @@ constexpr std::uint32_t kDefaultInFlight = 64U;
 constexpr std::uint32_t kMaxInFlight = 1024U;
 constexpr std::uint32_t kDefaultMaxWrBytes = 64U * 1024U;
 constexpr std::uint32_t kDefaultMaxWrsPerWindow = 64U;
+constexpr std::uint64_t kRandomOffsetSeed = UINT64_C(0x4e44534149435055);
 
 struct Config {
     nds::client::RuntimeConfig runtime;
@@ -32,11 +37,16 @@ struct Config {
     nds::client::ExecutionConfig execution;
     nds::benchmark::Operation operation{nds::benchmark::Operation::Read};
     std::uint32_t bytes{};
+    std::uint64_t mr_bytes{};
     std::uint32_t in_flight{kDefaultInFlight};
     std::uint32_t warmup{100U};
     std::uint32_t iterations{1000U};
     std::uint32_t max_wr_bytes{kDefaultMaxWrBytes};
     std::uint32_t max_wrs_per_window{kDefaultMaxWrsPerWindow};
+    std::string aicpu_qp_mode{"normal"};
+    std::uint32_t wr_per_doorbell{1U};
+    std::uint32_t wr_per_signal{1U};
+    bool random_addresses{};
 };
 
 nds::Result<Config> parse(int argc, char **argv) {
@@ -51,11 +61,17 @@ nds::Result<Config> parse(int argc, char **argv) {
     app.add_option("--server", config.transport.server_address)->required();
     app.add_option("--operation", operation)->required()->check(CLI::IsMember({"read", "write"}));
     app.add_option("--bytes", config.bytes)->required()->check(CLI::Range(1U, UINT32_MAX));
+    app.add_option("--mr-bytes", config.mr_bytes, "Registered MR size; zero selects the workload minimum.");
     app.add_option("--in-flight", config.in_flight)->check(CLI::Range(1U, kMaxInFlight));
     app.add_option("--warmup", config.warmup)->check(CLI::Range(0U, UINT32_MAX));
     app.add_option("--iterations", config.iterations)->check(CLI::Range(1U, UINT32_MAX));
     app.add_option("--max-wr-bytes", config.max_wr_bytes)->check(CLI::Range(0U, UINT32_MAX));
     app.add_option("--max-wrs-per-window", config.max_wrs_per_window)->check(CLI::Range(1U, UINT32_MAX));
+    app.add_option("--aicpu-qp-mode", config.aicpu_qp_mode)->check(CLI::IsMember({"normal", "opbase-ext"}));
+    app.add_option("--wr-per-doorbell", config.wr_per_doorbell)->check(CLI::Range(1U, UINT32_MAX));
+    app.add_option("--wr-per-signal", config.wr_per_signal)->check(CLI::Range(1U, UINT32_MAX));
+    app.add_flag("--random-addresses", config.random_addresses,
+                 "Use unique reproducible offsets within the local and remote MRs.");
     try {
         app.parse(argc, argv);
     } catch (const CLI::ParseError &error) {
@@ -65,13 +81,51 @@ nds::Result<Config> parse(int argc, char **argv) {
     config.operation = operation == "read" ? nds::benchmark::Operation::Read : nds::benchmark::Operation::Write;
     config.execution.mode = nds::client::NpuExecutionMode::Aicpu;
     config.transport.qp.control_flags |= nds::client::QueuePairCallerPollsCq;
+    config.transport.qp.ai_qp_mode = config.aicpu_qp_mode == "opbase-ext" ? NDS_RA_QP_MODE_OPBASE_EXT
+                                                                             : NDS_RA_QP_MODE_NORMAL;
+    if (config.aicpu_qp_mode == "opbase-ext" &&
+        (config.operation != nds::benchmark::Operation::Write || config.wr_per_doorbell != config.wr_per_signal)) {
+        return nds::unexpected(nds::ErrorCode::kInvalidArgument,
+                               "AICPU OPBASE_EXT batch posting requires Write with matching doorbell and signal groups");
+    }
+    if (config.random_addresses && config.aicpu_qp_mode == "opbase-ext")
+        return nds::unexpected(nds::ErrorCode::kInvalidArgument,
+                               "random addresses are unsupported by the OPBASE_EXT batch diagnostic");
     return config;
 }
 
 nds::Result<std::size_t> total_bytes(const Config &config) {
-    if (config.in_flight == 0U || config.bytes > std::numeric_limits<std::size_t>::max() / config.in_flight)
+    const std::uint64_t request_count = config.random_addresses
+                                            ? static_cast<std::uint64_t>(config.warmup) + config.iterations
+                                            : config.in_flight;
+    if (request_count == 0U || config.bytes > std::numeric_limits<std::size_t>::max() / request_count)
         return nds::unexpected(nds::ErrorCode::kInvalidArgument, "benchmark buffer size overflows address space");
-    return static_cast<std::size_t>(config.bytes) * config.in_flight;
+    const std::size_t minimum = static_cast<std::size_t>(config.bytes) * request_count;
+    if (config.mr_bytes == 0U)
+        return minimum;
+    if (config.mr_bytes < minimum || config.mr_bytes > std::numeric_limits<std::size_t>::max())
+        return nds::unexpected(nds::ErrorCode::kInvalidArgument, "benchmark MR size is invalid");
+    return static_cast<std::size_t>(config.mr_bytes);
+}
+
+nds::Result<std::vector<std::uint64_t>> make_offsets(const Config &config, std::size_t memory_bytes) {
+    const std::uint64_t count = static_cast<std::uint64_t>(config.warmup) + config.iterations;
+    std::vector<std::uint64_t> offsets(static_cast<std::size_t>(count));
+    if (!config.random_addresses) {
+        for (std::uint64_t index = 0U; index < count; ++index)
+            offsets[static_cast<std::size_t>(index)] = (index % config.in_flight) * config.bytes;
+        return offsets;
+    }
+    const std::uint64_t slots = memory_bytes / config.bytes;
+    if (slots < count)
+        return nds::unexpected(nds::ErrorCode::kInvalidArgument, "MR does not contain enough unique request slots");
+    std::vector<std::uint64_t> indices(static_cast<std::size_t>(slots));
+    std::iota(indices.begin(), indices.end(), 0U);
+    std::mt19937_64 generator(kRandomOffsetSeed);
+    std::shuffle(indices.begin(), indices.end(), generator);
+    for (std::uint64_t index = 0U; index < count; ++index)
+        offsets[static_cast<std::size_t>(index)] = indices[static_cast<std::size_t>(index)] * config.bytes;
+    return offsets;
 }
 
 nds::Result<void> drain_completions(nds::AicpuEntrypointLauncher *launcher, nds::client::Runtime *runtime,
@@ -116,8 +170,10 @@ nds::Result<void> drain_completions(nds::AicpuEntrypointLauncher *launcher, nds:
 nds::Result<void> transfer_window(nds::AicpuEntrypointLauncher *launcher, nds::client::Runtime *runtime,
                                   const NdsDeviceTransport &device_transport,
                                   const nds::client::MemoryRegion &local, const nds::benchmark::RemoteMemory &remote,
-                                  std::uint32_t bytes, std::uint32_t request_count, std::uint64_t *next_wr_id,
-                                  std::uint32_t max_wr_bytes, void *device_wc) {
+                                  std::uint32_t bytes, std::span<const std::uint64_t> offsets,
+                                  std::uint64_t first_request, std::uint32_t request_count, std::uint64_t *next_wr_id,
+                                  std::uint32_t max_wr_bytes, void *device_wc, std::uint32_t wr_per_doorbell,
+                                  std::uint32_t wr_per_signal) {
     if (next_wr_id == nullptr || request_count == 0U)
         return nds::unexpected(nds::ErrorCode::kInvalidArgument, "benchmark window requires requests and a WR ID");
     const std::uint32_t chunk_bytes = max_wr_bytes == 0U ? bytes : std::min(bytes, max_wr_bytes);
@@ -126,10 +182,50 @@ nds::Result<void> transfer_window(nds::AicpuEntrypointLauncher *launcher, nds::c
     const std::uint64_t total_wrs = static_cast<std::uint64_t>(request_count) * chunks_per_request;
     if (total_wrs > std::numeric_limits<std::uint32_t>::max())
         return nds::unexpected(nds::ErrorCode::kInvalidArgument, "benchmark WQE count exceeds supported range");
+    if (device_transport.control_qp.qp_mode == NDS_DEVICE_QP_MODE_OPBASE_EXT) {
+        if (remote.operation != nds::benchmark::Operation::Write || chunks_per_request != 1U ||
+            wr_per_doorbell != wr_per_signal)
+            return nds::unexpected(nds::ErrorCode::kInvalidArgument,
+                                   "AICPU OPBASE_EXT batch path requires one-WQE Writes and matching groups");
+        std::uint32_t expected_completions{};
+        std::uint32_t submitted{};
+        while (submitted < request_count) {
+            const std::uint32_t group = std::min(wr_per_doorbell, request_count - submitted);
+            NdsDevicePostSendBatchArgs batch{};
+            batch.qp = device_transport.control_qp;
+            batch.local_address = local.address() + static_cast<std::uint64_t>(submitted) * bytes;
+            batch.remote_address = remote.address + static_cast<std::uint64_t>(submitted) * bytes;
+            batch.wr_id_start = *next_wr_id;
+            batch.local_key = local.local_key();
+            batch.remote_key = remote.remote_key;
+            batch.length = bytes;
+            batch.count = group;
+            batch.doorbell_address = reinterpret_cast<std::uint64_t>(device_wc);
+            if (const auto launched = launcher->launch_post_send_batch_and_wait(&batch, kCompletionTimeoutMs);
+                !launched)
+                return nds::unexpected(launched.error());
+            NdsDeviceDoorbell doorbell{};
+            if (const auto copied = runtime->copy_device_to_host(&doorbell, device_wc, sizeof(doorbell)); !copied)
+                return nds::unexpected(copied.error());
+            if (doorbell.reserved != 0U)
+                return nds::unexpected(nds::ErrorCode::kRa,
+                                       "AICPU batch provider post failed before doorbell: " +
+                                           std::to_string(static_cast<std::int32_t>(doorbell.reserved)));
+            NdsRaSendResponse response{};
+            response.doorbell.db_index = doorbell.index;
+            response.doorbell.db_info = doorbell.info;
+            if (const auto rung = nds::NdsRaRingSend(runtime, response); !rung)
+                return nds::unexpected(rung.error());
+            *next_wr_id += group;
+            ++expected_completions;
+            submitted += group;
+        }
+        return drain_completions(launcher, runtime, device_transport.control_qp, device_wc, expected_completions);
+    }
     const std::uint32_t expected_completions = static_cast<std::uint32_t>(total_wrs);
     const bool is_read = remote.operation == nds::benchmark::Operation::Read;
     for (std::uint32_t request = 0U; request < request_count; ++request) {
-        const std::uint64_t base_offset = static_cast<std::uint64_t>(request) * bytes;
+        const std::uint64_t base_offset = offsets[static_cast<std::size_t>(first_request + request)];
         for (std::uint64_t chunk_offset = 0U; chunk_offset < bytes; chunk_offset += chunk_bytes) {
             const std::uint32_t length =
                 std::min(chunk_bytes, static_cast<std::uint32_t>(bytes - chunk_offset));
@@ -168,7 +264,8 @@ nds::Result<void> transfer_operations(nds::AicpuEntrypointLauncher *launcher, nd
                                       const nds::benchmark::RemoteMemory &remote, std::uint32_t bytes,
                                       std::uint32_t in_flight, std::uint32_t operations, std::uint64_t *next_wr_id,
                                       std::uint32_t max_wr_bytes, std::uint32_t max_wrs_per_window,
-                                      void *device_wc) {
+                                      void *device_wc, std::uint32_t wr_per_doorbell, std::uint32_t wr_per_signal,
+                                      std::span<const std::uint64_t> offsets, std::uint64_t first_request) {
     const std::uint32_t chunk_bytes = max_wr_bytes == 0U ? bytes : std::min(bytes, max_wr_bytes);
     const std::uint64_t wrs_per_request = (static_cast<std::uint64_t>(bytes) + chunk_bytes - 1U) / chunk_bytes;
     if (wrs_per_request > max_wrs_per_window)
@@ -178,8 +275,9 @@ nds::Result<void> transfer_operations(nds::AicpuEntrypointLauncher *launcher, nd
         std::min<std::uint64_t>(in_flight, max_wrs_per_window / wrs_per_request));
     for (std::uint32_t completed = 0U; completed < operations;) {
         const std::uint32_t window = std::min(requests_per_window, operations - completed);
-        if (const auto transferred = transfer_window(launcher, runtime, device_transport, local, remote, bytes, window,
-                                                     next_wr_id, max_wr_bytes, device_wc);
+        if (const auto transferred = transfer_window(launcher, runtime, device_transport, local, remote, bytes, offsets,
+                                                     first_request + completed, window, next_wr_id, max_wr_bytes,
+                                                     device_wc, wr_per_doorbell, wr_per_signal);
             !transferred) {
             return nds::unexpected(transferred.error());
         }
@@ -222,7 +320,7 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
     if (!nds::benchmark::deserialize_remote_memory(record, &remote) || remote.operation != config->operation ||
-        remote.length != *required_bytes) {
+        remote.length < *required_bytes) {
         NDS_LOG_ERROR("npu-client", "server returned incompatible remote-memory metadata");
         return EXIT_FAILURE;
     }
@@ -238,6 +336,11 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
     NDS_LOG_INFO("npu-client", "registered {} bytes of NPU memory", *required_bytes);
+    const auto offsets = make_offsets(*config, *required_bytes);
+    if (!offsets) {
+        NDS_LOG_ERROR("npu-client", "address generation failed: {}", offsets.error().message);
+        return EXIT_FAILURE;
+    }
     const auto device_transport = transport.qp()->make_device_transport();
     if (!device_transport) {
         NDS_LOG_ERROR("npu-client", "device transport creation failed: {}", device_transport.error().message);
@@ -259,7 +362,8 @@ int main(int argc, char **argv) {
     NDS_LOG_INFO("npu-client", "starting {} warmup operations", config->warmup);
     if (const auto completed = transfer_operations(&launcher, &runtime, *device_transport, *local, remote, config->bytes,
                                                    config->in_flight, config->warmup, &wr_id,
-                                                   config->max_wr_bytes, config->max_wrs_per_window, *device_wc);
+                                                   config->max_wr_bytes, config->max_wrs_per_window, *device_wc,
+                                                   config->wr_per_doorbell, config->wr_per_signal, *offsets, 0U);
         !completed) {
         NDS_LOG_ERROR("npu-client", "warmup failed: {}", completed.error().message);
         return EXIT_FAILURE;
@@ -268,7 +372,9 @@ int main(int argc, char **argv) {
     const auto start = std::chrono::steady_clock::now();
     if (const auto completed = transfer_operations(&launcher, &runtime, *device_transport, *local, remote, config->bytes,
                                                    config->in_flight, config->iterations, &wr_id,
-                                                   config->max_wr_bytes, config->max_wrs_per_window, *device_wc);
+                                                   config->max_wr_bytes, config->max_wrs_per_window, *device_wc,
+                                                   config->wr_per_doorbell, config->wr_per_signal, *offsets,
+                                                   config->warmup);
         !completed) {
         NDS_LOG_ERROR("npu-client", "measurement failed: {}", completed.error().message);
         return EXIT_FAILURE;
@@ -288,10 +394,17 @@ int main(int argc, char **argv) {
     }
     std::cout << std::fixed << std::setprecision(3) << "{\"backend\":\"aicpu\",\"operation\":\""
               << nds::benchmark::operation_name(config->operation) << "\",\"bytes\":" << config->bytes
+              << ",\"mr_bytes\":" << *required_bytes
               << ",\"in_flight\":" << config->in_flight << ",\"warmup\":" << config->warmup
               << ",\"iterations\":" << config->iterations << ",\"max_wr_bytes\":" << output_chunk_bytes
               << ",\"max_wrs_per_window\":" << config->max_wrs_per_window
-              << ",\"completion_policy\":\"per-wqe-signaled\""
+              << ",\"aicpu_qp_mode\":\"" << config->aicpu_qp_mode << "\""
+              << ",\"wr_per_doorbell\":" << config->wr_per_doorbell
+              << ",\"wr_per_signal\":" << config->wr_per_signal
+              << ",\"address_policy\":\""
+              << (config->random_addresses ? "random-unique" : "cyclic-contiguous") << "\""
+              << ",\"completion_policy\":\""
+              << (config->aicpu_qp_mode == "opbase-ext" ? "aicpu-group-signaled" : "per-wqe-signaled") << "\""
               << ",\"elapsed_ns\":"
               << std::chrono::duration_cast<std::chrono::nanoseconds>(elapsed).count() << ",\"ops_per_second\":"
               << ops_per_second << ",\"gib_per_second\":" << gib_per_second << "}" << std::endl;

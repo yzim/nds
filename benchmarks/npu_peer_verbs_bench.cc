@@ -17,6 +17,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <cstdlib>
 #include <iomanip>
 #include <iostream>
@@ -66,11 +67,14 @@ struct Config {
     bool ring_last{};
     bool random_addresses{};
     bool independent_random_addresses{};
+    bool client_host_pinned{};
+    bool server_host_pinned{};
     bool verify{true};
     bool aicpu{};
     bool aiv{};
     bool aicpu_device_loop{true};
     bool aicpu_linked_wrs{};
+    bool aicpu_raw_sq{};
     std::uint32_t aicpu_poll_batch{1U};
     std::uint32_t aicpu_signal_every{};
     std::uint32_t aicpu_linked_wrs_count{16U};
@@ -109,9 +113,11 @@ nds::Result<Config> parse(int argc, char **argv) {
         ->check(CLI::IsMember({"device-loop", "host-operators"}));
     app.add_flag("--aicpu-linked-wrs", config.aicpu_linked_wrs,
                  "Use one linked provider WR list per AICPU post batch.");
+    app.add_flag("--aicpu-raw-sq", config.aicpu_raw_sq,
+                 "Use the AICPU raw HNS SQ and MMIO doorbell diagnostic path.");
     app.add_option("--aicpu-linked-wrs-count", config.aicpu_linked_wrs_count,
                    "Number of WRs per linked AICPU provider post.")
-        ->check(CLI::Range(1U, 64U));
+        ->check(CLI::Range(1U, 128U));
     app.add_option("--aicpu-poll-batch", config.aicpu_poll_batch,
                    "Maximum CQEs requested by each AICPU poll call.")
         ->check(CLI::Range(1U, NDS_DEVICE_MAX_COMPLETIONS));
@@ -144,6 +150,10 @@ nds::Result<Config> parse(int argc, char **argv) {
                  "Use unique reproducible non-overlapping offsets within each MR.");
     app.add_flag("--independent-random-addresses", config.independent_random_addresses,
                  "Use different random unique local and remote address permutations for AICPU Writes.");
+    app.add_flag("--client-host-pinned", config.client_host_pinned,
+                 "Client only: register AscendCL page-locked host memory through its NPU RNIC instead of HBM.");
+    app.add_flag("--server-host-pinned", config.server_host_pinned,
+                 "Server only: register AscendCL page-locked host memory through its NPU RNIC instead of HBM.");
     app.add_flag("--no-verify", no_verify, "Skip post-completion destination verification.");
     try {
         app.parse(argc, argv);
@@ -175,11 +185,24 @@ nds::Result<Config> parse(int argc, char **argv) {
         return nds::unexpected(nds::ErrorCode::kInvalidArgument,
                                "AICPU OPBASE_EXT diagnostic requires --aicpu-runner host-operators and --operation write");
     }
+    if (config.aicpu_raw_sq && (!config.aicpu || !config.aicpu_device_loop || config.aicpu_linked_wrs ||
+                                config.aicpu_qp_mode != "normal" || config.wr_per_doorbell > UINT8_MAX)) {
+        return nds::unexpected(nds::ErrorCode::kInvalidArgument,
+                               "AICPU raw SQ requires the normal-QP device-loop without linked WRs");
+    }
     if (config.independent_random_addresses &&
         (!config.random_addresses || config.operation != nds::benchmark::Operation::Write ||
          (config.role == Role::Client && (!config.aicpu || !config.aicpu_device_loop)))) {
         return nds::unexpected(nds::ErrorCode::kInvalidArgument,
                                "independent random addresses require an AICPU device-loop Write with random addresses");
+    }
+    if (config.server_host_pinned && config.role != Role::Server) {
+        return nds::unexpected(nds::ErrorCode::kInvalidArgument,
+                               "server-host-pinned is valid only with --role server");
+    }
+    if (config.client_host_pinned && config.role != Role::Client) {
+        return nds::unexpected(nds::ErrorCode::kInvalidArgument,
+                               "client-host-pinned is valid only with --role client");
     }
     config.transport.qp_count = config.qps;
     config.transport.qp.send_queue_depth = config.send_queue_depth;
@@ -444,11 +467,14 @@ nds::Result<void> transfer_aicpu_window(nds::AicpuEntrypointLauncher *launcher, 
         args.in_flight = std::min(config.in_flight, request_count);
         args.max_wr_bytes = config.max_wr_bytes;
         args.max_wrs_per_window = config.max_wrs_per_window;
-        args.post_mode = (config.aicpu_linked_wrs ? NDS_DEVICE_BENCHMARK_POST_LINKED
-                                                  : NDS_DEVICE_BENCHMARK_POST_INDIVIDUAL) |
+        const auto packed_linked_or_raw_interval =
+            config.aicpu_raw_sq ? config.wr_per_doorbell : config.aicpu_linked_wrs_count;
+        args.post_mode = (config.aicpu_raw_sq ? NDS_DEVICE_BENCHMARK_POST_RAW_SQ
+                                               : (config.aicpu_linked_wrs ? NDS_DEVICE_BENCHMARK_POST_LINKED
+                                                                          : NDS_DEVICE_BENCHMARK_POST_INDIVIDUAL)) |
                          (config.aicpu_poll_batch << NDS_DEVICE_BENCHMARK_POLL_BATCH_SHIFT) |
                          (config.aicpu_signal_every << NDS_DEVICE_BENCHMARK_SIGNAL_EVERY_SHIFT) |
-                         (config.aicpu_linked_wrs_count << NDS_DEVICE_BENCHMARK_LINKED_WRS_SHIFT);
+                         (packed_linked_or_raw_interval << NDS_DEVICE_BENCHMARK_LINKED_WRS_SHIFT);
         args.operation = remote.operation == nds::benchmark::Operation::Read ? NDS_DEVICE_BENCHMARK_READ
                                                                                : NDS_DEVICE_BENCHMARK_WRITE;
         args.result_address = reinterpret_cast<std::uint64_t>(device_result);
@@ -479,15 +505,64 @@ nds::Result<void> transfer_aicpu_window(nds::AicpuEntrypointLauncher *launcher, 
     const std::uint64_t total_wrs = static_cast<std::uint64_t>(request_count) * chunks_per_request;
     if (total_wrs == 0U || total_wrs > UINT32_MAX)
         return nds::unexpected(nds::ErrorCode::kInvalidArgument, "AICPU WQE count is invalid");
+    const bool deferred_provider_ring = device_transport->control_qp.qp_mode == NDS_DEVICE_QP_MODE_OPBASE_EXT;
+    const bool batch_post_supported = deferred_provider_ring && remote.operation == nds::benchmark::Operation::Write &&
+                                      chunks_per_request == 1U && !config.random_addresses &&
+                                      config.wr_per_signal == config.wr_per_doorbell;
+    if (batch_post_supported) {
+        std::uint32_t expected_completions{};
+        std::uint32_t submitted{};
+        while (submitted < request_count) {
+            const std::uint32_t group = std::min(config.wr_per_doorbell, request_count - submitted);
+            NdsDevicePostSendBatchArgs args{};
+            args.qp = device_transport->control_qp;
+            args.local_address = local.address() + base_offset + static_cast<std::uint64_t>(submitted) * config.bytes;
+            args.remote_address = remote.address + base_offset + static_cast<std::uint64_t>(submitted) * config.bytes;
+            args.wr_id_start = *next_wr_id;
+            args.local_key = local.local_key();
+            args.remote_key = remote.remote_key;
+            args.length = config.bytes;
+            args.count = group;
+            args.doorbell_address = reinterpret_cast<std::uint64_t>(device_result);
+            if (const auto launched = launcher->launch_post_send_batch_and_wait(&args, kCompletionTimeoutMs); !launched)
+                return nds::unexpected(launched.error());
+            NdsDeviceDoorbell doorbell{};
+            if (const auto copied = runtime->copy_device_to_host(&doorbell, device_result, sizeof(doorbell)); !copied)
+                return nds::unexpected(copied.error());
+            if (doorbell.reserved != 0U)
+                return nds::unexpected(nds::ErrorCode::kRa,
+                                       "AICPU batch provider post failed before doorbell: " +
+                                           std::to_string(static_cast<std::int32_t>(doorbell.reserved)));
+            NdsRaSendResponse response{};
+            response.doorbell.db_index = doorbell.index;
+            response.doorbell.db_info = doorbell.info;
+            if (const auto rung = nds::NdsRaRingSend(runtime, response); !rung)
+                return nds::unexpected(rung.error());
+            *next_wr_id += group;
+            ++expected_completions;
+            submitted += group;
+        }
+        return poll_aicpu_completions(launcher, runtime, device_transport->control_qp, device_result,
+                                      expected_completions);
+    }
+    NdsDeviceDoorbell last_doorbell{};
+    std::uint32_t expected_completions{};
+    std::uint64_t wr_index{};
     for (std::uint32_t request = 0U; request < request_count; ++request) {
-        const std::uint64_t request_offset = base_offset + static_cast<std::uint64_t>(request) * config.bytes;
+        const std::uint64_t request_offset = offsets[static_cast<std::size_t>(first_request + request)];
         for (std::uint64_t chunk_offset = 0U; chunk_offset < config.bytes; chunk_offset += chunk_bytes) {
             const std::uint32_t length =
                 std::min(chunk_bytes, static_cast<std::uint32_t>(config.bytes - chunk_offset));
+            const bool final_wqe = wr_index + 1U == total_wrs;
+            const bool doorbell_boundary =
+                final_wqe || (wr_index + 1U) % static_cast<std::uint64_t>(config.wr_per_doorbell) == 0U;
+            const bool signal_boundary =
+                !deferred_provider_ring || final_wqe ||
+                (wr_index + 1U) % static_cast<std::uint64_t>(config.wr_per_signal) == 0U;
             const NdsDeviceSendWr wr{(*next_wr_id)++, remote.operation == nds::benchmark::Operation::Read
                                                           ? NDS_DEVICE_WR_RDMA_READ
                                                           : NDS_DEVICE_WR_RDMA_WRITE,
-                                     static_cast<std::uint32_t>(NDS_DEVICE_SEND_SIGNALED),
+                                     signal_boundary ? static_cast<std::uint32_t>(NDS_DEVICE_SEND_SIGNALED) : 0U,
                                      {local.address() + request_offset + chunk_offset, length, local.local_key()},
                                      remote.address + request_offset + chunk_offset, remote.remote_key, 0U};
             if (remote.operation == nds::benchmark::Operation::Read) {
@@ -502,7 +577,7 @@ nds::Result<void> transfer_aicpu_window(nds::AicpuEntrypointLauncher *launcher, 
                 args.doorbell_address = reinterpret_cast<std::uint64_t>(device_result);
                 if (const auto launched = launcher->launch_post_send_and_wait(&args, kCompletionTimeoutMs); !launched)
                     return nds::unexpected(launched.error());
-                if (device_transport->control_qp.qp_mode == NDS_DEVICE_QP_MODE_OPBASE_EXT) {
+                if (deferred_provider_ring) {
                     NdsDeviceDoorbell doorbell{};
                     if (const auto copied = runtime->copy_device_to_host(&doorbell, device_result, sizeof(doorbell));
                         !copied)
@@ -511,17 +586,23 @@ nds::Result<void> transfer_aicpu_window(nds::AicpuEntrypointLauncher *launcher, 
                         return nds::unexpected(nds::ErrorCode::kRa,
                                                "AICPU provider post failed before doorbell: " +
                                                    std::to_string(static_cast<std::int32_t>(doorbell.reserved)));
-                    NdsRaSendResponse response{};
-                    response.doorbell.db_index = doorbell.index;
-                    response.doorbell.db_info = doorbell.info;
-                    if (const auto rung = nds::NdsRaRingSend(runtime, response); !rung)
-                        return nds::unexpected(rung.error());
+                    last_doorbell = doorbell;
+                    if (doorbell_boundary) {
+                        NdsRaSendResponse response{};
+                        response.doorbell.db_index = last_doorbell.index;
+                        response.doorbell.db_info = last_doorbell.info;
+                        if (const auto rung = nds::NdsRaRingSend(runtime, response); !rung)
+                            return nds::unexpected(rung.error());
+                    }
                 }
             }
+            if (signal_boundary)
+                ++expected_completions;
+            ++wr_index;
         }
     }
     return poll_aicpu_completions(launcher, runtime, device_transport->control_qp, device_result,
-                                  static_cast<std::uint32_t>(total_wrs));
+                                  expected_completions);
 }
 
 nds::Result<void> transfer_aicpu_operations(nds::AicpuEntrypointLauncher *launcher, nds::client::Runtime *runtime,
@@ -658,14 +739,17 @@ bool verify_ranges(nds::client::Runtime *runtime, const nds::client::MemoryBuffe
                    const std::vector<std::uint64_t> &offsets, std::uint32_t bytes, std::uint8_t expected) {
     std::vector<std::byte> host(bytes);
     for (const std::uint64_t offset : offsets) {
-        if (const auto copied = runtime->copy_device_to_host(host.data(),
-                                                             static_cast<std::byte *>(buffer.rdma_data()) + offset,
-                                                             host.size());
-            !copied)
+        if (buffer.location() == nds::client::MemoryLocation::Host ||
+            buffer.location() == nds::client::MemoryLocation::HostPinned) {
+            std::memcpy(host.data(), static_cast<const std::byte *>(buffer.data()) + offset, host.size());
+        } else if (const auto copied = runtime->copy_device_to_host(
+                       host.data(), static_cast<const std::byte *>(buffer.data()) + offset, host.size());
+                   !copied) {
             return false;
+        }
         if (!std::all_of(host.begin(), host.end(), [expected](std::byte value) {
-                return std::to_integer<std::uint8_t>(value) == expected;
-            }))
+            return std::to_integer<std::uint8_t>(value) == expected;
+        }))
             return false;
     }
     return true;
@@ -731,19 +815,23 @@ int run(const Config &config) {
             }
             remote_offsets.push_back(std::move(*qp_remote_offsets));
         }
-        auto buffer = runtime.allocate(*memory_bytes);
+        const bool host_pinned = (config.role == Role::Client && config.client_host_pinned) ||
+                                 (config.role == Role::Server && config.server_host_pinned);
+        const auto location = host_pinned ? nds::client::MemoryLocation::HostPinned
+                                          : nds::client::MemoryLocation::Device;
+        auto buffer = runtime.allocate(*memory_bytes, location);
         if (!buffer) {
-            NDS_LOG_ERROR("npu-peer", "QP {} HBM allocation failed: {}", index, buffer.error().message);
+            NDS_LOG_ERROR("npu-peer", "QP {} memory allocation failed: {}", index, buffer.error().message);
             return EXIT_FAILURE;
         }
         if (const auto copied = runtime.copy_to(&*buffer, initial.data(), initial.size()); !copied) {
-            NDS_LOG_ERROR("npu-peer", "QP {} HBM initialization failed: {}", index, copied.error().message);
+            NDS_LOG_ERROR("npu-peer", "QP {} memory initialization failed: {}", index, copied.error().message);
             return EXIT_FAILURE;
         }
         buffers.push_back(std::move(*buffer));
         auto region = transport.endpoint()->reg_mr(buffers.back(), nds::client::MemoryAccess::DirectNpu);
         if (!region) {
-            NDS_LOG_ERROR("npu-peer", "QP {} HBM registration failed: {}", index, region.error().message);
+            NDS_LOG_ERROR("npu-peer", "QP {} memory registration failed: {}", index, region.error().message);
             return EXIT_FAILURE;
         }
         regions.push_back(std::move(*region));
@@ -991,6 +1079,7 @@ int run(const Config &config) {
               << ",\"wr_per_doorbell\":" << config.wr_per_doorbell
               << ",\"wr_per_signal\":" << config.wr_per_signal
               << ",\"aicpu_linked_wrs\":" << (config.aicpu_linked_wrs ? "true" : "false")
+              << ",\"aicpu_raw_sq\":" << (config.aicpu_raw_sq ? "true" : "false")
               << ",\"aicpu_linked_wrs_count\":" << config.aicpu_linked_wrs_count
               << ",\"aicpu_poll_batch\":" << config.aicpu_poll_batch
               << ",\"aicpu_signal_every\":" << config.aicpu_signal_every
@@ -1009,7 +1098,8 @@ int run(const Config &config) {
                               : (config.aicpu ? (config.aicpu_device_loop
                                       ? (config.aicpu_signal_every == 0U ? "device-loop-final-signaled"
                                                                           : "device-loop-periodic-signaled")
-                                      : "per-wqe-signaled")
+                                      : (config.aicpu_qp_mode == "opbase-ext" ? "aicpu-group-signaled"
+                                                                                : "per-wqe-signaled"))
                                : "ra-configurable"))
               << "\",\"elapsed_ns\":"
               << std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count()

@@ -46,6 +46,14 @@ extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuPostSend(void
     entry_barrier();
     return status;
 }
+extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuPostSendBatch(void *args) {
+    auto *request = static_cast<NdsDevicePostSendBatchArgs *>(args);
+    if (request == nullptr)
+        return kEntryInvalidArgument;
+    const uint32_t status = NdsAicpuPostSendBatchImpl(request);
+    entry_barrier();
+    return status;
+}
 extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuPostRecv(void *args) {
     auto *request = static_cast<NdsDevicePostRecvArgs *>(args);
     if (!valid_verbs_request(request)) {

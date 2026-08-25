@@ -6,6 +6,13 @@
       "opKernelLib": "AICPUKernel"
     }
   },
+  "NdsAicpuPostSendBatch": {
+    "opInfo": {
+      "functionName": "NdsAicpuPostSendBatch",
+      "kernelSo": "@NDS_AICPU_STANDARD_KERNEL_SO@",
+      "opKernelLib": "AICPUKernel"
+    }
+  },
   "NdsAicpuPostRecv": {
     "opInfo": {
       "functionName": "NdsAicpuPostRecv",

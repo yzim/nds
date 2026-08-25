@@ -139,6 +139,25 @@ typedef struct NdsDevicePostSendArgs {
     uint64_t reserved2;
 } NdsDevicePostSendArgs;
 
+/* Posts a contiguous sequence of ordinary provider WQEs from AICPU.  In
+ * OPBASE_EXT mode the final prepared WQE descriptor is written to
+ * doorbell_address for one host-side rtRDMADBSend call. */
+typedef struct NdsDevicePostSendBatchArgs {
+    NdsDeviceQp qp;
+    uint64_t local_address;
+    uint64_t remote_address;
+    uint64_t wr_id_start;
+    uint32_t local_key;
+    uint32_t remote_key;
+    uint32_t length;
+    uint32_t count;
+    uint32_t signal_every;
+    int32_t return_value;
+    uint32_t reserved;
+    uint64_t doorbell_address;
+    uint64_t reserved2;
+} NdsDevicePostSendBatchArgs;
+
 typedef struct NdsDevicePostRecvArgs {
     NdsDeviceQp qp;
     NdsDeviceRecvWr wr;
@@ -165,6 +184,7 @@ static_assert(sizeof(NdsDeviceRecvWr) == 24, "device receive WR ABI changed");
 static_assert(sizeof(NdsDeviceWc) == 40, "device WC ABI changed");
 static_assert(sizeof(NdsDeviceDoorbell) == 16, "device doorbell ABI changed");
 static_assert(sizeof(NdsDevicePostSendArgs) == 304, "device post-send operator ABI changed");
+static_assert(sizeof(NdsDevicePostSendBatchArgs) == 304, "device batch-post operator ABI changed");
 static_assert(sizeof(NdsDevicePostRecvArgs) == 264, "device post-recv operator ABI changed");
 static_assert(sizeof(NdsDevicePollCqArgs) == 256, "device poll-CQ operator ABI changed");
 #else
@@ -177,6 +197,7 @@ _Static_assert(sizeof(NdsDeviceRecvWr) == 24, "device receive WR ABI changed");
 _Static_assert(sizeof(NdsDeviceWc) == 40, "device WC ABI changed");
 _Static_assert(sizeof(NdsDeviceDoorbell) == 16, "device doorbell ABI changed");
 _Static_assert(sizeof(NdsDevicePostSendArgs) == 304, "device post-send operator ABI changed");
+_Static_assert(sizeof(NdsDevicePostSendBatchArgs) == 304, "device batch-post operator ABI changed");
 _Static_assert(sizeof(NdsDevicePostRecvArgs) == 264, "device post-recv operator ABI changed");
 _Static_assert(sizeof(NdsDevicePollCqArgs) == 256, "device poll-CQ operator ABI changed");
 #endif

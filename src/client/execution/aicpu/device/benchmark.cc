@@ -6,7 +6,7 @@
 namespace {
 
 constexpr uint32_t kMaxIdlePolls = 10000000U;
-constexpr uint32_t kMaxLinkedWrs = 64U;
+constexpr uint32_t kMaxLinkedWrs = 128U;
 
 void store_result(const NdsDeviceRdmaBenchmarkArgs *args, const NdsDeviceRdmaBenchmarkResult &result) {
     if (args != nullptr && args->result_address != 0U)
@@ -27,9 +27,10 @@ uint32_t fail(const NdsDeviceRdmaBenchmarkArgs *args, uint32_t status,
 extern "C" uint32_t NdsAicpuRdmaBenchmarkImpl(const NdsDeviceRdmaBenchmarkArgs *args) {
     NdsDeviceRdmaBenchmarkResult result{};
     const uint32_t post_mode = args == nullptr ? 0U : args->post_mode & NDS_DEVICE_BENCHMARK_POST_MODE_MASK;
-    const uint32_t poll_batch = args == nullptr
-                                     ? 1U
-                                     : (args->post_mode >> NDS_DEVICE_BENCHMARK_POLL_BATCH_SHIFT) & 0xffU;
+    const uint32_t requested_poll_batch = args == nullptr
+                                              ? 0U
+                                              : (args->post_mode >> NDS_DEVICE_BENCHMARK_POLL_BATCH_SHIFT) & 0xffU;
+    const uint32_t poll_batch = requested_poll_batch == 0U ? 1U : requested_poll_batch;
     const uint32_t signal_every = args == nullptr
                                       ? 0U
                                       : (args->post_mode >> NDS_DEVICE_BENCHMARK_SIGNAL_EVERY_SHIFT) & 0xffU;
@@ -37,6 +38,9 @@ extern "C" uint32_t NdsAicpuRdmaBenchmarkImpl(const NdsDeviceRdmaBenchmarkArgs *
                                                ? 0U
                                                : (args->post_mode >> NDS_DEVICE_BENCHMARK_LINKED_WRS_SHIFT) & 0xffU;
     const uint32_t linked_wrs = requested_linked_wrs == 0U ? 16U : requested_linked_wrs;
+    const uint32_t raw_sq_doorbell_interval = post_mode == NDS_DEVICE_BENCHMARK_POST_RAW_SQ
+                                                  ? requested_linked_wrs
+                                                  : 0U;
     if (args == nullptr || args->result_address == 0U || !NdsAicpuValidQp(&args->transport.control_qp) ||
         (args->transport.control_qp.qp_mode != NDS_DEVICE_QP_MODE_NORMAL &&
          args->transport.control_qp.qp_mode != NDS_DEVICE_QP_MODE_OPBASE_EXT) ||
@@ -44,8 +48,10 @@ extern "C" uint32_t NdsAicpuRdmaBenchmarkImpl(const NdsDeviceRdmaBenchmarkArgs *
         args->remote_address == 0U || args->local_key == 0U || args->remote_key == 0U || args->bytes == 0U ||
         args->iterations == 0U || args->in_flight == 0U || args->max_wrs_per_window == 0U ||
         (args->operation != NDS_DEVICE_BENCHMARK_READ && args->operation != NDS_DEVICE_BENCHMARK_WRITE) ||
-        post_mode > NDS_DEVICE_BENCHMARK_POST_LINKED || poll_batch == 0U ||
-        poll_batch > NDS_DEVICE_MAX_COMPLETIONS || linked_wrs > kMaxLinkedWrs) {
+        post_mode > NDS_DEVICE_BENCHMARK_POST_RAW_SQ ||
+        (post_mode == NDS_DEVICE_BENCHMARK_POST_RAW_SQ && raw_sq_doorbell_interval == 0U) ||
+        poll_batch > NDS_DEVICE_MAX_COMPLETIONS ||
+        (post_mode != NDS_DEVICE_BENCHMARK_POST_RAW_SQ && linked_wrs > kMaxLinkedWrs)) {
         return fail(args, NDS_DEVICE_BENCHMARK_INVALID_ARGUMENT, result);
     }
 
@@ -106,10 +112,16 @@ extern "C" uint32_t NdsAicpuRdmaBenchmarkImpl(const NdsDeviceRdmaBenchmarkArgs *
                         0U};
                 }
                 int32_t post_result = -1;
-                const uint32_t post_status =
-                    NdsAicpuPostSendListImpl(&args->transport.control_qp, wrs, batch_count, &post_result);
-                if (post_status != kNdsAicpuSuccess || post_result != 0)
+                    const uint32_t post_status = batch_count == 1U
+                                                 ? NdsAicpuPostSendImpl(&args->transport.control_qp, &wrs[0],
+                                                                        &post_result, nullptr)
+                                                 : NdsAicpuPostSendListImpl(&args->transport.control_qp, wrs,
+                                                                            batch_count, &post_result);
+                if (post_status != kNdsAicpuSuccess || post_result != 0) {
+                    result.completion_status = static_cast<int32_t>(post_status);
+                    result.completion_vendor_error = post_result;
                     return fail(args, NDS_DEVICE_BENCHMARK_POST_FAILED, result);
+                }
                 result.wqe_count += batch_count;
                 window_wr_index += batch_count;
             }
@@ -131,23 +143,30 @@ extern "C" uint32_t NdsAicpuRdmaBenchmarkImpl(const NdsDeviceRdmaBenchmarkArgs *
                     const uint64_t wr_index = result.wqe_count;
                     const uint64_t window_wr_index = static_cast<uint64_t>(request) * chunks_per_request +
                                                      chunk_offset / chunk_bytes;
+                    const bool raw_sq_doorbell_boundary =
+                        post_mode != NDS_DEVICE_BENCHMARK_POST_RAW_SQ || window_wr_index + 1U == window_wrs ||
+                        (window_wr_index + 1U) % raw_sq_doorbell_interval == 0U;
                     const NdsDeviceSendWr wr{
                         1U + wr_index,
                         args->operation == NDS_DEVICE_BENCHMARK_READ ? NDS_DEVICE_WR_RDMA_READ
                                                                        : NDS_DEVICE_WR_RDMA_WRITE,
-                        (signal_every != 0U && ((window_wr_index + 1U) % signal_every == 0U ||
-                                                window_wr_index + 1U == window_wrs)) ||
-                                (signal_every == 0U && window_wr_index + 1U == window_wrs)
-                            ? static_cast<uint32_t>(NDS_DEVICE_SEND_SIGNALED)
-                            : 0U,
+                        ((signal_every != 0U && ((window_wr_index + 1U) % signal_every == 0U ||
+                                                  window_wr_index + 1U == window_wrs)) ||
+                         (signal_every == 0U && window_wr_index + 1U == window_wrs)
+                             ? static_cast<uint32_t>(NDS_DEVICE_SEND_SIGNALED)
+                             : 0U) |
+                            (raw_sq_doorbell_boundary ? 0U : static_cast<uint32_t>(NDS_DEVICE_SEND_DEFER_DOORBELL)),
                         {local_base + chunk_offset, length, args->local_key},
                         remote_base + chunk_offset,
                         args->remote_key,
                         0U};
                     int32_t post_result = -1;
-                    const uint32_t post_status = args->operation == NDS_DEVICE_BENCHMARK_READ
-                                                      ? NdsAicpuRdmaReadImpl(&args->transport, &wr, &post_result)
-                                                      : NdsAicpuRdmaWriteImpl(&args->transport, &wr, &post_result);
+                    const uint32_t post_status = post_mode == NDS_DEVICE_BENCHMARK_POST_RAW_SQ
+                                                      ? NdsAicpuPostSendRawImpl(&args->transport.control_qp, &wr,
+                                                                                &post_result)
+                                                      : args->operation == NDS_DEVICE_BENCHMARK_READ
+                                                            ? NdsAicpuRdmaReadImpl(&args->transport, &wr, &post_result)
+                                                            : NdsAicpuRdmaWriteImpl(&args->transport, &wr, &post_result);
                     if (post_status != kNdsAicpuSuccess || post_result != 0)
                         return fail(args, NDS_DEVICE_BENCHMARK_POST_FAILED, result);
                     ++result.wqe_count;

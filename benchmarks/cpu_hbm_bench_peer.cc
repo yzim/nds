@@ -30,14 +30,16 @@ struct Config {
     nds::client::TransportConfig transport;
     nds::benchmark::Operation operation{nds::benchmark::Operation::Read};
     std::uint32_t bytes{};
+    std::uint64_t mr_bytes{};
     std::uint32_t in_flight{64U};
     std::uint32_t qps{1U};
+    bool host_pinned{};
 };
 
 nds::Result<Config> parse(int argc, char **argv) {
     Config config;
     std::string operation{"read"};
-    CLI::App app{"Publish an NPU HBM region for the CPU-initiated RDMA benchmark."};
+    CLI::App app{"Publish an NPU HBM or NPU-RNIC-registered host-pinned region for the CPU-initiated RDMA benchmark."};
     app.add_option("--ascendcl", config.runtime.ascendcl_library)->required();
     app.add_option("--runtime", config.runtime.runtime_library)->required();
     app.add_option("--ra", config.transport.endpoint.ra_library)->required();
@@ -45,8 +47,11 @@ nds::Result<Config> parse(int argc, char **argv) {
     app.add_option("--server", config.transport.server_address)->required();
     app.add_option("--operation", operation)->required()->check(CLI::IsMember({"read", "write"}));
     app.add_option("--bytes", config.bytes)->required()->check(CLI::Range(1U, UINT32_MAX));
+    app.add_option("--mr-bytes", config.mr_bytes, "Registered remote MR size; zero selects the window minimum.");
     app.add_option("--in-flight", config.in_flight)->check(CLI::Range(1U, UINT32_MAX));
     app.add_option("--qps", config.qps)->check(CLI::Range(1U, kMaxQps));
+    app.add_flag("--host-pinned", config.host_pinned,
+                 "Register AscendCL page-locked host memory through the NPU RNIC instead of NPU HBM.");
     try {
         app.parse(argc, argv);
     } catch (const CLI::ParseError &error) {
@@ -68,7 +73,12 @@ nds::Result<std::string> indexed_address(const std::string &base, std::uint32_t 
 nds::Result<std::size_t> total_bytes(const Config &config) {
     if (config.in_flight == 0U || config.bytes > std::numeric_limits<std::size_t>::max() / config.in_flight)
         return nds::unexpected(nds::ErrorCode::kInvalidArgument, "benchmark buffer size overflows address space");
-    return static_cast<std::size_t>(config.bytes) * config.in_flight;
+    const std::size_t minimum = static_cast<std::size_t>(config.bytes) * config.in_flight;
+    if (config.mr_bytes == 0U)
+        return minimum;
+    if (config.mr_bytes < minimum || config.mr_bytes > std::numeric_limits<std::size_t>::max())
+        return nds::unexpected(nds::ErrorCode::kInvalidArgument, "benchmark MR size is invalid");
+    return static_cast<std::size_t>(config.mr_bytes);
 }
 
 bool is_retryable_transport_open_failure(const nds::Error &error) {
@@ -104,20 +114,22 @@ int run_single(const Config &config, std::uint32_t index) {
             std::this_thread::sleep_for(kTransportOpenRetryDelay);
         }
     }
-    auto buffer = runtime.allocate(*memory_bytes);
+    const auto location = config.host_pinned ? nds::client::MemoryLocation::HostPinned
+                                             : nds::client::MemoryLocation::Device;
+    auto buffer = runtime.allocate(*memory_bytes, location);
     if (!buffer) {
-        NDS_LOG_ERROR("cpu-hbm-peer", "QP {} NPU HBM allocation failed: {}", index, buffer.error().message);
+        NDS_LOG_ERROR("cpu-hbm-peer", "QP {} remote memory allocation failed: {}", index, buffer.error().message);
         return EXIT_FAILURE;
     }
     auto region = transport->endpoint()->reg_mr(*buffer, nds::client::MemoryAccess::DirectNpu);
     if (!region) {
-        NDS_LOG_ERROR("cpu-hbm-peer", "QP {} NPU HBM registration failed: {}", index, region.error().message);
+        NDS_LOG_ERROR("cpu-hbm-peer", "QP {} remote memory registration failed: {}", index, region.error().message);
         return EXIT_FAILURE;
     }
     std::array<std::uint8_t, nds::benchmark::kMemoryRecordBytes> record{};
     if (!nds::benchmark::serialize_remote_memory(
             {config.operation, region->address(), region->length(), region->remote_key()}, &record)) {
-        NDS_LOG_ERROR("cpu-hbm-peer", "QP {} NPU HBM metadata serialization failed", index);
+        NDS_LOG_ERROR("cpu-hbm-peer", "QP {} remote memory metadata serialization failed", index);
         return EXIT_FAILURE;
     }
     if (const auto sent = transport->bootstrap()->send_bytes(record.data(), record.size()); !sent) {

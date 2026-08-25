@@ -8,7 +8,9 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <span>
 #include <string>
+#include <vector>
 
 namespace nds::server {
 
@@ -62,6 +64,12 @@ public:
                              std::uint32_t length, std::uint32_t request_count);
     Result<void> write_window(const RegisteredRegion &local, std::uint64_t remote_address, std::uint32_t remote_key,
                               std::uint32_t length, std::uint32_t request_count);
+    Result<void> read_window_offsets(const RegisteredRegion &local, std::uint64_t remote_address,
+                                     std::uint32_t remote_key, std::uint32_t length,
+                                     std::span<const std::uint64_t> offsets, std::uint32_t post_batch);
+    Result<void> write_window_offsets(const RegisteredRegion &local, std::uint64_t remote_address,
+                                      std::uint32_t remote_key, std::uint32_t length,
+                                      std::span<const std::uint64_t> offsets, std::uint32_t post_batch);
     const nds::transport::QpInfo &local_qp_info() const noexcept;
 
 private:
@@ -69,6 +77,9 @@ private:
                           std::uint32_t remote_key, std::uint32_t length);
     Result<void> transfer_window(ibv_wr_opcode opcode, const RegisteredRegion &local, std::uint64_t remote_address,
                                  std::uint32_t remote_key, std::uint32_t length, std::uint32_t request_count);
+    Result<void> transfer_window_offsets(ibv_wr_opcode opcode, const RegisteredRegion &local,
+                                         std::uint64_t remote_address, std::uint32_t remote_key, std::uint32_t length,
+                                         std::span<const std::uint64_t> offsets, std::uint32_t post_batch);
     Result<void> poll(ibv_wc_opcode opcode, std::uint32_t timeout_ms);
 
     ibv_context *context_{};
@@ -77,6 +88,8 @@ private:
     ibv_qp *qp_{};
     nds::transport::QpInfo local_{};
     BackendConfig config_{};
+    std::vector<ibv_sge> offset_sge_cache_;
+    std::vector<ibv_send_wr> offset_wr_cache_;
 };
 
 }  // namespace nds::server

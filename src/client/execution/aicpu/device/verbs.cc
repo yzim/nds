@@ -4,7 +4,7 @@
 #include "hns_hw.h"
 
 namespace {
-constexpr uint32_t kMaxLinkedWrs = 16U;
+constexpr uint32_t kMaxLinkedWrs = 128U;
 
 int32_t provider_opcode(uint32_t opcode) {
     if (opcode == NDS_DEVICE_WR_SEND)
@@ -15,7 +15,69 @@ int32_t provider_opcode(uint32_t opcode) {
         return NDS_HNS_WR_RDMA_WRITE;
     return -1;
 }
+
+bool valid_raw_send(const NdsDeviceQp *qp, const NdsDeviceSendWr *wr) {
+    return NdsAicpuValidQp(qp) && wr != nullptr && qp->qp_mode == NDS_DEVICE_QP_MODE_NORMAL &&
+           qp->send_queue.depth != 0U && qp->send_queue.entry_size >= sizeof(NdsHnsHwRcSqWqe) +
+                                                                      sizeof(NdsHnsHwWqeDataSeg) &&
+           qp->send_queue.buffer_address != 0U && qp->send_queue.head_address != 0U &&
+           qp->send_queue.tail_address != 0U && qp->send_queue.doorbell_address != 0U &&
+           qp->send_queue.wr_id_address != 0U && NDS_HNS_HW_SQ_OPCODE_FROM_DEVICE(wr->opcode) !=
+                                                   NDS_HNS_HW_SQ_INVALID;
+}
 }  // namespace
+
+extern "C" uint32_t NdsAicpuPostSendRawImpl(const NdsDeviceQp *qp, const NdsDeviceSendWr *wr,
+                                              int32_t *return_value) {
+    if (return_value == nullptr)
+        return kNdsAicpuInvalidArgument;
+    if (!valid_raw_send(qp, wr)) {
+        NdsAicpuSetReturnValue(return_value, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
+        return kNdsAicpuSuccess;
+    }
+
+    const NdsDeviceWorkQueue &queue = qp->send_queue;
+    auto *head = reinterpret_cast<uint32_t *>(queue.head_address);
+    auto *tail = reinterpret_cast<uint32_t *>(queue.tail_address);
+    if (!nds_hns_hw_queue_has_space(*head, *tail, queue.depth, 1U)) {
+        NdsAicpuSetReturnValue(return_value, NDS_DEVICE_OPERATION_QUEUE_FULL);
+        return kNdsAicpuSuccess;
+    }
+
+    const uint32_t current = *head;
+    const uint32_t index = current % queue.depth;
+    auto *wqe = reinterpret_cast<NdsHnsHwRcSqWqe *>(queue.buffer_address +
+                                                      static_cast<uint64_t>(queue.entry_size) * index);
+    auto *sge = reinterpret_cast<NdsHnsHwWqeDataSeg *>(reinterpret_cast<uint8_t *>(wqe) + sizeof(*wqe));
+    const uint32_t byte_4 = NDS_HNS_HW_SQ_OPCODE_FROM_DEVICE(wr->opcode) |
+                            ((wr->flags & NDS_DEVICE_SEND_SIGNALED) != 0U
+                                 ? static_cast<uint32_t>(NDS_HNS_HW_SQ_SIGNALED)
+                                 : 0U);
+
+    wqe->byte_4 = byte_4;
+    wqe->message_length = wr->local.length;
+    wqe->immediate_data = 0U;
+    wqe->sge_count = NDS_HNS_HW_SQ_SGE_COUNT_ONE;
+    wqe->start_sge_index = 0U;
+    wqe->remote_key = wr->opcode == NDS_DEVICE_WR_SEND ? 0U : wr->remote_key;
+    wqe->remote_address = wr->opcode == NDS_DEVICE_WR_SEND ? 0U : wr->remote_address;
+    nds_hns_hw_encode_wqe_data_seg(sge, wr->local.address, wr->local.length, wr->local.local_key);
+    reinterpret_cast<uint64_t *>(queue.wr_id_address)[index] = wr->wr_id;
+
+    /* Match the provider's publication ordering: data first, owner bit last. */
+    NdsAicpuBarrier();
+    wqe->byte_4 = byte_4 | nds_hns_hw_sq_owner_bit(current);
+    const uint32_t next = current + 1U;
+    *head = next;
+    NdsAicpuBarrier();
+    if ((wr->flags & NDS_DEVICE_SEND_DEFER_DOORBELL) == 0U) {
+        *reinterpret_cast<volatile uint64_t *>(queue.doorbell_address) =
+            static_cast<uint64_t>(queue.number) | (static_cast<uint64_t>(next & 0xffffU) << 32U) |
+            (static_cast<uint64_t>(qp->service_level) << 48U);
+    }
+    NdsAicpuSetReturnValue(return_value, NDS_DEVICE_OPERATION_SUCCESS);
+    return kNdsAicpuSuccess;
+}
 
 extern "C" uint32_t NdsAicpuPostSendImpl(const NdsDeviceQp *qp, const NdsDeviceSendWr *wr,
                                          int32_t *return_value, NdsDeviceDoorbell *doorbell) {
@@ -60,6 +122,38 @@ extern "C" uint32_t NdsAicpuPostSendImpl(const NdsDeviceQp *qp, const NdsDeviceS
     }
     NdsAicpuSetReturnValue(return_value,
                            provider_result == 0 ? NDS_DEVICE_OPERATION_SUCCESS : NDS_DEVICE_OPERATION_PROVIDER_FAILED);
+    return kNdsAicpuSuccess;
+}
+
+extern "C" uint32_t NdsAicpuPostSendBatchImpl(const NdsDevicePostSendBatchArgs *args) {
+    if (args == nullptr || args->doorbell_address == 0U || args->count == 0U || args->length == 0U ||
+        args->local_address == 0U || args->remote_address == 0U || args->local_key == 0U || args->remote_key == 0U ||
+        args->qp.qp_mode != NDS_DEVICE_QP_MODE_OPBASE_EXT) {
+        return kNdsAicpuInvalidArgument;
+    }
+    auto *doorbell = reinterpret_cast<NdsDeviceDoorbell *>(args->doorbell_address);
+    *doorbell = {};
+    for (uint32_t index = 0U; index < args->count; ++index) {
+        const bool final_wqe = index + 1U == args->count;
+        const bool signaled = final_wqe ||
+                              (args->signal_every != 0U && (index + 1U) % args->signal_every == 0U);
+        const NdsDeviceSendWr wr{
+            args->wr_id_start + index,
+            NDS_DEVICE_WR_RDMA_WRITE,
+            signaled ? static_cast<uint32_t>(NDS_DEVICE_SEND_SIGNALED) : 0U,
+            {args->local_address + static_cast<uint64_t>(index) * args->length, args->length, args->local_key},
+            args->remote_address + static_cast<uint64_t>(index) * args->length,
+            args->remote_key,
+            0U};
+        int32_t post_result = -1;
+        const uint32_t status = NdsAicpuPostSendImpl(&args->qp, &wr, &post_result, final_wqe ? doorbell : nullptr);
+        if (status != kNdsAicpuSuccess || post_result != 0) {
+            doorbell->reserved = post_result == 0 ? status : static_cast<uint32_t>(-post_result);
+            NdsAicpuBarrier();
+            return kNdsAicpuSuccess;
+        }
+    }
+    NdsAicpuBarrier();
     return kNdsAicpuSuccess;
 }
 
