@@ -55,8 +55,19 @@ current architecture and protocol contract.
 - Replace temporary execution accessors with explicit, value-like, non-owning
   RA/AIV/AICPU execution-resource views.
 - Keep host C++ objects and HCCP/provider handles out of device-visible records.
-- Version and validate NDS device records; make transfer ownership, alignment,
-  and lifetime explicit before changing queue geometry or launch behavior.
+- Keep fixed-layout assertions and semantic validation for NDS device records;
+  make transfer ownership, alignment, and lifetime explicit before changing
+  queue geometry or launch behavior.
+- Keep the current device `*Args` ABI limited to standard functional results.
+  Design provider/path diagnostics only as a later, explicitly versioned
+  extended or debug interface; do not add diagnostic fields to the verbs-shaped
+  launch envelopes.
+- Evaluate a target-host AscendC `<<< >>>` AIV launch stub as an alternative to
+  the current dynamically loaded host-argument path. Establish whether a stub
+  can launch the separately loaded NDS AIV binary on the installed CANN
+  release, preserve the narrow runtime boundary and resource lifetime rules,
+  and provide a measured benefit before adopting it. Keep the AICPU package
+  `void *args` ABI independent of that evaluation.
 
 ### Runtime Loaders
 

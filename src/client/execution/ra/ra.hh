@@ -30,7 +30,7 @@ struct RaStorageContext {
 Result<void> NdsRaPostSend(client::Runtime *runtime, client::QueuePair *qp, const NdsDeviceSendWr &wr);
 Result<void> NdsRaPostRecv(client::QueuePair *qp, const NdsDeviceRecvWr &wr);
 Result<std::uint32_t> NdsRaPollCq(client::QueuePair *qp, bool is_send_cq, std::uint32_t max_completions,
-                                  NdsDeviceCompletionOutput *output);
+                                  NdsDeviceWc *wc);
 
 /* Connection layer. Send/Read/Write build a work request and submit it. */
 Result<void> NdsRaRdmaSend(const RaConnection &connection, const NdsDeviceSendWr &wr);

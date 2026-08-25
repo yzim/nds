@@ -103,8 +103,11 @@ The explicit NDS `PollCq(is_send_cq)` operation remains available only for a
 future caller-owned-CQ configuration that opts into that RA flag. Its selector
 matches CANN RA `RaPollCq`: `true` selects the send CQ and `false` the receive CQ.
 Its successful result is the number of completions copied to the supplied
-output, from zero through the requested limit. RA poll errors become NDS
-errors; device launch and provider status remain in `NdsDeviceOperationResult`.
+output, from zero through the requested limit. Device launch envelopes keep
+that functional output in their `return_value` field: post operations report
+zero or a negative normalized error, and PollCq reports its WC count or a
+negative normalized error. Provider diagnostics are not part of the device
+verbs API; a future extended or debug interface may define them separately.
 
 Resources remain valid through the HCCP-managed local completion path, the CPU
 data movement and terminal completion Write, and NPU observation of the
@@ -207,6 +210,13 @@ work request, CQ, connection, and host-launch records. AIV exposes device
 Send, Receive, Read, Write, and an optional caller-owned `PollCq(is_send_cq)` API. CANN 9.0.0 requires its loadable
 image to be one CCEC translation unit, though standalone objects remain for
 compile and symbol verification.
+
+`NdsDevicePostSendArgs`, `NdsDevicePostRecvArgs`, and `NdsDevicePollCqArgs`
+are operation-launch envelopes for AIV and AICPU. Their payload fields retain
+the verbs-shaped `SendWr`, `RecvWr`, and completion-output contract; they do
+not define a second verbs request layer. Each envelope owns its functional
+`return_value`; no separate device result allocation or provider-diagnostic
+record is exposed by this API.
 
 ### AICPU
 

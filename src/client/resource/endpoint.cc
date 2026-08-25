@@ -112,8 +112,8 @@ QueuePair &QueuePair::operator=(QueuePair &&other) noexcept {
 }
 
 Result<NdsRaTypicalQp> QueuePair::build_typical_qp(const NdsRaQpAttr &attributes, std::uint32_t traffic_class,
-                                                      std::uint32_t service_level, std::uint32_t retry_count,
-                                                      std::uint32_t retry_timeout) const {
+                                                   std::uint32_t service_level, std::uint32_t retry_count,
+                                                   std::uint32_t retry_timeout) const {
     if (!is_valid_qp_number(attributes.qpn) || !is_valid_psn(attributes.psn))
         return unexpected(ErrorCode::kInvalidArgument, "invalid QP number or PSN");
     NdsRaTypicalQp result{};
@@ -327,7 +327,7 @@ Result<NdsDeviceTransport> QueuePair::make_device_transport() const {
         return output;
     };
     const auto copy_cq = [](const NdsRaAiDataPlaneCq &input) {
-        NdsDeviceCompletionQueue output{};
+        NdsDeviceCq output{};
         output.number = input.cqn;
         output.depth = input.depth;
         output.entry_size = input.cqe_size;
@@ -338,10 +338,6 @@ Result<NdsDeviceTransport> QueuePair::make_device_transport() const {
         return output;
     };
     NdsDeviceTransport output{};
-    output.abi_version = NDS_DEVICE_TRANSPORT_ABI_VERSION;
-    output.size = sizeof(output);
-    output.control_qp.abi_version = NDS_DEVICE_QP_ABI_VERSION;
-    output.control_qp.size = sizeof(output.control_qp);
     output.control_qp.flags = (config_.control_flags & QueuePairCallerPollsCq) != 0U
                                   ? static_cast<std::uint32_t>(NDS_DEVICE_QP_CALLER_POLLS_CQ)
                                   : 0U;
@@ -404,8 +400,7 @@ Endpoint::~Endpoint() {
 
 Result<void> Endpoint::open(Runtime *runtime, const EndpointConfig &config) {
     if (opened() || runtime == nullptr || !runtime->initialized() || config.ra_library.empty()) {
-        return unexpected(ErrorCode::kInvalidArgument,
-                          "endpoint open requires one runtime and RA library");
+        return unexpected(ErrorCode::kInvalidArgument, "endpoint open requires one runtime and RA library");
     }
     runtime_ = runtime;
     config_ = config;
@@ -454,8 +449,7 @@ Result<void> Endpoint::open(Runtime *runtime, const EndpointConfig &config) {
     result = api_.ra_rdev_init_v2(rdev_init, rdev, &rdev_handle_);
     if (result != 0 || rdev_handle_ == nullptr) {
         reset();
-        return unexpected(ErrorCode::kRa,
-                          "RaRdevInitV2 failed for " + *ipv4 + ": " + std::to_string(result));
+        return unexpected(ErrorCode::kRa, "RaRdevInitV2 failed for " + *ipv4 + ": " + std::to_string(result));
     }
     return {};
 }

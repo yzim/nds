@@ -15,22 +15,25 @@ int32_t provider_opcode(uint32_t opcode) {
 }
 }  // namespace
 
-extern "C" uint32_t NdsAicpuPostSendImpl(const NdsDeviceQp *qp, const NdsDeviceSendWr *wr,
-                                         NdsDeviceOperationResult *result) {
-    if (!NdsAicpuValidQp(qp) || wr == nullptr || result == nullptr)
+extern "C" uint32_t NdsAicpuPostSendImpl(const NdsDeviceQp *qp, const NdsDeviceSendWr *wr, int32_t *return_value) {
+    if (return_value == nullptr)
         return kNdsAicpuInvalidArgument;
+    if (!NdsAicpuValidQp(qp) || wr == nullptr) {
+        NdsAicpuSetReturnValue(return_value, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
+        return kNdsAicpuSuccess;
+    }
     const int32_t opcode = provider_opcode(wr->opcode);
     if (opcode < 0) {
-        NdsAicpuSetResult(result, NDS_DEVICE_OPERATION_UNSUPPORTED, NDS_DEVICE_OPERATION_PATH_NONE, 0);
+        NdsAicpuSetReturnValue(return_value, NDS_DEVICE_OPERATION_UNSUPPORTED);
         return kNdsAicpuSuccess;
     }
     if (qp->qp_mode != NDS_DEVICE_QP_MODE_NORMAL) {
-        NdsAicpuSetResult(result, NDS_DEVICE_OPERATION_UNSUPPORTED, NDS_DEVICE_OPERATION_PATH_NONE, 0);
+        NdsAicpuSetReturnValue(return_value, NDS_DEVICE_OPERATION_UNSUPPORTED);
         return kNdsAicpuSuccess;
     }
     auto post = reinterpret_cast<NdsHnsExpPostSendFn>(NdsAicpuResolveSymbol("ibv_exp_post_send"));
     if (post == nullptr) {
-        NdsAicpuSetResult(result, NDS_DEVICE_OPERATION_SYMBOL_UNAVAILABLE, NDS_DEVICE_OPERATION_PATH_PROVIDER, 0);
+        NdsAicpuSetReturnValue(return_value, NDS_DEVICE_OPERATION_SYMBOL_UNAVAILABLE);
         return kNdsAicpuSuccess;
     }
     NdsHnsSge sge{wr->local.address, wr->local.length, wr->local.local_key};
@@ -46,75 +49,76 @@ extern "C" uint32_t NdsAicpuPostSendImpl(const NdsDeviceQp *qp, const NdsDeviceS
     NdsHnsSendWr *bad = nullptr;
     NdsHnsPostSendResponse response{};
     const int provider_result = post(reinterpret_cast<void *>(qp->provider_qp_address), &provider_wr, &bad, &response);
-    NdsAicpuSetResult(result,
-                      provider_result == 0 ? NDS_DEVICE_OPERATION_SUCCESS : NDS_DEVICE_OPERATION_PROVIDER_FAILED,
-                      NDS_DEVICE_OPERATION_PATH_PROVIDER, provider_result);
+    NdsAicpuSetReturnValue(return_value,
+                           provider_result == 0 ? NDS_DEVICE_OPERATION_SUCCESS : NDS_DEVICE_OPERATION_PROVIDER_FAILED);
     return kNdsAicpuSuccess;
 }
 
-extern "C" uint32_t NdsAicpuPostRecvImpl(const NdsDeviceQp *qp, const NdsDeviceRecvWr *wr,
-                                         NdsDeviceOperationResult *result) {
-    if (!NdsAicpuValidQp(qp) || wr == nullptr || result == nullptr)
+extern "C" uint32_t NdsAicpuPostRecvImpl(const NdsDeviceQp *qp, const NdsDeviceRecvWr *wr, int32_t *return_value) {
+    if (return_value == nullptr)
         return kNdsAicpuInvalidArgument;
+    if (!NdsAicpuValidQp(qp) || wr == nullptr) {
+        NdsAicpuSetReturnValue(return_value, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
+        return kNdsAicpuSuccess;
+    }
     auto post = reinterpret_cast<NdsHnsPostRecvFn>(NdsAicpuResolveSymbol("ibv_post_recv"));
     if (post != nullptr) {
         NdsHnsSge sge{wr->local.address, wr->local.length, wr->local.local_key};
         NdsHnsRecvWr provider_wr{wr->wr_id, nullptr, &sge, 1, 0U};
         NdsHnsRecvWr *bad = nullptr;
         const int provider_result = post(reinterpret_cast<void *>(qp->provider_qp_address), &provider_wr, &bad);
-        NdsAicpuSetResult(result,
-                          provider_result == 0 ? NDS_DEVICE_OPERATION_SUCCESS : NDS_DEVICE_OPERATION_PROVIDER_FAILED,
-                          NDS_DEVICE_OPERATION_PATH_PROVIDER, provider_result);
+        NdsAicpuSetReturnValue(
+            return_value, provider_result == 0 ? NDS_DEVICE_OPERATION_SUCCESS : NDS_DEVICE_OPERATION_PROVIDER_FAILED);
         return kNdsAicpuSuccess;
     }
     const NdsDeviceWorkQueue &queue = qp->receive_queue;
     auto *head = reinterpret_cast<uint32_t *>(queue.head_address);
     auto *tail = reinterpret_cast<uint32_t *>(queue.tail_address);
     if (!nds_hns_hw_queue_has_space(*head, *tail, queue.depth, 0U)) {
-        NdsAicpuSetResult(result, NDS_DEVICE_OPERATION_QUEUE_FULL, NDS_DEVICE_OPERATION_PATH_DIRECT, 0);
+        NdsAicpuSetReturnValue(return_value, NDS_DEVICE_OPERATION_QUEUE_FULL);
         return kNdsAicpuSuccess;
     }
     const uint32_t index = *head % queue.depth;
-    auto *segment = reinterpret_cast<NdsHnsHwWqeDataSeg *>(queue.buffer_address +
-                                                                static_cast<uint64_t>(queue.entry_size) * index);
+    auto *segment =
+        reinterpret_cast<NdsHnsHwWqeDataSeg *>(queue.buffer_address + static_cast<uint64_t>(queue.entry_size) * index);
     nds_hns_hw_encode_wqe_data_seg(segment, wr->local.address, wr->local.length, wr->local.local_key);
     reinterpret_cast<uint64_t *>(queue.wr_id_address)[index] = wr->wr_id;
     NdsAicpuBarrier();
     ++*head;
     *reinterpret_cast<uint32_t *>(queue.doorbell_address) = *head & 0xffffU;
-    NdsAicpuSetResult(result, NDS_DEVICE_OPERATION_SUCCESS, NDS_DEVICE_OPERATION_PATH_DIRECT, 0);
+    NdsAicpuSetReturnValue(return_value, NDS_DEVICE_OPERATION_SUCCESS);
     return kNdsAicpuSuccess;
 }
 
-extern "C" uint32_t NdsAicpuPollCqImpl(const NdsDeviceQp *qp, const NdsDevicePollCqRequest *request,
-                                       NdsDeviceOperationResult *result) {
-    if (!NdsAicpuValidQp(qp) || request == nullptr || result == nullptr || request->is_send_cq > 1U ||
-        request->completion_output_address == 0U || request->max_completions == 0U)
+extern "C" uint32_t NdsAicpuPollCqImpl(const NdsDeviceQp *qp, uint32_t is_send_cq_value, uint32_t max_completions,
+                                       NdsDeviceWc *wc, int32_t *return_value) {
+    if (return_value == nullptr)
         return kNdsAicpuInvalidArgument;
-    const bool is_send_cq = request->is_send_cq != 0U;
+    if (!NdsAicpuValidQp(qp) || is_send_cq_value > 1U || wc == nullptr || max_completions == 0U) {
+        NdsAicpuSetReturnValue(return_value, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
+        return kNdsAicpuSuccess;
+    }
+    const bool is_send_cq = is_send_cq_value != 0U;
     auto poll = reinterpret_cast<NdsHnsPollCqFn>(NdsAicpuResolveSymbol("ibv_poll_cq"));
-    const uint32_t limit =
-        request->max_completions < NDS_DEVICE_MAX_COMPLETIONS ? request->max_completions : NDS_DEVICE_MAX_COMPLETIONS;
-    auto *output = reinterpret_cast<NdsDeviceCompletionOutput *>(request->completion_output_address);
+    const uint32_t limit = max_completions < NDS_DEVICE_MAX_COMPLETIONS ? max_completions : NDS_DEVICE_MAX_COMPLETIONS;
     if (poll != nullptr) {
         NdsHnsWc completions[NDS_DEVICE_MAX_COMPLETIONS]{};
-        void *cq = reinterpret_cast<void *>(is_send_cq ? qp->provider_send_cq_address : qp->provider_receive_cq_address);
+        void *cq =
+            reinterpret_cast<void *>(is_send_cq ? qp->provider_send_cq_address : qp->provider_receive_cq_address);
         const int count = poll(cq, static_cast<int>(limit), completions);
         if (count < 0) {
-            NdsAicpuSetResult(result, NDS_DEVICE_OPERATION_PROVIDER_FAILED, NDS_DEVICE_OPERATION_PATH_PROVIDER, count);
+            NdsAicpuSetReturnValue(return_value, NDS_DEVICE_OPERATION_PROVIDER_FAILED);
             return kNdsAicpuSuccess;
         }
         for (int index = 0; index < count; ++index) {
-            output->entries[index] = {
-                completions[index].wr_id,      completions[index].status,   completions[index].opcode,
-                completions[index].vendor_err, completions[index].byte_len, completions[index].qp_num,
-                completions[index].wc_flags,   completions[index].imm_data, 0U};
+            wc[index] = {completions[index].wr_id,      completions[index].status,   completions[index].opcode,
+                         completions[index].vendor_err, completions[index].byte_len, completions[index].qp_num,
+                         completions[index].wc_flags,   completions[index].imm_data, 0U};
         }
-        output->count = static_cast<uint32_t>(count);
-        NdsAicpuSetResult(result, NDS_DEVICE_OPERATION_SUCCESS, NDS_DEVICE_OPERATION_PATH_PROVIDER, 0);
+        *return_value = count;
         return kNdsAicpuSuccess;
     }
-    const NdsDeviceCompletionQueue &cq = is_send_cq ? qp->send_cq : qp->receive_cq;
+    const NdsDeviceCq &cq = is_send_cq ? qp->send_cq : qp->receive_cq;
     const NdsDeviceWorkQueue &wq = is_send_cq ? qp->send_queue : qp->receive_queue;
     auto *consumer_address = reinterpret_cast<uint32_t *>(cq.consumer_address);
     auto *tail_address = reinterpret_cast<uint32_t *>(wq.tail_address);
@@ -128,17 +132,15 @@ extern "C" uint32_t NdsAicpuPollCqImpl(const NdsDeviceQp *qp, const NdsDevicePol
             break;
         if (is_send_cq)
             tail = nds_hns_hw_send_tail_for_cqe(tail, wq.depth, cqe);
-        nds_hns_hw_decode_cqe(cqe, reinterpret_cast<uint64_t *>(wq.wr_id_address)[tail % wq.depth],
-                           &output->entries[count++]);
+        nds_hns_hw_decode_cqe(cqe, reinterpret_cast<uint64_t *>(wq.wr_id_address)[tail % wq.depth], &wc[count++]);
         ++consumer;
         ++tail;
     }
-    output->count = count;
+    *return_value = static_cast<int32_t>(count);
     if (count != 0U) {
         *consumer_address = consumer;
         *tail_address = tail;
         *reinterpret_cast<uint32_t *>(cq.doorbell_address) = consumer & 0x00ffffffU;
     }
-    NdsAicpuSetResult(result, NDS_DEVICE_OPERATION_SUCCESS, NDS_DEVICE_OPERATION_PATH_DIRECT, 0);
     return kNdsAicpuSuccess;
 }

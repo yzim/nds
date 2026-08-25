@@ -15,18 +15,15 @@ __aicore__ inline void NdsAivCacheSync(__gm__ uint8_t *address, uint64_t length)
         DataCacheCleanAndInvalid<uint8_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(global[offset]);
 }
 
-__aicore__ inline void NdsAivSetResult(__gm__ NdsDeviceOperationResult *result, uint32_t status) {
-    if (result == nullptr)
+__aicore__ inline void NdsAivSetReturnValue(__gm__ int32_t *return_value, uint32_t status) {
+    if (return_value == nullptr)
         return;
-    result->status = status;
-    result->path = NDS_DEVICE_OPERATION_PATH_DIRECT;
-    result->provider_result = 0;
-    result->reserved = 0U;
-    NdsAivCacheSync(reinterpret_cast<__gm__ uint8_t *>(result), sizeof(*result));
+    *return_value = status == NDS_DEVICE_OPERATION_SUCCESS ? 0 : -static_cast<int32_t>(status);
+    NdsAivCacheSync(reinterpret_cast<__gm__ uint8_t *>(return_value), sizeof(*return_value));
 }
 
 __aicore__ inline bool NdsAivValidQp(__gm__ const NdsDeviceQp *qp) {
-    return qp != nullptr && qp->abi_version == NDS_DEVICE_QP_ABI_VERSION && qp->size == sizeof(*qp);
+    return qp != nullptr;
 }
 
 #endif

@@ -43,11 +43,11 @@ enum NdsHnsHwSqFlag {
     NDS_HNS_HW_SQ_SIGNALED = 1U << 8U,
 };
 
-#define NDS_HNS_HW_SQ_OPCODE_FROM_DEVICE(opcode)    \
+#define NDS_HNS_HW_SQ_OPCODE_FROM_DEVICE(opcode) \
     ((opcode) == NDS_DEVICE_WR_SEND              \
-         ? NDS_HNS_HW_SQ_SEND                       \
+         ? NDS_HNS_HW_SQ_SEND                    \
          : ((opcode) == NDS_DEVICE_WR_RDMA_WRITE \
-                ? NDS_HNS_HW_SQ_RDMA_WRITE          \
+                ? NDS_HNS_HW_SQ_RDMA_WRITE       \
                 : ((opcode) == NDS_DEVICE_WR_RDMA_READ ? NDS_HNS_HW_SQ_RDMA_READ : NDS_HNS_HW_SQ_INVALID)))
 
 static inline int nds_hns_hw_queue_has_space(uint32_t head, uint32_t tail, uint32_t depth, uint32_t reserved_entries) {
@@ -71,7 +71,7 @@ static inline uint32_t nds_hns_hw_send_tail_for_cqe(uint32_t tail, uint32_t dept
     return tail + ((wqe_index - tail) & (depth - 1U));
 }
 
-static inline void nds_hns_hw_decode_cqe(const NdsHnsHwCqe *cqe, uint64_t wr_id, NdsDeviceCompletion *completion) {
+static inline void nds_hns_hw_decode_cqe(const NdsHnsHwCqe *cqe, uint64_t wr_id, NdsDeviceWc *completion) {
     completion->wr_id = wr_id;
     completion->status = (int32_t)((cqe->byte_4 >> 8U) & 0xffU);
     completion->opcode = (int32_t)(cqe->byte_4 & 0x1fU);

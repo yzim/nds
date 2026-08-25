@@ -2,40 +2,35 @@
 #include "internal.h"
 
 namespace {
-bool valid_transport(const NdsDeviceTransport *transport, const NdsDeviceSendWr *wr,
-                     NdsDeviceOperationResult *result) {
-    return transport != nullptr && wr != nullptr && result != nullptr &&
-           transport->abi_version == NDS_DEVICE_TRANSPORT_ABI_VERSION && transport->size == sizeof(*transport);
+bool valid_transport(const NdsDeviceTransport *transport, const NdsDeviceSendWr *wr, int32_t *return_value) {
+    return transport != nullptr && wr != nullptr && return_value != nullptr;
 }
 
-uint32_t post(const NdsDeviceTransport *transport, const NdsDeviceSendWr *wr, NdsDeviceOperationResult *result) {
-    if (!valid_transport(transport, wr, result))
+uint32_t post(const NdsDeviceTransport *transport, const NdsDeviceSendWr *wr, int32_t *return_value) {
+    if (!valid_transport(transport, wr, return_value))
         return kNdsAicpuInvalidArgument;
-    return NdsAicpuPostSendImpl(&transport->control_qp, wr, result);
+    return NdsAicpuPostSendImpl(&transport->control_qp, wr, return_value);
 }
 }  // namespace
 
 extern "C" uint32_t NdsAicpuRdmaSendImpl(const NdsDeviceTransport *transport, const NdsDeviceSendWr *wr,
-                                         NdsDeviceOperationResult *result) {
-    return post(transport, wr, result);
+                                         int32_t *return_value) {
+    return post(transport, wr, return_value);
 }
 
-extern "C" uint32_t NdsAicpuRdmaRecvImpl(const NdsDeviceTransport *transport, const NdsDeviceSendWr *wr,
-                                         NdsDeviceOperationResult *result) {
-    if (!valid_transport(transport, wr, result))
+extern "C" uint32_t NdsAicpuRdmaRecvImpl(const NdsDeviceTransport *transport, const NdsDeviceRecvWr *wr,
+                                         int32_t *return_value) {
+    if (transport == nullptr || wr == nullptr || return_value == nullptr)
         return kNdsAicpuInvalidArgument;
-    NdsDeviceRecvWr recv{};
-    recv.wr_id = wr->wr_id;
-    recv.local = wr->local;
-    return NdsAicpuPostRecvImpl(&transport->control_qp, &recv, result);
+    return NdsAicpuPostRecvImpl(&transport->control_qp, wr, return_value);
 }
 
 extern "C" uint32_t NdsAicpuRdmaReadImpl(const NdsDeviceTransport *transport, const NdsDeviceSendWr *wr,
-                                         NdsDeviceOperationResult *result) {
-    return post(transport, wr, result);
+                                         int32_t *return_value) {
+    return post(transport, wr, return_value);
 }
 
 extern "C" uint32_t NdsAicpuRdmaWriteImpl(const NdsDeviceTransport *transport, const NdsDeviceSendWr *wr,
-                                          NdsDeviceOperationResult *result) {
-    return post(transport, wr, result);
+                                          int32_t *return_value) {
+    return post(transport, wr, return_value);
 }
