@@ -52,6 +52,12 @@ Use this order of evidence for a change:
 - [rdma-core](https://github.com/linux-rdma/rdma-core): standard verbs and
   provider patterns. The patched HNS provider is relevant only to the narrow
   CP1 device-side post boundary.
+- HCOMM's CMake source inspection shows that its HNS provider is a Huawei
+  patched rdma-core fork with private AI-QP extensions. This is provenance for
+  the narrow standard-CP1 provider boundary only; NDS must keep those provider
+  objects and symbols out of the host process and must not copy or vendor the
+  implementation. Installed CANN/provider exports and bounded target tests
+  remain authoritative for NDS behavior.
 - Public Ascend/CANN documentation and headers: AscendCL lifecycle, binary and
   CPU-kernel package loading, and public toolchain behavior.
 

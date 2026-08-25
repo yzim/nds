@@ -88,9 +88,10 @@ The paired lower-layer examples build with `-DNDS_BUILD_HARDWARE_PROBES=ON`.
 Storage remains the application-level test path under `apps/`.
 
 Before interpreting or extending a hardware performance result, read the
-current ignored ledgers `.local/benchmark-results.md` and `.local/status.md`.
-They record prior target experiments, configurations, failures, and known
-limitations that are not suitable for tracked documentation.
+tracked [benchmark report](benchmark.md), then the current ignored ledgers
+`.local/status.md` and the relevant `.local/logs/` evidence. The report is the
+durable summary; local state records the active handoff and target-specific
+raw evidence behind it.
 
 ## PyTorch wrapper
 

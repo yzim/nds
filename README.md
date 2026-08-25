@@ -56,5 +56,7 @@ docs/       Design, development, roadmap, and reference guides
   runtime ABI, and execution modes.
 - [Development](docs/development.md): C++ conventions, formatting, testing,
   hardware validation, and the PyTorch wrapper.
+- [Benchmarks](docs/benchmark.md): target methodology, matched configurations,
+  current performance results, and known limits.
 - [Roadmap](docs/roadmap.md): delivered work and planned engineering tracks.
 - [Reference basis](docs/references.md): source provenance and evidence rules.

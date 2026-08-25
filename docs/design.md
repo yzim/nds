@@ -50,6 +50,13 @@ src/common/             shared transport implementation
 src/torch/              reusable PyTorch extension
 ```
 
+HCOMM's source organizes lifecycle and data movement together in its transport
+abstractions. NDS keeps those ownership boundaries explicit: runtime, endpoint,
+QP, and memory-region lifecycle remain local resources, while transport and
+storage define the NDS data path and protocol. HCOMM is therefore a source
+basis for ABI intent, not a reciprocal transport implementation that NDS can
+drop in for the CPU `libibverbs` endpoint.
+
 ## Wire boundary and resources
 
 The TCP bootstrap carries only versioned NDS records:
@@ -72,6 +79,13 @@ The NPU creates one offline HCCP rdev and one RC QP. Its lifecycle is:
 aclInit -> aclrtSetDevice -> rtOpenNetService(--hdcType=18)
         -> RaInit -> RaRdevInitV2
 ```
+
+NDS accepts a logical device ID at its public/runtime boundary and resolves it
+through `aclrtGetPhyDevIdByLogicDevId` before populating the RA `phy_id` fields.
+The logical ID is used for ACL/runtime selection; the resolved physical ID is
+used for RA initialization, rdev creation, QP creation, and device-network
+lookup. This follows the CANN runtime as the authority for logical-to-physical
+mapping rather than maintaining an NDS topology table.
 
 The offline path uses `NETWORK_OFFLINE`, `NOTIFY (1)`, and an enabled Lite
 context. QP mode is an HCCP provider submission-mode selector, separate from
