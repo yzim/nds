@@ -35,8 +35,8 @@ __aicore__ inline void StoreU32(uint64_t address, uint32_t value) {
 }
 }  // namespace
 
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPostSendImpl(__gm__ const NdsDeviceQp *qp,
-                                                              const NdsDeviceSendWr *wr, TBuf<> *scratch,
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPostSendImpl(__gm__ const NdsDeviceQp *qp, const NdsDeviceSendWr *wr,
+                                                              TBuf<> *scratch,
                                                               __gm__ NdsDeviceOperationResult *result) {
     if (result == nullptr)
         return;
@@ -62,7 +62,8 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPostSendImpl(__gm__ const NdsDe
     const uint32_t owner = (head >> 15U) & 1U;
     const uint32_t hns_opcode = NDS_HNS_HW_SQ_OPCODE_FROM_DEVICE(wr->opcode);
     const uint32_t signaled = (wr->flags & NDS_DEVICE_SEND_SIGNALED) != 0U ? NDS_HNS_HW_SQ_SIGNALED : 0U;
-    wqe->byte_4 = hns_opcode | (((~owner) << 7U) & (1U << 7U)) | signaled;
+    const uint32_t byte_4 = hns_opcode | signaled;
+    wqe->byte_4 = byte_4;
     wqe->message_length = wr->local.length;
     wqe->immediate_data = 0U;
     wqe->sge_count = 1U << 24U;
@@ -78,16 +79,20 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPostSendImpl(__gm__ const NdsDe
     NdsAivCacheSync(reinterpret_cast<__gm__ uint8_t *>(wr_id), sizeof(*wr_id));
     NdsAivCacheSync(wqe_address, sizeof(HnsRoceRcSqWqe) + sizeof(HnsRoceSge));
     PipeBarrier<PIPE_ALL>();
+    wqe->byte_4 = byte_4 | (((~owner) << 7U) & (1U << 7U));
+    NdsAivCacheSync(reinterpret_cast<__gm__ uint8_t *>(&wqe->byte_4), sizeof(wqe->byte_4));
+    PipeBarrier<PIPE_ALL>();
     const uint32_t next = head + 1U;
+    StoreU32(queue->head_address, next);
+    PipeBarrier<PIPE_ALL>();
     const uint64_t doorbell =
         (uint64_t)queue->number | ((uint64_t)(next & 0xffffU) << 32U) | ((uint64_t)qp->service_level << 48U);
     StoreU64(scratch, queue->doorbell_address, doorbell);
-    StoreU32(queue->head_address, next);
     NdsAivSetResult(result, NDS_DEVICE_OPERATION_SUCCESS);
 }
 
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPostRecvImpl(__gm__ const NdsDeviceQp *qp,
-                                                              const NdsDeviceRecvWr *wr, TBuf<> *scratch,
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPostRecvImpl(__gm__ const NdsDeviceQp *qp, const NdsDeviceRecvWr *wr,
+                                                              TBuf<> *scratch,
                                                               __gm__ NdsDeviceOperationResult *result) {
     (void)scratch;
     if (result == nullptr)
@@ -122,9 +127,9 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPostRecvImpl(__gm__ const NdsDe
     NdsAivSetResult(result, NDS_DEVICE_OPERATION_SUCCESS);
 }
 
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPollCqImpl(
-    __gm__ const NdsDeviceQp *qp, __gm__ const NdsDevicePollCqRequest *request, TBuf<> *scratch,
-    __gm__ NdsDeviceOperationResult *result) {
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPollCqImpl(__gm__ const NdsDeviceQp *qp,
+                                                            __gm__ const NdsDevicePollCqRequest *request,
+                                                            TBuf<> *scratch, __gm__ NdsDeviceOperationResult *result) {
     (void)scratch;
     if (result == nullptr)
         return;
