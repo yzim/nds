@@ -23,8 +23,7 @@ public:
     Result<void> launch_post_send_and_wait(std::uint64_t device_request_address, std::int32_t completion_timeout_ms);
     Result<void> launch_storage_and_wait(std::uint64_t device_request_address, StorageOperation operation,
                                          std::int32_t completion_timeout_ms);
-    Result<void> launch_storage_wait_and_wait(std::uint64_t device_request_address,
-                                              std::int32_t completion_timeout_ms);
+    Result<void> launch_storage_wait_and_wait(std::uint64_t device_request_address, std::int32_t completion_timeout_ms);
     void reset() noexcept;
     bool loaded() const noexcept;
 

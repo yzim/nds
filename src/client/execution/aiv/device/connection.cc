@@ -2,8 +2,7 @@
 #include "internal.h"
 
 NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaSendImpl(__gm__ const NdsDeviceTransport *transport,
-                                                              const NdsDeviceSendWr *wr,
-                                                              __gm__ int32_t *return_value,
+                                                              const NdsDeviceSendWr *wr, __gm__ int32_t *return_value,
                                                               TBuf<> *scratch) {
     if (return_value == nullptr)
         return;
@@ -15,8 +14,7 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaSendImpl(__gm__ const NdsDe
 }
 
 NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaRecvImpl(__gm__ const NdsDeviceTransport *transport,
-                                                              const NdsDeviceRecvWr *wr,
-                                                              __gm__ int32_t *return_value,
+                                                              const NdsDeviceRecvWr *wr, __gm__ int32_t *return_value,
                                                               TBuf<> *scratch) {
     if (return_value == nullptr)
         return;
@@ -28,8 +26,7 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaRecvImpl(__gm__ const NdsDe
 }
 
 NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaReadImpl(__gm__ const NdsDeviceTransport *transport,
-                                                              const NdsDeviceSendWr *wr,
-                                                              __gm__ int32_t *return_value,
+                                                              const NdsDeviceSendWr *wr, __gm__ int32_t *return_value,
                                                               TBuf<> *scratch) {
     if (return_value == nullptr)
         return;
@@ -41,8 +38,7 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaReadImpl(__gm__ const NdsDe
 }
 
 NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaWriteImpl(__gm__ const NdsDeviceTransport *transport,
-                                                               const NdsDeviceSendWr *wr,
-                                                               __gm__ int32_t *return_value,
+                                                               const NdsDeviceSendWr *wr, __gm__ int32_t *return_value,
                                                                TBuf<> *scratch) {
     if (return_value == nullptr)
         return;

@@ -122,7 +122,7 @@ Result<void> AivEntrypointLauncher::launch_storage_and_wait(std::uint64_t device
 }
 
 Result<void> AivEntrypointLauncher::launch_storage_wait_and_wait(std::uint64_t device_request_address,
-                                                                  std::int32_t completion_timeout_ms) {
+                                                                 std::int32_t completion_timeout_ms) {
     if (!loaded() || device_request_address == 0U || completion_timeout_ms <= 0)
         return unexpected(ErrorCode::kInvalidArgument,
                           "NDS AIV storage wait requires a loaded binary, request address, and positive timeout");
@@ -140,8 +140,8 @@ Result<void> AivEntrypointLauncher::launch_storage_wait_and_wait(std::uint64_t d
         return unexpected(ErrorCode::kRuntime,
                           "aclrtLaunchKernelWithHostArgs(NdsAivStorageWait) failed: " + std::to_string(result));
     if (const int result = acl_->synchronize_stream_with_timeout(stream_, completion_timeout_ms); result != 0)
-        return unexpected(ErrorCode::kRuntime,
-                          "aclrtSynchronizeStreamWithTimeout after NdsAivStorageWait failed: " + std::to_string(result));
+        return unexpected(ErrorCode::kRuntime, "aclrtSynchronizeStreamWithTimeout after NdsAivStorageWait failed: " +
+                                                   std::to_string(result));
     return {};
 }
 

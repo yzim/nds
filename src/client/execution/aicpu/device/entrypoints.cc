@@ -60,9 +60,9 @@ extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuPollCq(void *
         set_invalid(request == nullptr ? nullptr : &request->return_value);
         return kEntryInvalidArgument;
     }
-    const uint32_t status = NdsAicpuPollCqImpl(
-        &request->qp, request->is_send_cq, request->max_completions,
-        reinterpret_cast<NdsDeviceWc *>(request->wc_address), &request->return_value);
+    const uint32_t status =
+        NdsAicpuPollCqImpl(&request->qp, request->is_send_cq, request->max_completions,
+                           reinterpret_cast<NdsDeviceWc *>(request->wc_address), &request->return_value);
     entry_barrier();
     return status;
 }
@@ -138,8 +138,7 @@ extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuStorageBatchR
         set_invalid(request == nullptr ? nullptr : &request->return_value);
         return kEntryInvalidArgument;
     }
-    const uint32_t status =
-        NdsAicpuStorageBatchReadImpl(&request->context, &request->command, &request->return_value);
+    const uint32_t status = NdsAicpuStorageBatchReadImpl(&request->context, &request->command, &request->return_value);
     entry_barrier();
     return status;
 }
@@ -150,8 +149,7 @@ extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuStorageBatchW
         set_invalid(request == nullptr ? nullptr : &request->return_value);
         return kEntryInvalidArgument;
     }
-    const uint32_t status =
-        NdsAicpuStorageBatchWriteImpl(&request->context, &request->command, &request->return_value);
+    const uint32_t status = NdsAicpuStorageBatchWriteImpl(&request->context, &request->command, &request->return_value);
     entry_barrier();
     return status;
 }
@@ -163,8 +161,8 @@ extern "C" __attribute__((visibility("default"))) uint32_t NdsAicpuStorageWait(v
         set_invalid(request == nullptr ? nullptr : &request->return_value);
         return kEntryInvalidArgument;
     }
-    const uint32_t status =
-        NdsAicpuStorageWaitImpl(&request->context, request->command_id, request->expected_bytes, &request->return_value);
+    const uint32_t status = NdsAicpuStorageWaitImpl(&request->context, request->command_id, request->expected_bytes,
+                                                    &request->return_value);
     entry_barrier();
     return status;
 }

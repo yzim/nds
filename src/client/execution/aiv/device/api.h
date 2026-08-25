@@ -9,33 +9,25 @@
 #define NDS_AIV_DEVICE_API_LINKAGE extern "C"
 #endif
 
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPostSendImpl(__gm__ const NdsDeviceQp *qp,
-                                                              const NdsDeviceSendWr *wr,
-                                                              __gm__ int32_t *return_value,
-                                                              AscendC::TBuf<> *scratch);
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPostRecvImpl(__gm__ const NdsDeviceQp *qp,
-                                                              const NdsDeviceRecvWr *wr,
-                                                              __gm__ int32_t *return_value,
-                                                              AscendC::TBuf<> *scratch);
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPollCqImpl(
-    __gm__ const NdsDeviceQp *qp, uint32_t is_send_cq, uint32_t max_completions,
-    __gm__ NdsDeviceWc *wc, __gm__ int32_t *return_value, AscendC::TBuf<> *scratch);
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPostSendImpl(__gm__ const NdsDeviceQp *qp, const NdsDeviceSendWr *wr,
+                                                              __gm__ int32_t *return_value, AscendC::TBuf<> *scratch);
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPostRecvImpl(__gm__ const NdsDeviceQp *qp, const NdsDeviceRecvWr *wr,
+                                                              __gm__ int32_t *return_value, AscendC::TBuf<> *scratch);
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPollCqImpl(__gm__ const NdsDeviceQp *qp, uint32_t is_send_cq,
+                                                            uint32_t max_completions, __gm__ NdsDeviceWc *wc,
+                                                            __gm__ int32_t *return_value, AscendC::TBuf<> *scratch);
 
 NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaSendImpl(__gm__ const NdsDeviceTransport *transport,
-                                                              const NdsDeviceSendWr *wr,
-                                                              __gm__ int32_t *return_value,
+                                                              const NdsDeviceSendWr *wr, __gm__ int32_t *return_value,
                                                               AscendC::TBuf<> *scratch);
 NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaRecvImpl(__gm__ const NdsDeviceTransport *transport,
-                                                              const NdsDeviceRecvWr *wr,
-                                                              __gm__ int32_t *return_value,
+                                                              const NdsDeviceRecvWr *wr, __gm__ int32_t *return_value,
                                                               AscendC::TBuf<> *scratch);
 NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaReadImpl(__gm__ const NdsDeviceTransport *transport,
-                                                              const NdsDeviceSendWr *wr,
-                                                              __gm__ int32_t *return_value,
+                                                              const NdsDeviceSendWr *wr, __gm__ int32_t *return_value,
                                                               AscendC::TBuf<> *scratch);
 NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaWriteImpl(__gm__ const NdsDeviceTransport *transport,
-                                                               const NdsDeviceSendWr *wr,
-                                                               __gm__ int32_t *return_value,
+                                                               const NdsDeviceSendWr *wr, __gm__ int32_t *return_value,
                                                                AscendC::TBuf<> *scratch);
 
 NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivStorageReadImpl(__gm__ const NdsDeviceStorageContext *context,

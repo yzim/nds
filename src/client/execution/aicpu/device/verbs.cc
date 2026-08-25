@@ -15,8 +15,7 @@ int32_t provider_opcode(uint32_t opcode) {
 }
 }  // namespace
 
-extern "C" uint32_t NdsAicpuPostSendImpl(const NdsDeviceQp *qp, const NdsDeviceSendWr *wr,
-                                         int32_t *return_value) {
+extern "C" uint32_t NdsAicpuPostSendImpl(const NdsDeviceQp *qp, const NdsDeviceSendWr *wr, int32_t *return_value) {
     if (return_value == nullptr)
         return kNdsAicpuInvalidArgument;
     if (!NdsAicpuValidQp(qp) || wr == nullptr) {
@@ -55,8 +54,7 @@ extern "C" uint32_t NdsAicpuPostSendImpl(const NdsDeviceQp *qp, const NdsDeviceS
     return kNdsAicpuSuccess;
 }
 
-extern "C" uint32_t NdsAicpuPostRecvImpl(const NdsDeviceQp *qp, const NdsDeviceRecvWr *wr,
-                                         int32_t *return_value) {
+extern "C" uint32_t NdsAicpuPostRecvImpl(const NdsDeviceQp *qp, const NdsDeviceRecvWr *wr, int32_t *return_value) {
     if (return_value == nullptr)
         return kNdsAicpuInvalidArgument;
     if (!NdsAicpuValidQp(qp) || wr == nullptr) {
@@ -69,8 +67,8 @@ extern "C" uint32_t NdsAicpuPostRecvImpl(const NdsDeviceQp *qp, const NdsDeviceR
         NdsHnsRecvWr provider_wr{wr->wr_id, nullptr, &sge, 1, 0U};
         NdsHnsRecvWr *bad = nullptr;
         const int provider_result = post(reinterpret_cast<void *>(qp->provider_qp_address), &provider_wr, &bad);
-        NdsAicpuSetReturnValue(return_value, provider_result == 0 ? NDS_DEVICE_OPERATION_SUCCESS
-                                                                    : NDS_DEVICE_OPERATION_PROVIDER_FAILED);
+        NdsAicpuSetReturnValue(
+            return_value, provider_result == 0 ? NDS_DEVICE_OPERATION_SUCCESS : NDS_DEVICE_OPERATION_PROVIDER_FAILED);
         return kNdsAicpuSuccess;
     }
     const NdsDeviceWorkQueue &queue = qp->receive_queue;
@@ -81,8 +79,8 @@ extern "C" uint32_t NdsAicpuPostRecvImpl(const NdsDeviceQp *qp, const NdsDeviceR
         return kNdsAicpuSuccess;
     }
     const uint32_t index = *head % queue.depth;
-    auto *segment = reinterpret_cast<NdsHnsHwWqeDataSeg *>(queue.buffer_address +
-                                                                static_cast<uint64_t>(queue.entry_size) * index);
+    auto *segment =
+        reinterpret_cast<NdsHnsHwWqeDataSeg *>(queue.buffer_address + static_cast<uint64_t>(queue.entry_size) * index);
     nds_hns_hw_encode_wqe_data_seg(segment, wr->local.address, wr->local.length, wr->local.local_key);
     reinterpret_cast<uint64_t *>(queue.wr_id_address)[index] = wr->wr_id;
     NdsAicpuBarrier();
@@ -102,21 +100,20 @@ extern "C" uint32_t NdsAicpuPollCqImpl(const NdsDeviceQp *qp, uint32_t is_send_c
     }
     const bool is_send_cq = is_send_cq_value != 0U;
     auto poll = reinterpret_cast<NdsHnsPollCqFn>(NdsAicpuResolveSymbol("ibv_poll_cq"));
-    const uint32_t limit =
-        max_completions < NDS_DEVICE_MAX_COMPLETIONS ? max_completions : NDS_DEVICE_MAX_COMPLETIONS;
+    const uint32_t limit = max_completions < NDS_DEVICE_MAX_COMPLETIONS ? max_completions : NDS_DEVICE_MAX_COMPLETIONS;
     if (poll != nullptr) {
         NdsHnsWc completions[NDS_DEVICE_MAX_COMPLETIONS]{};
-        void *cq = reinterpret_cast<void *>(is_send_cq ? qp->provider_send_cq_address : qp->provider_receive_cq_address);
+        void *cq =
+            reinterpret_cast<void *>(is_send_cq ? qp->provider_send_cq_address : qp->provider_receive_cq_address);
         const int count = poll(cq, static_cast<int>(limit), completions);
         if (count < 0) {
             NdsAicpuSetReturnValue(return_value, NDS_DEVICE_OPERATION_PROVIDER_FAILED);
             return kNdsAicpuSuccess;
         }
         for (int index = 0; index < count; ++index) {
-            wc[index] = {
-                completions[index].wr_id,      completions[index].status,   completions[index].opcode,
-                completions[index].vendor_err, completions[index].byte_len, completions[index].qp_num,
-                completions[index].wc_flags,   completions[index].imm_data, 0U};
+            wc[index] = {completions[index].wr_id,      completions[index].status,   completions[index].opcode,
+                         completions[index].vendor_err, completions[index].byte_len, completions[index].qp_num,
+                         completions[index].wc_flags,   completions[index].imm_data, 0U};
         }
         *return_value = count;
         return kNdsAicpuSuccess;

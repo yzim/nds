@@ -50,10 +50,10 @@ typedef struct NdsDeviceStorageWaitArgs {
 } NdsDeviceStorageWaitArgs;
 
 static inline int nds_device_storage_context_valid(const NdsDeviceStorageContext *context) {
-    return context != nullptr && context->command_buffer.address != 0U &&
-           context->command_buffer.local_key != 0U && context->command_buffer.length >= nds::kStorageCommandBytes &&
-           context->completion.address != 0U && context->completion.local_key != 0U &&
-           context->completion.length >= nds::kStorageCompletionBytes && context->capacity != 0U;
+    return context != nullptr && context->command_buffer.address != 0U && context->command_buffer.local_key != 0U &&
+           context->command_buffer.length >= nds::kStorageCommandBytes && context->completion.address != 0U &&
+           context->completion.local_key != 0U && context->completion.length >= nds::kStorageCompletionBytes &&
+           context->capacity != 0U;
 }
 
 static inline int nds_device_storage_read_valid(const NdsDeviceStorageContext *context,

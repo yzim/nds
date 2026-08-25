@@ -348,8 +348,7 @@ TEST(EndpointTest, RaVerbsUseQueuePairExecutionView) {
     nds::client::Runtime runtime;
     runtime.runtime_api().set_device = fake_set_device;
     runtime.runtime_api().rdma_db_send = fake_doorbell;
-    const NdsDeviceSendWr send{
-        1U, NDS_DEVICE_WR_SEND, NDS_DEVICE_SEND_SIGNALED, {0x1000U, 64U, 0x99U}, 0U, 0U, 0U};
+    const NdsDeviceSendWr send{1U, NDS_DEVICE_WR_SEND, NDS_DEVICE_SEND_SIGNALED, {0x1000U, 64U, 0x99U}, 0U, 0U, 0U};
     EXPECT_TRUE(nds::NdsRaPostSend(&runtime, &qp, send));
     EXPECT_EQ(fake.send_calls, 1);
     EXPECT_EQ(fake.send.buffers->address, 0x1000U);

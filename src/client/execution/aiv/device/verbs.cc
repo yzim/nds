@@ -35,10 +35,8 @@ __aicore__ inline void StoreU32(uint64_t address, uint32_t value) {
 }
 }  // namespace
 
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPostSendImpl(__gm__ const NdsDeviceQp *qp,
-                                                              const NdsDeviceSendWr *wr,
-                                                              __gm__ int32_t *return_value,
-                                                              TBuf<> *scratch) {
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPostSendImpl(__gm__ const NdsDeviceQp *qp, const NdsDeviceSendWr *wr,
+                                                              __gm__ int32_t *return_value, TBuf<> *scratch) {
     if (return_value == nullptr)
         return;
     if (!NdsAivValidQp(qp) || wr == nullptr || scratch == nullptr ||
@@ -92,10 +90,8 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPostSendImpl(__gm__ const NdsDe
     NdsAivSetReturnValue(return_value, NDS_DEVICE_OPERATION_SUCCESS);
 }
 
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPostRecvImpl(__gm__ const NdsDeviceQp *qp,
-                                                              const NdsDeviceRecvWr *wr,
-                                                              __gm__ int32_t *return_value,
-                                                              TBuf<> *scratch) {
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPostRecvImpl(__gm__ const NdsDeviceQp *qp, const NdsDeviceRecvWr *wr,
+                                                              __gm__ int32_t *return_value, TBuf<> *scratch) {
     (void)scratch;
     if (return_value == nullptr)
         return;
@@ -129,9 +125,9 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPostRecvImpl(__gm__ const NdsDe
     NdsAivSetReturnValue(return_value, NDS_DEVICE_OPERATION_SUCCESS);
 }
 
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPollCqImpl(
-    __gm__ const NdsDeviceQp *qp, uint32_t is_send_cq_value, uint32_t max_completions,
-    __gm__ NdsDeviceWc *wc, __gm__ int32_t *return_value, TBuf<> *scratch) {
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPollCqImpl(__gm__ const NdsDeviceQp *qp, uint32_t is_send_cq_value,
+                                                            uint32_t max_completions, __gm__ NdsDeviceWc *wc,
+                                                            __gm__ int32_t *return_value, TBuf<> *scratch) {
     (void)scratch;
     if (!NdsAivValidQp(qp) || is_send_cq_value > 1U || max_completions == 0U || wc == nullptr ||
         return_value == nullptr) {
@@ -148,8 +144,7 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPollCqImpl(
     NdsAivCacheSync(reinterpret_cast<__gm__ uint8_t *>(tail_address), sizeof(uint32_t));
     uint32_t tail = *tail_address;
     uint32_t count = 0U;
-    const uint32_t limit =
-        max_completions < NDS_DEVICE_MAX_COMPLETIONS ? max_completions : NDS_DEVICE_MAX_COMPLETIONS;
+    const uint32_t limit = max_completions < NDS_DEVICE_MAX_COMPLETIONS ? max_completions : NDS_DEVICE_MAX_COMPLETIONS;
     while (count < limit) {
         __gm__ NdsHnsHwCqe *cqe = reinterpret_cast<__gm__ NdsHnsHwCqe *>(
             cq->buffer_address + (uint64_t)cq->entry_size * (consumer % cq->depth));

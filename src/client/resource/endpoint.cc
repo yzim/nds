@@ -112,8 +112,8 @@ QueuePair &QueuePair::operator=(QueuePair &&other) noexcept {
 }
 
 Result<NdsRaTypicalQp> QueuePair::build_typical_qp(const NdsRaQpAttr &attributes, std::uint32_t traffic_class,
-                                                      std::uint32_t service_level, std::uint32_t retry_count,
-                                                      std::uint32_t retry_timeout) const {
+                                                   std::uint32_t service_level, std::uint32_t retry_count,
+                                                   std::uint32_t retry_timeout) const {
     if (!is_valid_qp_number(attributes.qpn) || !is_valid_psn(attributes.psn))
         return unexpected(ErrorCode::kInvalidArgument, "invalid QP number or PSN");
     NdsRaTypicalQp result{};
@@ -400,8 +400,7 @@ Endpoint::~Endpoint() {
 
 Result<void> Endpoint::open(Runtime *runtime, const EndpointConfig &config) {
     if (opened() || runtime == nullptr || !runtime->initialized() || config.ra_library.empty()) {
-        return unexpected(ErrorCode::kInvalidArgument,
-                          "endpoint open requires one runtime and RA library");
+        return unexpected(ErrorCode::kInvalidArgument, "endpoint open requires one runtime and RA library");
     }
     runtime_ = runtime;
     config_ = config;
@@ -450,8 +449,7 @@ Result<void> Endpoint::open(Runtime *runtime, const EndpointConfig &config) {
     result = api_.ra_rdev_init_v2(rdev_init, rdev, &rdev_handle_);
     if (result != 0 || rdev_handle_ == nullptr) {
         reset();
-        return unexpected(ErrorCode::kRa,
-                          "RaRdevInitV2 failed for " + *ipv4 + ": " + std::to_string(result));
+        return unexpected(ErrorCode::kRa, "RaRdevInitV2 failed for " + *ipv4 + ": " + std::to_string(result));
     }
     return {};
 }

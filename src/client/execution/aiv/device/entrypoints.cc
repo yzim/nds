@@ -196,5 +196,5 @@ static const struct FunLevelKType NdsAivStorageBatchRead_kernel_type_section __a
     used, section(".ascend.meta.NdsAivStorageBatchRead"))) = {{F_TYPE_KTYPE, sizeof(unsigned int), K_TYPE_AIV}};
 static const struct FunLevelKType NdsAivStorageBatchWrite_kernel_type_section __attribute__((
     used, section(".ascend.meta.NdsAivStorageBatchWrite"))) = {{F_TYPE_KTYPE, sizeof(unsigned int), K_TYPE_AIV}};
-static const struct FunLevelKType NdsAivStorageWait_kernel_type_section
-    __attribute__((used, section(".ascend.meta.NdsAivStorageWait"))) = {{F_TYPE_KTYPE, sizeof(unsigned int), K_TYPE_AIV}};
+static const struct FunLevelKType NdsAivStorageWait_kernel_type_section __attribute__((
+    used, section(".ascend.meta.NdsAivStorageWait"))) = {{F_TYPE_KTYPE, sizeof(unsigned int), K_TYPE_AIV}};

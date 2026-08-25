@@ -41,8 +41,7 @@ private:
     Result<void> launch_operator_and_wait(void *args, std::size_t size, const char *operator_name,
                                           std::int32_t completion_timeout_ms);
     Result<void> launch_storage_and_wait(void *args, std::size_t size, const NdsDeviceStorageContext *context,
-                                         const char *operator_name,
-                                         std::int32_t completion_timeout_ms);
+                                         const char *operator_name, std::int32_t completion_timeout_ms);
     NdsAclApi *acl_{};
     NdsAclBinHandle binary_{};
     NdsAclFuncHandle function_{};
