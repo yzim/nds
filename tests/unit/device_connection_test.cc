@@ -25,3 +25,15 @@ TEST(DeviceConnectionTest, BuildsWorkRequests) {
     EXPECT_TRUE(receive.local.length == 4096U);
     EXPECT_TRUE(receive.local.local_key == UINT32_C(0x77));
 }
+
+TEST(DeviceConnectionTest, DefinesBatchPostSendEnvelope) {
+    NdsDevicePostSendBatchArgs args{};
+    args.wrs_address = UINT64_C(0x1000);
+    args.wr_count = 64U;
+    args.bad_wr_address = UINT64_C(0x1060);
+
+    EXPECT_EQ(args.wrs_address, UINT64_C(0x1000));
+    EXPECT_EQ(args.wr_count, 64U);
+    EXPECT_EQ(args.bad_wr_address, UINT64_C(0x1060));
+    EXPECT_EQ(sizeof(args), 256U);
+}

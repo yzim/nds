@@ -183,6 +183,18 @@ execution.
 only after the work request has been submitted to its transport path; it does
 not expose a deferred-doorbell option.
 
+`NdsAivPostSendBatch` is an AIV-only transport entrypoint for one contiguous,
+device-global `NdsDeviceSendWr` array. Its launch envelope carries the array
+address and count. The array remains valid until the AIV launch completes. The
+entrypoint traverses the array in order, populating and publishing each valid
+WQE. It advances the producer once and rings one doorbell for the successfully
+posted prefix. On an invalid WR or exhausted SQ, it stops at that element and
+reports the error after ringing the prefix, following `ibv_post_send` partial
+post behavior. This entrypoint has the same single-producer-per-QP requirement
+as `NdsAivPostSend`. On an error, `bad_wr_address` identifies the first
+unposted array element, equivalent to `ibv_post_send`'s `bad_wr`; it is zero
+on success.
+
 For RA, `RaTypicalSendWr` prepares a WQE and returns `{dbIndex, dbInfo}`. The
 RA interface has no doorbell-ring call, so NDS immediately invokes the CANN
 runtime `rtRDMADBSend` on the selected runtime stream. This follows HCOMM's

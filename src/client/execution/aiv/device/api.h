@@ -11,6 +11,12 @@
 
 NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPostSendImpl(__gm__ const NdsDeviceQp *qp, const NdsDeviceSendWr *wr,
                                                               __gm__ int32_t *return_value, AscendC::TBuf<> *scratch);
+/* Posts a contiguous WR array and returns the first unposted WR address on failure. */
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPostSendBatchImpl(__gm__ const NdsDeviceQp *qp,
+                                                                   __gm__ const NdsDeviceSendWr *wrs, uint32_t wr_count,
+                                                                   __gm__ int32_t *return_value,
+                                                                   __gm__ uint64_t *bad_wr_address,
+                                                                   AscendC::TBuf<> *scratch);
 NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPostRecvImpl(__gm__ const NdsDeviceQp *qp, const NdsDeviceRecvWr *wr,
                                                               __gm__ int32_t *return_value, AscendC::TBuf<> *scratch);
 NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPollCqImpl(__gm__ const NdsDeviceQp *qp, uint32_t is_send_cq,

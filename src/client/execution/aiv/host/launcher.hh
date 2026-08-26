@@ -21,6 +21,8 @@ public:
 
     Result<void> load(NdsAclApi *acl, const std::string &kernel_path);
     Result<void> launch_post_send_and_wait(std::uint64_t args_address, std::int32_t completion_timeout_ms);
+    /* Launches one AIV kernel that posts a contiguous device-global WR array. */
+    Result<void> launch_post_send_batch_and_wait(std::uint64_t args_address, std::int32_t completion_timeout_ms);
     Result<void> launch_storage_and_wait(std::uint64_t args_address, StorageOperation operation,
                                          std::int32_t completion_timeout_ms);
     Result<void> launch_storage_wait_and_wait(std::uint64_t args_address, std::int32_t completion_timeout_ms);

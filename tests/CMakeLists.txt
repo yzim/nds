@@ -30,6 +30,8 @@ target_include_directories(nds_device_storage_test PRIVATE
     ${PROJECT_SOURCE_DIR}/src/include)
 nds_add_unit_test(nds_aicpu_launcher_test aicpu_launcher_test.cc)
 target_link_libraries(nds_aicpu_launcher_test PRIVATE nds_aicpu_launcher)
+nds_add_unit_test(nds_aiv_launcher_test aiv_launcher_test.cc)
+target_link_libraries(nds_aiv_launcher_test PRIVATE nds_aiv_launcher)
 nds_add_unit_test(nds_logging_test logging_test.cc)
 target_link_libraries(nds_logging_test PRIVATE nds_logging)
 nds_add_unit_test(nds_storage_batch_test storage_batch_test.cc)

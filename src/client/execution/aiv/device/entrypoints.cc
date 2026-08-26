@@ -25,20 +25,6 @@ __aicore__ inline bool ValidRdmaArgs(__gm__ const Args *args) {
     return args != nullptr;
 }
 
-__aicore__ inline NdsDeviceSendWr LocalSendWr(__gm__ const NdsDeviceSendWr *wr) {
-    NdsDeviceSendWr local{};
-    local.wr_id = wr->wr_id;
-    local.opcode = wr->opcode;
-    local.flags = wr->flags;
-    local.local.address = wr->local.address;
-    local.local.length = wr->local.length;
-    local.local.local_key = wr->local.local_key;
-    local.remote_address = wr->remote_address;
-    local.remote_key = wr->remote_key;
-    local.reserved = wr->reserved;
-    return local;
-}
-
 template <typename Args>
 __aicore__ inline bool ValidStorageArgs(__gm__ const Args *args) {
     return args != nullptr;
@@ -49,12 +35,25 @@ extern "C" __global__ __aicore__ void NdsAivPostSend(GM_ADDR args_address) {
     __gm__ auto *args = reinterpret_cast<__gm__ NdsDevicePostSendArgs *>(args_address);
     if (!ValidVerbsArgs(args))
         return SetInvalid(args == nullptr ? nullptr : &args->return_value);
-    NdsDeviceSendWr send_wr = LocalSendWr(&args->wr);
+    NdsDeviceSendWr send_wr = LoadSendWr(&args->wr);
     TPipe pipe;
     TBuf<> scratch;
     pipe.InitBuffer(scratch, 64U);
     NdsAivPostSendImpl(&args->qp, &send_wr, &args->return_value, &scratch);
 }
+
+/* Launches a single AIV submission for a contiguous device-global WR array. */
+extern "C" __global__ __aicore__ void NdsAivPostSendBatch(GM_ADDR args_address) {
+    __gm__ auto *args = reinterpret_cast<__gm__ NdsDevicePostSendBatchArgs *>(args_address);
+    if (!ValidVerbsArgs(args))
+        return SetInvalid(args == nullptr ? nullptr : &args->return_value);
+    __gm__ const auto *wrs = reinterpret_cast<__gm__ const NdsDeviceSendWr *>(args->wrs_address);
+    TPipe pipe;
+    TBuf<> scratch;
+    pipe.InitBuffer(scratch, 64U);
+    NdsAivPostSendBatchImpl(&args->qp, wrs, args->wr_count, &args->return_value, &args->bad_wr_address, &scratch);
+}
+
 extern "C" __global__ __aicore__ void NdsAivPostRecv(GM_ADDR args_address) {
     __gm__ auto *args = reinterpret_cast<__gm__ NdsDevicePostRecvArgs *>(args_address);
     if (!ValidVerbsArgs(args))
@@ -86,7 +85,7 @@ extern "C" __global__ __aicore__ void NdsAivRdmaSend(GM_ADDR args_address) {
     TPipe pipe;
     TBuf<> scratch;
     pipe.InitBuffer(scratch, 64U);
-    NdsDeviceSendWr send_wr = LocalSendWr(&args->wr);
+    NdsDeviceSendWr send_wr = LoadSendWr(&args->wr);
     NdsAivRdmaSendImpl(&args->transport, &send_wr, &args->return_value, &scratch);
 }
 
@@ -112,7 +111,7 @@ extern "C" __global__ __aicore__ void NdsAivRdmaRead(GM_ADDR args_address) {
     TPipe pipe;
     TBuf<> scratch;
     pipe.InitBuffer(scratch, 64U);
-    NdsDeviceSendWr send_wr = LocalSendWr(&args->wr);
+    NdsDeviceSendWr send_wr = LoadSendWr(&args->wr);
     NdsAivRdmaReadImpl(&args->transport, &send_wr, &args->return_value, &scratch);
 }
 
@@ -123,7 +122,7 @@ extern "C" __global__ __aicore__ void NdsAivRdmaWrite(GM_ADDR args_address) {
     TPipe pipe;
     TBuf<> scratch;
     pipe.InitBuffer(scratch, 64U);
-    NdsDeviceSendWr send_wr = LocalSendWr(&args->wr);
+    NdsDeviceSendWr send_wr = LoadSendWr(&args->wr);
     NdsAivRdmaWriteImpl(&args->transport, &send_wr, &args->return_value, &scratch);
 }
 
@@ -176,6 +175,8 @@ extern "C" __global__ __aicore__ void NdsAivStorageWait(GM_ADDR args_address) {
 
 static const struct FunLevelKType NdsAivPostSend_kernel_type_section
     __attribute__((used, section(".ascend.meta.NdsAivPostSend"))) = {{F_TYPE_KTYPE, sizeof(unsigned int), K_TYPE_AIV}};
+static const struct FunLevelKType NdsAivPostSendBatch_kernel_type_section __attribute__((
+    used, section(".ascend.meta.NdsAivPostSendBatch"))) = {{F_TYPE_KTYPE, sizeof(unsigned int), K_TYPE_AIV}};
 static const struct FunLevelKType NdsAivPostRecv_kernel_type_section
     __attribute__((used, section(".ascend.meta.NdsAivPostRecv"))) = {{F_TYPE_KTYPE, sizeof(unsigned int), K_TYPE_AIV}};
 static const struct FunLevelKType NdsAivPollCq_kernel_type_section

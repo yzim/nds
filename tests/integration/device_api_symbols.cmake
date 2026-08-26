@@ -22,7 +22,7 @@ if(NDS_DEVICE_KIND STREQUAL "aicpu")
 elseif(NDS_DEVICE_KIND STREQUAL "aiv")
     set(nm_args -g)
     set(symbols
-        NdsAivPostSend NdsAivPostRecv NdsAivPollCq
+        NdsAivPostSend NdsAivPostSendBatch NdsAivPostRecv NdsAivPollCq
         NdsAivRdmaSend NdsAivRdmaRecv NdsAivRdmaRead NdsAivRdmaWrite
         NdsAivStorageRead NdsAivStorageWrite
         NdsAivStorageBatchRead NdsAivStorageBatchWrite)

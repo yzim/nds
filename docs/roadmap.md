@@ -33,6 +33,8 @@ current architecture and protocol contract.
   through an RA-registered device-visible mapping.
 - Implemented RA, AIV, and AICPU command paths, including device-callable
   transport and storage operations for AIV and AICPU.
+- Added an AIV-only batched Send post entrypoint that traverses a device-global
+  WR array, then rings once for its successfully posted prefix.
 - Unified RA, AIV, and AICPU on the same operation-specific storage command
   types and fixed-layout serializers; host-device invocation envelopes remain
   separate from client-server protocol data.

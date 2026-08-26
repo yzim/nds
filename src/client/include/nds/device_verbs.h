@@ -127,6 +127,19 @@ typedef struct NdsDevicePostSendArgs {
     uint32_t reserved;
 } NdsDevicePostSendArgs;
 
+/* Batch post-send launch envelope. wrs_address identifies a contiguous
+ * device-global NdsDeviceSendWr array that remains valid until the launch
+ * completes. The AIV implementation posts and rings the valid prefix once,
+ * then reports its first invalid or unpostable WR through return_value and
+ * bad_wr_address. The latter is zero on success. */
+typedef struct NdsDevicePostSendBatchArgs {
+    NdsDeviceQp qp;
+    uint64_t wrs_address;
+    uint32_t wr_count;
+    int32_t return_value;
+    uint64_t bad_wr_address;
+} NdsDevicePostSendBatchArgs;
+
 typedef struct NdsDevicePostRecvArgs {
     NdsDeviceQp qp;
     NdsDeviceRecvWr wr;
@@ -152,6 +165,7 @@ static_assert(sizeof(NdsDeviceSendWr) == 48, "device send WR ABI changed");
 static_assert(sizeof(NdsDeviceRecvWr) == 24, "device receive WR ABI changed");
 static_assert(sizeof(NdsDeviceWc) == 40, "device WC ABI changed");
 static_assert(sizeof(NdsDevicePostSendArgs) == 288, "device post-send operator ABI changed");
+static_assert(sizeof(NdsDevicePostSendBatchArgs) == 256, "device post-send batch operator ABI changed");
 static_assert(sizeof(NdsDevicePostRecvArgs) == 264, "device post-recv operator ABI changed");
 static_assert(sizeof(NdsDevicePollCqArgs) == 256, "device poll-CQ operator ABI changed");
 #else
@@ -163,6 +177,7 @@ _Static_assert(sizeof(NdsDeviceSendWr) == 48, "device send WR ABI changed");
 _Static_assert(sizeof(NdsDeviceRecvWr) == 24, "device receive WR ABI changed");
 _Static_assert(sizeof(NdsDeviceWc) == 40, "device WC ABI changed");
 _Static_assert(sizeof(NdsDevicePostSendArgs) == 288, "device post-send operator ABI changed");
+_Static_assert(sizeof(NdsDevicePostSendBatchArgs) == 256, "device post-send batch operator ABI changed");
 _Static_assert(sizeof(NdsDevicePostRecvArgs) == 264, "device post-recv operator ABI changed");
 _Static_assert(sizeof(NdsDevicePollCqArgs) == 256, "device poll-CQ operator ABI changed");
 #endif
