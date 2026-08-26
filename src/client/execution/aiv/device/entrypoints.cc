@@ -15,14 +15,14 @@ __aicore__ inline void SetInvalid(__gm__ int32_t *return_value) {
     NdsAivSetReturnValue(return_value, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
 }
 
-template <typename Request>
-__aicore__ inline bool ValidVerbsRequest(__gm__ const Request *request) {
-    return request != nullptr;
+template <typename Args>
+__aicore__ inline bool ValidVerbsArgs(__gm__ const Args *args) {
+    return args != nullptr;
 }
 
-template <typename Request>
-__aicore__ inline bool ValidRdmaRequest(__gm__ const Request *request) {
-    return request != nullptr;
+template <typename Args>
+__aicore__ inline bool ValidRdmaArgs(__gm__ const Args *args) {
+    return args != nullptr;
 }
 
 __aicore__ inline NdsDeviceSendWr LocalSendWr(__gm__ const NdsDeviceSendWr *wr) {
@@ -40,138 +40,138 @@ __aicore__ inline NdsDeviceSendWr LocalSendWr(__gm__ const NdsDeviceSendWr *wr) 
 }
 
 template <typename Args>
-__aicore__ inline bool ValidStorageArgs(__gm__ const Args *request) {
-    return request != nullptr;
+__aicore__ inline bool ValidStorageArgs(__gm__ const Args *args) {
+    return args != nullptr;
 }
 }  // namespace
 
 extern "C" __global__ __aicore__ void NdsAivPostSend(GM_ADDR args_address) {
-    __gm__ auto *request = reinterpret_cast<__gm__ NdsDevicePostSendArgs *>(args_address);
-    if (!ValidVerbsRequest(request))
-        return SetInvalid(request == nullptr ? nullptr : &request->return_value);
-    NdsDeviceSendWr send_wr = LocalSendWr(&request->wr);
+    __gm__ auto *args = reinterpret_cast<__gm__ NdsDevicePostSendArgs *>(args_address);
+    if (!ValidVerbsArgs(args))
+        return SetInvalid(args == nullptr ? nullptr : &args->return_value);
+    NdsDeviceSendWr send_wr = LocalSendWr(&args->wr);
     TPipe pipe;
     TBuf<> scratch;
     pipe.InitBuffer(scratch, 64U);
-    NdsAivPostSendImpl(&request->qp, &send_wr, &request->return_value, &scratch);
+    NdsAivPostSendImpl(&args->qp, &send_wr, &args->return_value, &scratch);
 }
 extern "C" __global__ __aicore__ void NdsAivPostRecv(GM_ADDR args_address) {
-    __gm__ auto *request = reinterpret_cast<__gm__ NdsDevicePostRecvArgs *>(args_address);
-    if (!ValidVerbsRequest(request))
-        return SetInvalid(request == nullptr ? nullptr : &request->return_value);
+    __gm__ auto *args = reinterpret_cast<__gm__ NdsDevicePostRecvArgs *>(args_address);
+    if (!ValidVerbsArgs(args))
+        return SetInvalid(args == nullptr ? nullptr : &args->return_value);
     NdsDeviceRecvWr recv{};
-    recv.wr_id = request->wr.wr_id;
-    recv.local.address = request->wr.local.address;
-    recv.local.length = request->wr.local.length;
-    recv.local.local_key = request->wr.local.local_key;
+    recv.wr_id = args->wr.wr_id;
+    recv.local.address = args->wr.local.address;
+    recv.local.length = args->wr.local.length;
+    recv.local.local_key = args->wr.local.local_key;
     TPipe pipe;
     TBuf<> scratch;
     pipe.InitBuffer(scratch, 64U);
-    NdsAivPostRecvImpl(&request->qp, &recv, &request->return_value, &scratch);
+    NdsAivPostRecvImpl(&args->qp, &recv, &args->return_value, &scratch);
 }
 extern "C" __global__ __aicore__ void NdsAivPollCq(GM_ADDR args_address) {
-    __gm__ auto *request = reinterpret_cast<__gm__ NdsDevicePollCqArgs *>(args_address);
-    if (!ValidVerbsRequest(request))
-        return SetInvalid(request == nullptr ? nullptr : &request->return_value);
+    __gm__ auto *args = reinterpret_cast<__gm__ NdsDevicePollCqArgs *>(args_address);
+    if (!ValidVerbsArgs(args))
+        return SetInvalid(args == nullptr ? nullptr : &args->return_value);
     TPipe pipe;
     TBuf<> scratch;
     pipe.InitBuffer(scratch, 64U);
-    NdsAivPollCqImpl(&request->qp, request->is_send_cq, request->max_completions,
-                     reinterpret_cast<__gm__ NdsDeviceWc *>(request->wc_address), &request->return_value, &scratch);
+    NdsAivPollCqImpl(&args->qp, args->is_send_cq, args->max_completions,
+                     reinterpret_cast<__gm__ NdsDeviceWc *>(args->wc_address), &args->return_value, &scratch);
 }
 extern "C" __global__ __aicore__ void NdsAivRdmaSend(GM_ADDR args_address) {
-    __gm__ auto *request = reinterpret_cast<__gm__ NdsDeviceRdmaSendArgs *>(args_address);
-    if (!ValidRdmaRequest(request))
-        return SetInvalid(request == nullptr ? nullptr : &request->return_value);
+    __gm__ auto *args = reinterpret_cast<__gm__ NdsDeviceRdmaSendArgs *>(args_address);
+    if (!ValidRdmaArgs(args))
+        return SetInvalid(args == nullptr ? nullptr : &args->return_value);
     TPipe pipe;
     TBuf<> scratch;
     pipe.InitBuffer(scratch, 64U);
-    NdsDeviceSendWr send_wr = LocalSendWr(&request->wr);
-    NdsAivRdmaSendImpl(&request->transport, &send_wr, &request->return_value, &scratch);
+    NdsDeviceSendWr send_wr = LocalSendWr(&args->wr);
+    NdsAivRdmaSendImpl(&args->transport, &send_wr, &args->return_value, &scratch);
 }
 
 extern "C" __global__ __aicore__ void NdsAivRdmaRecv(GM_ADDR args_address) {
-    __gm__ auto *request = reinterpret_cast<__gm__ NdsDeviceRdmaRecvArgs *>(args_address);
-    if (!ValidRdmaRequest(request))
-        return SetInvalid(request == nullptr ? nullptr : &request->return_value);
+    __gm__ auto *args = reinterpret_cast<__gm__ NdsDeviceRdmaRecvArgs *>(args_address);
+    if (!ValidRdmaArgs(args))
+        return SetInvalid(args == nullptr ? nullptr : &args->return_value);
     TPipe pipe;
     TBuf<> scratch;
     pipe.InitBuffer(scratch, 64U);
     NdsDeviceRecvWr recv{};
-    recv.wr_id = request->wr.wr_id;
-    recv.local.address = request->wr.local.address;
-    recv.local.length = request->wr.local.length;
-    recv.local.local_key = request->wr.local.local_key;
-    NdsAivRdmaRecvImpl(&request->transport, &recv, &request->return_value, &scratch);
+    recv.wr_id = args->wr.wr_id;
+    recv.local.address = args->wr.local.address;
+    recv.local.length = args->wr.local.length;
+    recv.local.local_key = args->wr.local.local_key;
+    NdsAivRdmaRecvImpl(&args->transport, &recv, &args->return_value, &scratch);
 }
 
 extern "C" __global__ __aicore__ void NdsAivRdmaRead(GM_ADDR args_address) {
-    __gm__ auto *request = reinterpret_cast<__gm__ NdsDeviceRdmaReadArgs *>(args_address);
-    if (!ValidRdmaRequest(request))
-        return SetInvalid(request == nullptr ? nullptr : &request->return_value);
+    __gm__ auto *args = reinterpret_cast<__gm__ NdsDeviceRdmaReadArgs *>(args_address);
+    if (!ValidRdmaArgs(args))
+        return SetInvalid(args == nullptr ? nullptr : &args->return_value);
     TPipe pipe;
     TBuf<> scratch;
     pipe.InitBuffer(scratch, 64U);
-    NdsDeviceSendWr send_wr = LocalSendWr(&request->wr);
-    NdsAivRdmaReadImpl(&request->transport, &send_wr, &request->return_value, &scratch);
+    NdsDeviceSendWr send_wr = LocalSendWr(&args->wr);
+    NdsAivRdmaReadImpl(&args->transport, &send_wr, &args->return_value, &scratch);
 }
 
 extern "C" __global__ __aicore__ void NdsAivRdmaWrite(GM_ADDR args_address) {
-    __gm__ auto *request = reinterpret_cast<__gm__ NdsDeviceRdmaWriteArgs *>(args_address);
-    if (!ValidRdmaRequest(request))
-        return SetInvalid(request == nullptr ? nullptr : &request->return_value);
+    __gm__ auto *args = reinterpret_cast<__gm__ NdsDeviceRdmaWriteArgs *>(args_address);
+    if (!ValidRdmaArgs(args))
+        return SetInvalid(args == nullptr ? nullptr : &args->return_value);
     TPipe pipe;
     TBuf<> scratch;
     pipe.InitBuffer(scratch, 64U);
-    NdsDeviceSendWr send_wr = LocalSendWr(&request->wr);
-    NdsAivRdmaWriteImpl(&request->transport, &send_wr, &request->return_value, &scratch);
+    NdsDeviceSendWr send_wr = LocalSendWr(&args->wr);
+    NdsAivRdmaWriteImpl(&args->transport, &send_wr, &args->return_value, &scratch);
 }
 
 extern "C" __global__ __aicore__ void NdsAivStorageRead(GM_ADDR args_address) {
-    __gm__ auto *request = reinterpret_cast<__gm__ NdsDeviceStorageReadArgs *>(args_address);
-    if (!ValidStorageArgs(request))
-        return SetInvalid(request == nullptr ? nullptr : &request->return_value);
+    __gm__ auto *args = reinterpret_cast<__gm__ NdsDeviceStorageReadArgs *>(args_address);
+    if (!ValidStorageArgs(args))
+        return SetInvalid(args == nullptr ? nullptr : &args->return_value);
     TPipe pipe;
     TBuf<> scratch;
     pipe.InitBuffer(scratch, 64U);
-    NdsAivStorageReadImpl(&request->context, &request->command, &request->return_value, &scratch);
+    NdsAivStorageReadImpl(&args->context, &args->command, &args->return_value, &scratch);
 }
 
 extern "C" __global__ __aicore__ void NdsAivStorageWrite(GM_ADDR args_address) {
-    __gm__ auto *request = reinterpret_cast<__gm__ NdsDeviceStorageWriteArgs *>(args_address);
-    if (!ValidStorageArgs(request))
-        return SetInvalid(request == nullptr ? nullptr : &request->return_value);
+    __gm__ auto *args = reinterpret_cast<__gm__ NdsDeviceStorageWriteArgs *>(args_address);
+    if (!ValidStorageArgs(args))
+        return SetInvalid(args == nullptr ? nullptr : &args->return_value);
     TPipe pipe;
     TBuf<> scratch;
     pipe.InitBuffer(scratch, 64U);
-    NdsAivStorageWriteImpl(&request->context, &request->command, &request->return_value, &scratch);
+    NdsAivStorageWriteImpl(&args->context, &args->command, &args->return_value, &scratch);
 }
 
 extern "C" __global__ __aicore__ void NdsAivStorageBatchRead(GM_ADDR args_address) {
-    __gm__ auto *request = reinterpret_cast<__gm__ NdsDeviceStorageBatchReadArgs *>(args_address);
-    if (!ValidStorageArgs(request))
-        return SetInvalid(request == nullptr ? nullptr : &request->return_value);
+    __gm__ auto *args = reinterpret_cast<__gm__ NdsDeviceStorageBatchReadArgs *>(args_address);
+    if (!ValidStorageArgs(args))
+        return SetInvalid(args == nullptr ? nullptr : &args->return_value);
     TPipe pipe;
     TBuf<> scratch;
     pipe.InitBuffer(scratch, 64U);
-    NdsAivStorageBatchReadImpl(&request->context, &request->command, &request->return_value, &scratch);
+    NdsAivStorageBatchReadImpl(&args->context, &args->command, &args->return_value, &scratch);
 }
 
 extern "C" __global__ __aicore__ void NdsAivStorageBatchWrite(GM_ADDR args_address) {
-    __gm__ auto *request = reinterpret_cast<__gm__ NdsDeviceStorageBatchWriteArgs *>(args_address);
-    if (!ValidStorageArgs(request))
-        return SetInvalid(request == nullptr ? nullptr : &request->return_value);
+    __gm__ auto *args = reinterpret_cast<__gm__ NdsDeviceStorageBatchWriteArgs *>(args_address);
+    if (!ValidStorageArgs(args))
+        return SetInvalid(args == nullptr ? nullptr : &args->return_value);
     TPipe pipe;
     TBuf<> scratch;
     pipe.InitBuffer(scratch, 64U);
-    NdsAivStorageBatchWriteImpl(&request->context, &request->command, &request->return_value, &scratch);
+    NdsAivStorageBatchWriteImpl(&args->context, &args->command, &args->return_value, &scratch);
 }
 
 extern "C" __global__ __aicore__ void NdsAivStorageWait(GM_ADDR args_address) {
-    __gm__ auto *request = reinterpret_cast<__gm__ NdsDeviceStorageWaitArgs *>(args_address);
-    if (!ValidStorageArgs(request))
-        return SetInvalid(request == nullptr ? nullptr : &request->return_value);
-    NdsAivStorageWaitImpl(&request->context, request->command_id, request->expected_bytes, &request->return_value);
+    __gm__ auto *args = reinterpret_cast<__gm__ NdsDeviceStorageWaitArgs *>(args_address);
+    if (!ValidStorageArgs(args))
+        return SetInvalid(args == nullptr ? nullptr : &args->return_value);
+    NdsAivStorageWaitImpl(&args->context, args->command_id, args->expected_bytes, &args->return_value);
 }
 
 static const struct FunLevelKType NdsAivPostSend_kernel_type_section
