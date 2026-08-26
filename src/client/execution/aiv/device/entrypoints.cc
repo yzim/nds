@@ -45,8 +45,8 @@ __aicore__ inline bool ValidStorageArgs(__gm__ const Args *request) {
 }
 }  // namespace
 
-extern "C" __global__ __aicore__ void NdsAivPostSend(GM_ADDR request_address) {
-    __gm__ auto *request = reinterpret_cast<__gm__ NdsDevicePostSendArgs *>(request_address);
+extern "C" __global__ __aicore__ void NdsAivPostSend(GM_ADDR args_address) {
+    __gm__ auto *request = reinterpret_cast<__gm__ NdsDevicePostSendArgs *>(args_address);
     if (!ValidVerbsRequest(request))
         return SetInvalid(request == nullptr ? nullptr : &request->return_value);
     NdsDeviceSendWr send_wr = LocalSendWr(&request->wr);
@@ -55,8 +55,8 @@ extern "C" __global__ __aicore__ void NdsAivPostSend(GM_ADDR request_address) {
     pipe.InitBuffer(scratch, 64U);
     NdsAivPostSendImpl(&request->qp, &send_wr, &request->return_value, &scratch);
 }
-extern "C" __global__ __aicore__ void NdsAivPostRecv(GM_ADDR request_address) {
-    __gm__ auto *request = reinterpret_cast<__gm__ NdsDevicePostRecvArgs *>(request_address);
+extern "C" __global__ __aicore__ void NdsAivPostRecv(GM_ADDR args_address) {
+    __gm__ auto *request = reinterpret_cast<__gm__ NdsDevicePostRecvArgs *>(args_address);
     if (!ValidVerbsRequest(request))
         return SetInvalid(request == nullptr ? nullptr : &request->return_value);
     NdsDeviceRecvWr recv{};
@@ -69,8 +69,8 @@ extern "C" __global__ __aicore__ void NdsAivPostRecv(GM_ADDR request_address) {
     pipe.InitBuffer(scratch, 64U);
     NdsAivPostRecvImpl(&request->qp, &recv, &request->return_value, &scratch);
 }
-extern "C" __global__ __aicore__ void NdsAivPollCq(GM_ADDR request_address) {
-    __gm__ auto *request = reinterpret_cast<__gm__ NdsDevicePollCqArgs *>(request_address);
+extern "C" __global__ __aicore__ void NdsAivPollCq(GM_ADDR args_address) {
+    __gm__ auto *request = reinterpret_cast<__gm__ NdsDevicePollCqArgs *>(args_address);
     if (!ValidVerbsRequest(request))
         return SetInvalid(request == nullptr ? nullptr : &request->return_value);
     TPipe pipe;
@@ -79,8 +79,8 @@ extern "C" __global__ __aicore__ void NdsAivPollCq(GM_ADDR request_address) {
     NdsAivPollCqImpl(&request->qp, request->is_send_cq, request->max_completions,
                      reinterpret_cast<__gm__ NdsDeviceWc *>(request->wc_address), &request->return_value, &scratch);
 }
-extern "C" __global__ __aicore__ void NdsAivRdmaSend(GM_ADDR request_address) {
-    __gm__ auto *request = reinterpret_cast<__gm__ NdsDeviceRdmaSendArgs *>(request_address);
+extern "C" __global__ __aicore__ void NdsAivRdmaSend(GM_ADDR args_address) {
+    __gm__ auto *request = reinterpret_cast<__gm__ NdsDeviceRdmaSendArgs *>(args_address);
     if (!ValidRdmaRequest(request))
         return SetInvalid(request == nullptr ? nullptr : &request->return_value);
     TPipe pipe;
@@ -90,8 +90,8 @@ extern "C" __global__ __aicore__ void NdsAivRdmaSend(GM_ADDR request_address) {
     NdsAivRdmaSendImpl(&request->transport, &send_wr, &request->return_value, &scratch);
 }
 
-extern "C" __global__ __aicore__ void NdsAivRdmaRecv(GM_ADDR request_address) {
-    __gm__ auto *request = reinterpret_cast<__gm__ NdsDeviceRdmaRecvArgs *>(request_address);
+extern "C" __global__ __aicore__ void NdsAivRdmaRecv(GM_ADDR args_address) {
+    __gm__ auto *request = reinterpret_cast<__gm__ NdsDeviceRdmaRecvArgs *>(args_address);
     if (!ValidRdmaRequest(request))
         return SetInvalid(request == nullptr ? nullptr : &request->return_value);
     TPipe pipe;
@@ -105,8 +105,8 @@ extern "C" __global__ __aicore__ void NdsAivRdmaRecv(GM_ADDR request_address) {
     NdsAivRdmaRecvImpl(&request->transport, &recv, &request->return_value, &scratch);
 }
 
-extern "C" __global__ __aicore__ void NdsAivRdmaRead(GM_ADDR request_address) {
-    __gm__ auto *request = reinterpret_cast<__gm__ NdsDeviceRdmaReadArgs *>(request_address);
+extern "C" __global__ __aicore__ void NdsAivRdmaRead(GM_ADDR args_address) {
+    __gm__ auto *request = reinterpret_cast<__gm__ NdsDeviceRdmaReadArgs *>(args_address);
     if (!ValidRdmaRequest(request))
         return SetInvalid(request == nullptr ? nullptr : &request->return_value);
     TPipe pipe;
@@ -116,8 +116,8 @@ extern "C" __global__ __aicore__ void NdsAivRdmaRead(GM_ADDR request_address) {
     NdsAivRdmaReadImpl(&request->transport, &send_wr, &request->return_value, &scratch);
 }
 
-extern "C" __global__ __aicore__ void NdsAivRdmaWrite(GM_ADDR request_address) {
-    __gm__ auto *request = reinterpret_cast<__gm__ NdsDeviceRdmaWriteArgs *>(request_address);
+extern "C" __global__ __aicore__ void NdsAivRdmaWrite(GM_ADDR args_address) {
+    __gm__ auto *request = reinterpret_cast<__gm__ NdsDeviceRdmaWriteArgs *>(args_address);
     if (!ValidRdmaRequest(request))
         return SetInvalid(request == nullptr ? nullptr : &request->return_value);
     TPipe pipe;
@@ -127,8 +127,8 @@ extern "C" __global__ __aicore__ void NdsAivRdmaWrite(GM_ADDR request_address) {
     NdsAivRdmaWriteImpl(&request->transport, &send_wr, &request->return_value, &scratch);
 }
 
-extern "C" __global__ __aicore__ void NdsAivStorageRead(GM_ADDR request_address) {
-    __gm__ auto *request = reinterpret_cast<__gm__ NdsDeviceStorageReadArgs *>(request_address);
+extern "C" __global__ __aicore__ void NdsAivStorageRead(GM_ADDR args_address) {
+    __gm__ auto *request = reinterpret_cast<__gm__ NdsDeviceStorageReadArgs *>(args_address);
     if (!ValidStorageArgs(request))
         return SetInvalid(request == nullptr ? nullptr : &request->return_value);
     TPipe pipe;
@@ -137,8 +137,8 @@ extern "C" __global__ __aicore__ void NdsAivStorageRead(GM_ADDR request_address)
     NdsAivStorageReadImpl(&request->context, &request->command, &request->return_value, &scratch);
 }
 
-extern "C" __global__ __aicore__ void NdsAivStorageWrite(GM_ADDR request_address) {
-    __gm__ auto *request = reinterpret_cast<__gm__ NdsDeviceStorageWriteArgs *>(request_address);
+extern "C" __global__ __aicore__ void NdsAivStorageWrite(GM_ADDR args_address) {
+    __gm__ auto *request = reinterpret_cast<__gm__ NdsDeviceStorageWriteArgs *>(args_address);
     if (!ValidStorageArgs(request))
         return SetInvalid(request == nullptr ? nullptr : &request->return_value);
     TPipe pipe;
@@ -147,8 +147,8 @@ extern "C" __global__ __aicore__ void NdsAivStorageWrite(GM_ADDR request_address
     NdsAivStorageWriteImpl(&request->context, &request->command, &request->return_value, &scratch);
 }
 
-extern "C" __global__ __aicore__ void NdsAivStorageBatchRead(GM_ADDR request_address) {
-    __gm__ auto *request = reinterpret_cast<__gm__ NdsDeviceStorageBatchReadArgs *>(request_address);
+extern "C" __global__ __aicore__ void NdsAivStorageBatchRead(GM_ADDR args_address) {
+    __gm__ auto *request = reinterpret_cast<__gm__ NdsDeviceStorageBatchReadArgs *>(args_address);
     if (!ValidStorageArgs(request))
         return SetInvalid(request == nullptr ? nullptr : &request->return_value);
     TPipe pipe;
@@ -157,8 +157,8 @@ extern "C" __global__ __aicore__ void NdsAivStorageBatchRead(GM_ADDR request_add
     NdsAivStorageBatchReadImpl(&request->context, &request->command, &request->return_value, &scratch);
 }
 
-extern "C" __global__ __aicore__ void NdsAivStorageBatchWrite(GM_ADDR request_address) {
-    __gm__ auto *request = reinterpret_cast<__gm__ NdsDeviceStorageBatchWriteArgs *>(request_address);
+extern "C" __global__ __aicore__ void NdsAivStorageBatchWrite(GM_ADDR args_address) {
+    __gm__ auto *request = reinterpret_cast<__gm__ NdsDeviceStorageBatchWriteArgs *>(args_address);
     if (!ValidStorageArgs(request))
         return SetInvalid(request == nullptr ? nullptr : &request->return_value);
     TPipe pipe;
@@ -167,8 +167,8 @@ extern "C" __global__ __aicore__ void NdsAivStorageBatchWrite(GM_ADDR request_ad
     NdsAivStorageBatchWriteImpl(&request->context, &request->command, &request->return_value, &scratch);
 }
 
-extern "C" __global__ __aicore__ void NdsAivStorageWait(GM_ADDR request_address) {
-    __gm__ auto *request = reinterpret_cast<__gm__ NdsDeviceStorageWaitArgs *>(request_address);
+extern "C" __global__ __aicore__ void NdsAivStorageWait(GM_ADDR args_address) {
+    __gm__ auto *request = reinterpret_cast<__gm__ NdsDeviceStorageWaitArgs *>(args_address);
     if (!ValidStorageArgs(request))
         return SetInvalid(request == nullptr ? nullptr : &request->return_value);
     NdsAivStorageWaitImpl(&request->context, request->command_id, request->expected_bytes, &request->return_value);
