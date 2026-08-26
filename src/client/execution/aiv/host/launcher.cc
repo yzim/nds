@@ -58,11 +58,11 @@ Result<void> AivEntrypointLauncher::load(NdsAclApi *acl, const std::string &kern
     return {};
 }
 
-Result<void> AivEntrypointLauncher::launch_post_send_and_wait(std::uint64_t device_request_address,
+Result<void> AivEntrypointLauncher::launch_post_send_and_wait(std::uint64_t args_address,
                                                               std::int32_t completion_timeout_ms) {
-    if (!loaded() || device_request_address == 0U || completion_timeout_ms <= 0) {
+    if (!loaded() || args_address == 0U || completion_timeout_ms <= 0) {
         return unexpected(ErrorCode::kInvalidArgument,
-                          "NDS AIV PostSend launch requires a loaded binary, request address, and positive timeout");
+                          "NDS AIV PostSend launch requires a loaded binary, args address, and positive timeout");
     }
     if (acl_->binary_get_function(binary_, "NdsAivPostSend", &function_) != 0 || function_ == nullptr) {
         return unexpected(ErrorCode::kRuntime, "NDS AIV binary does not expose NdsAivPostSend");
@@ -73,8 +73,8 @@ Result<void> AivEntrypointLauncher::launch_post_send_and_wait(std::uint64_t devi
     attributes[1].id = NDS_ACL_LAUNCH_KERNEL_ATTR_ENGINE_TYPE;
     attributes[1].value.engine_type = NDS_ACL_ENGINE_TYPE_AIV;
     NdsAclLaunchKernelConfig config{attributes, 2U};
-    if (const int result = acl_->launch_kernel_with_host_args(function_, 1U, stream_, &config, &device_request_address,
-                                                              sizeof(device_request_address), nullptr, 0U);
+    if (const int result = acl_->launch_kernel_with_host_args(function_, 1U, stream_, &config, &args_address,
+                                                              sizeof(args_address), nullptr, 0U);
         result != 0) {
         return unexpected(ErrorCode::kRuntime,
                           "aclrtLaunchKernelWithHostArgs(NdsAivPostSend) failed: " + std::to_string(result));
@@ -86,15 +86,14 @@ Result<void> AivEntrypointLauncher::launch_post_send_and_wait(std::uint64_t devi
     return {};
 }
 
-Result<void> AivEntrypointLauncher::launch_storage_and_wait(std::uint64_t device_request_address,
-                                                            StorageOperation operation,
+Result<void> AivEntrypointLauncher::launch_storage_and_wait(std::uint64_t args_address, StorageOperation operation,
                                                             std::int32_t completion_timeout_ms) {
     NdsAclLaunchKernelAttr attributes[2]{};
     NdsAclLaunchKernelConfig config{};
     const char *operator_name = aiv_storage_operator_name(operation);
-    if (!loaded() || device_request_address == 0U || completion_timeout_ms <= 0 || operator_name == nullptr) {
+    if (!loaded() || args_address == 0U || completion_timeout_ms <= 0 || operator_name == nullptr) {
         return unexpected(ErrorCode::kInvalidArgument,
-                          "NDS AIV storage launch requires a loaded binary, request address, and valid operation");
+                          "NDS AIV storage launch requires a loaded binary, args address, and valid operation");
     }
     const int function_result = acl_->binary_get_function(binary_, operator_name, &function_);
     if (function_result != 0 || function_ == nullptr) {
@@ -107,8 +106,8 @@ Result<void> AivEntrypointLauncher::launch_storage_and_wait(std::uint64_t device
     attributes[1].value.engine_type = NDS_ACL_ENGINE_TYPE_AIV;
     config.attrs = attributes;
     config.num_attrs = 2U;
-    const int launch_result = acl_->launch_kernel_with_host_args(
-        function_, 1U, stream_, &config, &device_request_address, sizeof(device_request_address), nullptr, 0U);
+    const int launch_result = acl_->launch_kernel_with_host_args(function_, 1U, stream_, &config, &args_address,
+                                                                 sizeof(args_address), nullptr, 0U);
     if (launch_result != 0) {
         return unexpected(ErrorCode::kRuntime, "aclrtLaunchKernelWithHostArgs(" + std::string(operator_name) +
                                                    ") failed: " + std::to_string(launch_result));
@@ -121,11 +120,11 @@ Result<void> AivEntrypointLauncher::launch_storage_and_wait(std::uint64_t device
     return {};
 }
 
-Result<void> AivEntrypointLauncher::launch_storage_wait_and_wait(std::uint64_t device_request_address,
+Result<void> AivEntrypointLauncher::launch_storage_wait_and_wait(std::uint64_t args_address,
                                                                  std::int32_t completion_timeout_ms) {
-    if (!loaded() || device_request_address == 0U || completion_timeout_ms <= 0)
+    if (!loaded() || args_address == 0U || completion_timeout_ms <= 0)
         return unexpected(ErrorCode::kInvalidArgument,
-                          "NDS AIV storage wait requires a loaded binary, request address, and positive timeout");
+                          "NDS AIV storage wait requires a loaded binary, args address, and positive timeout");
     if (acl_->binary_get_function(binary_, "NdsAivStorageWait", &function_) != 0 || function_ == nullptr)
         return unexpected(ErrorCode::kRuntime, "NDS AIV binary does not expose NdsAivStorageWait");
     NdsAclLaunchKernelAttr attributes[2]{};
@@ -134,8 +133,8 @@ Result<void> AivEntrypointLauncher::launch_storage_wait_and_wait(std::uint64_t d
     attributes[1].id = NDS_ACL_LAUNCH_KERNEL_ATTR_ENGINE_TYPE;
     attributes[1].value.engine_type = NDS_ACL_ENGINE_TYPE_AIV;
     NdsAclLaunchKernelConfig config{attributes, 2U};
-    if (const int result = acl_->launch_kernel_with_host_args(function_, 1U, stream_, &config, &device_request_address,
-                                                              sizeof(device_request_address), nullptr, 0U);
+    if (const int result = acl_->launch_kernel_with_host_args(function_, 1U, stream_, &config, &args_address,
+                                                              sizeof(args_address), nullptr, 0U);
         result != 0)
         return unexpected(ErrorCode::kRuntime,
                           "aclrtLaunchKernelWithHostArgs(NdsAivStorageWait) failed: " + std::to_string(result));
