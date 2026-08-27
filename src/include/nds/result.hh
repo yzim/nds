@@ -54,7 +54,7 @@ inline Unexpected unexpected(const Error &error) {
 #define NDS_RETURN_IF_ERROR(expression)                       \
     do {                                                      \
         const decltype(expression) nds_result = (expression); \
-        if (!nds_result.has_value())                          \
+        if (!nds_result)                                      \
             return nds::unexpected(nds_result.error());       \
     } while (false)
 
