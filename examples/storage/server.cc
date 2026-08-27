@@ -26,6 +26,8 @@ int parse(int argc, char **argv, Config *config, bool *exit_requested) {
     app.add_option("--gid-index", config->transport.backend.gid_index)->required();
     app.add_option("--listen", config->transport.listen_address, "TCP bootstrap listen address as IPv4:port");
     app.add_option("--ib-port", config->transport.backend.port);
+    app.add_option("--qp-count", config->transport.qp_count, "Connected QPs to create")
+        ->check(CLI::Range(1U, nds::wire::kMaxQpInfoBatch));
     app.add_option("--namespace-bytes", config->namespace_bytes)->check(CLI::Range(1U, 64U * 1024U * 1024U));
     app.add_option("--storage-commands", config->storage_commands,
                    "Number of serial storage commands to serve on one transport")

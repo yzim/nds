@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace nds::server {
 
@@ -44,28 +45,34 @@ public:
     VerbsBackend(const VerbsBackend &) = delete;
     VerbsBackend &operator=(const VerbsBackend &) = delete;
 
-    Result<void> open(const BackendConfig &config);
-    Result<void> connect(const nds::transport::QpInfo &peer);
+    Result<void> open(const BackendConfig &config, std::uint32_t qp_count);
+    Result<void> connect(const std::vector<nds::transport::QpInfo> &peers);
     Result<RegisteredRegion> register_memory(void *address, std::size_t length, int access);
-    Result<void> post_receive(const RegisteredRegion &region);
-    Result<void> wait_receive(std::uint32_t timeout_ms);
-    Result<void> send(const RegisteredRegion &local, std::uint32_t length);
-    Result<void> read(const RegisteredRegion &local, std::uint64_t remote_address, std::uint32_t remote_key,
-                      std::uint32_t length);
-    Result<void> write(const RegisteredRegion &local, std::uint64_t remote_address, std::uint32_t remote_key,
-                       std::uint32_t length);
-    const nds::transport::QpInfo &local_qp_info() const noexcept;
+    Result<void> post_receive(std::size_t qp_index, const RegisteredRegion &region);
+    Result<void> wait_receive(std::size_t qp_index, std::uint32_t timeout_ms);
+    Result<void> send(std::size_t qp_index, const RegisteredRegion &local, std::uint32_t length);
+    Result<void> read(std::size_t qp_index, const RegisteredRegion &local, std::uint64_t remote_address,
+                      std::uint32_t remote_key, std::uint32_t length);
+    Result<void> write(std::size_t qp_index, const RegisteredRegion &local, std::uint64_t remote_address,
+                       std::uint32_t remote_key, std::uint32_t length);
+    const std::vector<nds::transport::QpInfo> &local_qp_infos() const noexcept;
+    std::size_t qp_count() const noexcept;
 
 private:
-    Result<void> transfer(ibv_wr_opcode opcode, const RegisteredRegion &local, std::uint64_t remote_address,
-                          std::uint32_t remote_key, std::uint32_t length);
-    Result<void> poll(ibv_wc_opcode opcode, std::uint32_t timeout_ms);
+    struct QueuePair {
+        ibv_cq *cq{};
+        ibv_qp *handle{};
+        nds::transport::QpInfo local{};
+    };
+
+    Result<void> transfer(std::size_t qp_index, ibv_wr_opcode opcode, const RegisteredRegion &local,
+                          std::uint64_t remote_address, std::uint32_t remote_key, std::uint32_t length);
+    Result<void> poll(std::size_t qp_index, ibv_wc_opcode opcode, std::uint32_t timeout_ms);
 
     ibv_context *context_{};
     ibv_pd *pd_{};
-    ibv_cq *cq_{};
-    ibv_qp *qp_{};
-    nds::transport::QpInfo local_{};
+    std::vector<QueuePair> qps_;
+    std::vector<nds::transport::QpInfo> local_qps_;
     BackendConfig config_{};
 };
 

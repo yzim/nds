@@ -271,6 +271,65 @@ Result<nds::transport::QpInfo> TcpPeerExchange::exchange_as_server(const nds::tr
     return exchange(fd_, local, false);
 }
 
+Result<std::vector<nds::transport::QpInfo>> TcpPeerExchange::exchange_many(
+    int fd, const std::vector<nds::transport::QpInfo> &local, bool client_order) {
+    if (fd < 0 || local.empty() || local.size() > wire::kMaxQpInfoBatch)
+        return unexpected(ErrorCode::kInvalidArgument, "QP batch exchange requires a bounded nonempty batch");
+
+    std::vector<wire::QpInfo> local_wire(local.size());
+    for (std::size_t index = 0U; index < local.size(); ++index) {
+        if (nds::transport::encode(&local[index], &local_wire[index]) != nds::transport::CodecResult::Ok)
+            return unexpected(ErrorCode::kTransport, "cannot encode local QP batch");
+    }
+    wire::QpInfoBatchHeader local_header{};
+    local_header.magic = htonl(wire::kQpInfoBatchMagic);
+    local_header.version = htons(wire::kQpInfoVersion);
+    local_header.count = htonl(static_cast<std::uint32_t>(local_wire.size()));
+
+    const auto receive_peer = [&]() -> Result<std::vector<nds::transport::QpInfo>> {
+        wire::QpInfoBatchHeader peer_header{};
+        if (const auto received = read_full(fd, &peer_header, sizeof(peer_header)); !received)
+            return unexpected(received.error());
+        const std::uint32_t count = ntohl(peer_header.count);
+        if (ntohl(peer_header.magic) != wire::kQpInfoBatchMagic || ntohs(peer_header.version) != wire::kQpInfoVersion ||
+            count == 0U || count > wire::kMaxQpInfoBatch || count != local_wire.size()) {
+            return unexpected(ErrorCode::kTransport, "invalid or mismatched QP batch header");
+        }
+        std::vector<wire::QpInfo> peer_wire(count);
+        if (const auto received = read_full(fd, peer_wire.data(), peer_wire.size() * sizeof(wire::QpInfo)); !received)
+            return unexpected(received.error());
+        std::vector<nds::transport::QpInfo> peer(count);
+        for (std::size_t index = 0U; index < peer.size(); ++index) {
+            if (nds::transport::decode(&peer_wire[index], &peer[index]) != nds::transport::CodecResult::Ok)
+                return unexpected(ErrorCode::kTransport, "invalid QP record in batch");
+        }
+        return peer;
+    };
+    const auto send_local = [&]() -> Result<void> {
+        NDS_RETURN_IF_ERROR(write_full(fd, &local_header, sizeof(local_header)));
+        return write_full(fd, local_wire.data(), local_wire.size() * sizeof(wire::QpInfo));
+    };
+    if (client_order) {
+        NDS_RETURN_IF_ERROR(send_local());
+        return receive_peer();
+    }
+    const auto peer = receive_peer();
+    if (!peer)
+        return unexpected(peer.error());
+    NDS_RETURN_IF_ERROR(send_local());
+    return peer;
+}
+
+Result<std::vector<nds::transport::QpInfo>> TcpPeerExchange::exchange_as_client(
+    const std::vector<nds::transport::QpInfo> &local) const {
+    return exchange_many(fd_, local, true);
+}
+
+Result<std::vector<nds::transport::QpInfo>> TcpPeerExchange::exchange_as_server(
+    const std::vector<nds::transport::QpInfo> &local) const {
+    return exchange_many(fd_, local, false);
+}
+
 Result<TcpPeerExchange> TcpPeerExchange::connect(const std::string &ipv4, std::uint16_t port,
                                                  std::uint32_t timeout_ms) {
     sockaddr_in address{};

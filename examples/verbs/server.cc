@@ -26,6 +26,8 @@ int parse(int argc, char **argv, Config *config, bool *exit_requested) {
     app.add_option("--gid-index", config->transport.backend.gid_index)->required();
     app.add_option("--listen", config->transport.listen_address);
     app.add_option("--ib-port", config->transport.backend.port);
+    app.add_option("--qp-count", config->transport.qp_count, "Connected QPs to create")
+        ->check(CLI::Range(1U, nds::wire::kMaxQpInfoBatch));
     app.add_option("--receives", config->receives, "Number of Receive WQEs to post")->check(CLI::Range(1U, 2U));
     app.add_option("--operation", config->operation)
         ->check(CLI::IsMember({"send", "send-batch", "send-batch-invalid", "recv"}));

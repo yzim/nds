@@ -23,17 +23,19 @@ host CPU, AICPU, and AIV. Backend and transport code do not depend on storage
 command semantics.
 
 `Runtime` owns AscendCL, network-service lifecycle, NPU allocation/copy, and
-memory services. `Transport` borrows the runtime and owns an `Endpoint`, one
-QP, peer metadata, the TCP channel, and required AI-QP WR-ID storage.
+memory services. `Transport` borrows the runtime and owns an `Endpoint`, a
+bounded indexed QP set, peer metadata, one TCP channel, and required per-QP
+AI-QP WR-ID storage. `qp_count == 1` retains the original fixed-record
+bootstrap. A larger count exchanges one framed batch of NDS-owned QP records
+on the same TCP channel and connects QPs by index.
 `Endpoint` owns the RA lifecycle and rdev. `StorageClient` borrows the runtime
 and transport, owns protocol buffers and command sequencing, and registers
 them through the endpoint.
 
-The CPU server independently owns its verbs context, PD, CQ, RC QP, command
-Receive record, namespace, and completion-record source buffer. Applications
-own configuration, workload buffers, and verification. Paired examples each
-exercise one lower API layer; storage remains the complete application under
-`examples/storage/`.
+The CPU server independently owns its verbs context, PD, and one CQ/RC-QP pair
+per transport index. Applications own configuration, workload buffers, and
+verification. Paired examples each exercise one lower API layer; storage
+remains the complete application under `examples/storage/`.
 
 The source layout reflects these boundaries:
 
@@ -50,7 +52,8 @@ src/torch/              reusable PyTorch extension
 The TCP bootstrap carries only versioned NDS records:
 
 - Endpoint: QPN, PSN, GID, GID index, port, QoS/retry values, and diagnostic
-  MTU.
+  MTU. Multiple endpoint records are framed by a bounded count and paired by
+  index; they still share one TCP connection.
 - Storage bootstrap: completion-record address, length, rkey, and access.
 - Namespace: CPU memory-backed capacity.
 - Command: command ID, operation, namespace range, and NPU application-memory
@@ -61,7 +64,7 @@ It never carries HCCP QP or MR handles, AI-QP descriptors, queue or doorbell
 addresses, or provider objects. Those are local to the environment that owns
 them.
 
-The NPU creates one offline HCCP rdev and one RC QP. Its lifecycle is:
+The NPU creates one offline HCCP rdev and one or more RC QPs. Its lifecycle is:
 
 ```text
 aclInit -> aclrtSetDevice -> rtOpenNetService(--hdcType=18)
@@ -77,9 +80,10 @@ context. The selected backend mode determines QP creation:
 | `aiv` | `RaAiQpCreate` | OPBASE_EXT (`4`) by default | Caller-owned work queues; HCCP-owned CQs. |
 | `aicpu` | `RaAiQpCreate` | NORMAL (`0`) | CP1 provider-owned Send path; HCCP-owned CQs. |
 
-The CPU creates an independent RC QP and moves it through `INIT`, `RTR`, and
-`RTS`. Its active-port MTU determines `IBV_QP_PATH_MTU`; the peer MTU is
-diagnostic because the CANN 9.0.0 `TypicalQp` ABI has no NPU path-MTU field.
+The CPU creates one independent RC QP for each NPU QP and moves each through
+`INIT`, `RTR`, and `RTS`. Its active-port MTU determines `IBV_QP_PATH_MTU`; the
+peer MTU is diagnostic because the CANN 9.0.0 `TypicalQp` ABI has no NPU
+path-MTU field.
 
 The CPU registers its command Receive record, namespace, and completion source
 buffer. The NPU independently registers application, command, and completion
@@ -96,9 +100,10 @@ its result cannot be used in the device.
 AI-QPs omit `NDS_RA_AI_CALLER_POLLS_CQ` by default. HCCP owns send and receive
 CQ consumption; NDS does not interpret HCCP CQ activity as storage completion.
 The client `Transport` layer does not poll a CQ or provide synchronous
-transport completion. This does not affect the current serial storage path,
-which waits for the CPU-written protocol completion record, but it leaves
-transport-local CQ error and credit ownership for later design.
+transport completion. The current serial storage path uses QP zero and waits
+for the CPU-written protocol completion record. Transport multiplicity does
+not add command scheduling, CQ ownership, or concurrent storage requests;
+those remain later design work.
 The explicit NDS `PollCq(is_send_cq)` operation remains available only for a
 future caller-owned-CQ configuration that opts into that RA flag. Its selector
 matches CANN RA `RaPollCq`: `true` selects the send CQ and `false` the receive CQ.

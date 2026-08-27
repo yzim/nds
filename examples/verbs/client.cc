@@ -67,6 +67,8 @@ nds::Result<Config> parse(int argc, char **argv) {
     app.add_option("--aicpu-kernel-config", config.backend.aicpu_kernel_config);
     app.add_option("--logical-device", config.runtime.logical_device_id)->required();
     app.add_option("--server", config.transport.server_address)->required();
+    app.add_option("--qp-count", config.transport.qp_count, "Connected QPs to create")
+        ->check(CLI::Range(1U, nds::wire::kMaxQpInfoBatch));
     app.add_flag("--caller-polls-cq", config.caller_polls_cq, "Request caller-owned CQ dataplane memory");
     app.add_option("--operation", config.operation, "Verbs operation")
         ->check(CLI::IsMember({"send", "send-batch", "send-batch-invalid", "recv"}));

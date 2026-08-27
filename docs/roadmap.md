@@ -102,10 +102,11 @@ loops:
    completion demultiplexing, per-command timeouts, and error handling. Define
    client transport-local CQ ownership and error handling: normal AI-QPs
    currently let HCCP consume CQs, while `Transport` does not poll them.
-2. Define QP selection, whether command and data QPs separate, and the
-   synchronization required by concurrent device submitters.
-3. Add multiple in-flight commands and multiple QPs only with a bounded test
-   matrix and explicit resource-lifetime rules.
+2. Define command/data-QP selection policy and the synchronization required by
+   concurrent device submitters. Transport now creates and connects a bounded,
+   index-paired QP set, but storage continues to use QP zero.
+3. Add multiple in-flight commands only with a bounded test matrix and
+   explicit resource-lifetime rules.
 4. Evaluate an optional two-sided completion mode in which the NPU pre-posts
    Receives and polls its receive CQ for CPU completion Sends. This is not
    required for the current serial completion-record path.

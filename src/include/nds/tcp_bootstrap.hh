@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace nds {
 
@@ -38,6 +39,10 @@ public:
     /* Server ordering: receive the peer QP info, then send the local QP info. */
     Result<transport::QpInfo> exchange_as_server(const transport::QpInfo &local) const;
 
+    /* Batch ordering is the same; records pair by their position in this one TCP exchange. */
+    Result<std::vector<transport::QpInfo>> exchange_as_client(const std::vector<transport::QpInfo> &local) const;
+    Result<std::vector<transport::QpInfo>> exchange_as_server(const std::vector<transport::QpInfo> &local) const;
+
     Result<void> send_bytes(const void *buffer, std::size_t length) const;
     Result<void> receive_bytes(void *buffer, std::size_t length) const;
 
@@ -47,6 +52,8 @@ private:
     static Result<void> read_full(int fd, void *buffer, std::size_t length);
     static Result<void> write_full(int fd, const void *buffer, std::size_t length);
     static Result<transport::QpInfo> exchange(int fd, const transport::QpInfo &local, bool client_order);
+    static Result<std::vector<transport::QpInfo>> exchange_many(int fd, const std::vector<transport::QpInfo> &local,
+                                                                bool client_order);
 
     int fd_;
 };
