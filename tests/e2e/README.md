@@ -39,11 +39,11 @@ operation.
 Configure and inspect registration without touching hardware:
 
 ```sh
+source <cann-root>/set_env.sh
 cmake -S . -B build-e2e \
   -DNDS_ENABLE_E2E_TESTS=ON \
   -DNDS_BUILD_AIV_KERNEL=ON \
-  -DNDS_BUILD_AICPU_KERNEL=ON \
-  -DNDS_CANN_ROOT=<cann-root>
+  -DNDS_BUILD_AICPU_KERNEL=ON
 ctest --test-dir build-e2e -N --label-regex '^e2e$'
 ```
 

@@ -36,7 +36,8 @@ Building and running NDS requires a real Linux target with an Ascend NPU, a
 matching CANN installation, and configured NPU and CPU RoCE devices.
 
 ```sh
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DNDS_CANN_ROOT=<cann-root>
+source <cann-root>/set_env.sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 ```

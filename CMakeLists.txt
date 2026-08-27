@@ -34,12 +34,16 @@ option(NDS_BUILD_AIV_KERNEL "Build the NDS-owned AIV RoCE binary (aarch64 CANN h
 option(NDS_BUILD_HARDWARE_PROBES "Build opt-in NPU/RNIC dataplane probes" OFF)
 option(NDS_BUILD_TORCH_WRAPPERS "Build the optional PyTorch NDS wrappers" OFF)
 option(NDS_BUILD_BENCHMARKS "Build opt-in NDS performance workloads" OFF)
-set(NDS_CANN_ROOT "" CACHE PATH "CANN root required by the NPU client or device-kernel builds")
+set(NDS_CANN_ROOT "" CACHE PATH "CANN root; defaults to ASCEND_HOME_PATH from CANN set_env.sh")
+if(NOT NDS_CANN_ROOT AND DEFINED ENV{ASCEND_HOME_PATH})
+    set(NDS_CANN_ROOT "$ENV{ASCEND_HOME_PATH}" CACHE PATH
+        "CANN root; defaults to ASCEND_HOME_PATH from CANN set_env.sh" FORCE)
+endif()
 
 add_subdirectory(src/common)
 if(NDS_BUILD_NPU_CLIENT)
     if(NOT NDS_CANN_ROOT)
-        message(FATAL_ERROR "NDS_BUILD_NPU_CLIENT requires -DNDS_CANN_ROOT=<CANN root>")
+        message(FATAL_ERROR "NDS_BUILD_NPU_CLIENT requires CANN set_env.sh or -DNDS_CANN_ROOT=<CANN root>")
     endif()
     add_subdirectory(src/client)
 endif()

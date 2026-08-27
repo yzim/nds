@@ -46,12 +46,17 @@ scripts/format.sh --check
 The default target build runs unit and non-hardware integration tests only:
 
 ```sh
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DNDS_CANN_ROOT=<cann-root>
+source <cann-root>/set_env.sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 ctest --test-dir build --output-on-failure --label-regex '^unit$'
 ctest --test-dir build --output-on-failure --label-regex '^integration$'
 ```
+
+After sourcing CANN, `NDS_CANN_ROOT` defaults to CANN's `ASCEND_HOME_PATH`.
+Pass `-DNDS_CANN_ROOT=<cann-root>` only to override that environment-derived
+root.
 
 CANN-free CI configures `-DNDS_BUILD_NPU_CLIENT=OFF`; it covers codecs, CPU MTU
 policy, device ABI layouts, AICPU package registration, device queue/CQE
@@ -69,11 +74,11 @@ experiment before changing another variable. Do not run blindly repeated
 experiments.
 
 ```sh
+source <cann-root>/set_env.sh
 cmake -S . -B build-e2e \
   -DNDS_ENABLE_E2E_TESTS=ON \
   -DNDS_BUILD_AIV_KERNEL=ON \
-  -DNDS_BUILD_AICPU_KERNEL=ON \
-  -DNDS_CANN_ROOT=<cann-root>
+  -DNDS_BUILD_AICPU_KERNEL=ON
 ctest --test-dir build-e2e -N --label-regex '^e2e$'
 ```
 
@@ -97,8 +102,7 @@ source <cann-root>/set_env.sh
 cmake -S . -B build-torch \
   -DNDS_BUILD_TORCH_WRAPPERS=ON \
   -DPython3_EXECUTABLE=<python3.10> \
-  -DCMAKE_PREFIX_PATH=<torch-cmake-prefix> \
-  -DNDS_CANN_ROOT=<cann-root>
+  -DCMAKE_PREFIX_PATH=<torch-cmake-prefix>
 cmake --build build-torch --target _nds_torch --parallel
 ```
 
