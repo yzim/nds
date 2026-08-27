@@ -55,7 +55,7 @@ __aicore__ inline void ExecuteSerialized(__gm__ const NdsDeviceStorageContext *c
         0U,
         0U,
         0U};
-    NdsAivRdmaSendImpl(&context->transport, &transfer, return_value, scratch);
+    nds_aiv_rdma_send(&context->transport, &transfer, return_value, scratch);
 }
 
 __aicore__ inline void WaitForCompletion(__gm__ const NdsDeviceStorageContext *context, uint64_t command_id,
@@ -86,9 +86,9 @@ __aicore__ inline void WaitForCompletion(__gm__ const NdsDeviceStorageContext *c
 
 }  // namespace
 
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivStorageReadImpl(__gm__ const NdsDeviceStorageContext *context,
-                                                                 __gm__ const nds::StorageReadCommand *command,
-                                                                 __gm__ int32_t *return_value, TBuf<> *scratch) {
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void nds_aiv_storage_read(__gm__ const NdsDeviceStorageContext *context,
+                                                                __gm__ const nds::StorageReadCommand *command,
+                                                                __gm__ int32_t *return_value, TBuf<> *scratch) {
     if (return_value == nullptr)
         return;
     if (command == nullptr) {
@@ -111,9 +111,9 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivStorageReadImpl(__gm__ const Nd
     ExecuteSerialized(context, local.command_id, command_bytes, return_value, scratch);
 }
 
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivStorageWriteImpl(__gm__ const NdsDeviceStorageContext *context,
-                                                                  __gm__ const nds::StorageWriteCommand *command,
-                                                                  __gm__ int32_t *return_value, TBuf<> *scratch) {
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void nds_aiv_storage_write(__gm__ const NdsDeviceStorageContext *context,
+                                                                 __gm__ const nds::StorageWriteCommand *command,
+                                                                 __gm__ int32_t *return_value, TBuf<> *scratch) {
     if (return_value == nullptr)
         return;
     if (command == nullptr) {
@@ -136,7 +136,7 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivStorageWriteImpl(__gm__ const N
     ExecuteSerialized(context, local.command_id, command_bytes, return_value, scratch);
 }
 
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivStorageBatchReadImpl(
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void nds_aiv_storage_batch_read(
     __gm__ const NdsDeviceStorageContext *context, __gm__ const nds::StorageBatchReadCommand *command,
     __gm__ int32_t *return_value, TBuf<> *scratch) {
     if (return_value == nullptr)
@@ -162,7 +162,7 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivStorageBatchReadImpl(
     ExecuteSerialized(context, local.command_id, command_bytes, return_value, scratch);
 }
 
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivStorageBatchWriteImpl(
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void nds_aiv_storage_batch_write(
     __gm__ const NdsDeviceStorageContext *context, __gm__ const nds::StorageBatchWriteCommand *command,
     __gm__ int32_t *return_value, TBuf<> *scratch) {
     if (return_value == nullptr)
@@ -189,8 +189,8 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivStorageBatchWriteImpl(
     ExecuteSerialized(context, local.command_id, command_bytes, return_value, scratch);
 }
 
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivStorageWaitImpl(__gm__ const NdsDeviceStorageContext *context,
-                                                                 uint64_t command_id, uint64_t expected_bytes,
-                                                                 __gm__ int32_t *return_value) {
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void nds_aiv_storage_wait(__gm__ const NdsDeviceStorageContext *context,
+                                                                uint64_t command_id, uint64_t expected_bytes,
+                                                                __gm__ int32_t *return_value) {
     WaitForCompletion(context, command_id, expected_bytes, return_value);
 }

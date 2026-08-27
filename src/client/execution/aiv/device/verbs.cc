@@ -101,8 +101,8 @@ __aicore__ inline void RingSendDoorbell(__gm__ const NdsDeviceQp *qp, __gm__ con
 }
 }  // namespace
 
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPostSendImpl(__gm__ const NdsDeviceQp *qp, const NdsDeviceSendWr *wr,
-                                                              __gm__ int32_t *return_value, TBuf<> *scratch) {
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void nds_aiv_post_send(__gm__ const NdsDeviceQp *qp, const NdsDeviceSendWr *wr,
+                                                             __gm__ int32_t *return_value, TBuf<> *scratch) {
     if (return_value == nullptr)
         return;
     if (!NdsAivValidQp(qp) || !ValidSendWr(wr) || scratch == nullptr) {
@@ -125,7 +125,7 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPostSendImpl(__gm__ const NdsDe
 }
 
 /* Posts a contiguous WR array, then rings once for its successfully posted prefix. */
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPostSendBatchImpl(__gm__ const NdsDeviceQp *qp,
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void nds_aiv_post_send_batch(__gm__ const NdsDeviceQp *qp,
                                                                    __gm__ const NdsDeviceSendWr *wrs, uint32_t wr_count,
                                                                    __gm__ int32_t *return_value,
                                                                    __gm__ uint64_t *bad_wr_address, TBuf<> *scratch) {
@@ -175,9 +175,8 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPostSendBatchImpl(__gm__ const 
     NdsAivSetReturnValue(return_value, status);
 }
 
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPostRecvImpl(__gm__ const NdsDeviceQp *qp, const NdsDeviceRecvWr *wr,
-                                                              __gm__ int32_t *return_value, TBuf<> *scratch) {
-    (void)scratch;
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void nds_aiv_post_recv(__gm__ const NdsDeviceQp *qp, const NdsDeviceRecvWr *wr,
+                                                             __gm__ int32_t *return_value) {
     if (return_value == nullptr)
         return;
     if (!NdsAivValidQp(qp) || wr == nullptr) {
@@ -210,10 +209,9 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPostRecvImpl(__gm__ const NdsDe
     NdsAivSetReturnValue(return_value, NDS_DEVICE_OPERATION_SUCCESS);
 }
 
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivPollCqImpl(__gm__ const NdsDeviceQp *qp, uint32_t is_send_cq_value,
-                                                            uint32_t max_completions, __gm__ NdsDeviceWc *wc,
-                                                            __gm__ int32_t *return_value, TBuf<> *scratch) {
-    (void)scratch;
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void nds_aiv_poll_cq(__gm__ const NdsDeviceQp *qp, uint32_t is_send_cq_value,
+                                                           uint32_t max_completions, __gm__ NdsDeviceWc *wc,
+                                                           __gm__ int32_t *return_value) {
     if (!NdsAivValidQp(qp) || is_send_cq_value > 1U || max_completions == 0U || wc == nullptr ||
         return_value == nullptr) {
         NdsAivSetReturnValue(return_value, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);

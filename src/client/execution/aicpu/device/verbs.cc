@@ -15,7 +15,7 @@ int32_t provider_opcode(uint32_t opcode) {
 }
 }  // namespace
 
-extern "C" uint32_t NdsAicpuPostSendImpl(const NdsDeviceQp *qp, const NdsDeviceSendWr *wr, int32_t *return_value) {
+extern "C" uint32_t nds_aicpu_post_send(const NdsDeviceQp *qp, const NdsDeviceSendWr *wr, int32_t *return_value) {
     if (return_value == nullptr)
         return kNdsAicpuInvalidArgument;
     if (!NdsAicpuValidQp(qp) || wr == nullptr) {
@@ -54,7 +54,7 @@ extern "C" uint32_t NdsAicpuPostSendImpl(const NdsDeviceQp *qp, const NdsDeviceS
     return kNdsAicpuSuccess;
 }
 
-extern "C" uint32_t NdsAicpuPostRecvImpl(const NdsDeviceQp *qp, const NdsDeviceRecvWr *wr, int32_t *return_value) {
+extern "C" uint32_t nds_aicpu_post_recv(const NdsDeviceQp *qp, const NdsDeviceRecvWr *wr, int32_t *return_value) {
     if (return_value == nullptr)
         return kNdsAicpuInvalidArgument;
     if (!NdsAicpuValidQp(qp) || wr == nullptr) {
@@ -90,8 +90,8 @@ extern "C" uint32_t NdsAicpuPostRecvImpl(const NdsDeviceQp *qp, const NdsDeviceR
     return kNdsAicpuSuccess;
 }
 
-extern "C" uint32_t NdsAicpuPollCqImpl(const NdsDeviceQp *qp, uint32_t is_send_cq_value, uint32_t max_completions,
-                                       NdsDeviceWc *wc, int32_t *return_value) {
+extern "C" uint32_t nds_aicpu_poll_cq(const NdsDeviceQp *qp, uint32_t is_send_cq_value, uint32_t max_completions,
+                                      NdsDeviceWc *wc, int32_t *return_value) {
     if (return_value == nullptr)
         return kNdsAicpuInvalidArgument;
     if (!NdsAicpuValidQp(qp) || is_send_cq_value > 1U || wc == nullptr || max_completions == 0U) {

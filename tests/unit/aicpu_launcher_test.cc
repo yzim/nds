@@ -12,10 +12,15 @@ struct FakeState {
     bool binary_unloaded{};
     bool stream_created{};
     bool stream_destroyed{};
+    std::uint32_t function_resolve_count{};
+    bool launched{};
+    bool synchronized{};
+    std::uint64_t expected_args_address{};
 };
 
 FakeState state;
 int binary_handle;
+int function_handle;
 int stream_handle;
 
 int load_binary(const char *path, NdsAclBinaryLoadOptions *options, NdsAclBinHandle *handle) {
@@ -35,20 +40,31 @@ int unload_binary(NdsAclBinHandle handle) {
     return 0;
 }
 
-int get_function(NdsAclBinHandle, const char *, NdsAclFuncHandle *) {
+int get_function(NdsAclBinHandle handle, const char *name, NdsAclFuncHandle *function) {
+    EXPECT_EQ(handle, &binary_handle);
+    EXPECT_STREQ(name, "nds_aicpu_post_send_kernel");
+    EXPECT_NE(function, nullptr);
+    ++state.function_resolve_count;
+    *function = &function_handle;
     return 0;
 }
-int init_args(NdsAclFuncHandle, NdsAclArgsHandle *) {
-    return 0;
-}
-int append_arg(NdsAclArgsHandle, void *, std::size_t, NdsAclParamHandle *) {
-    return 0;
-}
-int finalize_args(NdsAclArgsHandle) {
-    return 0;
-}
-int launch(NdsAclFuncHandle, std::uint32_t, NdsAclStream, NdsAclLaunchKernelConfig *, NdsAclArgsHandle,
-           void *) {
+int launch(NdsAclFuncHandle function, std::uint32_t block_count, NdsAclStream stream, NdsAclLaunchKernelConfig *config,
+           void *host_args, std::size_t args_size, void *placeholder_array, std::size_t placeholder_count) {
+    EXPECT_EQ(function, &function_handle);
+    EXPECT_EQ(block_count, 1U);
+    EXPECT_EQ(stream, &stream_handle);
+    EXPECT_NE(config, nullptr);
+    EXPECT_EQ(config->num_attrs, 1U);
+    EXPECT_EQ(config->attrs[0].id, NDS_ACL_LAUNCH_KERNEL_ATTR_TIMEOUT);
+    EXPECT_EQ(config->attrs[0].value.timeout_seconds, 5U);
+    EXPECT_NE(host_args, nullptr);
+    if (host_args != nullptr) {
+        EXPECT_EQ(*static_cast<const std::uint64_t *>(host_args), state.expected_args_address);
+    }
+    EXPECT_EQ(args_size, sizeof(state.expected_args_address));
+    EXPECT_EQ(placeholder_array, nullptr);
+    EXPECT_EQ(placeholder_count, 0U);
+    state.launched = true;
     return 0;
 }
 
@@ -65,31 +81,36 @@ int destroy_stream(NdsAclStream stream) {
     return 0;
 }
 
-int synchronize(NdsAclStream, std::int32_t) {
+int synchronize(NdsAclStream stream, std::int32_t timeout_ms) {
+    EXPECT_EQ(stream, &stream_handle);
+    EXPECT_EQ(timeout_ms, 5000);
+    state.synchronized = true;
     return 0;
 }
 
 }  // namespace
 
-TEST(AicpuLauncherTest, LoadsModeZeroPackageAndReleasesResources) {
+TEST(AicpuLauncherTest, LaunchesPostSendWithTheDeviceEnvelopeAddress) {
     state = {};
     NdsAclApi api{};
     api.binary_load_from_file = load_binary;
     api.binary_unload = unload_binary;
     api.binary_get_function = get_function;
-    api.kernel_args_init = init_args;
-    api.kernel_args_append = append_arg;
-    api.kernel_args_finalize = finalize_args;
-    api.launch_kernel_with_config = launch;
+    api.launch_kernel_with_host_args = launch;
     api.create_stream_with_config = create_stream;
     api.destroy_stream = destroy_stream;
     api.synchronize_stream_with_timeout = synchronize;
 
     {
-        nds::AicpuEntrypointLauncher launcher;
+        nds::AicpuLauncher launcher;
         EXPECT_TRUE(launcher.load(&api, "/tmp/nds_aicpu_standard.json"));
         EXPECT_TRUE(launcher.loaded());
         EXPECT_TRUE(state.binary_loaded && state.stream_created);
+        state.expected_args_address = UINT64_C(0x1000);
+        EXPECT_TRUE(launcher.launch_and_wait("nds_aicpu_post_send_kernel", state.expected_args_address, 5000));
+        EXPECT_TRUE(launcher.launch_and_wait("nds_aicpu_post_send_kernel", state.expected_args_address, 5000));
+        EXPECT_EQ(state.function_resolve_count, 1U);
+        EXPECT_TRUE(state.launched && state.synchronized);
     }
     EXPECT_TRUE(state.stream_destroyed && state.binary_unloaded);
 }

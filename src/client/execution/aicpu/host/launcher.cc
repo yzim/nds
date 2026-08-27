@@ -3,34 +3,25 @@
 #include <utility>
 
 namespace nds {
-namespace {}  // namespace
 
-AicpuEntrypointLauncher::~AicpuEntrypointLauncher() {
+AicpuLauncher::~AicpuLauncher() {
     reset();
 }
 
-Result<void> AicpuEntrypointLauncher::load(NdsAclApi *acl, const std::string &kernel_config_path) {
+Result<void> AicpuLauncher::load(NdsAclApi *acl, const std::string &kernel_config_path) {
     NdsAclBinaryLoadOption option{};
     NdsAclBinaryLoadOptions options{};
-    int result;
 
-    if (acl == nullptr) {
-        return unexpected(ErrorCode::kInvalidArgument, "NDS AICPU RDMA post launcher requires AscendCL API storage");
-    }
-    if (loaded()) {
-        return unexpected(ErrorCode::kInvalidArgument, "NDS AICPU RDMA post launcher is already loaded");
-    }
-    if (kernel_config_path.empty()) {
+    if (acl == nullptr || loaded() || kernel_config_path.empty()) {
         return unexpected(ErrorCode::kInvalidArgument,
-                          "NDS AICPU launch requires the NDS-built nds_aicpu_standard.json path");
+                          loaded() ? "NDS AICPU launcher is already loaded"
+                                   : "NDS AICPU launch requires the NDS-built nds_aicpu_standard.json path");
     }
     if (acl->binary_load_from_file == nullptr || acl->binary_unload == nullptr || acl->binary_get_function == nullptr ||
-        acl->kernel_args_init == nullptr || acl->kernel_args_append == nullptr ||
-        acl->kernel_args_finalize == nullptr || acl->launch_kernel_with_config == nullptr ||
-        acl->create_stream_with_config == nullptr || acl->destroy_stream == nullptr ||
-        acl->synchronize_stream_with_timeout == nullptr) {
+        acl->launch_kernel_with_host_args == nullptr || acl->create_stream_with_config == nullptr ||
+        acl->destroy_stream == nullptr || acl->synchronize_stream_with_timeout == nullptr) {
         return unexpected(ErrorCode::kRuntime,
-                          "AscendCL is missing a required AICPU binary, argument, launch, or stream symbol");
+                          "AscendCL is missing a required AICPU binary, host-argument launch, or stream symbol");
     }
 
     acl_ = acl;
@@ -38,201 +29,72 @@ Result<void> AicpuEntrypointLauncher::load(NdsAclApi *acl, const std::string &ke
     option.value.cpu_kernel_mode = NDS_ACL_CPU_KERNEL_REGISTER_JSON;
     options.options = &option;
     options.num_options = 1U;
-    result = acl_->binary_load_from_file(kernel_config_path.c_str(), &options, &binary_);
-    if (result != 0 || binary_ == nullptr) {
+    const int load_result = acl_->binary_load_from_file(kernel_config_path.c_str(), &options, &binary_);
+    if (load_result != 0 || binary_ == nullptr) {
         const std::string error =
-            "aclrtBinaryLoadFromFile(NDS AICPU package configuration) failed: " + std::to_string(result);
+            "aclrtBinaryLoadFromFile(NDS AICPU package configuration) failed: " + std::to_string(load_result);
         reset();
         return unexpected(ErrorCode::kRuntime, error);
     }
-    result = acl_->create_stream_with_config(&stream_, 0U, NDS_ACL_STREAM_FAST_LAUNCH | NDS_ACL_STREAM_FAST_SYNC);
-    if (result != 0 || stream_ == nullptr) {
+    const int stream_result =
+        acl_->create_stream_with_config(&stream_, 0U, NDS_ACL_STREAM_FAST_LAUNCH | NDS_ACL_STREAM_FAST_SYNC);
+    if (stream_result != 0 || stream_ == nullptr) {
         const std::string error =
-            "aclrtCreateStreamWithConfig for NDS AICPU RDMA post failed: " + std::to_string(result);
+            "aclrtCreateStreamWithConfig for NDS AICPU launch failed: " + std::to_string(stream_result);
         reset();
         return unexpected(ErrorCode::kRuntime, error);
     }
     return {};
 }
 
-Result<void> AicpuEntrypointLauncher::launch_operator_and_wait(void *args, std::size_t size, const char *operator_name,
-                                                               std::int32_t completion_timeout_ms) {
-    if (!loaded() || args == nullptr || size == 0U || operator_name == nullptr || completion_timeout_ms <= 0) {
-        return unexpected(ErrorCode::kInvalidArgument, "NDS AICPU operator launch has invalid metadata");
+Result<void> AicpuLauncher::launch_and_wait(const char *kernel_name, std::uint64_t args_gm_addr,
+                                            std::int32_t completion_timeout_ms) {
+    if (!loaded() || kernel_name == nullptr || args_gm_addr == 0U || completion_timeout_ms <= 0) {
+        return unexpected(
+            ErrorCode::kInvalidArgument,
+            "NDS AICPU launch requires a loaded package, kernel name, args address, and positive timeout");
     }
-    if (const int result = acl_->binary_get_function(binary_, operator_name, &function_);
-        result != 0 || function_ == nullptr) {
-        return unexpected(ErrorCode::kRuntime, "NDS AICPU package does not expose " + std::string(operator_name) +
-                                                   ": " + std::to_string(result));
+
+    const auto [entry, inserted] = functions_.try_emplace(kernel_name, nullptr);
+    if (inserted) {
+        const int function_result = acl_->binary_get_function(binary_, kernel_name, &entry->second);
+        if (function_result != 0 || entry->second == nullptr) {
+            functions_.erase(entry);
+            return unexpected(ErrorCode::kRuntime, "NDS AICPU package does not expose " + std::string(kernel_name) +
+                                                       ": " + std::to_string(function_result));
+        }
     }
-    NdsAclArgsHandle arguments{};
-    NdsAclParamHandle parameter_handle{};
-    if (acl_->kernel_args_init(function_, &arguments) != 0 || arguments == nullptr ||
-        acl_->kernel_args_append(arguments, args, size, &parameter_handle) != 0 ||
-        acl_->kernel_args_finalize(arguments) != 0) {
-        if (arguments != nullptr)
-            (void)acl_->kernel_args_finalize(arguments);
-        return unexpected(ErrorCode::kRuntime, "failed to construct NDS AICPU operator arguments");
-    }
+
     NdsAclLaunchKernelAttr attribute{};
     attribute.id = NDS_ACL_LAUNCH_KERNEL_ATTR_TIMEOUT;
     attribute.value.timeout_seconds = 5U;
     NdsAclLaunchKernelConfig config{&attribute, 1U};
-    const int launched = acl_->launch_kernel_with_config(function_, 1U, stream_, &config, arguments, nullptr);
-    if (launched != 0)
-        return unexpected(ErrorCode::kRuntime, "aclrtLaunchKernelWithConfig(" + std::string(operator_name) +
-                                                   ") failed: " + std::to_string(launched));
-    const int synchronized = acl_->synchronize_stream_with_timeout(stream_, completion_timeout_ms);
-    if (synchronized != 0)
-        return unexpected(ErrorCode::kRuntime, "aclrtSynchronizeStreamWithTimeout after " + std::string(operator_name) +
-                                                   " failed: " + std::to_string(synchronized));
-    return {};
-}
-
-Result<void> AicpuEntrypointLauncher::launch_post_send_and_wait(NdsDevicePostSendArgs *args,
-                                                                std::int32_t completion_timeout_ms) {
-    if (args == nullptr)
-        return unexpected(ErrorCode::kInvalidArgument, "NDS AICPU PostSend args have invalid metadata");
-    return launch_operator_and_wait(args, sizeof(*args), "NdsAicpuPostSend", completion_timeout_ms);
-}
-
-Result<void> AicpuEntrypointLauncher::launch_post_recv_and_wait(NdsDevicePostRecvArgs *args,
-                                                                std::int32_t completion_timeout_ms) {
-    if (args == nullptr)
-        return unexpected(ErrorCode::kInvalidArgument, "NDS AICPU PostRecv args have invalid metadata");
-    return launch_operator_and_wait(args, sizeof(*args), "NdsAicpuPostRecv", completion_timeout_ms);
-}
-
-Result<void> AicpuEntrypointLauncher::launch_poll_cq_and_wait(NdsDevicePollCqArgs *args,
-                                                              std::int32_t completion_timeout_ms) {
-    if (args == nullptr)
-        return unexpected(ErrorCode::kInvalidArgument, "NDS AICPU PollCq args have invalid metadata");
-    return launch_operator_and_wait(args, sizeof(*args), "NdsAicpuPollCq", completion_timeout_ms);
-}
-
-Result<void> AicpuEntrypointLauncher::launch_rdma_send_and_wait(NdsDeviceRdmaSendArgs *args,
-                                                                std::int32_t completion_timeout_ms) {
-    if (args == nullptr)
-        return unexpected(ErrorCode::kInvalidArgument, "NDS AICPU RDMA send args have invalid metadata");
-    return launch_operator_and_wait(args, sizeof(*args), "NdsAicpuRdmaSend", completion_timeout_ms);
-}
-
-Result<void> AicpuEntrypointLauncher::launch_rdma_recv_and_wait(NdsDeviceRdmaRecvArgs *args,
-                                                                std::int32_t completion_timeout_ms) {
-    if (args == nullptr)
-        return unexpected(ErrorCode::kInvalidArgument, "NDS AICPU RDMA receive args have invalid metadata");
-    return launch_operator_and_wait(args, sizeof(*args), "NdsAicpuRdmaRecv", completion_timeout_ms);
-}
-
-Result<void> AicpuEntrypointLauncher::launch_rdma_read_and_wait(NdsDeviceRdmaReadArgs *args,
-                                                                std::int32_t completion_timeout_ms) {
-    if (args == nullptr)
-        return unexpected(ErrorCode::kInvalidArgument, "NDS AICPU RDMA read args have invalid metadata");
-    return launch_operator_and_wait(args, sizeof(*args), "NdsAicpuRdmaRead", completion_timeout_ms);
-}
-
-Result<void> AicpuEntrypointLauncher::launch_rdma_write_and_wait(NdsDeviceRdmaWriteArgs *args,
-                                                                 std::int32_t completion_timeout_ms) {
-    if (args == nullptr)
-        return unexpected(ErrorCode::kInvalidArgument, "NDS AICPU RDMA write args have invalid metadata");
-    return launch_operator_and_wait(args, sizeof(*args), "NdsAicpuRdmaWrite", completion_timeout_ms);
-}
-
-Result<void> AicpuEntrypointLauncher::launch_storage_and_wait(void *args, std::size_t size,
-                                                              const NdsDeviceStorageContext *context,
-                                                              const char *operator_name,
-                                                              std::int32_t completion_timeout_ms) {
-    if (args == nullptr || context == nullptr || operator_name == nullptr || completion_timeout_ms <= 0) {
-        return unexpected(ErrorCode::kInvalidArgument, "NDS AICPU storage args have invalid metadata");
+    const int launch_result = acl_->launch_kernel_with_host_args(entry->second, 1U, stream_, &config, &args_gm_addr,
+                                                                 sizeof(args_gm_addr), nullptr, 0U);
+    if (launch_result != 0) {
+        return unexpected(ErrorCode::kRuntime, "aclrtLaunchKernelWithHostArgs(" + std::string(kernel_name) +
+                                                   ") failed: " + std::to_string(launch_result));
     }
-    if (!loaded()) {
-        return unexpected(ErrorCode::kInvalidArgument,
-                          "NDS AICPU storage launch requires a loaded launcher and valid operation");
-    }
-    NdsAclArgsHandle arguments{};
-    NdsAclParamHandle parameter_handle{};
-    NdsAclLaunchKernelAttr attribute{};
-    NdsAclLaunchKernelConfig config{};
-    int result = acl_->binary_get_function(binary_, operator_name, &function_);
-    if (result != 0 || function_ == nullptr) {
-        return unexpected(ErrorCode::kRuntime, "NDS AICPU package does not expose " + std::string(operator_name) +
-                                                   ": " + std::to_string(result));
-    }
-    result = acl_->kernel_args_init(function_, &arguments);
-    if (result != 0 || arguments == nullptr) {
-        return unexpected(ErrorCode::kRuntime, "aclrtKernelArgsInit failed: " + std::to_string(result));
-    }
-    result = acl_->kernel_args_append(arguments, args, size, &parameter_handle);
-    if (result != 0) {
-        (void)acl_->kernel_args_finalize(arguments);
-        return unexpected(ErrorCode::kRuntime,
-                          "aclrtKernelArgsAppend(NDS AICPU storage args) failed: " + std::to_string(result));
-    }
-    result = acl_->kernel_args_finalize(arguments);
-    if (result != 0) {
-        return unexpected(ErrorCode::kRuntime, "aclrtKernelArgsFinalize failed: " + std::to_string(result));
-    }
-    attribute.id = NDS_ACL_LAUNCH_KERNEL_ATTR_TIMEOUT;
-    attribute.value.timeout_seconds = 5U;
-    config.num_attrs = 1U;
-    config.attrs = &attribute;
-    result = acl_->launch_kernel_with_config(function_, 1U, stream_, &config, arguments, nullptr);
-    if (result != 0) {
-        return unexpected(ErrorCode::kRuntime, "aclrtLaunchKernelWithConfig(" + std::string(operator_name) +
-                                                   ") failed: " + std::to_string(result));
-    }
-    result = acl_->synchronize_stream_with_timeout(stream_, completion_timeout_ms);
-    if (result != 0) {
-        return unexpected(ErrorCode::kRuntime, "aclrtSynchronizeStreamWithTimeout after " + std::string(operator_name) +
-                                                   " failed: " + std::to_string(result));
+    const int sync_result = acl_->synchronize_stream_with_timeout(stream_, completion_timeout_ms);
+    if (sync_result != 0) {
+        return unexpected(ErrorCode::kRuntime, "aclrtSynchronizeStreamWithTimeout after " + std::string(kernel_name) +
+                                                   " failed: " + std::to_string(sync_result));
     }
     return {};
 }
 
-Result<void> AicpuEntrypointLauncher::launch_storage_read_and_wait(NdsDeviceStorageReadArgs *args,
-                                                                   std::int32_t timeout_ms) {
-    return launch_storage_and_wait(args, sizeof(*args), args == nullptr ? nullptr : &args->context,
-                                   "NdsAicpuStorageRead", timeout_ms);
-}
-
-Result<void> AicpuEntrypointLauncher::launch_storage_write_and_wait(NdsDeviceStorageWriteArgs *args,
-                                                                    std::int32_t timeout_ms) {
-    return launch_storage_and_wait(args, sizeof(*args), args == nullptr ? nullptr : &args->context,
-                                   "NdsAicpuStorageWrite", timeout_ms);
-}
-
-Result<void> AicpuEntrypointLauncher::launch_storage_batch_read_and_wait(NdsDeviceStorageBatchReadArgs *args,
-                                                                         std::int32_t timeout_ms) {
-    return launch_storage_and_wait(args, sizeof(*args), args == nullptr ? nullptr : &args->context,
-                                   "NdsAicpuStorageBatchRead", timeout_ms);
-}
-
-Result<void> AicpuEntrypointLauncher::launch_storage_batch_write_and_wait(NdsDeviceStorageBatchWriteArgs *args,
-                                                                          std::int32_t timeout_ms) {
-    return launch_storage_and_wait(args, sizeof(*args), args == nullptr ? nullptr : &args->context,
-                                   "NdsAicpuStorageBatchWrite", timeout_ms);
-}
-
-Result<void> AicpuEntrypointLauncher::launch_storage_wait_and_wait(NdsDeviceStorageWaitArgs *args,
-                                                                   std::int32_t timeout_ms) {
-    return launch_storage_and_wait(args, sizeof(*args), args == nullptr ? nullptr : &args->context,
-                                   "NdsAicpuStorageWait", timeout_ms);
-}
-
-void AicpuEntrypointLauncher::reset() noexcept {
-    if (acl_ != nullptr && stream_ != nullptr && acl_->destroy_stream != nullptr) {
+void AicpuLauncher::reset() noexcept {
+    if (acl_ != nullptr && stream_ != nullptr && acl_->destroy_stream != nullptr)
         (void)acl_->destroy_stream(stream_);
-    }
     stream_ = nullptr;
-    if (acl_ != nullptr && binary_ != nullptr && acl_->binary_unload != nullptr) {
+    functions_.clear();
+    if (acl_ != nullptr && binary_ != nullptr && acl_->binary_unload != nullptr)
         (void)acl_->binary_unload(binary_);
-    }
     binary_ = nullptr;
-    function_ = nullptr;
     acl_ = nullptr;
 }
 
-bool AicpuEntrypointLauncher::loaded() const noexcept {
+bool AicpuLauncher::loaded() const noexcept {
     return acl_ != nullptr && binary_ != nullptr && stream_ != nullptr;
 }
 

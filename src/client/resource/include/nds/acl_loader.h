@@ -26,8 +26,6 @@ typedef int (*NdsAclRtMemcpyFn)(void *dst, size_t dst_max, const void *src, size
 typedef int (*NdsAclRtMemsetFn)(void *device_ptr, size_t max_count, int32_t value, size_t count);
 typedef void *NdsAclBinHandle;
 typedef void *NdsAclFuncHandle;
-typedef void *NdsAclArgsHandle;
-typedef void *NdsAclParamHandle;
 typedef void *NdsAclStream;
 
 typedef enum NdsAclBinaryLoadOptionType {
@@ -85,21 +83,14 @@ typedef struct NdsAclLaunchKernelConfig {
 } NdsAclLaunchKernelConfig;
 
 typedef int (*NdsAclRtBinaryLoadFromFileFn)(const char *file_name, NdsAclBinaryLoadOptions *options,
-                                                   NdsAclBinHandle *bin_handle);
+                                            NdsAclBinHandle *bin_handle);
 typedef int (*NdsAclRtBinaryUnloadFn)(NdsAclBinHandle bin_handle);
 typedef int (*NdsAclRtBinaryGetFunctionFn)(NdsAclBinHandle bin_handle, const char *name,
-                                                 NdsAclFuncHandle *function_handle);
-typedef int (*NdsAclRtKernelArgsInitFn)(NdsAclFuncHandle function_handle, NdsAclArgsHandle *args_handle);
-typedef int (*NdsAclRtKernelArgsAppendFn)(NdsAclArgsHandle args_handle, void *parameter, size_t parameter_size,
-                                                NdsAclParamHandle *parameter_handle);
-typedef int (*NdsAclRtKernelArgsFinalizeFn)(NdsAclArgsHandle args_handle);
-typedef int (*NdsAclRtLaunchKernelWithConfigFn)(NdsAclFuncHandle function_handle, uint32_t block_count,
-                                                       NdsAclStream stream, NdsAclLaunchKernelConfig *config,
-                                                       NdsAclArgsHandle args_handle, void *reserved);
+                                           NdsAclFuncHandle *function_handle);
 typedef int (*NdsAclRtLaunchKernelWithHostArgsFn)(NdsAclFuncHandle function_handle, uint32_t block_count,
-                                                          NdsAclStream stream, NdsAclLaunchKernelConfig *config,
-                                                          void *host_args, size_t args_size, void *placeholder_array,
-                                                          size_t placeholder_count);
+                                                  NdsAclStream stream, NdsAclLaunchKernelConfig *config,
+                                                  void *host_args, size_t args_size, void *placeholder_array,
+                                                  size_t placeholder_count);
 typedef int (*NdsAclRtCreateStreamFn)(NdsAclStream *stream);
 typedef int (*NdsAclRtCreateStreamWithConfigFn)(NdsAclStream *stream, uint32_t priority, uint32_t flags);
 typedef int (*NdsAclRtDestroyStreamFn)(NdsAclStream stream);
@@ -137,10 +128,6 @@ typedef struct NdsAclApi {
     NdsAclRtBinaryLoadFromFileFn binary_load_from_file;
     NdsAclRtBinaryUnloadFn binary_unload;
     NdsAclRtBinaryGetFunctionFn binary_get_function;
-    NdsAclRtKernelArgsInitFn kernel_args_init;
-    NdsAclRtKernelArgsAppendFn kernel_args_append;
-    NdsAclRtKernelArgsFinalizeFn kernel_args_finalize;
-    NdsAclRtLaunchKernelWithConfigFn launch_kernel_with_config;
     NdsAclRtLaunchKernelWithHostArgsFn launch_kernel_with_host_args;
     NdsAclRtCreateStreamFn create_stream;
     NdsAclRtCreateStreamWithConfigFn create_stream_with_config;

@@ -13,9 +13,18 @@ struct FakeState {
     bool binary_unloaded{};
     bool stream_created{};
     bool stream_destroyed{};
-    bool batch_function_resolved{};
+    std::uint32_t function_resolve_count{};
     bool batch_launched{};
     bool synchronized{};
+};
+
+struct PostSendBatchArguments {
+    std::uint64_t qp_address;
+    std::uint64_t wrs_address;
+    std::uint32_t wr_count;
+    std::uint32_t reserved;
+    std::uint64_t bad_wr_address;
+    std::uint64_t return_value_address;
 };
 
 FakeState state;
@@ -43,9 +52,9 @@ int unload_binary(NdsAclBinHandle handle) {
 
 int get_function(NdsAclBinHandle handle, const char *name, NdsAclFuncHandle *function) {
     EXPECT_EQ(handle, &binary_handle);
-    EXPECT_STREQ(name, "NdsAivPostSendBatch");
+    EXPECT_STREQ(name, "nds_aiv_post_send_batch_kernel");
     EXPECT_NE(function, nullptr);
-    state.batch_function_resolved = true;
+    ++state.function_resolve_count;
     *function = &function_handle;
     return 0;
 }
@@ -60,12 +69,16 @@ int launch(NdsAclFuncHandle function, std::uint32_t block_count, NdsAclStream st
     EXPECT_EQ(config->attrs[0].id, NDS_ACL_LAUNCH_KERNEL_ATTR_SCHEM_MODE);
     EXPECT_EQ(config->attrs[1].id, NDS_ACL_LAUNCH_KERNEL_ATTR_ENGINE_TYPE);
     EXPECT_NE(host_args, nullptr);
-    EXPECT_EQ(args_size, sizeof(std::uint64_t));
+    EXPECT_EQ(args_size, 40U);
     EXPECT_EQ(placeholder_array, nullptr);
     EXPECT_EQ(placeholder_count, 0U);
-    std::uint64_t args_address{};
-    std::memcpy(&args_address, host_args, sizeof(args_address));
-    EXPECT_EQ(args_address, UINT64_C(0x1000));
+    std::uint64_t parameters[5]{};
+    std::memcpy(parameters, host_args, sizeof(parameters));
+    EXPECT_EQ(parameters[0], UINT64_C(0x1000));
+    EXPECT_EQ(parameters[1], UINT64_C(0x2000));
+    EXPECT_EQ(static_cast<std::uint32_t>(parameters[2]), 8U);
+    EXPECT_EQ(parameters[3], UINT64_C(0x3000));
+    EXPECT_EQ(parameters[4], UINT64_C(0x4000));
     state.batch_launched = true;
     return 0;
 }
@@ -92,7 +105,7 @@ int synchronize(NdsAclStream stream, std::int32_t timeout_ms) {
 
 }  // namespace
 
-TEST(AivLauncherTest, LaunchesBatchPostSendWithOneDeviceAddressArgument) {
+TEST(AivLauncherTest, LaunchesBatchPostSendWithFlatArguments) {
     state = {};
     NdsAclApi api{};
     api.binary_load_from_file = load_binary;
@@ -104,10 +117,14 @@ TEST(AivLauncherTest, LaunchesBatchPostSendWithOneDeviceAddressArgument) {
     api.synchronize_stream_with_timeout = synchronize;
 
     {
-        nds::AivEntrypointLauncher launcher;
+        nds::AivLauncher launcher;
         ASSERT_TRUE(launcher.load(&api, "/tmp/nds_aiv_kernel.o"));
-        EXPECT_TRUE(launcher.launch_post_send_batch_and_wait(UINT64_C(0x1000), 5000));
-        EXPECT_TRUE(state.batch_function_resolved && state.batch_launched && state.synchronized);
+        PostSendBatchArguments arguments{UINT64_C(0x1000), UINT64_C(0x2000), 8U, 0U,
+                                         UINT64_C(0x3000), UINT64_C(0x4000)};
+        EXPECT_TRUE(launcher.launch_and_wait("nds_aiv_post_send_batch_kernel", &arguments, sizeof(arguments), 5000));
+        EXPECT_TRUE(launcher.launch_and_wait("nds_aiv_post_send_batch_kernel", &arguments, sizeof(arguments), 5000));
+        EXPECT_EQ(state.function_resolve_count, 1U);
+        EXPECT_TRUE(state.batch_launched && state.synchronized);
     }
     EXPECT_TRUE(state.binary_loaded && state.stream_created && state.stream_destroyed && state.binary_unloaded);
 }

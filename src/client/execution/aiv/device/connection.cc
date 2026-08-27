@@ -1,7 +1,42 @@
 #include "api.h"
 #include "internal.h"
 
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaSendImpl(__gm__ const NdsDeviceTransport *transport,
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void nds_aiv_rdma_send(__gm__ const NdsDeviceTransport *transport,
+                                                             const NdsDeviceSendWr *wr, __gm__ int32_t *return_value,
+                                                             TBuf<> *scratch) {
+    if (return_value == nullptr)
+        return;
+    if (transport == nullptr || wr == nullptr) {
+        NdsAivSetReturnValue(return_value, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
+        return;
+    }
+    nds_aiv_post_send(&transport->control_qp, wr, return_value, scratch);
+}
+
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void nds_aiv_rdma_recv(__gm__ const NdsDeviceTransport *transport,
+                                                             const NdsDeviceRecvWr *wr, __gm__ int32_t *return_value) {
+    if (return_value == nullptr)
+        return;
+    if (transport == nullptr || wr == nullptr) {
+        NdsAivSetReturnValue(return_value, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
+        return;
+    }
+    nds_aiv_post_recv(&transport->control_qp, wr, return_value);
+}
+
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void nds_aiv_rdma_read(__gm__ const NdsDeviceTransport *transport,
+                                                             const NdsDeviceSendWr *wr, __gm__ int32_t *return_value,
+                                                             TBuf<> *scratch) {
+    if (return_value == nullptr)
+        return;
+    if (transport == nullptr || wr == nullptr) {
+        NdsAivSetReturnValue(return_value, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
+        return;
+    }
+    nds_aiv_post_send(&transport->control_qp, wr, return_value, scratch);
+}
+
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void nds_aiv_rdma_write(__gm__ const NdsDeviceTransport *transport,
                                                               const NdsDeviceSendWr *wr, __gm__ int32_t *return_value,
                                                               TBuf<> *scratch) {
     if (return_value == nullptr)
@@ -10,41 +45,5 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaSendImpl(__gm__ const NdsDe
         NdsAivSetReturnValue(return_value, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
         return;
     }
-    NdsAivPostSendImpl(&transport->control_qp, wr, return_value, scratch);
-}
-
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaRecvImpl(__gm__ const NdsDeviceTransport *transport,
-                                                              const NdsDeviceRecvWr *wr, __gm__ int32_t *return_value,
-                                                              TBuf<> *scratch) {
-    if (return_value == nullptr)
-        return;
-    if (transport == nullptr || wr == nullptr) {
-        NdsAivSetReturnValue(return_value, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
-        return;
-    }
-    NdsAivPostRecvImpl(&transport->control_qp, wr, return_value, scratch);
-}
-
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaReadImpl(__gm__ const NdsDeviceTransport *transport,
-                                                              const NdsDeviceSendWr *wr, __gm__ int32_t *return_value,
-                                                              TBuf<> *scratch) {
-    if (return_value == nullptr)
-        return;
-    if (transport == nullptr || wr == nullptr) {
-        NdsAivSetReturnValue(return_value, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
-        return;
-    }
-    NdsAivPostSendImpl(&transport->control_qp, wr, return_value, scratch);
-}
-
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void NdsAivRdmaWriteImpl(__gm__ const NdsDeviceTransport *transport,
-                                                               const NdsDeviceSendWr *wr, __gm__ int32_t *return_value,
-                                                               TBuf<> *scratch) {
-    if (return_value == nullptr)
-        return;
-    if (transport == nullptr || wr == nullptr) {
-        NdsAivSetReturnValue(return_value, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
-        return;
-    }
-    NdsAivPostSendImpl(&transport->control_qp, wr, return_value, scratch);
+    nds_aiv_post_send(&transport->control_qp, wr, return_value, scratch);
 }

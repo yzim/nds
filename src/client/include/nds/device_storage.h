@@ -16,32 +16,32 @@ typedef struct NdsDeviceStorageContext {
 typedef struct NdsDeviceStorageReadArgs {
     NdsDeviceStorageContext context;
     nds::StorageReadCommand command;
-    uint64_t return_value_address;
+    int32_t return_value;
 } NdsDeviceStorageReadArgs;
 
 typedef struct NdsDeviceStorageWriteArgs {
     NdsDeviceStorageContext context;
     nds::StorageWriteCommand command;
-    uint64_t return_value_address;
+    int32_t return_value;
 } NdsDeviceStorageWriteArgs;
 
 typedef struct NdsDeviceStorageBatchReadArgs {
     NdsDeviceStorageContext context;
     nds::StorageBatchReadCommand command;
-    uint64_t return_value_address;
+    int32_t return_value;
 } NdsDeviceStorageBatchReadArgs;
 
 typedef struct NdsDeviceStorageBatchWriteArgs {
     NdsDeviceStorageContext context;
     nds::StorageBatchWriteCommand command;
-    uint64_t return_value_address;
+    int32_t return_value;
 } NdsDeviceStorageBatchWriteArgs;
 
 typedef struct NdsDeviceStorageWaitArgs {
     NdsDeviceStorageContext context;
     uint64_t command_id;
     uint64_t expected_bytes;
-    uint64_t return_value_address;
+    int32_t return_value;
 } NdsDeviceStorageWaitArgs;
 
 static inline int nds_device_storage_context_valid(const NdsDeviceStorageContext *context) {
@@ -94,20 +94,16 @@ static_assert(sizeof(NdsDeviceStorageWriteArgs) == 328, "device storage write AB
 static_assert(sizeof(NdsDeviceStorageBatchReadArgs) == 328, "device storage batch-read ABI changed");
 static_assert(sizeof(NdsDeviceStorageBatchWriteArgs) == 328, "device storage batch-write ABI changed");
 static_assert(sizeof(NdsDeviceStorageWaitArgs) == 296, "device storage wait ABI changed");
-static_assert(offsetof(NdsDeviceStorageReadArgs, return_value_address) + sizeof(uint64_t) ==
-                  sizeof(NdsDeviceStorageReadArgs),
-              "device storage read result must be final");
-static_assert(offsetof(NdsDeviceStorageWriteArgs, return_value_address) + sizeof(uint64_t) ==
-                  sizeof(NdsDeviceStorageWriteArgs),
-              "device storage write result must be final");
-static_assert(offsetof(NdsDeviceStorageBatchReadArgs, return_value_address) + sizeof(uint64_t) ==
-                  sizeof(NdsDeviceStorageBatchReadArgs),
-              "device storage batch-read result must be final");
-static_assert(offsetof(NdsDeviceStorageBatchWriteArgs, return_value_address) + sizeof(uint64_t) ==
-                  sizeof(NdsDeviceStorageBatchWriteArgs),
-              "device storage batch-write result must be final");
-static_assert(offsetof(NdsDeviceStorageWaitArgs, return_value_address) + sizeof(uint64_t) ==
-                  sizeof(NdsDeviceStorageWaitArgs),
-              "device storage wait result must be final");
+static_assert(offsetof(NdsDeviceStorageReadArgs, return_value) > offsetof(NdsDeviceStorageReadArgs, command),
+              "device storage read result must follow the request");
+static_assert(offsetof(NdsDeviceStorageWriteArgs, return_value) > offsetof(NdsDeviceStorageWriteArgs, command),
+              "device storage write result must follow the request");
+static_assert(offsetof(NdsDeviceStorageBatchReadArgs, return_value) > offsetof(NdsDeviceStorageBatchReadArgs, command),
+              "device storage batch-read result must follow the request");
+static_assert(offsetof(NdsDeviceStorageBatchWriteArgs, return_value) >
+                  offsetof(NdsDeviceStorageBatchWriteArgs, command),
+              "device storage batch-write result must follow the request");
+static_assert(offsetof(NdsDeviceStorageWaitArgs, return_value) > offsetof(NdsDeviceStorageWaitArgs, expected_bytes),
+              "device storage wait result must follow the request");
 
 #endif

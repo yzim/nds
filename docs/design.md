@@ -226,9 +226,10 @@ compile and symbol verification.
 `NdsDevicePostSendArgs`, `NdsDevicePostRecvArgs`, and `NdsDevicePollCqArgs`
 are operation-launch envelopes for AIV and AICPU. Their payload fields retain
 the verbs-shaped `SendWr`, `RecvWr`, and completion-output contract; they do
-not define a second verbs request layer. Each envelope owns its functional
-`return_value`; no separate device result allocation or provider-diagnostic
-record is exposed by this API.
+not define a second verbs request layer. Every envelope is allocated in
+device-visible memory and embeds its functional `return_value`, so its result
+is read back with the envelope rather than through CANN-owned launch-argument
+memory.
 
 ### AICPU
 
@@ -239,6 +240,13 @@ environment. The optional caller-owned CQ poll uses provider symbols when
 exported and the NDS queue-address fallback otherwise. The host process must never load this
 provider. NDS intentionally has no custom-process AICPU mode because CANN does
 not publish the required RNIC mapping/import contract.
+
+Both AIV and AICPU launch through `aclrtLaunchKernelWithHostArgs`, passing one
+host-side `uint64_t` containing the device-global envelope address. The AIV
+`GM_ADDR` entrypoint consumes that scalar directly; the AICPU entrypoint
+decodes the scalar from CANN's host-argument storage before accessing the same
+device-resident envelope. The shared launch API is therefore input-only; the
+envelope's embedded result is copied back explicitly after synchronization.
 
 ## Runtime ABI boundary
 

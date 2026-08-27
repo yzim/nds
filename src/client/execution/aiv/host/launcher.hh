@@ -2,46 +2,34 @@
 #define NDS_AIV_LAUNCHER_HH
 
 #include "nds/acl_loader.h"
-#include "nds/device_storage.h"
-#include "nds/ra_loader.h"
 #include "nds/result.hh"
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
+#include <unordered_map>
 
 namespace nds {
 
-/* Loads the AIV binary and launches its typed operator entries. */
-class AivEntrypointLauncher {
+/* Loads one NDS AIV artifact and launches ABI-defined kernel entries. */
+class AivLauncher {
 public:
-    AivEntrypointLauncher() = default;
-    ~AivEntrypointLauncher();
-    AivEntrypointLauncher(const AivEntrypointLauncher &) = delete;
-    AivEntrypointLauncher &operator=(const AivEntrypointLauncher &) = delete;
+    AivLauncher() = default;
+    ~AivLauncher();
+    AivLauncher(const AivLauncher &) = delete;
+    AivLauncher &operator=(const AivLauncher &) = delete;
 
     Result<void> load(NdsAclApi *acl, const std::string &kernel_path);
-    Result<void> launch_post_send_and_wait(std::uint64_t args_address, std::int32_t completion_timeout_ms);
-    /* Launches one AIV kernel that posts a contiguous device-global WR array. */
-    Result<void> launch_post_send_batch_and_wait(std::uint64_t args_address, std::int32_t completion_timeout_ms);
-    Result<void> launch_post_recv_and_wait(std::uint64_t args_address, std::int32_t completion_timeout_ms);
-    Result<void> launch_poll_cq_and_wait(std::uint64_t args_address, std::int32_t completion_timeout_ms);
-    Result<void> launch_rdma_send_and_wait(std::uint64_t args_address, std::int32_t completion_timeout_ms);
-    Result<void> launch_rdma_recv_and_wait(std::uint64_t args_address, std::int32_t completion_timeout_ms);
-    Result<void> launch_rdma_read_and_wait(std::uint64_t args_address, std::int32_t completion_timeout_ms);
-    Result<void> launch_rdma_write_and_wait(std::uint64_t args_address, std::int32_t completion_timeout_ms);
-    Result<void> launch_storage_and_wait(std::uint64_t args_address, StorageOperation operation,
-                                         std::int32_t completion_timeout_ms);
-    Result<void> launch_storage_wait_and_wait(std::uint64_t args_address, std::int32_t completion_timeout_ms);
+    Result<void> launch_and_wait(const char *kernel_name, void *arguments, std::size_t argument_size,
+                                 std::int32_t completion_timeout_ms);
     void reset() noexcept;
     bool loaded() const noexcept;
 
 private:
-    Result<void> launch_named_and_wait(std::uint64_t args_address, const char *operator_name,
-                                       std::int32_t completion_timeout_ms);
     NdsAclApi *acl_{};
     NdsAclBinHandle binary_{};
-    NdsAclFuncHandle function_{};
     NdsAclStream stream_{};
+    std::unordered_map<std::string, NdsAclFuncHandle> functions_;
 };
 
 }  // namespace nds

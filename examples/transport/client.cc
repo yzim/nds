@@ -26,6 +26,20 @@ using Payload = std::array<std::byte, kBytes>;
 enum class Operation { Send, Recv, Read, Write };
 enum class Entry { Poll, Send, Recv, Read, Write };
 
+struct AivThreeAddressArguments {
+    std::uint64_t first_address;
+    std::uint64_t second_address;
+    std::uint64_t return_value_address;
+};
+
+struct AivPollCqArguments {
+    std::uint64_t qp_address;
+    std::uint32_t is_send_cq;
+    std::uint32_t max_completions;
+    std::uint64_t wc_address;
+    std::uint64_t return_value_address;
+};
+
 struct Config {
     nds::client::RuntimeConfig runtime;
     nds::client::TransportConfig transport;
@@ -81,108 +95,143 @@ Payload payload() {
     return value;
 }
 
-nds::Result<nds::client::MemoryBuffer> allocate_return_value(nds::client::Runtime *runtime) {
-    auto buffer = runtime->allocate(sizeof(std::int32_t));
-    if (!buffer)
-        return nds::unexpected(buffer.error());
-    const std::int32_t pending = std::numeric_limits<std::int32_t>::min();
-    if (const auto copied = runtime->copy_to(&*buffer, &pending, sizeof(pending)); !copied)
-        return nds::unexpected(copied.error());
-    return std::move(*buffer);
-}
-
-nds::Result<std::int32_t> read_return_value(nds::client::Runtime *runtime,
-                                            const nds::client::MemoryBuffer &buffer) {
-    std::int32_t value{};
-    if (const auto copied = runtime->copy_from(&value, buffer, sizeof(value)); !copied)
-        return nds::unexpected(copied.error());
-    return value;
-}
-
-void set_return_value_address(void *args, Entry entry, std::uint64_t address) {
+void set_return_value(void *args, Entry entry, std::int32_t value) {
     switch (entry) {
         case Entry::Poll:
-            static_cast<NdsDevicePollCqArgs *>(args)->return_value_address = address;
+            static_cast<NdsDevicePollCqArgs *>(args)->return_value = value;
             return;
         case Entry::Send:
-            static_cast<NdsDeviceRdmaSendArgs *>(args)->return_value_address = address;
+            static_cast<NdsDeviceRdmaSendArgs *>(args)->return_value = value;
             return;
         case Entry::Recv:
-            static_cast<NdsDeviceRdmaRecvArgs *>(args)->return_value_address = address;
+            static_cast<NdsDeviceRdmaRecvArgs *>(args)->return_value = value;
             return;
         case Entry::Read:
-            static_cast<NdsDeviceRdmaReadArgs *>(args)->return_value_address = address;
+            static_cast<NdsDeviceRdmaReadArgs *>(args)->return_value = value;
             return;
         case Entry::Write:
-            static_cast<NdsDeviceRdmaWriteArgs *>(args)->return_value_address = address;
+            static_cast<NdsDeviceRdmaWriteArgs *>(args)->return_value = value;
             return;
     }
+}
+
+std::int32_t return_value(const void *args, Entry entry) {
+    switch (entry) {
+        case Entry::Poll:
+            return static_cast<const NdsDevicePollCqArgs *>(args)->return_value;
+        case Entry::Send:
+            return static_cast<const NdsDeviceRdmaSendArgs *>(args)->return_value;
+        case Entry::Recv:
+            return static_cast<const NdsDeviceRdmaRecvArgs *>(args)->return_value;
+        case Entry::Read:
+            return static_cast<const NdsDeviceRdmaReadArgs *>(args)->return_value;
+        case Entry::Write:
+            return static_cast<const NdsDeviceRdmaWriteArgs *>(args)->return_value;
+    }
+    return std::numeric_limits<std::int32_t>::min();
 }
 
 nds::Result<std::int32_t> launch(nds::client::Runtime *runtime, nds::client::Transport *transport, void *args,
                                  std::size_t size, Entry entry) {
-    auto return_buffer = allocate_return_value(runtime);
-    if (!return_buffer)
-        return nds::unexpected(return_buffer.error());
-    set_return_value_address(args, entry, reinterpret_cast<std::uint64_t>(return_buffer->data()));
-    if (transport->execution().mode == nds::client::NpuExecutionMode::Aicpu) {
-        nds::AicpuEntrypointLauncher launcher;
-        if (const auto loaded = launcher.load(&runtime->acl_api(), transport->execution().aicpu_kernel_config); !loaded)
-            return nds::unexpected(loaded.error());
-        nds::Result<void> result;
-        switch (entry) {
-            case Entry::Poll:
-                result = launcher.launch_poll_cq_and_wait(static_cast<NdsDevicePollCqArgs *>(args), kTimeoutMs);
-                break;
-            case Entry::Send:
-                result = launcher.launch_rdma_send_and_wait(static_cast<NdsDeviceRdmaSendArgs *>(args), kTimeoutMs);
-                break;
-            case Entry::Recv:
-                result = launcher.launch_rdma_recv_and_wait(static_cast<NdsDeviceRdmaRecvArgs *>(args), kTimeoutMs);
-                break;
-            case Entry::Read:
-                result = launcher.launch_rdma_read_and_wait(static_cast<NdsDeviceRdmaReadArgs *>(args), kTimeoutMs);
-                break;
-            case Entry::Write:
-                result = launcher.launch_rdma_write_and_wait(static_cast<NdsDeviceRdmaWriteArgs *>(args), kTimeoutMs);
-                break;
-        }
-        if (!result)
-            return nds::unexpected(result.error());
-        return read_return_value(runtime, *return_buffer);
-    }
+    set_return_value(args, entry, std::numeric_limits<std::int32_t>::min());
     auto device_args = runtime->allocate(size);
     if (!device_args)
         return nds::unexpected(device_args.error());
     if (const auto copied = runtime->copy_to(&*device_args, args, size); !copied)
         return nds::unexpected(copied.error());
-    nds::AivEntrypointLauncher launcher;
-    if (const auto loaded = launcher.load(&runtime->acl_api(), transport->execution().aiv_kernel); !loaded)
-        return nds::unexpected(loaded.error());
     const std::uint64_t address = reinterpret_cast<std::uint64_t>(device_args->data());
-    nds::Result<void> result;
-    switch (entry) {
-        case Entry::Poll:
-            result = launcher.launch_poll_cq_and_wait(address, kTimeoutMs);
-            break;
-        case Entry::Send:
-            result = launcher.launch_rdma_send_and_wait(address, kTimeoutMs);
-            break;
-        case Entry::Recv:
-            result = launcher.launch_rdma_recv_and_wait(address, kTimeoutMs);
-            break;
-        case Entry::Read:
-            result = launcher.launch_rdma_read_and_wait(address, kTimeoutMs);
-            break;
-        case Entry::Write:
-            result = launcher.launch_rdma_write_and_wait(address, kTimeoutMs);
-            break;
+    if (transport->execution().mode == nds::client::NpuExecutionMode::Aicpu) {
+        nds::AicpuLauncher launcher;
+        if (const auto loaded = launcher.load(&runtime->acl_api(), transport->execution().aicpu_kernel_config); !loaded)
+            return nds::unexpected(loaded.error());
+        const char *kernel_name = nullptr;
+        switch (entry) {
+            case Entry::Poll:
+                kernel_name = "nds_aicpu_poll_cq_kernel";
+                break;
+            case Entry::Send:
+                kernel_name = "nds_aicpu_rdma_send_kernel";
+                break;
+            case Entry::Recv:
+                kernel_name = "nds_aicpu_rdma_recv_kernel";
+                break;
+            case Entry::Read:
+                kernel_name = "nds_aicpu_rdma_read_kernel";
+                break;
+            case Entry::Write:
+                kernel_name = "nds_aicpu_rdma_write_kernel";
+                break;
+        }
+        const nds::Result<void> result = launcher.launch_and_wait(kernel_name, address, kTimeoutMs);
+        if (!result)
+            return nds::unexpected(result.error());
+    } else {
+        nds::AivLauncher launcher;
+        if (const auto loaded = launcher.load(&runtime->acl_api(), transport->execution().aiv_kernel); !loaded)
+            return nds::unexpected(loaded.error());
+        const char *kernel_name = nullptr;
+        switch (entry) {
+            case Entry::Poll: {
+                const auto *poll = static_cast<const NdsDevicePollCqArgs *>(args);
+                AivPollCqArguments arguments{address + offsetof(NdsDevicePollCqArgs, qp), poll->is_send_cq,
+                                              poll->max_completions, poll->wc_address,
+                                              address + offsetof(NdsDevicePollCqArgs, return_value)};
+                const auto result =
+                    launcher.launch_and_wait("nds_aiv_poll_cq_kernel", &arguments, sizeof(arguments), kTimeoutMs);
+                if (!result)
+                    return nds::unexpected(result.error());
+                break;
+            }
+            case Entry::Send:
+                kernel_name = "nds_aiv_rdma_send_kernel";
+                break;
+            case Entry::Recv:
+                kernel_name = "nds_aiv_rdma_recv_kernel";
+                break;
+            case Entry::Read:
+                kernel_name = "nds_aiv_rdma_read_kernel";
+                break;
+            case Entry::Write:
+                kernel_name = "nds_aiv_rdma_write_kernel";
+                break;
+        }
+        if (entry != Entry::Poll) {
+            std::uint64_t transport_address = 0U;
+            std::uint64_t wr_address = 0U;
+            std::uint64_t return_value_address = 0U;
+            switch (entry) {
+                case Entry::Send:
+                    transport_address = address + offsetof(NdsDeviceRdmaSendArgs, transport);
+                    wr_address = address + offsetof(NdsDeviceRdmaSendArgs, wr);
+                    return_value_address = address + offsetof(NdsDeviceRdmaSendArgs, return_value);
+                    break;
+                case Entry::Recv:
+                    transport_address = address + offsetof(NdsDeviceRdmaRecvArgs, transport);
+                    wr_address = address + offsetof(NdsDeviceRdmaRecvArgs, wr);
+                    return_value_address = address + offsetof(NdsDeviceRdmaRecvArgs, return_value);
+                    break;
+                case Entry::Read:
+                    transport_address = address + offsetof(NdsDeviceRdmaReadArgs, transport);
+                    wr_address = address + offsetof(NdsDeviceRdmaReadArgs, wr);
+                    return_value_address = address + offsetof(NdsDeviceRdmaReadArgs, return_value);
+                    break;
+                case Entry::Write:
+                    transport_address = address + offsetof(NdsDeviceRdmaWriteArgs, transport);
+                    wr_address = address + offsetof(NdsDeviceRdmaWriteArgs, wr);
+                    return_value_address = address + offsetof(NdsDeviceRdmaWriteArgs, return_value);
+                    break;
+                case Entry::Poll:
+                    break;
+            }
+            AivThreeAddressArguments arguments{transport_address, wr_address, return_value_address};
+            const auto result = launcher.launch_and_wait(kernel_name, &arguments, sizeof(arguments), kTimeoutMs);
+            if (!result)
+                return nds::unexpected(result.error());
+        }
     }
-    if (!result)
-        return nds::unexpected(result.error());
     if (const auto copied = runtime->copy_from(args, *device_args, size); !copied)
         return nds::unexpected(copied.error());
-    return read_return_value(runtime, *return_buffer);
+    return return_value(args, entry);
 }
 
 nds::Result<void> poll(nds::client::Runtime *runtime, nds::client::Transport *transport, bool send_cq) {
@@ -238,8 +287,7 @@ nds::Result<void> send(nds::client::Runtime *runtime, nds::client::Transport *tr
         if (!result)
             return nds::unexpected(result.error());
         return *result == 0 ? nds::Result<void>{}
-                            : nds::unexpected(nds::ErrorCode::kRuntime,
-                                              "RdmaSend failed: " + std::to_string(*result));
+                            : nds::unexpected(nds::ErrorCode::kRuntime, "RdmaSend failed: " + std::to_string(*result));
     }
     if (entry == Entry::Read) {
         NdsDeviceRdmaReadArgs args{*device, wr, 0U};
@@ -247,16 +295,14 @@ nds::Result<void> send(nds::client::Runtime *runtime, nds::client::Transport *tr
         if (!result)
             return nds::unexpected(result.error());
         return *result == 0 ? nds::Result<void>{}
-                            : nds::unexpected(nds::ErrorCode::kRuntime,
-                                              "RdmaRead failed: " + std::to_string(*result));
+                            : nds::unexpected(nds::ErrorCode::kRuntime, "RdmaRead failed: " + std::to_string(*result));
     }
     NdsDeviceRdmaWriteArgs args{*device, wr, 0U};
     const auto result = launch(runtime, transport, &args, sizeof(args), entry);
     if (!result)
         return nds::unexpected(result.error());
     return *result == 0 ? nds::Result<void>{}
-                        : nds::unexpected(nds::ErrorCode::kRuntime,
-                                          "RdmaWrite failed: " + std::to_string(*result));
+                        : nds::unexpected(nds::ErrorCode::kRuntime, "RdmaWrite failed: " + std::to_string(*result));
 }
 
 nds::Result<void> receive(nds::client::Runtime *runtime, nds::client::Transport *transport, const NdsDeviceRecvWr &wr) {
@@ -270,8 +316,7 @@ nds::Result<void> receive(nds::client::Runtime *runtime, nds::client::Transport 
     if (!result)
         return nds::unexpected(result.error());
     return *result == 0 ? nds::Result<void>{}
-                        : nds::unexpected(nds::ErrorCode::kRuntime,
-                                          "RdmaRecv failed: " + std::to_string(*result));
+                        : nds::unexpected(nds::ErrorCode::kRuntime, "RdmaRecv failed: " + std::to_string(*result));
 }
 
 nds::Result<void> signal(nds::client::Transport *transport) {
@@ -345,13 +390,8 @@ nds::Result<void> run(nds::client::Runtime *runtime, nds::client::Transport *tra
             return nds::unexpected(result.error());
     }
     if (operation == Operation::Write) {
-        const NdsDeviceSendWr completion{2U,
-                                         NDS_DEVICE_WR_SEND,
-                                         NDS_DEVICE_SEND_SIGNALED,
-                                         {region.address(), 1U, region.local_key()},
-                                         0U,
-                                         0U,
-                                         0U};
+        const NdsDeviceSendWr completion{
+            2U, NDS_DEVICE_WR_SEND, NDS_DEVICE_SEND_SIGNALED, {region.address(), 1U, region.local_key()}, 0U, 0U, 0U};
         return send(runtime, transport, completion, Entry::Send);
     }
     if (operation == Operation::Read)

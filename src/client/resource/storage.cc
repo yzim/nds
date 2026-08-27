@@ -22,6 +22,19 @@ struct DeviceStorageWaitResult {
     bool terminal;
 };
 
+struct AivThreeAddressArguments {
+    std::uint64_t first_address;
+    std::uint64_t second_address;
+    std::uint64_t return_value_address;
+};
+
+struct AivStorageWaitArguments {
+    std::uint64_t context_address;
+    std::uint64_t command_id;
+    std::uint64_t expected_bytes;
+    std::uint64_t return_value_address;
+};
+
 class DeviceAllocation {
 public:
     explicit DeviceAllocation(Runtime *runtime) : runtime_(runtime) {}
@@ -47,20 +60,34 @@ private:
     MemoryBuffer buffer_;
 };
 
-Result<void> launch_aicpu(AicpuEntrypointLauncher *launcher, NdsDeviceStorageReadArgs *args) {
-    return launcher->launch_storage_read_and_wait(args, kCompletionTimeoutMs);
+Result<void> launch_aicpu(AicpuLauncher *launcher, std::uint64_t args_address, NdsDeviceStorageReadArgs *) {
+    return launcher->launch_and_wait("nds_aicpu_storage_read_kernel", args_address, kCompletionTimeoutMs);
 }
 
-Result<void> launch_aicpu(AicpuEntrypointLauncher *launcher, NdsDeviceStorageWriteArgs *args) {
-    return launcher->launch_storage_write_and_wait(args, kCompletionTimeoutMs);
+Result<void> launch_aicpu(AicpuLauncher *launcher, std::uint64_t args_address, NdsDeviceStorageWriteArgs *) {
+    return launcher->launch_and_wait("nds_aicpu_storage_write_kernel", args_address, kCompletionTimeoutMs);
 }
 
-Result<void> launch_aicpu(AicpuEntrypointLauncher *launcher, NdsDeviceStorageBatchReadArgs *args) {
-    return launcher->launch_storage_batch_read_and_wait(args, kCompletionTimeoutMs);
+Result<void> launch_aicpu(AicpuLauncher *launcher, std::uint64_t args_address, NdsDeviceStorageBatchReadArgs *) {
+    return launcher->launch_and_wait("nds_aicpu_storage_batch_read_kernel", args_address, kCompletionTimeoutMs);
 }
 
-Result<void> launch_aicpu(AicpuEntrypointLauncher *launcher, NdsDeviceStorageBatchWriteArgs *args) {
-    return launcher->launch_storage_batch_write_and_wait(args, kCompletionTimeoutMs);
+Result<void> launch_aicpu(AicpuLauncher *launcher, std::uint64_t args_address, NdsDeviceStorageBatchWriteArgs *) {
+    return launcher->launch_and_wait("nds_aicpu_storage_batch_write_kernel", args_address, kCompletionTimeoutMs);
+}
+
+const char *aiv_storage_kernel(StorageOperation operation) {
+    switch (operation) {
+        case StorageOperation::Read:
+            return "nds_aiv_storage_read_kernel";
+        case StorageOperation::Write:
+            return "nds_aiv_storage_write_kernel";
+        case StorageOperation::BatchRead:
+            return "nds_aiv_storage_batch_read_kernel";
+        case StorageOperation::BatchWrite:
+            return "nds_aiv_storage_batch_write_kernel";
+    }
+    return nullptr;
 }
 
 template <typename Args, typename Command>
@@ -70,51 +97,74 @@ Result<void> submit_device_storage(Runtime *runtime, Transport *transport, const
     const auto device_transport = transport->qp()->make_device_transport();
     if (!device_transport)
         return unexpected(device_transport.error());
-    Args args{};
-    args.context.transport = *device_transport;
-    args.context.command_buffer = {command_region.address(), static_cast<std::uint32_t>(command_region.length()),
-                                   command_region.local_key()};
-    args.context.completion = {completion.address(), static_cast<std::uint32_t>(completion.length()),
-                               completion.local_key()};
-    args.context.capacity = capacity;
-    args.command = command;
-    auto return_buffer = runtime->allocate(sizeof(std::int32_t));
-    if (!return_buffer)
-        return unexpected(return_buffer.error());
-    const std::int32_t pending_return_value = std::numeric_limits<std::int32_t>::min();
-    if (const auto copied = runtime->copy_to(&*return_buffer, &pending_return_value, sizeof(pending_return_value));
-        !copied)
-        return unexpected(copied.error());
-    args.return_value_address = reinterpret_cast<std::uint64_t>(return_buffer->data());
+    NdsDeviceStorageContext context{};
+    context.transport = *device_transport;
+    context.command_buffer = {command_region.address(), static_cast<std::uint32_t>(command_region.length()),
+                              command_region.local_key()};
+    context.completion = {completion.address(), static_cast<std::uint32_t>(completion.length()),
+                          completion.local_key()};
+    context.capacity = capacity;
 
     if (transport->execution().mode == NpuExecutionMode::Aicpu) {
-        AicpuEntrypointLauncher launcher;
-        if (const auto loaded = launcher.load(&runtime->acl_api(), transport->execution().aicpu_kernel_config); !loaded)
-            return unexpected(loaded.error());
-        if (const auto launched = launch_aicpu(&launcher, &args); !launched)
-            return unexpected(launched.error());
-    } else {
-        AivEntrypointLauncher launcher;
-        if (const auto loaded = launcher.load(&runtime->acl_api(), transport->execution().aiv_kernel); !loaded)
-            return unexpected(loaded.error());
+        Args args{};
+        args.context = context;
+        args.command = command;
+        args.return_value = std::numeric_limits<std::int32_t>::min();
         DeviceAllocation device_args(runtime);
         if (const auto allocated = device_args.allocate(sizeof(args)); !allocated)
             return unexpected(allocated.error());
         if (const auto copied = runtime->copy_host_to_device(device_args.get(), &args, sizeof(args)); !copied)
             return unexpected(copied.error());
-        if (const auto launched = launcher.launch_storage_and_wait(reinterpret_cast<std::uint64_t>(device_args.get()),
-                                                                   operation, kCompletionTimeoutMs);
+        AicpuLauncher launcher;
+        if (const auto loaded = launcher.load(&runtime->acl_api(), transport->execution().aicpu_kernel_config); !loaded)
+            return unexpected(loaded.error());
+        if (const auto launched = launch_aicpu(&launcher, reinterpret_cast<std::uint64_t>(device_args.get()), &args);
             !launched)
             return unexpected(launched.error());
         if (const auto copied = runtime->copy_device_to_host(&args, device_args.get(), sizeof(args)); !copied)
             return unexpected(copied.error());
+        if (args.return_value != 0)
+            return unexpected(ErrorCode::kRuntime,
+                              "device storage operation failed: " + std::to_string(args.return_value));
+    } else {
+        std::int32_t return_value = std::numeric_limits<std::int32_t>::min();
+        DeviceAllocation device_context(runtime);
+        DeviceAllocation device_command(runtime);
+        DeviceAllocation device_return_value(runtime);
+        if (const auto allocated = device_context.allocate(sizeof(context)); !allocated)
+            return unexpected(allocated.error());
+        if (const auto allocated = device_command.allocate(sizeof(command)); !allocated)
+            return unexpected(allocated.error());
+        if (const auto allocated = device_return_value.allocate(sizeof(return_value)); !allocated)
+            return unexpected(allocated.error());
+        if (const auto copied = runtime->copy_host_to_device(device_context.get(), &context, sizeof(context)); !copied)
+            return unexpected(copied.error());
+        if (const auto copied = runtime->copy_host_to_device(device_command.get(), &command, sizeof(command)); !copied)
+            return unexpected(copied.error());
+        if (const auto copied =
+                runtime->copy_host_to_device(device_return_value.get(), &return_value, sizeof(return_value));
+            !copied)
+            return unexpected(copied.error());
+        AivLauncher launcher;
+        if (const auto loaded = launcher.load(&runtime->acl_api(), transport->execution().aiv_kernel); !loaded)
+            return unexpected(loaded.error());
+        const char *kernel_name = aiv_storage_kernel(operation);
+        if (kernel_name == nullptr)
+            return unexpected(ErrorCode::kInvalidArgument, "device storage operation is invalid");
+        AivThreeAddressArguments arguments{reinterpret_cast<std::uint64_t>(device_context.get()),
+                                           reinterpret_cast<std::uint64_t>(device_command.get()),
+                                           reinterpret_cast<std::uint64_t>(device_return_value.get())};
+        if (const auto launched =
+                launcher.launch_and_wait(kernel_name, &arguments, sizeof(arguments), kCompletionTimeoutMs);
+            !launched)
+            return unexpected(launched.error());
+        if (const auto copied =
+                runtime->copy_device_to_host(&return_value, device_return_value.get(), sizeof(return_value));
+            !copied)
+            return unexpected(copied.error());
+        if (return_value != 0)
+            return unexpected(ErrorCode::kRuntime, "device storage operation failed: " + std::to_string(return_value));
     }
-
-    std::int32_t return_value{};
-    if (const auto copied = runtime->copy_from(&return_value, *return_buffer, sizeof(return_value)); !copied)
-        return unexpected(copied.error());
-    if (return_value != 0)
-        return unexpected(ErrorCode::kRuntime, "device storage operation failed: " + std::to_string(return_value));
     return {};
 }
 
@@ -125,45 +175,61 @@ Result<DeviceStorageWaitResult> wait_device_storage(Runtime *runtime, Transport 
     const auto device_transport = transport->qp()->make_device_transport();
     if (!device_transport)
         return unexpected(device_transport.error());
-    NdsDeviceStorageWaitArgs args{};
-    args.context.transport = *device_transport;
-    args.context.command_buffer = {command_region.address(), static_cast<std::uint32_t>(command_region.length()),
-                                   command_region.local_key()};
-    args.context.completion = {completion.address(), static_cast<std::uint32_t>(completion.length()),
-                               completion.local_key()};
-    args.context.capacity = capacity;
-    args.command_id = command_id;
-    args.expected_bytes = expected_bytes;
-
-    auto return_buffer = runtime->allocate(sizeof(std::int32_t));
-    if (!return_buffer)
-        return unexpected(return_buffer.error());
-    const std::int32_t pending_return_value = std::numeric_limits<std::int32_t>::min();
-    if (const auto copied = runtime->copy_to(&*return_buffer, &pending_return_value, sizeof(pending_return_value));
-        !copied)
-        return unexpected(copied.error());
-    args.return_value_address = reinterpret_cast<std::uint64_t>(return_buffer->data());
+    NdsDeviceStorageContext context{};
+    context.transport = *device_transport;
+    context.command_buffer = {command_region.address(), static_cast<std::uint32_t>(command_region.length()),
+                              command_region.local_key()};
+    context.completion = {completion.address(), static_cast<std::uint32_t>(completion.length()),
+                          completion.local_key()};
+    context.capacity = capacity;
+    std::int32_t return_value = std::numeric_limits<std::int32_t>::min();
 
     if (transport->execution().mode == NpuExecutionMode::Aicpu) {
-        AicpuEntrypointLauncher launcher;
-        if (const auto loaded = launcher.load(&runtime->acl_api(), transport->execution().aicpu_kernel_config); !loaded)
-            return unexpected(loaded.error());
-        if (const auto launched = launcher.launch_storage_wait_and_wait(&args, timeout_ms); !launched)
-            return unexpected(launched.error());
-    } else {
-        AivEntrypointLauncher launcher;
-        if (const auto loaded = launcher.load(&runtime->acl_api(), transport->execution().aiv_kernel); !loaded)
-            return unexpected(loaded.error());
+        NdsDeviceStorageWaitArgs args{};
+        args.context = context;
+        args.command_id = command_id;
+        args.expected_bytes = expected_bytes;
+        args.return_value = return_value;
         DeviceAllocation device_args(runtime);
         if (const auto allocated = device_args.allocate(sizeof(args)); !allocated)
             return unexpected(allocated.error());
         if (const auto copied = runtime->copy_host_to_device(device_args.get(), &args, sizeof(args)); !copied)
             return unexpected(copied.error());
-        if (const auto launched =
-                launcher.launch_storage_wait_and_wait(reinterpret_cast<std::uint64_t>(device_args.get()), timeout_ms);
+        AicpuLauncher launcher;
+        if (const auto loaded = launcher.load(&runtime->acl_api(), transport->execution().aicpu_kernel_config); !loaded)
+            return unexpected(loaded.error());
+        if (const auto launched = launcher.launch_and_wait(
+                "nds_aicpu_storage_wait_kernel", reinterpret_cast<std::uint64_t>(device_args.get()), timeout_ms);
             !launched)
             return unexpected(launched.error());
         if (const auto copied = runtime->copy_device_to_host(&args, device_args.get(), sizeof(args)); !copied)
+            return unexpected(copied.error());
+        return_value = args.return_value;
+    } else {
+        DeviceAllocation device_context(runtime);
+        DeviceAllocation device_return_value(runtime);
+        if (const auto allocated = device_context.allocate(sizeof(context)); !allocated)
+            return unexpected(allocated.error());
+        if (const auto allocated = device_return_value.allocate(sizeof(return_value)); !allocated)
+            return unexpected(allocated.error());
+        if (const auto copied = runtime->copy_host_to_device(device_context.get(), &context, sizeof(context)); !copied)
+            return unexpected(copied.error());
+        if (const auto copied =
+                runtime->copy_host_to_device(device_return_value.get(), &return_value, sizeof(return_value));
+            !copied)
+            return unexpected(copied.error());
+        AivLauncher launcher;
+        if (const auto loaded = launcher.load(&runtime->acl_api(), transport->execution().aiv_kernel); !loaded)
+            return unexpected(loaded.error());
+        AivStorageWaitArguments arguments{reinterpret_cast<std::uint64_t>(device_context.get()), command_id,
+                                          expected_bytes, reinterpret_cast<std::uint64_t>(device_return_value.get())};
+        if (const auto launched =
+                launcher.launch_and_wait("nds_aiv_storage_wait_kernel", &arguments, sizeof(arguments), timeout_ms);
+            !launched)
+            return unexpected(launched.error());
+        if (const auto copied =
+                runtime->copy_device_to_host(&return_value, device_return_value.get(), sizeof(return_value));
+            !copied)
             return unexpected(copied.error());
     }
     std::uint8_t completion_bytes[kStorageCompletionBytes]{};
@@ -176,9 +242,6 @@ Result<DeviceStorageWaitResult> wait_device_storage(Runtime *runtime, Transport 
                               StorageSerdeResult::Ok &&
                           observed.state == StorageCompletionState::Complete && observed.command_id == command_id &&
                           observed.bytes_transferred == expected_bytes;
-    std::int32_t return_value{};
-    if (const auto copied = runtime->copy_from(&return_value, *return_buffer, sizeof(return_value)); !copied)
-        return unexpected(copied.error());
     return DeviceStorageWaitResult{return_value, terminal};
 }
 

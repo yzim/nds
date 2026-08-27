@@ -118,13 +118,14 @@ typedef struct NdsDeviceWc {
 } NdsDeviceWc;
 
 /* Operator-launch ABI envelopes. The payload fields mirror the verbs APIs;
- * they are not a second device-side verbs interface. return_value_address is
- * a device-visible int32_t output: zero on success, a negative NDS operation
- * error for post operations, or the count of WCs written by PollCq. */
+ * they are not a second device-side verbs interface. Each envelope resides in
+ * device-visible memory and return_value is its final named output member:
+ * zero on success, a negative NDS operation error for post operations, or the
+ * count of WCs written by PollCq. */
 typedef struct NdsDevicePostSendArgs {
     NdsDeviceQp qp;
     NdsDeviceSendWr wr;
-    uint64_t return_value_address;
+    int32_t return_value;
 } NdsDevicePostSendArgs;
 
 /* Batch post-send launch envelope. wrs_address identifies a contiguous
@@ -143,7 +144,7 @@ typedef struct NdsDevicePostSendBatchArgs {
 typedef struct NdsDevicePostRecvArgs {
     NdsDeviceQp qp;
     NdsDeviceRecvWr wr;
-    uint64_t return_value_address;
+    int32_t return_value;
 } NdsDevicePostRecvArgs;
 
 typedef struct NdsDevicePollCqArgs {
@@ -151,7 +152,7 @@ typedef struct NdsDevicePollCqArgs {
     uint32_t is_send_cq;
     uint32_t max_completions;
     uint64_t wc_address;
-    uint64_t return_value_address;
+    int32_t return_value;
 } NdsDevicePollCqArgs;
 
 #if defined(__cplusplus)
@@ -166,12 +167,12 @@ static_assert(sizeof(NdsDevicePostSendArgs) == 288, "device post-send operator A
 static_assert(sizeof(NdsDevicePostSendBatchArgs) == 256, "device post-send batch operator ABI changed");
 static_assert(sizeof(NdsDevicePostRecvArgs) == 264, "device post-recv operator ABI changed");
 static_assert(sizeof(NdsDevicePollCqArgs) == 256, "device poll-CQ operator ABI changed");
-static_assert(offsetof(NdsDevicePostSendArgs, return_value_address) + sizeof(uint64_t) == sizeof(NdsDevicePostSendArgs),
-              "device post-send result must be final");
-static_assert(offsetof(NdsDevicePostRecvArgs, return_value_address) + sizeof(uint64_t) == sizeof(NdsDevicePostRecvArgs),
-              "device post-recv result must be final");
-static_assert(offsetof(NdsDevicePollCqArgs, return_value_address) + sizeof(uint64_t) == sizeof(NdsDevicePollCqArgs),
-              "device poll-CQ result must be final");
+static_assert(offsetof(NdsDevicePostSendArgs, return_value) > offsetof(NdsDevicePostSendArgs, wr),
+              "device post-send result must follow the request");
+static_assert(offsetof(NdsDevicePostRecvArgs, return_value) > offsetof(NdsDevicePostRecvArgs, wr),
+              "device post-recv result must follow the request");
+static_assert(offsetof(NdsDevicePollCqArgs, return_value) > offsetof(NdsDevicePollCqArgs, wc_address),
+              "device poll-CQ result must follow the request");
 #else
 _Static_assert(sizeof(NdsDeviceWorkQueue) == 56, "device WQ ABI changed");
 _Static_assert(sizeof(NdsDeviceCq) == 40, "device CQ ABI changed");
@@ -184,14 +185,12 @@ _Static_assert(sizeof(NdsDevicePostSendArgs) == 288, "device post-send operator 
 _Static_assert(sizeof(NdsDevicePostSendBatchArgs) == 256, "device post-send batch operator ABI changed");
 _Static_assert(sizeof(NdsDevicePostRecvArgs) == 264, "device post-recv operator ABI changed");
 _Static_assert(sizeof(NdsDevicePollCqArgs) == 256, "device poll-CQ operator ABI changed");
-_Static_assert(offsetof(NdsDevicePostSendArgs, return_value_address) + sizeof(uint64_t) ==
-                   sizeof(NdsDevicePostSendArgs),
-               "device post-send result must be final");
-_Static_assert(offsetof(NdsDevicePostRecvArgs, return_value_address) + sizeof(uint64_t) ==
-                   sizeof(NdsDevicePostRecvArgs),
-               "device post-recv result must be final");
-_Static_assert(offsetof(NdsDevicePollCqArgs, return_value_address) + sizeof(uint64_t) == sizeof(NdsDevicePollCqArgs),
-               "device poll-CQ result must be final");
+_Static_assert(offsetof(NdsDevicePostSendArgs, return_value) > offsetof(NdsDevicePostSendArgs, wr),
+               "device post-send result must follow the request");
+_Static_assert(offsetof(NdsDevicePostRecvArgs, return_value) > offsetof(NdsDevicePostRecvArgs, wr),
+               "device post-recv result must follow the request");
+_Static_assert(offsetof(NdsDevicePollCqArgs, return_value) > offsetof(NdsDevicePollCqArgs, wc_address),
+               "device poll-CQ result must follow the request");
 #endif
 
 #endif

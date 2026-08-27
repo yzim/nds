@@ -32,7 +32,7 @@ uint32_t execute(const NdsDeviceStorageContext *context, const Request *command,
         0U,
         0U,
         0U};
-    const uint32_t sent = NdsAicpuRdmaSendImpl(&context->transport, &transfer, return_value);
+    const uint32_t sent = nds_aicpu_rdma_send(&context->transport, &transfer, return_value);
     return sent;
 }
 
@@ -62,8 +62,8 @@ uint32_t wait_for_completion(const NdsDeviceStorageContext *context, uint64_t co
 
 }  // namespace
 
-extern "C" uint32_t NdsAicpuStorageReadImpl(const NdsDeviceStorageContext *context,
-                                            const nds::StorageReadCommand *command, int32_t *return_value) {
+extern "C" uint32_t nds_aicpu_storage_read(const NdsDeviceStorageContext *context,
+                                           const nds::StorageReadCommand *command, int32_t *return_value) {
     if (!nds_device_storage_read_valid(context, command)) {
         if (return_value != nullptr)
             NdsAicpuSetReturnValue(return_value, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
@@ -72,8 +72,8 @@ extern "C" uint32_t NdsAicpuStorageReadImpl(const NdsDeviceStorageContext *conte
     return execute(context, command, nds::serialize_storage_read, return_value);
 }
 
-extern "C" uint32_t NdsAicpuStorageWriteImpl(const NdsDeviceStorageContext *context,
-                                             const nds::StorageWriteCommand *command, int32_t *return_value) {
+extern "C" uint32_t nds_aicpu_storage_write(const NdsDeviceStorageContext *context,
+                                            const nds::StorageWriteCommand *command, int32_t *return_value) {
     if (!nds_device_storage_write_valid(context, command)) {
         if (return_value != nullptr)
             NdsAicpuSetReturnValue(return_value, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
@@ -82,7 +82,7 @@ extern "C" uint32_t NdsAicpuStorageWriteImpl(const NdsDeviceStorageContext *cont
     return execute(context, command, nds::serialize_storage_write, return_value);
 }
 
-extern "C" uint32_t NdsAicpuStorageBatchReadImpl(const NdsDeviceStorageContext *context,
+extern "C" uint32_t nds_aicpu_storage_batch_read(const NdsDeviceStorageContext *context,
                                                  const nds::StorageBatchReadCommand *command, int32_t *return_value) {
     if (!nds_device_storage_batch_read_valid(context, command)) {
         if (return_value != nullptr)
@@ -92,7 +92,7 @@ extern "C" uint32_t NdsAicpuStorageBatchReadImpl(const NdsDeviceStorageContext *
     return execute(context, command, nds::serialize_storage_batch_read, return_value);
 }
 
-extern "C" uint32_t NdsAicpuStorageBatchWriteImpl(const NdsDeviceStorageContext *context,
+extern "C" uint32_t nds_aicpu_storage_batch_write(const NdsDeviceStorageContext *context,
                                                   const nds::StorageBatchWriteCommand *command, int32_t *return_value) {
     if (!nds_device_storage_batch_write_valid(context, command)) {
         if (return_value != nullptr)
@@ -102,7 +102,7 @@ extern "C" uint32_t NdsAicpuStorageBatchWriteImpl(const NdsDeviceStorageContext 
     return execute(context, command, nds::serialize_storage_batch_write, return_value);
 }
 
-extern "C" uint32_t NdsAicpuStorageWaitImpl(const NdsDeviceStorageContext *context, uint64_t command_id,
-                                            uint64_t expected_bytes, int32_t *return_value) {
+extern "C" uint32_t nds_aicpu_storage_wait(const NdsDeviceStorageContext *context, uint64_t command_id,
+                                           uint64_t expected_bytes, int32_t *return_value) {
     return wait_for_completion(context, command_id, expected_bytes, return_value);
 }

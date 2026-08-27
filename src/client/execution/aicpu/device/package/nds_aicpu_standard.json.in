@@ -1,84 +1,84 @@
 {
-  "NdsAicpuPostSend": {
+  "nds_aicpu_post_send_kernel": {
     "opInfo": {
-      "functionName": "NdsAicpuPostSend",
+      "functionName": "nds_aicpu_post_send_kernel",
       "kernelSo": "@NDS_AICPU_STANDARD_KERNEL_SO@",
       "opKernelLib": "AICPUKernel"
     }
   },
-  "NdsAicpuPostRecv": {
+  "nds_aicpu_post_recv_kernel": {
     "opInfo": {
-      "functionName": "NdsAicpuPostRecv",
+      "functionName": "nds_aicpu_post_recv_kernel",
       "kernelSo": "@NDS_AICPU_STANDARD_KERNEL_SO@",
       "opKernelLib": "AICPUKernel"
     }
   },
-  "NdsAicpuPollCq": {
+  "nds_aicpu_poll_cq_kernel": {
     "opInfo": {
-      "functionName": "NdsAicpuPollCq",
+      "functionName": "nds_aicpu_poll_cq_kernel",
       "kernelSo": "@NDS_AICPU_STANDARD_KERNEL_SO@",
       "opKernelLib": "AICPUKernel"
     }
   },
-  "NdsAicpuRdmaSend": {
+  "nds_aicpu_rdma_send_kernel": {
     "opInfo": {
-      "functionName": "NdsAicpuRdmaSend",
+      "functionName": "nds_aicpu_rdma_send_kernel",
       "kernelSo": "@NDS_AICPU_STANDARD_KERNEL_SO@",
       "opKernelLib": "AICPUKernel"
     }
   },
-  "NdsAicpuRdmaRecv": {
+  "nds_aicpu_rdma_recv_kernel": {
     "opInfo": {
-      "functionName": "NdsAicpuRdmaRecv",
+      "functionName": "nds_aicpu_rdma_recv_kernel",
       "kernelSo": "@NDS_AICPU_STANDARD_KERNEL_SO@",
       "opKernelLib": "AICPUKernel"
     }
   },
-  "NdsAicpuRdmaRead": {
+  "nds_aicpu_rdma_read_kernel": {
     "opInfo": {
-      "functionName": "NdsAicpuRdmaRead",
+      "functionName": "nds_aicpu_rdma_read_kernel",
       "kernelSo": "@NDS_AICPU_STANDARD_KERNEL_SO@",
       "opKernelLib": "AICPUKernel"
     }
   },
-  "NdsAicpuRdmaWrite": {
+  "nds_aicpu_rdma_write_kernel": {
     "opInfo": {
-      "functionName": "NdsAicpuRdmaWrite",
+      "functionName": "nds_aicpu_rdma_write_kernel",
       "kernelSo": "@NDS_AICPU_STANDARD_KERNEL_SO@",
       "opKernelLib": "AICPUKernel"
     }
   },
-  "NdsAicpuStorageRead": {
+  "nds_aicpu_storage_read_kernel": {
     "opInfo": {
-      "functionName": "NdsAicpuStorageRead",
+      "functionName": "nds_aicpu_storage_read_kernel",
       "kernelSo": "@NDS_AICPU_STANDARD_KERNEL_SO@",
       "opKernelLib": "AICPUKernel"
     }
   },
-  "NdsAicpuStorageWrite": {
+  "nds_aicpu_storage_write_kernel": {
     "opInfo": {
-      "functionName": "NdsAicpuStorageWrite",
+      "functionName": "nds_aicpu_storage_write_kernel",
       "kernelSo": "@NDS_AICPU_STANDARD_KERNEL_SO@",
       "opKernelLib": "AICPUKernel"
     }
   },
-  "NdsAicpuStorageBatchRead": {
+  "nds_aicpu_storage_batch_read_kernel": {
     "opInfo": {
-      "functionName": "NdsAicpuStorageBatchRead",
+      "functionName": "nds_aicpu_storage_batch_read_kernel",
       "kernelSo": "@NDS_AICPU_STANDARD_KERNEL_SO@",
       "opKernelLib": "AICPUKernel"
     }
   },
-  "NdsAicpuStorageBatchWrite": {
+  "nds_aicpu_storage_batch_write_kernel": {
     "opInfo": {
-      "functionName": "NdsAicpuStorageBatchWrite",
+      "functionName": "nds_aicpu_storage_batch_write_kernel",
       "kernelSo": "@NDS_AICPU_STANDARD_KERNEL_SO@",
       "opKernelLib": "AICPUKernel"
     }
   },
-  "NdsAicpuStorageWait": {
+  "nds_aicpu_storage_wait_kernel": {
     "opInfo": {
-      "functionName": "NdsAicpuStorageWait",
+      "functionName": "nds_aicpu_storage_wait_kernel",
       "kernelSo": "@NDS_AICPU_STANDARD_KERNEL_SO@",
       "opKernelLib": "AICPUKernel"
     }

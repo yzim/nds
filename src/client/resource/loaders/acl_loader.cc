@@ -62,23 +62,6 @@ static int nds_linked_acl_binary_get_function(NdsAclBinHandle bin_handle, const 
                                               NdsAclFuncHandle *function_handle) {
     return (int)aclrtBinaryGetFunction((aclrtBinHandle)bin_handle, name, (aclrtFuncHandle *)function_handle);
 }
-static int nds_linked_acl_kernel_args_init(NdsAclFuncHandle function_handle, NdsAclArgsHandle *args_handle) {
-    return (int)aclrtKernelArgsInit((aclrtFuncHandle)function_handle, (aclrtArgsHandle *)args_handle);
-}
-static int nds_linked_acl_kernel_args_append(NdsAclArgsHandle args_handle, void *parameter, size_t parameter_size,
-                                             NdsAclParamHandle *parameter_handle) {
-    return (int)aclrtKernelArgsAppend((aclrtArgsHandle)args_handle, parameter, parameter_size,
-                                      (aclrtParamHandle *)parameter_handle);
-}
-static int nds_linked_acl_kernel_args_finalize(NdsAclArgsHandle args_handle) {
-    return (int)aclrtKernelArgsFinalize((aclrtArgsHandle)args_handle);
-}
-static int nds_linked_acl_launch_kernel_with_config(NdsAclFuncHandle function_handle, uint32_t block_count,
-                                                    NdsAclStream stream, NdsAclLaunchKernelConfig *config,
-                                                    NdsAclArgsHandle args_handle, void *reserved) {
-    return (int)aclrtLaunchKernelWithConfig((aclrtFuncHandle)function_handle, block_count, (aclrtStream)stream,
-                                            (aclrtLaunchKernelCfg *)config, (aclrtArgsHandle)args_handle, reserved);
-}
 static int nds_linked_acl_launch_kernel_with_host_args(NdsAclFuncHandle function_handle, uint32_t block_count,
                                                        NdsAclStream stream, NdsAclLaunchKernelConfig *config,
                                                        void *host_args, size_t args_size, void *placeholder_array,
@@ -153,10 +136,6 @@ int nds_acl_open(NdsAclApi *api, const char *library_path) {
     api->binary_load_from_file = nds_linked_acl_binary_load_from_file;
     api->binary_unload = nds_linked_acl_binary_unload;
     api->binary_get_function = nds_linked_acl_binary_get_function;
-    api->kernel_args_init = nds_linked_acl_kernel_args_init;
-    api->kernel_args_append = nds_linked_acl_kernel_args_append;
-    api->kernel_args_finalize = nds_linked_acl_kernel_args_finalize;
-    api->launch_kernel_with_config = nds_linked_acl_launch_kernel_with_config;
     api->launch_kernel_with_host_args = nds_linked_acl_launch_kernel_with_host_args;
     api->create_stream = nds_linked_acl_create_stream;
     api->create_stream_with_config = nds_linked_acl_create_stream_with_config;
@@ -207,10 +186,6 @@ int nds_acl_open(NdsAclApi *api, const char *library_path) {
     NDS_ACL_RESOLVE(binary_load_from_file, "aclrtBinaryLoadFromFile");
     NDS_ACL_RESOLVE(binary_unload, "aclrtBinaryUnLoad");
     NDS_ACL_RESOLVE(binary_get_function, "aclrtBinaryGetFunction");
-    NDS_ACL_RESOLVE(kernel_args_init, "aclrtKernelArgsInit");
-    NDS_ACL_RESOLVE(kernel_args_append, "aclrtKernelArgsAppend");
-    NDS_ACL_RESOLVE(kernel_args_finalize, "aclrtKernelArgsFinalize");
-    NDS_ACL_RESOLVE(launch_kernel_with_config, "aclrtLaunchKernelWithConfig");
     NDS_ACL_RESOLVE(launch_kernel_with_host_args, "aclrtLaunchKernelWithHostArgs");
     NDS_ACL_RESOLVE(create_stream, "aclrtCreateStream");
     NDS_ACL_RESOLVE(create_stream_with_config, "aclrtCreateStreamWithConfig");
