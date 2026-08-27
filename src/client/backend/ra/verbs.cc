@@ -52,7 +52,7 @@ Result<void> NdsRaPostSend(client::Runtime *runtime, client::QueuePair *qp, cons
     const auto posted = post_unrung(qp, request);
     if (!posted)
         return unexpected(posted.error());
-    auto &api = runtime->runtime_api();
+    auto &api = runtime->cann_runtime_api();
     if (api.set_device == nullptr || api.rdma_db_send == nullptr)
         return unexpected(ErrorCode::kRuntime, "runtime doorbell ABI is unavailable");
     if (const int result = api.set_device(static_cast<std::int32_t>(runtime->config().logical_device_id)); result != 0)

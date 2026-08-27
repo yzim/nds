@@ -1,8 +1,6 @@
-#include "nds/ra_loader.h"
+#include "ra_loader.hh"
 
 #include "shared_library.hh"
-
-#include <cstdio>
 
 static_assert(sizeof(NdsRaInitConfig) == 16, "unexpected RaInitConfig ABI layout");
 static_assert(sizeof(NdsRaRdev) == 24, "unexpected rdev ABI layout");
@@ -20,58 +18,39 @@ static_assert(sizeof(NdsRaQpInitAttr) == 64, "unexpected ibv_qp_init_attr ABI la
 static_assert(sizeof(NdsRaQpExtAttrs) == 224, "unexpected QpExtAttrs ABI layout");
 static_assert(sizeof(NdsRaAiQpInfo) == 368, "unexpected AiQpInfo ABI layout");
 
-int nds_ra_open(NdsRaApi *api, const char *library_path) {
-    if (api == nullptr)
-        return -1;
-
-    nds_ra_close(api);
-    auto library = nds::client::SharedLibrary::open(library_path == nullptr ? "" : library_path);
-    if (!library) {
-        (void)std::snprintf(api->error, sizeof(api->error), "%s", library.error().message.c_str());
-        return -1;
-    }
-#define NDS_RESOLVE(field, symbol)                                                                       \
-    do {                                                                                                 \
-        const auto resolved = library->resolve_required<decltype(api->field)>(symbol);                   \
-        if (!resolved) {                                                                                 \
-            (void)std::snprintf(api->error, sizeof(api->error), "%s", resolved.error().message.c_str()); \
-            return -1;                                                                                   \
-        }                                                                                                \
-        api->field = *resolved;                                                                          \
-    } while (0)
-
-    NDS_RESOLVE(ra_init, "RaInit");
-    NDS_RESOLVE(ra_deinit, "RaDeinit");
-    NDS_RESOLVE(ra_rdev_init, "RaRdevInit");
-    NDS_RESOLVE(ra_rdev_init_v2, "RaRdevInitV2");
-    NDS_RESOLVE(ra_rdev_deinit, "RaRdevDeinit");
-    NDS_RESOLVE(ra_rdev_get_port_status, "RaRdevGetPortStatus");
-    NDS_RESOLVE(ra_rdev_get_support_lite, "RaRdevGetSupportLite");
-    NDS_RESOLVE(ra_qp_create, "RaQpCreate");
-    NDS_RESOLVE(ra_qp_connect_async, "RaQpConnectAsync");
-    NDS_RESOLVE(ra_typical_qp_create, "RaTypicalQpCreate");
-    api->ra_ai_qp_create = library->resolve_optional<decltype(api->ra_ai_qp_create)>("RaAiQpCreate");
-    api->ra_set_qp_attr_qos = library->resolve_optional<decltype(api->ra_set_qp_attr_qos)>("RaSetQpAttrQos");
-    api->ra_set_qp_attr_timeout =
-        library->resolve_optional<decltype(api->ra_set_qp_attr_timeout)>("RaSetQpAttrTimeout");
-    api->ra_set_qp_attr_retry_count =
-        library->resolve_optional<decltype(api->ra_set_qp_attr_retry_count)>("RaSetQpAttrRetryCnt");
-    NDS_RESOLVE(ra_typical_qp_modify, "RaTypicalQpModify");
-    NDS_RESOLVE(ra_qp_destroy, "RaQpDestroy");
-    NDS_RESOLVE(ra_get_qp_attr, "RaGetQpAttr");
-    NDS_RESOLVE(ra_get_qp_status, "RaGetQpStatus");
-    NDS_RESOLVE(ra_rdev_get_cqe_error_list, "RaRdevGetCqeErrInfoList");
-    NDS_RESOLVE(ra_register_mr, "RaRegisterMr");
-    NDS_RESOLVE(ra_deregister_mr, "RaDeregisterMr");
-    NDS_RESOLVE(ra_typical_send_wr, "RaTypicalSendWr");
-    NDS_RESOLVE(ra_recv_wrlist, "RaRecvWrlist");
-    NDS_RESOLVE(ra_poll_cq, "RaPollCq");
-    NDS_RESOLVE(ra_get_interface_count, "RaGetIfnum");
-    NDS_RESOLVE(ra_get_interfaces, "RaGetIfaddrs");
-#undef NDS_RESOLVE
-
-    api->library = library->release();
-    return 0;
+nds::Result<NdsRaApi> nds_ra_open(std::string_view library_path) {
+    auto library = nds::client::SharedLibrary::open(library_path);
+    if (!library)
+        return nds::unexpected(library.error());
+    NdsRaApi api{};
+    NDS_RETURN_IF_ERROR(library->resolve_required("RaInit", &api.ra_init));
+    NDS_RETURN_IF_ERROR(library->resolve_required("RaDeinit", &api.ra_deinit));
+    NDS_RETURN_IF_ERROR(library->resolve_required("RaRdevInit", &api.ra_rdev_init));
+    NDS_RETURN_IF_ERROR(library->resolve_required("RaRdevInitV2", &api.ra_rdev_init_v2));
+    NDS_RETURN_IF_ERROR(library->resolve_required("RaRdevDeinit", &api.ra_rdev_deinit));
+    NDS_RETURN_IF_ERROR(library->resolve_required("RaRdevGetPortStatus", &api.ra_rdev_get_port_status));
+    NDS_RETURN_IF_ERROR(library->resolve_required("RaRdevGetSupportLite", &api.ra_rdev_get_support_lite));
+    NDS_RETURN_IF_ERROR(library->resolve_required("RaQpCreate", &api.ra_qp_create));
+    NDS_RETURN_IF_ERROR(library->resolve_required("RaQpConnectAsync", &api.ra_qp_connect_async));
+    NDS_RETURN_IF_ERROR(library->resolve_required("RaTypicalQpCreate", &api.ra_typical_qp_create));
+    NDS_RETURN_IF_ERROR(library->resolve_required("RaTypicalQpModify", &api.ra_typical_qp_modify));
+    NDS_RETURN_IF_ERROR(library->resolve_required("RaQpDestroy", &api.ra_qp_destroy));
+    NDS_RETURN_IF_ERROR(library->resolve_required("RaGetQpAttr", &api.ra_get_qp_attr));
+    NDS_RETURN_IF_ERROR(library->resolve_required("RaGetQpStatus", &api.ra_get_qp_status));
+    NDS_RETURN_IF_ERROR(library->resolve_required("RaRdevGetCqeErrInfoList", &api.ra_rdev_get_cqe_error_list));
+    NDS_RETURN_IF_ERROR(library->resolve_required("RaRegisterMr", &api.ra_register_mr));
+    NDS_RETURN_IF_ERROR(library->resolve_required("RaDeregisterMr", &api.ra_deregister_mr));
+    NDS_RETURN_IF_ERROR(library->resolve_required("RaTypicalSendWr", &api.ra_typical_send_wr));
+    NDS_RETURN_IF_ERROR(library->resolve_required("RaRecvWrlist", &api.ra_recv_wrlist));
+    NDS_RETURN_IF_ERROR(library->resolve_required("RaPollCq", &api.ra_poll_cq));
+    NDS_RETURN_IF_ERROR(library->resolve_required("RaGetIfnum", &api.ra_get_interface_count));
+    NDS_RETURN_IF_ERROR(library->resolve_required("RaGetIfaddrs", &api.ra_get_interfaces));
+    library->resolve_optional("RaAiQpCreate", &api.ra_ai_qp_create);
+    library->resolve_optional("RaSetQpAttrQos", &api.ra_set_qp_attr_qos);
+    library->resolve_optional("RaSetQpAttrTimeout", &api.ra_set_qp_attr_timeout);
+    library->resolve_optional("RaSetQpAttrRetryCnt", &api.ra_set_qp_attr_retry_count);
+    api.library = library->release();
+    return api;
 }
 
 void nds_ra_close(NdsRaApi *api) {
@@ -80,8 +59,4 @@ void nds_ra_close(NdsRaApi *api) {
     nds::client::SharedLibrary library(api->library);
     library.close();
     *api = {};
-}
-
-const char *nds_ra_error(const NdsRaApi *api) {
-    return api == nullptr ? "no loader state" : api->error;
 }

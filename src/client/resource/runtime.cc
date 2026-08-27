@@ -34,11 +34,11 @@ Result<void> Runtime::initialize(const RuntimeConfig &config) {
     NdsRtProcExtParam parameter{};
     NdsRtNetServiceOpenArgs open_args{};
 
-    if (!config.adopt_existing_context && config.runtime_library.empty())
+    if (!config.adopt_existing_context && config.cann_runtime_library.empty())
         return unexpected(ErrorCode::kInvalidArgument, "NPU runtime requires an explicit CANN runtime library path");
     config_ = config;
-    if (config_.runtime_library.empty())
-        config_.runtime_library = "libruntime.so";
+    if (config_.cann_runtime_library.empty())
+        config_.cann_runtime_library = "libruntime.so";
     parameter.param_info = hdc_type_argument.c_str();
     parameter.param_len = hdc_type_argument.size();
     open_args.ext_param_list = &parameter;
@@ -57,12 +57,13 @@ Result<void> Runtime::initialize(const RuntimeConfig &config) {
             return unexpected(ErrorCode::kRuntime, error);
         }
     }
-    if (nds_runtime_open(&runtime_, config_.runtime_library.c_str()) != 0) {
-        const std::string error = std::string("cannot load CANN runtime: ") + nds_runtime_error(&runtime_);
+    const auto cann_runtime = nds_cann_runtime_open(config_.cann_runtime_library);
+    if (!cann_runtime) {
         reset();
-        return unexpected(ErrorCode::kRuntime, error);
+        return unexpected(cann_runtime.error());
     }
-    if (const int result = runtime_.open_net_service(&open_args); result != 0) {
+    cann_runtime_ = *cann_runtime;
+    if (const int result = cann_runtime_.open_net_service(&open_args); result != 0) {
         const std::string error = "rtOpenNetService failed: " + std::to_string(result);
         reset();
         return unexpected(ErrorCode::kRuntime, error);
@@ -74,10 +75,10 @@ Result<void> Runtime::initialize(const RuntimeConfig &config) {
 
 void Runtime::reset() noexcept {
     if (net_service_open_) {
-        (void)runtime_.close_net_service();
+        (void)cann_runtime_.close_net_service();
         net_service_open_ = false;
     }
-    nds_runtime_close(&runtime_);
+    nds_cann_runtime_close(&cann_runtime_);
     if (acl_initialized_) {
         (void)aclFinalize();
         acl_initialized_ = false;
@@ -169,8 +170,8 @@ Result<void> Runtime::copy_device_to_host(void *host_ptr, const void *device_ptr
     return {};
 }
 
-NdsRuntimeApi &Runtime::runtime_api() noexcept {
-    return runtime_;
+NdsCannRuntimeApi &Runtime::cann_runtime_api() noexcept {
+    return cann_runtime_;
 }
 
 MemoryBuffer::~MemoryBuffer() {

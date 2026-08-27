@@ -1,5 +1,5 @@
-#ifndef NDS_SHARED_LIBRARY_HH
-#define NDS_SHARED_LIBRARY_HH
+#ifndef NDS_CLIENT_LOADERS_SHARED_LIBRARY_HH
+#define NDS_CLIENT_LOADERS_SHARED_LIBRARY_HH
 
 #include "nds/result.hh"
 
@@ -36,6 +36,17 @@ public:
     }
 
     template <typename Function>
+    Result<void> resolve_required(const char *name, Function *destination) const {
+        if (destination == nullptr)
+            return unexpected(ErrorCode::kInvalidArgument, "shared-library symbol destination is required");
+        const auto function = resolve_required<Function>(name);
+        if (!function)
+            return unexpected(function.error());
+        *destination = *function;
+        return {};
+    }
+
+    template <typename Function>
     Function resolve_optional(const char *name) const noexcept {
         static_assert(sizeof(Function) == sizeof(void *), "function pointer and dlsym result must have equal size");
         const auto symbol = resolve_optional_symbol(name);
@@ -43,6 +54,14 @@ public:
         if (symbol != nullptr)
             std::memcpy(&function, &symbol, sizeof(function));
         return function;
+    }
+
+    template <typename Function>
+    bool resolve_optional(const char *name, Function *destination) const noexcept {
+        if (destination == nullptr)
+            return false;
+        *destination = resolve_optional<Function>(name);
+        return *destination != nullptr;
     }
 
 private:

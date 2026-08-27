@@ -2,7 +2,7 @@
 #define NDS_CLIENT_RUNTIME_HH
 
 #include "nds/result.hh"
-#include "nds/runtime_loader.h"
+#include "loaders/cann_runtime_loader.hh"
 
 #include <acl/acl_rt.h>
 
@@ -55,7 +55,7 @@ private:
 };
 
 struct RuntimeConfig {
-    std::string runtime_library;
+    std::string cann_runtime_library;
     std::uint32_t logical_device_id{};
     std::int32_t hdc_type{NDS_RUNTIME_HDC_SERVICE_TYPE_RDMA_V2};
     bool adopt_existing_context{};
@@ -85,7 +85,7 @@ public:
     Result<void> free_host_pinned_memory(void *host_ptr);
     Result<void> copy_host_to_device(void *device_ptr, const void *host_ptr, std::size_t size);
     Result<void> copy_device_to_host(void *host_ptr, const void *device_ptr, std::size_t size);
-    NdsRuntimeApi &runtime_api() noexcept;
+    NdsCannRuntimeApi &cann_runtime_api() noexcept;
 
 private:
     friend struct RuntimeTestAccess;
@@ -93,7 +93,7 @@ private:
     void reset() noexcept;
 
     RuntimeConfig config_{};
-    NdsRuntimeApi runtime_{};
+    NdsCannRuntimeApi cann_runtime_{};
     bool acl_initialized_{false};
     bool net_service_open_{false};
     bool initialized_{false};

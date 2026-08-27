@@ -14,6 +14,7 @@ namespace {
 
 constexpr std::uint32_t kQpnMask = 0x00ffffffU;
 constexpr std::uint32_t kPsnMask = 0x00ffffffU;
+constexpr unsigned int kMaxCqeErrors = 512U;
 
 bool is_valid_qp_number(std::uint32_t value) {
     return value != 0U && value <= kQpnMask;
@@ -283,7 +284,7 @@ Result<int> QueuePair::query_status() {
 Result<std::vector<NdsRaCqeError>> QueuePair::query_cqe_errors() {
     if (!created() || endpoint_->api_.ra_rdev_get_cqe_error_list == nullptr)
         return unexpected(ErrorCode::kInvalidArgument, "CQE-error query requires a created QP");
-    std::vector<NdsRaCqeError> errors(NDS_RA_ERROR_CAPACITY);
+    std::vector<NdsRaCqeError> errors(kMaxCqeErrors);
     unsigned int count = static_cast<unsigned int>(errors.size());
     const int result = endpoint_->api_.ra_rdev_get_cqe_error_list(endpoint_->rdev_handle_, errors.data(), &count);
     if (result != 0 || count > errors.size())
@@ -410,11 +411,12 @@ Result<void> Endpoint::open(Runtime *runtime, const EndpointConfig &config) {
                           "CANN cannot map logical device " + std::to_string(logical_device) + " to a physical device");
     }
     physical_device_id_ = static_cast<std::uint32_t>(physical_device);
-    if (nds_ra_open(&api_, config_.ra_library.c_str()) != 0) {
-        const std::string message = std::string("cannot load libra.so: ") + nds_ra_error(&api_);
+    const auto api = nds_ra_open(config_.ra_library);
+    if (!api) {
         reset();
-        return unexpected(ErrorCode::kRa, message);
+        return unexpected(api.error());
     }
+    api_ = *api;
     NdsRaInitConfig init_config{};
     init_config.phy_id = physical_device_id_;
     init_config.nic_position = NDS_RA_NETWORK_OFFLINE;

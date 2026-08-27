@@ -32,7 +32,7 @@ nds::Result<int> parse_args(int argc, char **argv, ClientConfig *config, bool *e
     if (config == nullptr || exit_requested == nullptr)
         return nds::unexpected(nds::ErrorCode::kInvalidArgument, "client configuration and exit state are required");
     CLI::App app{"Send one NDS storage command from an NPU to a CPU memory namespace."};
-    app.add_option("--runtime", config->runtime.runtime_library, "CANN runtime shared library")->required();
+    app.add_option("--cann-runtime", config->runtime.cann_runtime_library, "CANN runtime shared library")->required();
     app.add_option("--ra", config->transport.endpoint.ra_library, "CANN RA shared library")->required();
     std::string backend{"ra"};
     app.add_option("--backend", backend, "Storage backend mode")->check(CLI::IsMember({"ra", "aicpu", "aiv"}));

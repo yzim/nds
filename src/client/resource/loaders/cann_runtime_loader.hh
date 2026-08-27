@@ -1,12 +1,12 @@
-#ifndef NDS_RUNTIME_LOADER_H
-#define NDS_RUNTIME_LOADER_H
+#ifndef NDS_CLIENT_LOADERS_CANN_RUNTIME_LOADER_HH
+#define NDS_CLIENT_LOADERS_CANN_RUNTIME_LOADER_HH
+
+#include "nds/result.hh"
 
 #include <stddef.h>
 #include <stdint.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include <string_view>
 
 /*
  * Minimal ABI surface used to ask the installed CANN runtime to start the
@@ -29,24 +29,17 @@ typedef int (*NdsRtCloseNetServiceFn)(void);
 /* rtRDMADBSend queues an OPBASE RA-posted WQE on the selected runtime stream. */
 typedef int (*NdsRtRdmaDbSendFn)(uint32_t db_index, uint64_t db_info, void *stream);
 
-enum { NDS_RUNTIME_ERROR_CAPACITY = 512 };
 enum { NDS_RUNTIME_HDC_SERVICE_TYPE_RDMA_V2 = 18 };
 
-typedef struct NdsRuntimeApi {
+typedef struct NdsCannRuntimeApi {
     void *library;
     NdsRtSetDeviceFn set_device;
     NdsRtOpenNetServiceFn open_net_service;
     NdsRtCloseNetServiceFn close_net_service;
     NdsRtRdmaDbSendFn rdma_db_send;
-    char error[NDS_RUNTIME_ERROR_CAPACITY];
-} NdsRuntimeApi;
+} NdsCannRuntimeApi;
 
-int nds_runtime_open(NdsRuntimeApi *api, const char *library_path);
-void nds_runtime_close(NdsRuntimeApi *api);
-const char *nds_runtime_error(const NdsRuntimeApi *api);
-
-#ifdef __cplusplus
-}
-#endif
+nds::Result<NdsCannRuntimeApi> nds_cann_runtime_open(std::string_view library_path);
+void nds_cann_runtime_close(NdsCannRuntimeApi *api);
 
 #endif

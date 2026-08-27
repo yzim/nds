@@ -1,23 +1,20 @@
-add_library(nds_shared_library STATIC resource/loaders/shared_library.cc)
-target_include_directories(nds_shared_library PUBLIC resource/loaders ${PROJECT_SOURCE_DIR}/src/include)
-target_link_libraries(nds_shared_library PUBLIC ${CMAKE_DL_LIBS} tl::expected)
-target_compile_options(nds_shared_library PRIVATE -Wall -Wextra -Wpedantic -Werror)
-
-add_library(nds_ra_loader STATIC
+add_library(nds_client_loaders STATIC
+    resource/loaders/dsmi_loader.cc
     resource/loaders/ra_loader.cc
-    resource/loaders/runtime_loader.cc)
-target_include_directories(nds_ra_loader PUBLIC resource/include)
-target_link_libraries(nds_ra_loader PUBLIC nds_shared_library)
-target_compile_options(nds_ra_loader PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    resource/loaders/cann_runtime_loader.cc
+    resource/loaders/shared_library.cc)
+target_include_directories(nds_client_loaders
+    PUBLIC resource ${PROJECT_SOURCE_DIR}/src/include
+    PRIVATE resource/loaders)
+target_link_libraries(nds_client_loaders PUBLIC ${CMAKE_DL_LIBS} tl::expected)
+target_compile_options(nds_client_loaders PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 find_path(NDS_ACL_INCLUDE_DIR NAMES acl/acl.h
     HINTS "${NDS_CANN_ROOT}/include" "${NDS_CANN_ROOT}/aarch64-linux/include" NO_DEFAULT_PATH REQUIRED)
 find_library(NDS_ASCENDCL_LIBRARY NAMES ascendcl
     HINTS "${NDS_CANN_ROOT}/lib64" "${NDS_CANN_ROOT}/aarch64-linux/lib64" NO_DEFAULT_PATH REQUIRED)
 get_filename_component(NDS_CANN_LIBRARY_DIR "${NDS_ASCENDCL_LIBRARY}" DIRECTORY)
-get_filename_component(NDS_CANN_PLATFORM_ROOT "${NDS_CANN_LIBRARY_DIR}" DIRECTORY)
-get_filename_component(NDS_CANN_RELEASE_ROOT "${NDS_CANN_PLATFORM_ROOT}" DIRECTORY)
-get_filename_component(NDS_ASCEND_INSTALL_ROOT "${NDS_CANN_RELEASE_ROOT}" DIRECTORY)
+get_filename_component(NDS_ASCEND_INSTALL_ROOT "${NDS_CANN_ROOT}" DIRECTORY)
 find_library(NDS_ASCEND_HAL_LIBRARY NAMES ascend_hal
     HINTS "${NDS_ASCEND_INSTALL_ROOT}/driver/lib64/driver" REQUIRED)
 add_library(nds_ascendcl INTERFACE)
@@ -30,19 +27,14 @@ if(UNIX)
         "-Wl,-rpath,${NDS_ASCEND_HAL_LIBRARY_DIR}")
 endif()
 
-add_library(nds_dsmi_loader STATIC resource/loaders/dsmi_loader.cc)
-target_include_directories(nds_dsmi_loader PUBLIC resource/loaders ${PROJECT_SOURCE_DIR}/src/include)
-target_link_libraries(nds_dsmi_loader PUBLIC nds_shared_library tl::expected)
-target_compile_options(nds_dsmi_loader PRIVATE -Wall -Wextra -Wpedantic -Werror)
-
 add_library(nds_client_runtime STATIC resource/runtime.cc)
-target_include_directories(nds_client_runtime PUBLIC resource resource/include ${PROJECT_SOURCE_DIR}/src/include)
-target_link_libraries(nds_client_runtime PUBLIC nds_ra_loader nds_ascendcl tl::expected)
+target_include_directories(nds_client_runtime PUBLIC resource ${PROJECT_SOURCE_DIR}/src/include)
+target_link_libraries(nds_client_runtime PUBLIC nds_client_loaders nds_ascendcl tl::expected)
 target_compile_options(nds_client_runtime PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 add_library(nds_client_endpoint STATIC resource/endpoint.cc)
-target_include_directories(nds_client_endpoint PUBLIC resource resource/include include)
-target_link_libraries(nds_client_endpoint PUBLIC nds_client_runtime nds_ra_loader nds_dsmi_loader nds_transport)
+target_include_directories(nds_client_endpoint PUBLIC resource include)
+target_link_libraries(nds_client_endpoint PUBLIC nds_client_runtime nds_client_loaders nds_transport)
 target_compile_options(nds_client_endpoint PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 add_library(nds_ra STATIC
@@ -55,13 +47,13 @@ target_compile_options(nds_ra PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 add_library(nds_aiv_launcher STATIC backend/aiv/host/launcher.cc)
 target_include_directories(nds_aiv_launcher PUBLIC
-    backend include resource/include ${PROJECT_SOURCE_DIR}/src/include)
+    backend include ${PROJECT_SOURCE_DIR}/src/include)
 target_link_libraries(nds_aiv_launcher PUBLIC nds_ascendcl tl::expected)
 target_compile_options(nds_aiv_launcher PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 add_library(nds_aicpu_launcher STATIC backend/aicpu/host/launcher.cc)
 target_include_directories(nds_aicpu_launcher PUBLIC
-    backend include resource/include ${PROJECT_SOURCE_DIR}/src/include)
+    backend include ${PROJECT_SOURCE_DIR}/src/include)
 target_link_libraries(nds_aicpu_launcher PUBLIC nds_ascendcl tl::expected)
 target_compile_options(nds_aicpu_launcher PRIVATE -Wall -Wextra -Wpedantic -Werror)
 

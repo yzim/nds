@@ -1,5 +1,5 @@
-#ifndef NDS_DSMI_LOADER_HH
-#define NDS_DSMI_LOADER_HH
+#ifndef NDS_CLIENT_LOADERS_DSMI_LOADER_HH
+#define NDS_CLIENT_LOADERS_DSMI_LOADER_HH
 
 #include "nds/result.hh"
 

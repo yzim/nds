@@ -46,7 +46,7 @@ run_client() {
     local client_log="$4"
     local -a client=("${build}/bin/nds_storage_client" --backend "${backend}"
         --ascendcl "${cann}/aarch64-linux/lib64/libascendcl.so"
-        --runtime "${cann}/aarch64-linux/lib64/libruntime.so"
+        --cann-runtime "${cann}/aarch64-linux/lib64/libruntime.so"
         --ra "${cann}/aarch64-linux/lib64/libra.so"
         --logical-device 0
         --server "${NDS_E2E_SERVER_ADDRESS}"

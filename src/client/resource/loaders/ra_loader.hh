@@ -1,5 +1,7 @@
-#ifndef NDS_RA_LOADER_H
-#define NDS_RA_LOADER_H
+#ifndef NDS_CLIENT_LOADERS_RA_LOADER_HH
+#define NDS_CLIENT_LOADERS_RA_LOADER_HH
+
+#include "nds/result.hh"
 
 #include <netinet/in.h>
 #include <stdbool.h>
@@ -7,9 +9,7 @@
 #include <stdint.h>
 #include <sys/time.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include <string_view>
 
 /* ABI declarations independently transcribed from the HCCP v9.0.0 reference. */
 enum {
@@ -50,8 +50,6 @@ enum {
     NDS_RA_LITE_ALIGN_2M = 2,
     NDS_RA_MAX_INTERFACE_COUNT = 64,
 };
-
-enum { NDS_RA_ERROR_CAPACITY = 512 };
 
 typedef union NdsRaIpAddress {
     struct in_addr ipv4;
@@ -369,15 +367,9 @@ typedef struct NdsRaApi {
     NdsRaPollCqFn ra_poll_cq;
     NdsRaGetInterfaceCountFn ra_get_interface_count;
     NdsRaGetInterfacesFn ra_get_interfaces;
-    char error[NDS_RA_ERROR_CAPACITY];
 } NdsRaApi;
 
-int nds_ra_open(NdsRaApi *api, const char *library_path);
+nds::Result<NdsRaApi> nds_ra_open(std::string_view library_path);
 void nds_ra_close(NdsRaApi *api);
-const char *nds_ra_error(const NdsRaApi *api);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif

@@ -252,11 +252,14 @@ envelope's embedded result is copied back explicitly after synchronization.
 
 Stable platform dependencies, including the NPU client's public AscendCL API
 and CPU-only `libibverbs`, link normally. Version-coupled `libra.so` and
-`libruntime.so` stay behind runtime loaders. All CANN libraries in one NPU
+`libruntime.so` stay behind CANN runtime loaders. All CANN libraries in one NPU
 process must come from one release. Loaders resolve required symbols before
 hardware work and fail closed with useful diagnostics; private ABI structs stay
-inside the loader boundary. CANN-free unit and integration builds omit the
-NPU-client targets.
+inside the loader boundary. Before an NPU-client process uses a dynamically
+loaded CANN or driver library, its matching CANN `<cann-root>/set_env.sh` must
+be sourced; loaders use the CANN-provided library search path and never embed
+an installation-specific absolute library path. CANN-free unit and integration
+builds omit the NPU-client targets.
 
 NDS does not load or wrap HCOMM or HCCL. HCOMM's bundled transport is reference
 material only because it requires matching peer logic, flag buffers, and

@@ -3,7 +3,7 @@
 
 #include "nds/wire/transport.hh"
 #include "nds/device_transport.h"
-#include "nds/ra_loader.h"
+#include "loaders/ra_loader.hh"
 #include "nds/result.hh"
 
 #include <cstdint>

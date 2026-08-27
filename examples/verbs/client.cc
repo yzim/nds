@@ -61,7 +61,7 @@ nds::Result<Config> parse(int argc, char **argv) {
     CLI::App app{"Exercise one NDS verbs Send."};
     std::string backend{"ra"};
     app.add_option("--backend", backend, "Execution backend")->required()->check(CLI::IsMember({"ra", "aiv", "aicpu"}));
-    app.add_option("--runtime", config.runtime.runtime_library)->required();
+    app.add_option("--cann-runtime", config.runtime.cann_runtime_library)->required();
     app.add_option("--ra", config.transport.endpoint.ra_library)->required();
     app.add_option("--aiv-kernel", config.backend.aiv_kernel);
     app.add_option("--aicpu-kernel-config", config.backend.aicpu_kernel_config);

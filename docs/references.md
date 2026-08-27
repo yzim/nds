@@ -10,7 +10,8 @@ behavior in an installed binary.
 Use this order of evidence for a change:
 
 1. Bounded target experiment for a runtime behavior or completion claim.
-2. Installed headers, exported symbols, and loader checks for ABI availability.
+2. Installed headers, exported symbols, the matching CANN `set_env.sh`, and
+   loader checks for ABI availability.
 3. Matching CANN 9.0.0 and HCOMM source for lifecycle and data-layout intent.
 4. Upstream rdma-core and public Ascend documentation for generic concepts.
 

@@ -36,11 +36,8 @@ Result<std::string> dsmi_ipv4(std::uint32_t device_id) {
     constexpr int kDsmiRocePort = 1;
     constexpr int kPortId = 0;
     constexpr const char *kLibrary = "libdrvdsmi_host.so";
-    constexpr const char *kFallbackLibrary = "/usr/local/Ascend/driver/lib64/driver/libdrvdsmi_host.so";
 
     auto library = SharedLibrary::open(kLibrary);
-    if (!library)
-        library = SharedLibrary::open(kFallbackLibrary);
     if (!library)
         return unexpected(library.error());
 
