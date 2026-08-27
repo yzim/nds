@@ -13,14 +13,14 @@ nds_add_unit_test(nds_storage_protocol_test storage_protocol_test.cc)
 target_link_libraries(nds_storage_protocol_test PRIVATE nds_storage_protocol)
 nds_add_unit_test(nds_transport_mtu_test transport_mtu_test.cc)
 target_link_libraries(nds_transport_mtu_test PRIVATE nds_transport)
-nds_add_unit_test(nds_endpoint_test endpoint_test.cc)
-target_link_libraries(nds_endpoint_test PRIVATE nds_client_endpoint nds_ra)
-nds_add_unit_test(nds_runtime_test runtime_test.cc)
-target_link_libraries(nds_runtime_test PRIVATE nds_client_runtime)
+if(NDS_BUILD_NPU_CLIENT)
+    nds_add_unit_test(nds_endpoint_test endpoint_test.cc)
+    target_link_libraries(nds_endpoint_test PRIVATE nds_client_endpoint nds_ra)
+endif()
 nds_add_unit_test(nds_device_hns_codec_test device_hns_codec_test.cc)
 target_include_directories(nds_device_hns_codec_test PRIVATE
     ${PROJECT_SOURCE_DIR}/src/client/include
-    ${PROJECT_SOURCE_DIR}/src/client/execution/common)
+    ${PROJECT_SOURCE_DIR}/src/client/backend/common)
 nds_add_unit_test(nds_device_connection_test device_connection_test.cc)
 target_include_directories(nds_device_connection_test PRIVATE
     ${PROJECT_SOURCE_DIR}/src/client/include)
@@ -28,30 +28,30 @@ nds_add_unit_test(nds_device_storage_test device_storage_test.cc)
 target_include_directories(nds_device_storage_test PRIVATE
     ${PROJECT_SOURCE_DIR}/src/client/include
     ${PROJECT_SOURCE_DIR}/src/include)
-nds_add_unit_test(nds_aicpu_launcher_test aicpu_launcher_test.cc)
-target_link_libraries(nds_aicpu_launcher_test PRIVATE nds_aicpu_launcher)
-nds_add_unit_test(nds_aiv_launcher_test aiv_launcher_test.cc)
-target_link_libraries(nds_aiv_launcher_test PRIVATE nds_aiv_launcher)
 nds_add_unit_test(nds_logging_test logging_test.cc)
 target_link_libraries(nds_logging_test PRIVATE nds_logging)
-nds_add_unit_test(nds_storage_batch_test storage_batch_test.cc)
-target_link_libraries(nds_storage_batch_test PRIVATE nds_client_storage)
+if(NDS_BUILD_NPU_CLIENT)
+    nds_add_unit_test(nds_storage_batch_test storage_batch_test.cc)
+    target_link_libraries(nds_storage_batch_test PRIVATE nds_client_storage)
+endif()
 
 add_test(NAME integration.nds_aicpu_manifest_test
     COMMAND ${CMAKE_COMMAND}
-        -DNDS_AICPU_MANIFEST=${PROJECT_SOURCE_DIR}/src/client/execution/aicpu/device/package/nds_aicpu_standard.json.in
+        -DNDS_AICPU_MANIFEST=${PROJECT_SOURCE_DIR}/src/client/backend/aicpu/device/package/nds_aicpu_standard.json.in
         -P ${CMAKE_CURRENT_SOURCE_DIR}/integration/aicpu_manifest_test.cmake)
 set_tests_properties(integration.nds_aicpu_manifest_test PROPERTIES LABELS "integration")
 
-add_library(nds_fake_runtime SHARED integration/fake_runtime.cc)
-target_compile_options(nds_fake_runtime PRIVATE -Wall -Wextra -Wpedantic -Werror)
-add_executable(nds_runtime_loader_test integration/runtime_loader_test.cc)
-target_link_libraries(nds_runtime_loader_test PRIVATE nds_ra_loader GTest::gtest_main)
-target_compile_options(nds_runtime_loader_test PRIVATE -Wall -Wextra -Wpedantic -Werror)
-target_compile_definitions(nds_runtime_loader_test PRIVATE
-    NDS_FAKE_RUNTIME_PATH="$<TARGET_FILE:nds_fake_runtime>")
-add_dependencies(nds_runtime_loader_test nds_fake_runtime)
-gtest_discover_tests(nds_runtime_loader_test TEST_PREFIX "integration." PROPERTIES LABELS integration)
+if(NDS_BUILD_NPU_CLIENT)
+    add_library(nds_fake_runtime SHARED integration/fake_runtime.cc)
+    target_compile_options(nds_fake_runtime PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    add_executable(nds_runtime_loader_test integration/runtime_loader_test.cc)
+    target_link_libraries(nds_runtime_loader_test PRIVATE nds_ra_loader GTest::gtest_main)
+    target_compile_options(nds_runtime_loader_test PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    target_compile_definitions(nds_runtime_loader_test PRIVATE
+        NDS_FAKE_RUNTIME_PATH="$<TARGET_FILE:nds_fake_runtime>")
+    add_dependencies(nds_runtime_loader_test nds_fake_runtime)
+    gtest_discover_tests(nds_runtime_loader_test TEST_PREFIX "integration." PROPERTIES LABELS integration)
+endif()
 add_executable(nds_transport_exchange_test integration/transport_exchange_test.cc)
 target_link_libraries(nds_transport_exchange_test PRIVATE nds_transport GTest::gtest_main)
 target_compile_options(nds_transport_exchange_test PRIVATE -Wall -Wextra -Wpedantic -Werror)

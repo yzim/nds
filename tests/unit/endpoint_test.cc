@@ -285,7 +285,7 @@ TEST(EndpointTest, ProducesAiQueuePairDeviceView) {
     config.send_queue_depth = 64U;
     config.receive_queue_depth = 32U;
 
-    auto created = endpoint.create_qp(config, nds::client::NpuExecutionMode::Aiv);
+    auto created = endpoint.create_qp(config, nds::client::NpuBackend::Aiv);
     ASSERT_TRUE(created);
     auto qp = std::move(*created);
     EXPECT_EQ(fake.ai_qp_create_calls, 1);

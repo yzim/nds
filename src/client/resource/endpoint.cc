@@ -1,6 +1,6 @@
 #include "endpoint.hh"
 
-#include "loaders/hccn_loader.hh"
+#include "loaders/dsmi_loader.hh"
 #include "runtime.hh"
 
 #include <arpa/inet.h>
@@ -75,8 +75,8 @@ bool MemoryRegion::belongs_to(const Endpoint *endpoint) const noexcept {
     return endpoint_ == endpoint && handle_ != nullptr;
 }
 
-QueuePair::QueuePair(Endpoint *endpoint, const QueuePairConfig &config, NpuExecutionMode execution)
-    : endpoint_(endpoint), config_(config), execution_(execution) {}
+QueuePair::QueuePair(Endpoint *endpoint, const QueuePairConfig &config, NpuBackend backend)
+    : endpoint_(endpoint), config_(config), backend_(backend) {}
 
 QueuePair::~QueuePair() {
     reset();
@@ -85,7 +85,7 @@ QueuePair::~QueuePair() {
 QueuePair::QueuePair(QueuePair &&other) noexcept
     : endpoint_(std::exchange(other.endpoint_, nullptr)),
       config_(std::move(other.config_)),
-      execution_(other.execution_),
+      backend_(other.backend_),
       handle_(std::exchange(other.handle_, nullptr)),
       local_attributes_(std::exchange(other.local_attributes_, {})),
       ai_qp_info_(std::exchange(other.ai_qp_info_, {})),
@@ -99,7 +99,7 @@ QueuePair &QueuePair::operator=(QueuePair &&other) noexcept {
         reset();
         endpoint_ = std::exchange(other.endpoint_, nullptr);
         config_ = std::move(other.config_);
-        execution_ = other.execution_;
+        backend_ = other.backend_;
         handle_ = std::exchange(other.handle_, nullptr);
         local_attributes_ = std::exchange(other.local_attributes_, {});
         ai_qp_info_ = std::exchange(other.ai_qp_info_, {});
@@ -137,20 +137,18 @@ Result<void> QueuePair::initialize() {
         return unexpected(ErrorCode::kInvalidArgument,
                           "QP creation requires valid transport settings and power-of-two queue depths");
     }
-    if (execution_ != NpuExecutionMode::Ra && execution_ != NpuExecutionMode::Aicpu &&
-        execution_ != NpuExecutionMode::Aiv) {
-        return unexpected(ErrorCode::kInvalidArgument, "QP execution mode is invalid");
+    if (backend_ != NpuBackend::Ra && backend_ != NpuBackend::Aicpu && backend_ != NpuBackend::Aiv) {
+        return unexpected(ErrorCode::kInvalidArgument, "QP backend mode is invalid");
     }
-    if (execution_ == NpuExecutionMode::Aicpu && config_.ai_qp_mode >= 0 &&
-        config_.ai_qp_mode != NDS_RA_QP_MODE_NORMAL) {
+    if (backend_ == NpuBackend::Aicpu && config_.ai_qp_mode >= 0 && config_.ai_qp_mode != NDS_RA_QP_MODE_NORMAL) {
         return unexpected(ErrorCode::kInvalidArgument,
-                          "AICPU execution requires a NORMAL AI QP so the provider owns Send doorbells");
+                          "AICPU backend requires a NORMAL AI QP so the provider owns Send doorbells");
     }
 
     auto *api = &endpoint_->api_;
     if (api->ra_qp_destroy == nullptr || api->ra_get_qp_attr == nullptr || api->ra_typical_qp_modify == nullptr ||
-        (execution_ == NpuExecutionMode::Ra && api->ra_typical_qp_create == nullptr) ||
-        ((execution_ == NpuExecutionMode::Aicpu || execution_ == NpuExecutionMode::Aiv) &&
+        (backend_ == NpuBackend::Ra && api->ra_typical_qp_create == nullptr) ||
+        ((backend_ == NpuBackend::Aicpu || backend_ == NpuBackend::Aiv) &&
          (api->ra_ai_qp_create == nullptr || api->ra_set_qp_attr_qos == nullptr ||
           api->ra_set_qp_attr_timeout == nullptr || api->ra_set_qp_attr_retry_count == nullptr))) {
         return unexpected(ErrorCode::kRa, "RA API is missing a required QP operation");
@@ -158,8 +156,8 @@ Result<void> QueuePair::initialize() {
 
     int result{};
     if (config_.ai_qp_mode < 0)
-        config_.ai_qp_mode = execution_ == NpuExecutionMode::Aicpu ? NDS_RA_QP_MODE_NORMAL : NDS_RA_QP_MODE_OPBASE_EXT;
-    if (execution_ == NpuExecutionMode::Ra) {
+        config_.ai_qp_mode = backend_ == NpuBackend::Aicpu ? NDS_RA_QP_MODE_NORMAL : NDS_RA_QP_MODE_OPBASE_EXT;
+    if (backend_ == NpuBackend::Ra) {
         NdsRaTypicalQp initial_qp{};
         result = api->ra_typical_qp_create(endpoint_->rdev_handle_, NDS_RA_QP_FLAG_RC, NDS_RA_QP_MODE_OPBASE,
                                            &initial_qp, &handle_);
@@ -378,8 +376,8 @@ const NdsRaQpAttr &QueuePair::local_attributes() const noexcept {
     return local_attributes_;
 }
 
-NpuExecutionMode QueuePair::execution_mode() const noexcept {
-    return execution_;
+NpuBackend QueuePair::backend_mode() const noexcept {
+    return backend_;
 }
 
 NdsRaApi *QueuePair::ra_api() const noexcept {
@@ -406,8 +404,7 @@ Result<void> Endpoint::open(Runtime *runtime, const EndpointConfig &config) {
     config_ = config;
     const auto logical_device = static_cast<std::int32_t>(runtime_->config().logical_device_id);
     std::int32_t physical_device = -1;
-    if (runtime_->acl_api().get_phy_dev_id == nullptr ||
-        runtime_->acl_api().get_phy_dev_id(logical_device, &physical_device) != 0 || physical_device < 0) {
+    if (aclrtGetPhyDevIdByLogicDevId(logical_device, &physical_device) != ACL_SUCCESS || physical_device < 0) {
         reset();
         return unexpected(ErrorCode::kRuntime,
                           "CANN cannot map logical device " + std::to_string(logical_device) + " to a physical device");
@@ -433,7 +430,7 @@ Result<void> Endpoint::open(Runtime *runtime, const EndpointConfig &config) {
     NdsRaRdev rdev{};
     rdev.phy_id = physical_device_id_;
     rdev.family = AF_INET;
-    const auto ipv4 = hccn_ipv4(physical_device_id_);
+    const auto ipv4 = dsmi_ipv4(physical_device_id_);
     if (!ipv4) {
         reset();
         return unexpected(ipv4.error());
@@ -454,8 +451,8 @@ Result<void> Endpoint::open(Runtime *runtime, const EndpointConfig &config) {
     return {};
 }
 
-Result<QueuePair> Endpoint::create_qp(const QueuePairConfig &config, NpuExecutionMode execution) {
-    QueuePair qp(this, config, execution);
+Result<QueuePair> Endpoint::create_qp(const QueuePairConfig &config, NpuBackend backend) {
+    QueuePair qp(this, config, backend);
     if (const auto initialized = qp.initialize(); !initialized)
         return unexpected(initialized.error());
     return qp;

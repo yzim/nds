@@ -1,4 +1,5 @@
 #include "ra.hh"
+
 namespace nds {
 
 namespace {

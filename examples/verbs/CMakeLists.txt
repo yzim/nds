@@ -1,6 +1,6 @@
 add_executable(nds_verbs_client client.cc)
 target_include_directories(nds_verbs_client PRIVATE
-    ${PROJECT_SOURCE_DIR}/src/client/execution
+    ${PROJECT_SOURCE_DIR}/src/client/backend
     ${PROJECT_SOURCE_DIR}/src/client/resource)
 target_link_libraries(nds_verbs_client PRIVATE
     CLI11::CLI11

@@ -4,6 +4,8 @@ NDS is a storage interoperability project for one Ascend NPU RNIC client and
 one CPU-side RoCE server. The NPU submits storage commands; the CPU owns the
 memory-backed namespace and data movement through `libibverbs`.
 
+> The API and implementation are under active development and may change without notice.
+
 ## Basis
 
 Its design, lifecycle, and ABI understanding are based on public open-source
@@ -15,7 +17,7 @@ The installed CANN libraries on the target remain authoritative at runtime. See
 
 ## API Matrix
 
-NDS supports three execution modes across three API layers:
+NDS supports three backend modes across three API layers:
 
 | Layer | APIs | `ra` | `aiv` | `aicpu` |
 |---|---|---|---|---|
@@ -34,7 +36,7 @@ Building and running NDS requires a real Linux target with an Ascend NPU, a
 matching CANN installation, and configured NPU and CPU RoCE devices.
 
 ```sh
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DNDS_CANN_ROOT=<cann-root>
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 ```
@@ -52,7 +54,7 @@ docs/       Design, development, roadmap, and reference guides
 ## Documentation
 
 - [Design](docs/design.md): architecture, lifecycle, wire boundary, completion,
-  runtime ABI, and execution modes.
+  runtime ABI, and backend modes.
 - [Development](docs/development.md): C++ conventions, formatting, testing,
   hardware validation, and the PyTorch wrapper.
 - [Roadmap](docs/roadmap.md): delivered work and planned engineering tracks.

@@ -5,11 +5,11 @@ namespace {
 
 Result<void> validate_context(const RaStorageContext &context) {
     if (context.connection.runtime == nullptr || context.connection.qp == nullptr ||
-        context.connection.qp->execution_mode() != client::NpuExecutionMode::Ra || context.command_device == nullptr ||
-        context.completion_device == nullptr || context.command_buffer.address == 0U || context.command_buffer.local_key == 0U ||
-        context.command_buffer.length < kStorageCommandBytes || context.completion.address == 0U ||
-        context.completion.local_key == 0U || context.completion.length < kStorageCompletionBytes ||
-        context.capacity == 0U)
+        context.connection.qp->backend_mode() != client::NpuBackend::Ra || context.command_device == nullptr ||
+        context.completion_device == nullptr || context.command_buffer.address == 0U ||
+        context.command_buffer.local_key == 0U || context.command_buffer.length < kStorageCommandBytes ||
+        context.completion.address == 0U || context.completion.local_key == 0U ||
+        context.completion.length < kStorageCompletionBytes || context.capacity == 0U)
         return unexpected(ErrorCode::kInvalidArgument, "invalid RA storage context");
     return {};
 }
@@ -23,28 +23,27 @@ Result<void> execute(const RaStorageContext &context, const Request &command, Se
                                                StorageStatus::Success, 0U};
     if (serialize_storage_completion(pending_completion, pending, sizeof(pending)) != StorageSerdeResult::Ok)
         return unexpected(ErrorCode::kProtocol, "invalid RA pending completion record");
-    if (const auto copied = context.connection.runtime->copy_host_to_device(context.completion_device, pending,
-                                                                            sizeof(pending));
+    if (const auto copied =
+            context.connection.runtime->copy_host_to_device(context.completion_device, pending, sizeof(pending));
         !copied)
         return unexpected(copied.error());
 
     uint8_t command_bytes[kStorageCommandBytes]{};
     if (serialize(command, command_bytes, sizeof(command_bytes)) != StorageSerdeResult::Ok)
         return unexpected(ErrorCode::kProtocol, "invalid RA storage command");
-    if (const auto copied =
-            context.connection.runtime->copy_host_to_device(context.command_device, command_bytes,
-                                                            sizeof(command_bytes));
+    if (const auto copied = context.connection.runtime->copy_host_to_device(context.command_device, command_bytes,
+                                                                            sizeof(command_bytes));
         !copied)
         return unexpected(copied.error());
 
-    const NdsDeviceSendWr transfer{command.command_id,
-                                    NDS_DEVICE_WR_SEND,
-                                    NDS_DEVICE_SEND_SIGNALED,
-                                    {context.command_buffer.address, kStorageCommandBytes,
-                                     context.command_buffer.local_key},
-                                    0U,
-                                    0U,
-                                    0U};
+    const NdsDeviceSendWr transfer{
+        command.command_id,
+        NDS_DEVICE_WR_SEND,
+        NDS_DEVICE_SEND_SIGNALED,
+        {context.command_buffer.address, kStorageCommandBytes, context.command_buffer.local_key},
+        0U,
+        0U,
+        0U};
     return NdsRaRdmaSend(context.connection, transfer);
 }
 

@@ -43,7 +43,7 @@ struct AivPollCqArguments {
 struct Config {
     nds::client::RuntimeConfig runtime;
     nds::client::TransportConfig transport;
-    nds::client::ExecutionConfig execution;
+    nds::client::BackendConfig backend;
     Operation operation{Operation::Send};
     bool caller_polls_cq{};
 };
@@ -55,11 +55,10 @@ nds::Result<Config> parse(int argc, char **argv) {
     CLI::App app{"Exercise one direct NDS transport operator."};
     app.add_option("--backend", backend)->required()->check(CLI::IsMember({"ra", "aiv", "aicpu"}));
     app.add_option("--operation", operation)->check(CLI::IsMember({"send", "recv", "read", "write"}));
-    app.add_option("--ascendcl", config.runtime.ascendcl_library)->required();
     app.add_option("--runtime", config.runtime.runtime_library)->required();
     app.add_option("--ra", config.transport.endpoint.ra_library)->required();
-    app.add_option("--aiv-kernel", config.execution.aiv_kernel);
-    app.add_option("--aicpu-kernel-config", config.execution.aicpu_kernel_config);
+    app.add_option("--aiv-kernel", config.backend.aiv_kernel);
+    app.add_option("--aicpu-kernel-config", config.backend.aicpu_kernel_config);
     app.add_option("--logical-device", config.runtime.logical_device_id)->required();
     app.add_option("--server", config.transport.server_address)->required();
     app.add_flag("--caller-polls-cq", config.caller_polls_cq, "Request caller-owned CQ dataplane memory");
@@ -70,12 +69,12 @@ nds::Result<Config> parse(int argc, char **argv) {
                                app.exit(error) == 0 ? "help requested" : "invalid options");
     }
     if (backend == "aiv")
-        config.execution.mode = nds::client::NpuExecutionMode::Aiv;
+        config.backend.mode = nds::client::NpuBackend::Aiv;
     if (backend == "aicpu")
-        config.execution.mode = nds::client::NpuExecutionMode::Aicpu;
-    if ((config.execution.mode == nds::client::NpuExecutionMode::Aiv && config.execution.aiv_kernel.empty()) ||
-        (config.execution.mode == nds::client::NpuExecutionMode::Aicpu &&
-         config.execution.aicpu_kernel_config.empty())) {
+        config.backend.mode = nds::client::NpuBackend::Aicpu;
+    if ((config.backend.mode == nds::client::NpuBackend::Aiv && config.backend.aiv_kernel.empty()) ||
+        (config.backend.mode == nds::client::NpuBackend::Aicpu &&
+         config.backend.aicpu_kernel_config.empty())) {
         return nds::unexpected(nds::ErrorCode::kInvalidArgument, "device backend requires its kernel artifact");
     }
     if (operation == "recv")
@@ -140,9 +139,9 @@ nds::Result<std::int32_t> launch(nds::client::Runtime *runtime, nds::client::Tra
     if (const auto copied = runtime->copy_to(&*device_args, args, size); !copied)
         return nds::unexpected(copied.error());
     const std::uint64_t address = reinterpret_cast<std::uint64_t>(device_args->data());
-    if (transport->execution().mode == nds::client::NpuExecutionMode::Aicpu) {
+    if (transport->backend().mode == nds::client::NpuBackend::Aicpu) {
         nds::AicpuLauncher launcher;
-        if (const auto loaded = launcher.load(&runtime->acl_api(), transport->execution().aicpu_kernel_config); !loaded)
+        if (const auto loaded = launcher.load(transport->backend().aicpu_kernel_config); !loaded)
             return nds::unexpected(loaded.error());
         const char *kernel_name = nullptr;
         switch (entry) {
@@ -167,7 +166,7 @@ nds::Result<std::int32_t> launch(nds::client::Runtime *runtime, nds::client::Tra
             return nds::unexpected(result.error());
     } else {
         nds::AivLauncher launcher;
-        if (const auto loaded = launcher.load(&runtime->acl_api(), transport->execution().aiv_kernel); !loaded)
+        if (const auto loaded = launcher.load(transport->backend().aiv_kernel); !loaded)
             return nds::unexpected(loaded.error());
         const char *kernel_name = nullptr;
         switch (entry) {
@@ -235,7 +234,7 @@ nds::Result<std::int32_t> launch(nds::client::Runtime *runtime, nds::client::Tra
 }
 
 nds::Result<void> poll(nds::client::Runtime *runtime, nds::client::Transport *transport, bool send_cq) {
-    if (transport->execution().mode == nds::client::NpuExecutionMode::Ra) {
+    if (transport->backend().mode == nds::client::NpuBackend::Ra) {
         NdsDeviceWc completion{};
         for (std::uint32_t elapsed = 0U; elapsed < kTimeoutMs; elapsed += 10U) {
             const auto result = nds::NdsRaPollCq(transport->qp(), send_cq, 1U, &completion);
@@ -270,7 +269,7 @@ nds::Result<void> poll(nds::client::Runtime *runtime, nds::client::Transport *tr
 
 nds::Result<void> send(nds::client::Runtime *runtime, nds::client::Transport *transport, const NdsDeviceSendWr &wr,
                        Entry entry) {
-    if (transport->execution().mode == nds::client::NpuExecutionMode::Ra) {
+    if (transport->backend().mode == nds::client::NpuBackend::Ra) {
         const nds::RaConnection connection{runtime, transport->qp()};
         if (entry == Entry::Send)
             return nds::NdsRaRdmaSend(connection, wr);
@@ -306,7 +305,7 @@ nds::Result<void> send(nds::client::Runtime *runtime, nds::client::Transport *tr
 }
 
 nds::Result<void> receive(nds::client::Runtime *runtime, nds::client::Transport *transport, const NdsDeviceRecvWr &wr) {
-    if (transport->execution().mode == nds::client::NpuExecutionMode::Ra)
+    if (transport->backend().mode == nds::client::NpuBackend::Ra)
         return nds::NdsRaRdmaRecv({runtime, transport->qp()}, {wr.wr_id, NDS_DEVICE_WR_SEND, 0U, wr.local, 0U, 0U, 0U});
     const auto device = transport->qp()->make_device_transport();
     if (!device)
@@ -361,7 +360,7 @@ nds::Result<void> run(nds::client::Runtime *runtime, nds::client::Transport *tra
             return nds::unexpected(result.error());
         if (const auto result = signal(transport); !result)
             return nds::unexpected(result.error());
-        if (transport->execution().mode == nds::client::NpuExecutionMode::Aiv) {
+        if (transport->backend().mode == nds::client::NpuBackend::Aiv) {
             if (const auto result = poll(runtime, transport, false); !result)
                 return nds::unexpected(result.error());
         }
@@ -381,7 +380,7 @@ nds::Result<void> run(nds::client::Runtime *runtime, nds::client::Transport *tra
     }
     if (const auto result = send(runtime, transport, wr, entry); !result)
         return nds::unexpected(result.error());
-    if (transport->execution().mode == nds::client::NpuExecutionMode::Aiv) {
+    if (transport->backend().mode == nds::client::NpuBackend::Aiv) {
         if (const auto result = poll(runtime, transport, true); !result)
             return nds::unexpected(result.error());
     }
@@ -413,7 +412,7 @@ int main(int argc, char **argv) {
         NDS_LOG_ERROR("transport-client", "runtime open failed: {}", opened.error().message);
         return EXIT_FAILURE;
     }
-    if (const auto opened = transport.open(&runtime, config->transport, config->execution); !opened) {
+    if (const auto opened = transport.open(&runtime, config->transport, config->backend); !opened) {
         NDS_LOG_ERROR("transport-client", "transport open failed: {}", opened.error().message);
         return EXIT_FAILURE;
     }

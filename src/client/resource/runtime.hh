@@ -1,9 +1,10 @@
 #ifndef NDS_CLIENT_RUNTIME_HH
 #define NDS_CLIENT_RUNTIME_HH
 
-#include "nds/acl_loader.h"
 #include "nds/result.hh"
 #include "nds/runtime_loader.h"
+
+#include <acl/acl_rt.h>
 
 #include <cstddef>
 #include <cstdint>
@@ -54,7 +55,6 @@ private:
 };
 
 struct RuntimeConfig {
-    std::string ascendcl_library;
     std::string runtime_library;
     std::uint32_t logical_device_id{};
     std::int32_t hdc_type{NDS_RUNTIME_HDC_SERVICE_TYPE_RDMA_V2};
@@ -85,7 +85,6 @@ public:
     Result<void> free_host_pinned_memory(void *host_ptr);
     Result<void> copy_host_to_device(void *device_ptr, const void *host_ptr, std::size_t size);
     Result<void> copy_device_to_host(void *host_ptr, const void *device_ptr, std::size_t size);
-    NdsAclApi &acl_api() noexcept;
     NdsRuntimeApi &runtime_api() noexcept;
 
 private:
@@ -94,7 +93,6 @@ private:
     void reset() noexcept;
 
     RuntimeConfig config_{};
-    NdsAclApi acl_{};
     NdsRuntimeApi runtime_{};
     bool acl_initialized_{false};
     bool net_service_open_{false};

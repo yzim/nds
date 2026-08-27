@@ -78,7 +78,7 @@ enum {
 };
 
 typedef int (*NdsHnsExpPostSendFn)(void *qp, struct NdsHnsSendWr *wr, struct NdsHnsSendWr **bad_wr,
-                                        struct NdsHnsPostSendResponse *response);
+                                   struct NdsHnsPostSendResponse *response);
 typedef int (*NdsHnsPostRecvFn)(void *qp, struct NdsHnsRecvWr *wr, struct NdsHnsRecvWr **bad_wr);
 typedef int (*NdsHnsPollCqFn)(void *cq, int num_entries, struct NdsHnsWc *wc);
 

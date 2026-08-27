@@ -31,19 +31,19 @@ void check_tensor(const ::torch::Tensor &tensor) {
     TORCH_CHECK(tensor.nbytes() <= std::numeric_limits<std::uint32_t>::max(), "NDS tensor is too large");
 }
 
-client::NpuExecutionMode execution_mode(const std::string &backend) {
-    if (backend == "ra")
-        return client::NpuExecutionMode::Ra;
-    if (backend == "aiv")
-        return client::NpuExecutionMode::Aiv;
-    if (backend == "aicpu")
-        return client::NpuExecutionMode::Aicpu;
-    TORCH_CHECK(false, "unsupported NDS backend: ", backend);
+client::NpuBackend backend_mode(const std::string &backend_name) {
+    if (backend_name == "ra")
+        return client::NpuBackend::Ra;
+    if (backend_name == "aiv")
+        return client::NpuBackend::Aiv;
+    if (backend_name == "aicpu")
+        return client::NpuBackend::Aicpu;
+    TORCH_CHECK(false, "unsupported NDS backend: ", backend_name);
 }
 
 class Session : public std::enable_shared_from_this<Session> {
 public:
-    Session(std::string server, std::string backend, std::string aiv_kernel, std::string aicpu_kernel_config) {
+    Session(std::string server, std::string backend_name, std::string aiv_kernel, std::string aicpu_kernel_config) {
         TORCH_CHECK(parse_tcp_address(server), "server must be IPv4:port");
         const auto device = c10_npu::current_device();
         TORCH_CHECK(device >= 0, "torch_npu has no active NPU device");
@@ -56,15 +56,15 @@ public:
         transport_config.endpoint.ra_library = "libra.so";
         transport_config.server_address = std::move(server);
 
-        client::ExecutionConfig execution;
-        execution.mode = execution_mode(backend);
-        execution.aiv_kernel = std::move(aiv_kernel);
-        execution.aicpu_kernel_config = std::move(aicpu_kernel_config);
-        if (execution.mode == client::NpuExecutionMode::Aiv)
-            TORCH_CHECK(!execution.aiv_kernel.empty(), "AIV requires an NDS kernel binary");
-        if (execution.mode == client::NpuExecutionMode::Aicpu)
-            TORCH_CHECK(!execution.aicpu_kernel_config.empty(), "AICPU requires an NDS package configuration");
-        check(transport_.open(&runtime_, transport_config, execution));
+        client::BackendConfig backend;
+        backend.mode = backend_mode(backend_name);
+        backend.aiv_kernel = std::move(aiv_kernel);
+        backend.aicpu_kernel_config = std::move(aicpu_kernel_config);
+        if (backend.mode == client::NpuBackend::Aiv)
+            TORCH_CHECK(!backend.aiv_kernel.empty(), "AIV requires an NDS kernel binary");
+        if (backend.mode == client::NpuBackend::Aicpu)
+            TORCH_CHECK(!backend.aicpu_kernel_config.empty(), "AICPU requires an NDS package configuration");
+        check(transport_.open(&runtime_, transport_config, backend));
         check(storage_.open(&runtime_, &transport_));
     }
 

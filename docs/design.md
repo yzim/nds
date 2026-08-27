@@ -39,7 +39,7 @@ The source layout reflects these boundaries:
 
 ```text
 src/client/resource/    NPU lifecycle, transport, storage session
-src/client/execution/   RA, AIV, and AICPU command execution
+src/client/backend/     RA, AIV, and AICPU client backends
 src/server/             CPU protocol, transport, and verbs backend
 src/common/             shared transport implementation
 src/torch/              reusable PyTorch extension
@@ -69,7 +69,7 @@ aclInit -> aclrtSetDevice -> rtOpenNetService(--hdcType=18)
 ```
 
 The offline path uses `NETWORK_OFFLINE`, `NOTIFY (1)`, and an enabled Lite
-context. The selected execution mode determines QP creation:
+context. The selected backend mode determines QP creation:
 
 | Mode | Creation | QP mode | Purpose |
 |---|---|---|---|
@@ -152,7 +152,7 @@ their separate device wait operator, which deserializes the same record in
 device code; the host stream timeout bounds that operator but is not the
 storage completion signal.
 
-The four command semantics are explicit across execution environments:
+The four command semantics are explicit across backend environments:
 
 | Operation | Shared semantic command | RA input | AIV/AICPU invocation |
 |---|---|---|---|
@@ -163,11 +163,11 @@ The four command semantics are explicit across execution environments:
 
 The invocation arguments are host-device ABI envelopes, not network records.
 AIV copies command fields between global and local memory outside serde; serde
-itself has no execution-mode branches.
+itself has no backend-mode branches.
 
-## Execution modes
+## Backend modes
 
-Execution mode decides where a work request runs, not which API layer is used.
+Backend mode decides where a work request runs, not which API layer is used.
 All modes share host lifecycle, QP/MR setup, TCP bootstrap, and CPU protocol
 execution.
 
@@ -250,12 +250,13 @@ envelope's embedded result is copied back explicitly after synchronization.
 
 ## Runtime ABI boundary
 
-Stable platform dependencies and CPU-only `libibverbs` link normally.
-Version-coupled `libra.so` and `libruntime.so` stay behind runtime loaders;
-`libascendcl.so` loads dynamically by default, with an optional version-pinned
-public ACL link mode. All CANN libraries in one NPU process must come from one
-release. Loaders resolve required symbols before hardware work and fail closed
-with useful diagnostics; ABI structs stay inside the loader boundary.
+Stable platform dependencies, including the NPU client's public AscendCL API
+and CPU-only `libibverbs`, link normally. Version-coupled `libra.so` and
+`libruntime.so` stay behind runtime loaders. All CANN libraries in one NPU
+process must come from one release. Loaders resolve required symbols before
+hardware work and fail closed with useful diagnostics; private ABI structs stay
+inside the loader boundary. CANN-free unit and integration builds omit the
+NPU-client targets.
 
 NDS does not load or wrap HCOMM or HCCL. HCOMM's bundled transport is reference
 material only because it requires matching peer logic, flag buffers, and

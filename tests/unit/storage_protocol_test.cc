@@ -19,13 +19,10 @@ void expect_memory(const T &value, std::uint64_t address, std::uint64_t length, 
 }
 
 std::array<std::uint8_t, nds::kStorageCommandBytes> read_golden() {
-    return {0x4eU, 0x44U, 0x53U, 0x43U, 0x00U, 0x02U, 0x00U, 0x01U,
-            0x10U, 0x20U, 0x30U, 0x40U, 0x50U, 0x60U, 0x70U, 0x80U,
-            0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x10U, 0x00U,
-            0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x20U, 0x00U,
-            0x11U, 0x22U, 0x33U, 0x44U, 0x55U, 0x66U, 0x77U, 0x88U,
-            0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x20U, 0x00U,
-            0xa1U, 0xb2U, 0xc3U, 0xd4U, 0x00U, 0x00U, 0x00U, 0x02U};
+    return {0x4eU, 0x44U, 0x53U, 0x43U, 0x00U, 0x02U, 0x00U, 0x01U, 0x10U, 0x20U, 0x30U, 0x40U, 0x50U, 0x60U,
+            0x70U, 0x80U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x10U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+            0x00U, 0x00U, 0x20U, 0x00U, 0x11U, 0x22U, 0x33U, 0x44U, 0x55U, 0x66U, 0x77U, 0x88U, 0x00U, 0x00U,
+            0x00U, 0x00U, 0x00U, 0x00U, 0x20U, 0x00U, 0xa1U, 0xb2U, 0xc3U, 0xd4U, 0x00U, 0x00U, 0x00U, 0x02U};
 }
 
 std::array<std::uint8_t, nds::kStorageCommandBytes> write_golden() {
@@ -38,15 +35,12 @@ std::array<std::uint8_t, nds::kStorageCommandBytes> write_golden() {
 std::array<std::uint8_t, nds::kStorageCommandBytes> batch_read_golden() {
     auto bytes = read_golden();
     bytes[7] = 0x03U;
-    for (std::size_t index = 16U; index < 24U; ++index)
-        bytes[index] = 0U;
+    for (std::size_t index = 16U; index < 24U; ++index) bytes[index] = 0U;
     bytes[23] = 0x02U;
-    for (std::size_t index = 24U; index < 32U; ++index)
-        bytes[index] = 0U;
+    for (std::size_t index = 24U; index < 32U; ++index) bytes[index] = 0U;
     bytes[30] = 0x30U;
     bytes[31] = 0x00U;
-    for (std::size_t index = 40U; index < 48U; ++index)
-        bytes[index] = 0U;
+    for (std::size_t index = 40U; index < 48U; ++index) bytes[index] = 0U;
     bytes[47] = 0x50U;
     bytes[55] = 0x04U;
     return bytes;
@@ -76,8 +70,7 @@ TEST(StorageProtocolTest, RoundTripsReadAndWrite) {
     nds::StorageWriteCommand decoded_write{};
     ASSERT_EQ(nds::serialize_storage_write(write, bytes.data(), bytes.size()), nds::StorageSerdeResult::Ok);
     EXPECT_EQ(bytes, write_golden());
-    ASSERT_EQ(nds::deserialize_storage_write(bytes.data(), bytes.size(), &decoded_write),
-              nds::StorageSerdeResult::Ok);
+    ASSERT_EQ(nds::deserialize_storage_write(bytes.data(), bytes.size(), &decoded_write), nds::StorageSerdeResult::Ok);
     EXPECT_EQ(decoded_write.command_id, write.command_id);
     EXPECT_EQ(decoded_write.offset, write.offset);
     EXPECT_EQ(decoded_write.length, write.length);
@@ -125,9 +118,8 @@ TEST(StorageProtocolTest, RoundTripsBatchCommandsAndEntries) {
     ASSERT_EQ(nds::serialize_storage_batch_write_entry(write_entry, entry_bytes.data(), entry_bytes.size()),
               nds::StorageSerdeResult::Ok);
     EXPECT_EQ(entry_bytes[39], 0x04U);
-    ASSERT_EQ(
-        nds::deserialize_storage_batch_write_entry(entry_bytes.data(), entry_bytes.size(), &decoded_write_entry),
-        nds::StorageSerdeResult::Ok);
+    ASSERT_EQ(nds::deserialize_storage_batch_write_entry(entry_bytes.data(), entry_bytes.size(), &decoded_write_entry),
+              nds::StorageSerdeResult::Ok);
     EXPECT_EQ(decoded_write_entry.offset, write_entry.offset);
     EXPECT_EQ(decoded_write_entry.length, write_entry.length);
 }
@@ -149,9 +141,8 @@ TEST(StorageProtocolTest, RoundTripsSessionAndCompletionRecords) {
     nds::StorageNamespace decoded_namespace{};
     ASSERT_EQ(nds::serialize_storage_namespace(storage_namespace, namespace_bytes.data(), namespace_bytes.size()),
               nds::StorageSerdeResult::Ok);
-    ASSERT_EQ(
-        nds::deserialize_storage_namespace(namespace_bytes.data(), namespace_bytes.size(), &decoded_namespace),
-        nds::StorageSerdeResult::Ok);
+    ASSERT_EQ(nds::deserialize_storage_namespace(namespace_bytes.data(), namespace_bytes.size(), &decoded_namespace),
+              nds::StorageSerdeResult::Ok);
     EXPECT_EQ(decoded_namespace.capacity, storage_namespace.capacity);
 
     const nds::StorageCompletion completion{kCommandId, nds::StorageCompletionState::Complete,

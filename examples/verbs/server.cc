@@ -13,7 +13,7 @@
 namespace {
 
 struct Config {
-    nds::server::ConnectionConfig connection;
+    nds::server::TransportConfig transport;
     std::uint32_t receives{1U};
     std::string operation{"send"};
     std::string log_sink{"stderr"};
@@ -22,10 +22,10 @@ struct Config {
 
 int parse(int argc, char **argv, Config *config, bool *exit_requested) {
     CLI::App app{"Receive one or more NDS verbs Sends."};
-    app.add_option("--device", config->connection.backend.device_name)->required();
-    app.add_option("--gid-index", config->connection.backend.gid_index)->required();
-    app.add_option("--listen", config->connection.listen_address);
-    app.add_option("--ib-port", config->connection.backend.port);
+    app.add_option("--device", config->transport.backend.device_name)->required();
+    app.add_option("--gid-index", config->transport.backend.gid_index)->required();
+    app.add_option("--listen", config->transport.listen_address);
+    app.add_option("--ib-port", config->transport.backend.port);
     app.add_option("--receives", config->receives, "Number of Receive WQEs to post")->check(CLI::Range(1U, 2U));
     app.add_option("--operation", config->operation)
         ->check(CLI::IsMember({"send", "send-batch", "send-batch-invalid", "recv"}));
@@ -55,9 +55,9 @@ int main(int argc, char **argv) {
     if (!nds::log::configure("verbs-server", config.log_sink, config.log_level))
         return EXIT_FAILURE;
 
-    nds::server::Connection connection;
-    if (const auto opened = connection.open(config.connection); !opened) {
-        NDS_LOG_ERROR("verbs-server", "connection open failed: {}", opened.error().message);
+    nds::server::Transport transport;
+    if (const auto opened = transport.open(config.transport); !opened) {
+        NDS_LOG_ERROR("verbs-server", "transport open failed: {}", opened.error().message);
         return EXIT_FAILURE;
     }
     if (config.operation == "recv") {
@@ -65,10 +65,10 @@ int main(int argc, char **argv) {
         for (std::size_t index = 0U; index < payload.size(); ++index)
             payload[index] = static_cast<std::byte>(index ^ 0x5aU);
         const auto region =
-            connection.register_memory(payload.data(), payload.size(), nds::server::MemoryAccess::LocalRead);
+            transport.register_memory(payload.data(), payload.size(), nds::server::MemoryAccess::LocalRead);
         std::uint8_t ready{};
-        if (!region || !connection.activate() || !connection.bootstrap()->receive_bytes(&ready, sizeof(ready)) ||
-            ready != 1U || !connection.send(*region, payload.size())) {
+        if (!region || !transport.activate() || !transport.bootstrap()->receive_bytes(&ready, sizeof(ready)) ||
+            ready != 1U || !transport.send(*region, payload.size())) {
             NDS_LOG_ERROR("verbs-server", "verbs PostRecv exchange failed");
             return EXIT_FAILURE;
         }
@@ -79,19 +79,19 @@ int main(int argc, char **argv) {
     std::vector<nds::server::RegisteredRegion> receives;
     receives.reserve(payloads.size());
     for (auto &payload : payloads) {
-        auto prepared = connection.prepare_receive(payload.data(), payload.size());
+        auto prepared = transport.prepare_receive(payload.data(), payload.size());
         if (!prepared) {
             NDS_LOG_ERROR("verbs-server", "verbs Receive setup failed");
             return EXIT_FAILURE;
         }
         receives.push_back(std::move(*prepared));
     }
-    if (!connection.activate()) {
+    if (!transport.activate()) {
         NDS_LOG_ERROR("verbs-server", "verbs Receive activation failed");
         return EXIT_FAILURE;
     }
     for (std::uint32_t receive_index = 0U; receive_index < config.receives; ++receive_index) {
-        if (!connection.receive(5000U)) {
+        if (!transport.receive(5000U)) {
             NDS_LOG_ERROR("verbs-server", "verbs Receive {} failed", receive_index);
             return EXIT_FAILURE;
         }

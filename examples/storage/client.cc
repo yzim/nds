@@ -19,7 +19,7 @@ constexpr std::uint32_t kStorageCompletionTimeoutMs = 5000U;
 struct ClientConfig {
     nds::client::RuntimeConfig runtime;
     nds::client::TransportConfig transport;
-    nds::client::ExecutionConfig execution;
+    nds::client::BackendConfig backend;
     std::string operation{"write"};
     std::uint64_t offset{};
     std::uint32_t bytes{4096U};
@@ -32,14 +32,13 @@ nds::Result<int> parse_args(int argc, char **argv, ClientConfig *config, bool *e
     if (config == nullptr || exit_requested == nullptr)
         return nds::unexpected(nds::ErrorCode::kInvalidArgument, "client configuration and exit state are required");
     CLI::App app{"Send one NDS storage command from an NPU to a CPU memory namespace."};
-    app.add_option("--ascendcl", config->runtime.ascendcl_library, "AscendCL shared library")->required();
     app.add_option("--runtime", config->runtime.runtime_library, "CANN runtime shared library")->required();
     app.add_option("--ra", config->transport.endpoint.ra_library, "CANN RA shared library")->required();
-    std::string execution{"ra"};
-    app.add_option("--execution", execution, "Storage execution mode")->check(CLI::IsMember({"ra", "aicpu", "aiv"}));
-    app.add_option("--aicpu-kernel-config", config->execution.aicpu_kernel_config,
+    std::string backend{"ra"};
+    app.add_option("--backend", backend, "Storage backend mode")->check(CLI::IsMember({"ra", "aicpu", "aiv"}));
+    app.add_option("--aicpu-kernel-config", config->backend.aicpu_kernel_config,
                    "AICPU standard-kernel package configuration");
-    app.add_option("--aiv-kernel", config->execution.aiv_kernel, "AIV kernel binary");
+    app.add_option("--aiv-kernel", config->backend.aiv_kernel, "AIV kernel binary");
     app.add_option("--operation", config->operation, "Storage operation")
         ->check(CLI::IsMember({"read", "write", "batch-read", "batch-write"}));
     app.add_option("--offset", config->offset, "Namespace byte offset");
@@ -69,12 +68,12 @@ nds::Result<int> parse_args(int argc, char **argv, ClientConfig *config, bool *e
         return app.exit(parse_error);
     }
 
-    if (execution == "aicpu")
-        config->execution.mode = nds::client::NpuExecutionMode::Aicpu;
-    if (execution == "aiv")
-        config->execution.mode = nds::client::NpuExecutionMode::Aiv;
-    if ((execution == "aicpu" && config->execution.aicpu_kernel_config.empty()) ||
-        (execution == "aiv" && config->execution.aiv_kernel.empty())) {
+    if (backend == "aicpu")
+        config->backend.mode = nds::client::NpuBackend::Aicpu;
+    if (backend == "aiv")
+        config->backend.mode = nds::client::NpuBackend::Aiv;
+    if ((backend == "aicpu" && config->backend.aicpu_kernel_config.empty()) ||
+        (backend == "aiv" && config->backend.aiv_kernel.empty())) {
         return nds::unexpected(nds::ErrorCode::kInvalidArgument, "invalid option combination");
     }
     return 0;
@@ -107,7 +106,7 @@ int main(int argc, char **argv) {
         NDS_LOG_ERROR("npu-client", "runtime open failed: {}", result.error().message);
         return EXIT_FAILURE;
     }
-    if (const auto result = transport.open(&runtime, config.transport, config.execution); !result) {
+    if (const auto result = transport.open(&runtime, config.transport, config.backend); !result) {
         NDS_LOG_ERROR("npu-client", "transport open failed: {}", result.error().message);
         return EXIT_FAILURE;
     }

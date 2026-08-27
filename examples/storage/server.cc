@@ -11,7 +11,7 @@
 
 namespace {
 struct Config {
-    nds::server::ConnectionConfig connection;
+    nds::server::TransportConfig transport;
     std::uint32_t namespace_bytes{1024U * 1024U};
     std::uint32_t storage_commands{1U};
     bool seed_pattern{};
@@ -22,13 +22,13 @@ struct Config {
 
 int parse(int argc, char **argv, Config *config, bool *exit_requested) {
     CLI::App app{"Serve NDS memory-backed storage commands."};
-    app.add_option("--device", config->connection.backend.device_name)->required();
-    app.add_option("--gid-index", config->connection.backend.gid_index)->required();
-    app.add_option("--listen", config->connection.listen_address, "TCP bootstrap listen address as IPv4:port");
-    app.add_option("--ib-port", config->connection.backend.port);
+    app.add_option("--device", config->transport.backend.device_name)->required();
+    app.add_option("--gid-index", config->transport.backend.gid_index)->required();
+    app.add_option("--listen", config->transport.listen_address, "TCP bootstrap listen address as IPv4:port");
+    app.add_option("--ib-port", config->transport.backend.port);
     app.add_option("--namespace-bytes", config->namespace_bytes)->check(CLI::Range(1U, 64U * 1024U * 1024U));
     app.add_option("--storage-commands", config->storage_commands,
-                   "Number of serial storage commands to serve on one connection")
+                   "Number of serial storage commands to serve on one transport")
         ->check(CLI::Range(1U, 65535U));
     app.add_flag("--seed-pattern", config->seed_pattern, "Initialize the namespace with the NDS test pattern");
     app.add_option("--verify-write-bytes", config->verify_write_bytes,
@@ -58,9 +58,9 @@ int main(int argc, char **argv) {
         return result;
     if (!nds::log::configure("cpu-server", config.log_sink, config.log_level))
         return EXIT_FAILURE;
-    nds::server::Connection connection;
-    if (const auto opened = connection.open(config.connection); !opened) {
-        NDS_LOG_ERROR("cpu-server", "server connection failed: {}", opened.error().message);
+    nds::server::Transport transport;
+    if (const auto opened = transport.open(config.transport); !opened) {
+        NDS_LOG_ERROR("cpu-server", "server transport failed: {}", opened.error().message);
         return EXIT_FAILURE;
     }
     std::vector<std::uint8_t> storage(config.namespace_bytes, 0U);
@@ -68,7 +68,7 @@ int main(int argc, char **argv) {
         for (std::size_t index = 0; index < storage.size(); ++index)
             storage[index] = static_cast<std::uint8_t>(index ^ 0x5aU);
     }
-    if (const auto served = nds::server::serve_commands(&connection, &storage, config.storage_commands, 5000U);
+    if (const auto served = nds::server::serve_commands(&transport, &storage, config.storage_commands, 5000U);
         !served) {
         NDS_LOG_ERROR("cpu-server", "protocol command failed: {}", served.error().message);
         return EXIT_FAILURE;

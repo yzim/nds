@@ -17,14 +17,14 @@ enum class MemoryAccess {
     RemoteWrite,
 };
 
-struct ConnectionConfig {
+struct TransportConfig {
     BackendConfig backend;
     std::string listen_address{"0.0.0.0:18515"};
 };
 
-class Connection {
+class Transport {
 public:
-    Result<void> open(const ConnectionConfig &config);
+    Result<void> open(const TransportConfig &config);
     Result<RegisteredRegion> prepare_receive(void *buffer, std::size_t length);
     Result<void> activate();
     Result<void> receive(std::uint32_t timeout_ms);

@@ -4,15 +4,15 @@
 
 namespace nds::client {
 
-Result<void> Transport::open(Runtime *runtime, const TransportConfig &config, const ExecutionConfig &execution) {
+Result<void> Transport::open(Runtime *runtime, const TransportConfig &config, const BackendConfig &backend) {
     if (runtime == nullptr || !runtime->initialized() || runtime_ != nullptr)
         return unexpected(ErrorCode::kInvalidArgument, "transport requires one open runtime");
     runtime_ = runtime;
     config_ = config;
-    execution_ = execution;
+    backend_ = backend;
     if (const auto opened = endpoint_.open(runtime_, config_.endpoint); !opened)
         return unexpected(opened.error());
-    auto created = endpoint_.create_qp(config_.qp, execution_.mode);
+    auto created = endpoint_.create_qp(config_.qp, backend_.mode);
     if (!created)
         return unexpected(created.error());
     qp_ = std::move(*created);
@@ -58,8 +58,8 @@ QueuePair *Transport::qp() noexcept {
     return &qp_;
 }
 
-const ExecutionConfig &Transport::execution() const noexcept {
-    return execution_;
+const BackendConfig &Transport::backend() const noexcept {
+    return backend_;
 }
 
 Result<void> Transport::ready() {
@@ -80,7 +80,7 @@ Result<void> Transport::ready() {
 }
 
 Result<void> Transport::initialize_private_memory() {
-    if (execution_.mode == NpuExecutionMode::Ra)
+    if (backend_.mode == NpuBackend::Ra)
         return {};
     auto send_wr_ids = runtime_->allocate(config_.qp.send_queue_depth * sizeof(std::uint64_t));
     if (!send_wr_ids) {

@@ -23,7 +23,7 @@ current architecture and protocol contract.
 ## Delivered Work
 
 - Defined endpoint-local ownership across runtime, transport, storage, and
-  execution code; shared wire records remain NDS-owned.
+  backend code; shared wire records remain NDS-owned.
 - Implemented a memory-backed namespace with range validation, fixed command
   and completion records, serial Read/Write semantics, and one-command batch
   Read/Write with CPU-side whole-batch descriptor validation.
@@ -54,8 +54,8 @@ current architecture and protocol contract.
 
 ### Host-To-Device ABI
 
-- Replace temporary execution accessors with explicit, value-like, non-owning
-  RA/AIV/AICPU execution-resource views.
+- Replace temporary backend accessors with explicit, value-like, non-owning
+  RA/AIV/AICPU backend-resource views.
 - Keep host C++ objects and HCCP/provider handles out of device-visible records.
 - Keep fixed-layout assertions and semantic validation for NDS device records;
   make transfer ownership, alignment, and lifetime explicit before changing
@@ -77,7 +77,9 @@ current architecture and protocol contract.
   behind the smallest practical NDS runtime boundary.
 - Preserve fail-closed required-symbol resolution, one-release-per-process
   loading, private ABI structs, and the CPU executable's CANN-free boundary.
-- Do not introduce direct vendor-library linkage or widen the public NDS API.
+- Link the mandatory public AscendCL API directly; do not introduce direct
+  linkage for private runtime, RA, or provider interfaces or widen the public
+  NDS API.
 
 ### Performance
 

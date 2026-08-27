@@ -11,7 +11,7 @@
 
 namespace nds::server {
 
-Result<void> Connection::open(const ConnectionConfig &config) {
+Result<void> Transport::open(const TransportConfig &config) {
     if (const auto opened = backend_.open(config.backend); !opened)
         return unexpected(opened.error());
     if (nds::transport::encode(&backend_.local_qp_info(), &local_wire_) != nds::transport::CodecResult::Ok) {
@@ -54,7 +54,7 @@ Result<void> Connection::open(const ConnectionConfig &config) {
     return {};
 }
 
-Result<RegisteredRegion> Connection::prepare_receive(void *buffer, std::size_t length) {
+Result<RegisteredRegion> Transport::prepare_receive(void *buffer, std::size_t length) {
     auto registered = backend_.register_memory(buffer, length, IBV_ACCESS_LOCAL_WRITE);
     if (!registered)
         return unexpected(registered.error());
@@ -63,20 +63,20 @@ Result<RegisteredRegion> Connection::prepare_receive(void *buffer, std::size_t l
     return std::move(*registered);
 }
 
-Result<void> Connection::activate() {
+Result<void> Transport::activate() {
     return bootstrap_.send_bytes(&local_wire_, sizeof(local_wire_));
 }
-Result<void> Connection::receive(std::uint32_t timeout_ms) {
+Result<void> Transport::receive(std::uint32_t timeout_ms) {
     if (const auto received = backend_.wait_receive(timeout_ms); !received)
         return unexpected(received.error());
     return {};
 }
-Result<void> Connection::send(const RegisteredRegion &local, std::uint32_t length) {
+Result<void> Transport::send(const RegisteredRegion &local, std::uint32_t length) {
     if (const auto sent = backend_.send(local, length); !sent)
         return unexpected(sent.error());
     return {};
 }
-Result<RegisteredRegion> Connection::register_memory(void *buffer, std::size_t length, MemoryAccess access) {
+Result<RegisteredRegion> Transport::register_memory(void *buffer, std::size_t length, MemoryAccess access) {
     int backend_access = 0;
     if (access == MemoryAccess::LocalWrite)
         backend_access = IBV_ACCESS_LOCAL_WRITE;
@@ -89,19 +89,19 @@ Result<RegisteredRegion> Connection::register_memory(void *buffer, std::size_t l
         return unexpected(registered.error());
     return std::move(*registered);
 }
-Result<void> Connection::read(const RegisteredRegion &local, std::uint64_t address, std::uint32_t key,
-                              std::uint32_t length) {
+Result<void> Transport::read(const RegisteredRegion &local, std::uint64_t address, std::uint32_t key,
+                             std::uint32_t length) {
     if (const auto read = backend_.read(local, address, key, length); !read)
         return unexpected(read.error());
     return {};
 }
-Result<void> Connection::write(const RegisteredRegion &local, std::uint64_t address, std::uint32_t key,
-                               std::uint32_t length) {
+Result<void> Transport::write(const RegisteredRegion &local, std::uint64_t address, std::uint32_t key,
+                              std::uint32_t length) {
     if (const auto written = backend_.write(local, address, key, length); !written)
         return unexpected(written.error());
     return {};
 }
-TcpPeerExchange *Connection::bootstrap() noexcept {
+TcpPeerExchange *Transport::bootstrap() noexcept {
     return &bootstrap_;
 }
 

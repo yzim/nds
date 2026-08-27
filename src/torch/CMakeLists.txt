@@ -3,7 +3,7 @@ find_library(NDS_TORCH_PYTHON_LIBRARY NAMES torch_python HINTS "${TORCH_INSTALL_
 get_filename_component(NDS_TORCH_SITE_PACKAGES "${TORCH_INSTALL_PREFIX}" DIRECTORY)
 find_library(NDS_TORCH_NPU_LIBRARY NAMES torch_npu HINTS "${NDS_TORCH_SITE_PACKAGES}/torch_npu/lib" REQUIRED)
 target_include_directories(_nds_torch PRIVATE
-    ${PROJECT_SOURCE_DIR}/src/client/execution
+    ${PROJECT_SOURCE_DIR}/src/client/backend
     ${PROJECT_SOURCE_DIR}/src/client/resource
     ${PROJECT_SOURCE_DIR}/src/include
     "${NDS_TORCH_SITE_PACKAGES}/torch_npu/include")

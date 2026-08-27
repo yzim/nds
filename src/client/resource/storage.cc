@@ -105,7 +105,7 @@ Result<void> submit_device_storage(Runtime *runtime, Transport *transport, const
                           completion.local_key()};
     context.capacity = capacity;
 
-    if (transport->execution().mode == NpuExecutionMode::Aicpu) {
+    if (transport->backend().mode == NpuBackend::Aicpu) {
         Args args{};
         args.context = context;
         args.command = command;
@@ -116,7 +116,7 @@ Result<void> submit_device_storage(Runtime *runtime, Transport *transport, const
         if (const auto copied = runtime->copy_host_to_device(device_args.get(), &args, sizeof(args)); !copied)
             return unexpected(copied.error());
         AicpuLauncher launcher;
-        if (const auto loaded = launcher.load(&runtime->acl_api(), transport->execution().aicpu_kernel_config); !loaded)
+        if (const auto loaded = launcher.load(transport->backend().aicpu_kernel_config); !loaded)
             return unexpected(loaded.error());
         if (const auto launched = launch_aicpu(&launcher, reinterpret_cast<std::uint64_t>(device_args.get()), &args);
             !launched)
@@ -146,7 +146,7 @@ Result<void> submit_device_storage(Runtime *runtime, Transport *transport, const
             !copied)
             return unexpected(copied.error());
         AivLauncher launcher;
-        if (const auto loaded = launcher.load(&runtime->acl_api(), transport->execution().aiv_kernel); !loaded)
+        if (const auto loaded = launcher.load(transport->backend().aiv_kernel); !loaded)
             return unexpected(loaded.error());
         const char *kernel_name = aiv_storage_kernel(operation);
         if (kernel_name == nullptr)
@@ -184,7 +184,7 @@ Result<DeviceStorageWaitResult> wait_device_storage(Runtime *runtime, Transport 
     context.capacity = capacity;
     std::int32_t return_value = std::numeric_limits<std::int32_t>::min();
 
-    if (transport->execution().mode == NpuExecutionMode::Aicpu) {
+    if (transport->backend().mode == NpuBackend::Aicpu) {
         NdsDeviceStorageWaitArgs args{};
         args.context = context;
         args.command_id = command_id;
@@ -196,7 +196,7 @@ Result<DeviceStorageWaitResult> wait_device_storage(Runtime *runtime, Transport 
         if (const auto copied = runtime->copy_host_to_device(device_args.get(), &args, sizeof(args)); !copied)
             return unexpected(copied.error());
         AicpuLauncher launcher;
-        if (const auto loaded = launcher.load(&runtime->acl_api(), transport->execution().aicpu_kernel_config); !loaded)
+        if (const auto loaded = launcher.load(transport->backend().aicpu_kernel_config); !loaded)
             return unexpected(loaded.error());
         if (const auto launched = launcher.launch_and_wait(
                 "nds_aicpu_storage_wait_kernel", reinterpret_cast<std::uint64_t>(device_args.get()), timeout_ms);
@@ -219,7 +219,7 @@ Result<DeviceStorageWaitResult> wait_device_storage(Runtime *runtime, Transport 
             !copied)
             return unexpected(copied.error());
         AivLauncher launcher;
-        if (const auto loaded = launcher.load(&runtime->acl_api(), transport->execution().aiv_kernel); !loaded)
+        if (const auto loaded = launcher.load(transport->backend().aiv_kernel); !loaded)
             return unexpected(loaded.error());
         AivStorageWaitArguments arguments{reinterpret_cast<std::uint64_t>(device_context.get()), command_id,
                                           expected_bytes, reinterpret_cast<std::uint64_t>(device_return_value.get())};
@@ -451,7 +451,7 @@ Result<void> StorageClient::wait(StorageCompletionHandle handle, std::uint32_t t
         return unexpected(ErrorCode::kInvalidArgument, "storage wait requires the current completion handle");
     if (timeout_ms == 0U || timeout_ms > static_cast<std::uint32_t>(std::numeric_limits<std::int32_t>::max()))
         return unexpected(ErrorCode::kInvalidArgument, "storage wait requires a positive timeout");
-    if (transport_->execution().mode == NpuExecutionMode::Ra) {
+    if (transport_->backend().mode == NpuBackend::Ra) {
         const auto completion = observe_completion(handle.command_id, pending_->expected_bytes, timeout_ms);
         if (!completion)
             return unexpected(completion.error());
@@ -503,7 +503,7 @@ std::uint64_t StorageClient::allocate_command_id() noexcept {
 Result<void> StorageClient::execute_storage_read(const StorageReadCommand &command) {
     if (const auto ready = transport_->ready(); !ready)
         return unexpected(ready.error());
-    if (transport_->execution().mode == NpuExecutionMode::Ra) {
+    if (transport_->backend().mode == NpuBackend::Ra) {
         const RaStorageContext context{
             {runtime_, transport_->qp()},
             command_buffer_.data(),
@@ -522,7 +522,7 @@ Result<void> StorageClient::execute_storage_read(const StorageReadCommand &comma
 Result<void> StorageClient::execute_storage_write(const StorageWriteCommand &command) {
     if (const auto ready = transport_->ready(); !ready)
         return unexpected(ready.error());
-    if (transport_->execution().mode == NpuExecutionMode::Ra) {
+    if (transport_->backend().mode == NpuBackend::Ra) {
         const RaStorageContext context{
             {runtime_, transport_->qp()},
             command_buffer_.data(),
@@ -541,7 +541,7 @@ Result<void> StorageClient::execute_storage_write(const StorageWriteCommand &com
 Result<void> StorageClient::execute_storage_batch_read(const StorageBatchReadCommand &command) {
     if (const auto ready = transport_->ready(); !ready)
         return unexpected(ready.error());
-    if (transport_->execution().mode == NpuExecutionMode::Ra) {
+    if (transport_->backend().mode == NpuBackend::Ra) {
         const RaStorageContext context{
             {runtime_, transport_->qp()},
             command_buffer_.data(),
@@ -560,7 +560,7 @@ Result<void> StorageClient::execute_storage_batch_read(const StorageBatchReadCom
 Result<void> StorageClient::execute_storage_batch_write(const StorageBatchWriteCommand &command) {
     if (const auto ready = transport_->ready(); !ready)
         return unexpected(ready.error());
-    if (transport_->execution().mode == NpuExecutionMode::Ra) {
+    if (transport_->backend().mode == NpuBackend::Ra) {
         const RaStorageContext context{
             {runtime_, transport_->qp()},
             command_buffer_.data(),

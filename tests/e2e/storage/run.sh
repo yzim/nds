@@ -44,7 +44,7 @@ run_client() {
     local operation="$2"
     local case_dir="$3"
     local client_log="$4"
-    local -a client=("${build}/bin/nds_storage_client" --execution "${backend}"
+    local -a client=("${build}/bin/nds_storage_client" --backend "${backend}"
         --ascendcl "${cann}/aarch64-linux/lib64/libascendcl.so"
         --runtime "${cann}/aarch64-linux/lib64/libruntime.so"
         --ra "${cann}/aarch64-linux/lib64/libra.so"

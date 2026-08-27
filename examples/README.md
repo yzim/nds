@@ -14,7 +14,7 @@ Configure the verbs and transport pairs with `-DNDS_BUILD_HARDWARE_PROBES=ON`.
 All example binaries are emitted in `build/bin/` and must be run only on the
 approved aarch64 CANN target with one bounded experiment.
 
-Backend selection (`ra`, `aiv`, or `aicpu`) is an execution-mode axis within a
+Backend selection (`ra`, `aiv`, or `aicpu`) is a backend-mode axis within a
 client example where the selected layer supports it. It does not create another
 example layer or change the server into a storage application.
 

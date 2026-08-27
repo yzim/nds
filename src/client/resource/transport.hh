@@ -19,8 +19,8 @@ struct TransportConfig {
     std::uint32_t tcp_timeout_ms{};
 };
 
-struct ExecutionConfig {
-    NpuExecutionMode mode{NpuExecutionMode::Ra};
+struct BackendConfig {
+    NpuBackend mode{NpuBackend::Ra};
     std::string aicpu_kernel_config;
     std::string aiv_kernel;
 };
@@ -28,7 +28,7 @@ struct ExecutionConfig {
 /* Owns and connects one endpoint/QP pair; it exposes no data-plane operations. */
 class Transport {
 public:
-    Result<void> open(Runtime *runtime, const TransportConfig &config, const ExecutionConfig &execution);
+    Result<void> open(Runtime *runtime, const TransportConfig &config, const BackendConfig &backend);
 
     TcpPeerExchange *bootstrap() noexcept;
     const nds::transport::QpInfo &local_qp_info() const noexcept;
@@ -37,14 +37,14 @@ public:
     Runtime *runtime() noexcept;
     Endpoint *endpoint() noexcept;
     QueuePair *qp() noexcept;
-    const ExecutionConfig &execution() const noexcept;
+    const BackendConfig &backend() const noexcept;
 
 private:
     Result<void> initialize_private_memory();
 
     Runtime *runtime_{};
     TransportConfig config_{};
-    ExecutionConfig execution_{};
+    BackendConfig backend_{};
     Endpoint endpoint_;
     QueuePair qp_;
     MemoryBuffer send_wr_ids_;

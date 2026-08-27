@@ -20,9 +20,9 @@ int ra_opcode(std::uint32_t opcode) {
 
 Result<NdsRaSendResponse> post_unrung(client::QueuePair *qp, const NdsDeviceSendWr &request) {
     const int opcode = ra_opcode(request.opcode);
-    if (qp == nullptr || qp->execution_mode() != client::NpuExecutionMode::Ra || !qp->connected() ||
-        qp->ra_api() == nullptr || qp->handle() == nullptr || request.local.address == 0U ||
-        request.local.length == 0U || request.local.local_key == 0U || opcode < 0 ||
+    if (qp == nullptr || qp->backend_mode() != client::NpuBackend::Ra || !qp->connected() || qp->ra_api() == nullptr ||
+        qp->handle() == nullptr || request.local.address == 0U || request.local.length == 0U ||
+        request.local.local_key == 0U || opcode < 0 ||
         (request.opcode != NDS_DEVICE_WR_SEND && (request.remote_address == 0U || request.remote_key == 0U)) ||
         (request.opcode == NDS_DEVICE_WR_SEND && (request.remote_address != 0U || request.remote_key != 0U))) {
         return unexpected(ErrorCode::kInvalidArgument,
@@ -66,9 +66,9 @@ Result<void> NdsRaPostSend(client::Runtime *runtime, client::QueuePair *qp, cons
 }
 
 Result<void> NdsRaPostRecv(client::QueuePair *qp, const NdsDeviceRecvWr &request) {
-    if (qp == nullptr || qp->execution_mode() != client::NpuExecutionMode::Ra || !qp->connected() ||
-        qp->ra_api() == nullptr || qp->ra_api()->ra_recv_wrlist == nullptr || qp->handle() == nullptr ||
-        request.local.address == 0U || request.local.length == 0U || request.local.local_key == 0U) {
+    if (qp == nullptr || qp->backend_mode() != client::NpuBackend::Ra || !qp->connected() || qp->ra_api() == nullptr ||
+        qp->ra_api()->ra_recv_wrlist == nullptr || qp->handle() == nullptr || request.local.address == 0U ||
+        request.local.length == 0U || request.local.local_key == 0U) {
         return unexpected(ErrorCode::kInvalidArgument, "RA receive post requires a connected RA QP and valid SGE");
     }
     NdsRaRecvWr wr{request.wr_id, {request.local.address, request.local.length, request.local.local_key}};
@@ -82,7 +82,7 @@ Result<void> NdsRaPostRecv(client::QueuePair *qp, const NdsDeviceRecvWr &request
 Result<std::uint32_t> NdsRaPollCq(client::QueuePair *qp, bool is_send_cq, std::uint32_t max_completions,
                                   NdsDeviceWc *wc) {
     if (qp == nullptr || wc == nullptr || max_completions == 0U || max_completions > NDS_DEVICE_MAX_COMPLETIONS ||
-        qp->execution_mode() != client::NpuExecutionMode::Ra || !qp->created() || qp->ra_api() == nullptr ||
+        qp->backend_mode() != client::NpuBackend::Ra || !qp->created() || qp->ra_api() == nullptr ||
         qp->handle() == nullptr) {
         return unexpected(ErrorCode::kInvalidArgument,
                           "RA completion poll requires an RA QP, output, and supported completion limit");

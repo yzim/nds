@@ -315,14 +315,12 @@ typedef int (*NdsRaRdevGetSupportLiteFn)(void *rdma_handle, int *support_lite);
 typedef int (*NdsRaQpCreateFn)(void *rdma_handle, int flag, int qp_mode, void **qp_handle);
 typedef int (*NdsRaQpConnectAsyncFn)(void *qp_handle, const void *fd_handle);
 typedef int (*NdsRaTypicalQpCreateFn)(void *rdma_handle, int flag, int qp_mode, NdsRaTypicalQp *typical_qp_info,
-                                           void **qp_handle);
-typedef int (*NdsRaAiQpCreateFn)(void *rdma_handle, NdsRaQpExtAttrs *attrs, NdsRaAiQpInfo *info,
                                       void **qp_handle);
+typedef int (*NdsRaAiQpCreateFn)(void *rdma_handle, NdsRaQpExtAttrs *attrs, NdsRaAiQpInfo *info, void **qp_handle);
 typedef int (*NdsRaSetQpAttrQosFn)(void *qp_handle, NdsRaQosAttr *attr);
 typedef int (*NdsRaSetQpAttrTimeoutFn)(void *qp_handle, uint32_t *timeout);
 typedef int (*NdsRaSetQpAttrRetryCountFn)(void *qp_handle, uint32_t *retry_count);
-typedef int (*NdsRaTypicalQpModifyFn)(void *qp_handle, NdsRaTypicalQp *local_qp_info,
-                                           NdsRaTypicalQp *remote_qp_info);
+typedef int (*NdsRaTypicalQpModifyFn)(void *qp_handle, NdsRaTypicalQp *local_qp_info, NdsRaTypicalQp *remote_qp_info);
 typedef int (*NdsRaQpDestroyFn)(void *qp_handle);
 typedef int (*NdsRaGetQpAttrFn)(void *qp_handle, NdsRaQpAttr *attributes);
 typedef int (*NdsRaGetQpStatusFn)(void *qp_handle, int *status);
@@ -330,12 +328,11 @@ typedef int (*NdsRaRdevGetCqeErrorListFn)(void *rdma_handle, NdsRaCqeError *erro
 typedef int (*NdsRaRegisterMrFn)(const void *rdma_handle, NdsRaMrInfo *info, void **mr_handle);
 typedef int (*NdsRaDeregisterMrFn)(const void *rdma_handle, void *mr_handle);
 typedef int (*NdsRaTypicalSendWrFn)(void *qp_handle, NdsRaSendWr *wr, NdsRaSendResponse *response);
-typedef int (*NdsRaRecvWrlistFn)(void *qp_handle, NdsRaRecvWr *wr, unsigned int recv_num,
-                                     unsigned int *complete_num);
+typedef int (*NdsRaRecvWrlistFn)(void *qp_handle, NdsRaRecvWr *wr, unsigned int recv_num, unsigned int *complete_num);
 typedef int (*NdsRaPollCqFn)(void *qp_handle, bool is_send_cq, unsigned int max_entries, void *completions);
 typedef int (*NdsRaGetInterfaceCountFn)(NdsRaGetInterfaceConfig *config, unsigned int *count);
 typedef int (*NdsRaGetInterfacesFn)(NdsRaGetInterfaceConfig *config, NdsRaInterfaceInfo *interfaces,
-                                        unsigned int *count);
+                                    unsigned int *count);
 
 /*
  * Runtime-only loader for the HCCP/RA shared-library ABI.

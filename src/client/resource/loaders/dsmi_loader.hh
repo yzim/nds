@@ -1,5 +1,5 @@
-#ifndef NDS_HCCN_LOADER_HH
-#define NDS_HCCN_LOADER_HH
+#ifndef NDS_DSMI_LOADER_HH
+#define NDS_DSMI_LOADER_HH
 
 #include "nds/result.hh"
 
@@ -8,7 +8,7 @@
 
 namespace nds::client {
 
-Result<std::string> hccn_ipv4(std::uint32_t device_id);
+Result<std::string> dsmi_ipv4(std::uint32_t device_id);
 
 }  // namespace nds::client
 

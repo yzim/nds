@@ -16,7 +16,7 @@ class MemoryBuffer;
 class Runtime;
 struct EndpointTestAccess;
 
-enum class NpuExecutionMode {
+enum class NpuBackend {
     Ra,
     Aicpu,
     Aiv,
@@ -101,25 +101,25 @@ public:
     bool created() const noexcept;
     bool connected() const noexcept;
     const NdsRaQpAttr &local_attributes() const noexcept;
-    NpuExecutionMode execution_mode() const noexcept;
+    NpuBackend backend_mode() const noexcept;
 
-    /* Temporary RA execution accessors; replaced by explicit execution views next. */
+    /* Temporary RA backend accessors; replaced by explicit backend views next. */
     NdsRaApi *ra_api() const noexcept;
     void *handle() const noexcept;
     NdsRaSge *posted_send_sge() noexcept;
 
 private:
     friend class Endpoint;
-    QueuePair(Endpoint *endpoint, const QueuePairConfig &config, NpuExecutionMode execution);
+    QueuePair(Endpoint *endpoint, const QueuePairConfig &config, NpuBackend backend);
     Result<void> initialize();
     void reset() noexcept;
     Result<NdsRaTypicalQp> build_typical_qp(const NdsRaQpAttr &attributes, std::uint32_t traffic_class,
-                                               std::uint32_t service_level, std::uint32_t retry_count,
-                                               std::uint32_t retry_timeout) const;
+                                            std::uint32_t service_level, std::uint32_t retry_count,
+                                            std::uint32_t retry_timeout) const;
 
     Endpoint *endpoint_{};
     QueuePairConfig config_{};
-    NpuExecutionMode execution_{NpuExecutionMode::Ra};
+    NpuBackend backend_{NpuBackend::Ra};
     void *handle_{};
     NdsRaQpAttr local_attributes_{};
     NdsRaAiQpInfo ai_qp_info_{};
@@ -137,8 +137,7 @@ public:
     Endpoint &operator=(const Endpoint &) = delete;
 
     Result<void> open(Runtime *runtime, const EndpointConfig &config);
-    Result<QueuePair> create_qp(const QueuePairConfig &config,
-                                NpuExecutionMode execution = NpuExecutionMode::Ra);
+    Result<QueuePair> create_qp(const QueuePairConfig &config, NpuBackend backend = NpuBackend::Ra);
     Result<MemoryRegion> reg_mr(const MemoryBuffer &buffer, MemoryAccess access);
     bool opened() const noexcept;
 

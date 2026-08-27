@@ -34,32 +34,24 @@ Result<void> Runtime::initialize(const RuntimeConfig &config) {
     NdsRtProcExtParam parameter{};
     NdsRtNetServiceOpenArgs open_args{};
 
-    if (!config.adopt_existing_context && (config.ascendcl_library.empty() || config.runtime_library.empty())) {
-        return unexpected(ErrorCode::kInvalidArgument,
-                          "NPU runtime requires explicit AscendCL and runtime library paths");
-    }
+    if (!config.adopt_existing_context && config.runtime_library.empty())
+        return unexpected(ErrorCode::kInvalidArgument, "NPU runtime requires an explicit CANN runtime library path");
     config_ = config;
-    if (config_.ascendcl_library.empty())
-        config_.ascendcl_library = "libascendcl.so";
     if (config_.runtime_library.empty())
         config_.runtime_library = "libruntime.so";
     parameter.param_info = hdc_type_argument.c_str();
     parameter.param_len = hdc_type_argument.size();
     open_args.ext_param_list = &parameter;
     open_args.ext_param_count = 1U;
-    if (nds_acl_open(&acl_, config_.ascendcl_library.c_str()) != 0) {
-        const std::string error = std::string("cannot load AscendCL: ") + nds_acl_error(&acl_);
-        reset();
-        return unexpected(ErrorCode::kRuntime, error);
-    }
     if (!config_.adopt_existing_context) {
-        if (const int result = acl_.init(nullptr); result != 0) {
+        if (const int result = aclInit(nullptr); result != ACL_SUCCESS) {
             const std::string error = "aclInit failed: " + std::to_string(result);
             reset();
             return unexpected(ErrorCode::kRuntime, error);
         }
         acl_initialized_ = true;
-        if (const int result = acl_.set_device(static_cast<std::int32_t>(config_.logical_device_id)); result != 0) {
+        if (const int result = aclrtSetDevice(static_cast<std::int32_t>(config_.logical_device_id));
+            result != ACL_SUCCESS) {
             const std::string error = "aclrtSetDevice failed: " + std::to_string(result);
             reset();
             return unexpected(ErrorCode::kRuntime, error);
@@ -87,10 +79,9 @@ void Runtime::reset() noexcept {
     }
     nds_runtime_close(&runtime_);
     if (acl_initialized_) {
-        (void)acl_.finalize();
+        (void)aclFinalize();
         acl_initialized_ = false;
     }
-    nds_acl_close(&acl_);
     initialized_ = false;
 }
 
@@ -108,8 +99,9 @@ Result<void *> Runtime::allocate_device_memory(std::size_t size) {
                           "device allocation requires an initialized runtime and nonzero size");
     }
     void *device_ptr = nullptr;
-    const int result = acl_.malloc_device(&device_ptr, size, NDS_ACL_MEM_MALLOC_DIRECT_NPU);
-    if (result != 0 || device_ptr == nullptr) {
+    const auto policy = static_cast<aclrtMemMallocPolicy>(ACL_MEM_MALLOC_HUGE_FIRST | ACL_MEM_TYPE_HIGH_BAND_WIDTH);
+    const int result = aclrtMalloc(&device_ptr, size, policy);
+    if (result != ACL_SUCCESS || device_ptr == nullptr) {
         return unexpected(ErrorCode::kRuntime, "aclrtMalloc failed: " + std::to_string(result));
     }
     return device_ptr;
@@ -120,8 +112,8 @@ Result<void> Runtime::free_device_memory(void *device_ptr) {
         return unexpected(ErrorCode::kInvalidArgument,
                           "device free requires an initialized runtime and allocation pointer");
     }
-    const int result = acl_.free_device(device_ptr);
-    if (result != 0) {
+    const int result = aclrtFree(device_ptr);
+    if (result != ACL_SUCCESS) {
         return unexpected(ErrorCode::kRuntime, "aclrtFree failed: " + std::to_string(result));
     }
     return {};
@@ -131,9 +123,6 @@ Result<HostPinnedAllocation> Runtime::allocate_host_pinned_memory(std::size_t si
     if (!initialized_ || size == 0U)
         return unexpected(ErrorCode::kInvalidArgument,
                           "host-pinned allocation requires an initialized runtime and nonzero size");
-    if (acl_.host_register == nullptr || acl_.host_unregister == nullptr) {
-        return unexpected(ErrorCode::kUnsupported, "loaded AscendCL does not support aclrtHostRegister");
-    }
     const auto rounded_size = page_rounded_size(size);
     if (!rounded_size)
         return unexpected(rounded_size.error());
@@ -141,8 +130,8 @@ Result<HostPinnedAllocation> Runtime::allocate_host_pinned_memory(std::size_t si
     if (posix_memalign(&host_ptr, kHostPageSize, *rounded_size) != 0 || host_ptr == nullptr)
         return unexpected(ErrorCode::kRuntime, "host memory allocation failed");
     void *device_ptr = nullptr;
-    const int result = acl_.host_register(host_ptr, *rounded_size, NDS_ACL_HOST_REGISTER_MAPPED, &device_ptr);
-    if (result != 0 || device_ptr == nullptr) {
+    const int result = aclrtHostRegister(host_ptr, *rounded_size, ACL_HOST_REGISTER_MAPPED, &device_ptr);
+    if (result != ACL_SUCCESS || device_ptr == nullptr) {
         std::free(host_ptr);
         return unexpected(ErrorCode::kRuntime, "aclrtHostRegister failed: " + std::to_string(result));
     }
@@ -150,41 +139,34 @@ Result<HostPinnedAllocation> Runtime::allocate_host_pinned_memory(std::size_t si
 }
 
 Result<void> Runtime::free_host_pinned_memory(void *host_ptr) {
-    if (!initialized_ || host_ptr == nullptr || acl_.host_unregister == nullptr) {
+    if (!initialized_ || host_ptr == nullptr)
         return unexpected(ErrorCode::kInvalidArgument,
-                          "host-pinned free requires an initialized runtime with aclrtHostUnregister support");
-    }
-    const int result = acl_.host_unregister(host_ptr);
-    if (result != 0)
+                          "host-pinned free requires an initialized runtime and allocation pointer");
+    const int result = aclrtHostUnregister(host_ptr);
+    if (result != ACL_SUCCESS)
         return unexpected(ErrorCode::kRuntime, "aclrtHostUnregister failed: " + std::to_string(result));
     std::free(host_ptr);
     return {};
 }
 
 Result<void> Runtime::copy_host_to_device(void *device_ptr, const void *host_ptr, std::size_t size) {
-    const int result =
-        (!initialized_ || device_ptr == nullptr || host_ptr == nullptr || size == 0U || acl_.memcpy == nullptr)
-            ? -1
-            : acl_.memcpy(device_ptr, size, host_ptr, size, NDS_ACL_MEMCPY_HOST_TO_DEVICE);
-    if (result != 0) {
+    const int result = (!initialized_ || device_ptr == nullptr || host_ptr == nullptr || size == 0U)
+                           ? -1
+                           : aclrtMemcpy(device_ptr, size, host_ptr, size, ACL_MEMCPY_HOST_TO_DEVICE);
+    if (result != ACL_SUCCESS) {
         return unexpected(ErrorCode::kRuntime, "aclrtMemcpy(host-to-device) failed: " + std::to_string(result));
     }
     return {};
 }
 
 Result<void> Runtime::copy_device_to_host(void *host_ptr, const void *device_ptr, std::size_t size) {
-    const int result =
-        (!initialized_ || device_ptr == nullptr || host_ptr == nullptr || size == 0U || acl_.memcpy == nullptr)
-            ? -1
-            : acl_.memcpy(host_ptr, size, device_ptr, size, NDS_ACL_MEMCPY_DEVICE_TO_HOST);
-    if (result != 0) {
+    const int result = (!initialized_ || device_ptr == nullptr || host_ptr == nullptr || size == 0U)
+                           ? -1
+                           : aclrtMemcpy(host_ptr, size, device_ptr, size, ACL_MEMCPY_DEVICE_TO_HOST);
+    if (result != ACL_SUCCESS) {
         return unexpected(ErrorCode::kRuntime, "aclrtMemcpy(device-to-host) failed: " + std::to_string(result));
     }
     return {};
-}
-
-NdsAclApi &Runtime::acl_api() noexcept {
-    return acl_;
 }
 
 NdsRuntimeApi &Runtime::runtime_api() noexcept {

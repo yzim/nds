@@ -5,7 +5,7 @@
 #include "api.h"
 
 #include "verbs.cc"
-#include "connection.cc"
+#include "transport.cc"
 #include "storage.cc"
 
 using namespace AscendC;

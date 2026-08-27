@@ -27,7 +27,7 @@ names. Format with the repository
 - Do not combine boolean success with a side-channel error state. C-compatible
   loader structs may retain ABI-required diagnostic buffers only internally;
   translate them at the C++ boundary.
-- Keep resources alive through the execution-mode completion point and tear
+- Keep resources alive through the backend-mode completion point and tear
   them down in reverse initialization order.
 - Use `nds::log` for executable diagnostics and CLI11 for command-line
   declaration and cross-option validation. Use `npu-client` and `cpu-server`
@@ -46,18 +46,17 @@ scripts/format.sh --check
 The default target build runs unit and non-hardware integration tests only:
 
 ```sh
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DNDS_CANN_ROOT=<cann-root>
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 ctest --test-dir build --output-on-failure --label-regex '^unit$'
 ctest --test-dir build --output-on-failure --label-regex '^integration$'
 ```
 
-Unit tests require no sockets, shared libraries, CANN, RDMA hardware, or NPU.
-They cover codecs, CPU MTU policy, fake RA lifecycle behavior, RMA capability,
-device ABI layouts, AICPU package registration, and device queue/CQE codecs.
-Integration tests cover the Unix-socket bootstrap and a fake dynamically loaded
-runtime; optional device-toolchain tests inspect generated symbols.
+CANN-free CI configures `-DNDS_BUILD_NPU_CLIENT=OFF`; it covers codecs, CPU MTU
+policy, device ABI layouts, AICPU package registration, device queue/CQE
+codecs, and the Unix-socket bootstrap. NPU-client tests require the target CANN
+installation; optional device-toolchain tests inspect generated symbols.
 
 GitHub Actions builds Debug and Release with `NDS_ENABLE_E2E_TESTS=OFF`. It
 does not configure device kernels or claim hardware validation.
