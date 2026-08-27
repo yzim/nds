@@ -1,6 +1,7 @@
 #ifndef NDS_DEVICE_VERBS_H
 #define NDS_DEVICE_VERBS_H
 
+#include <stddef.h>
 #include <stdint.h>
 
 #define NDS_DEVICE_MAX_COMPLETIONS UINT32_C(16)
@@ -117,14 +118,13 @@ typedef struct NdsDeviceWc {
 } NdsDeviceWc;
 
 /* Operator-launch ABI envelopes. The payload fields mirror the verbs APIs;
- * they are not a second device-side verbs interface. return_value is zero on
- * success, a negative NDS operation error for post operations, or the count
- * of WCs written by PollCq. */
+ * they are not a second device-side verbs interface. return_value_address is
+ * a device-visible int32_t output: zero on success, a negative NDS operation
+ * error for post operations, or the count of WCs written by PollCq. */
 typedef struct NdsDevicePostSendArgs {
     NdsDeviceQp qp;
     NdsDeviceSendWr wr;
-    int32_t return_value;
-    uint32_t reserved;
+    uint64_t return_value_address;
 } NdsDevicePostSendArgs;
 
 /* Batch post-send launch envelope. wrs_address identifies a contiguous
@@ -143,8 +143,7 @@ typedef struct NdsDevicePostSendBatchArgs {
 typedef struct NdsDevicePostRecvArgs {
     NdsDeviceQp qp;
     NdsDeviceRecvWr wr;
-    int32_t return_value;
-    uint32_t reserved;
+    uint64_t return_value_address;
 } NdsDevicePostRecvArgs;
 
 typedef struct NdsDevicePollCqArgs {
@@ -152,8 +151,7 @@ typedef struct NdsDevicePollCqArgs {
     uint32_t is_send_cq;
     uint32_t max_completions;
     uint64_t wc_address;
-    int32_t return_value;
-    uint32_t reserved;
+    uint64_t return_value_address;
 } NdsDevicePollCqArgs;
 
 #if defined(__cplusplus)
@@ -168,6 +166,12 @@ static_assert(sizeof(NdsDevicePostSendArgs) == 288, "device post-send operator A
 static_assert(sizeof(NdsDevicePostSendBatchArgs) == 256, "device post-send batch operator ABI changed");
 static_assert(sizeof(NdsDevicePostRecvArgs) == 264, "device post-recv operator ABI changed");
 static_assert(sizeof(NdsDevicePollCqArgs) == 256, "device poll-CQ operator ABI changed");
+static_assert(offsetof(NdsDevicePostSendArgs, return_value_address) + sizeof(uint64_t) == sizeof(NdsDevicePostSendArgs),
+              "device post-send result must be final");
+static_assert(offsetof(NdsDevicePostRecvArgs, return_value_address) + sizeof(uint64_t) == sizeof(NdsDevicePostRecvArgs),
+              "device post-recv result must be final");
+static_assert(offsetof(NdsDevicePollCqArgs, return_value_address) + sizeof(uint64_t) == sizeof(NdsDevicePollCqArgs),
+              "device poll-CQ result must be final");
 #else
 _Static_assert(sizeof(NdsDeviceWorkQueue) == 56, "device WQ ABI changed");
 _Static_assert(sizeof(NdsDeviceCq) == 40, "device CQ ABI changed");
@@ -180,6 +184,14 @@ _Static_assert(sizeof(NdsDevicePostSendArgs) == 288, "device post-send operator 
 _Static_assert(sizeof(NdsDevicePostSendBatchArgs) == 256, "device post-send batch operator ABI changed");
 _Static_assert(sizeof(NdsDevicePostRecvArgs) == 264, "device post-recv operator ABI changed");
 _Static_assert(sizeof(NdsDevicePollCqArgs) == 256, "device poll-CQ operator ABI changed");
+_Static_assert(offsetof(NdsDevicePostSendArgs, return_value_address) + sizeof(uint64_t) ==
+                   sizeof(NdsDevicePostSendArgs),
+               "device post-send result must be final");
+_Static_assert(offsetof(NdsDevicePostRecvArgs, return_value_address) + sizeof(uint64_t) ==
+                   sizeof(NdsDevicePostRecvArgs),
+               "device post-recv result must be final");
+_Static_assert(offsetof(NdsDevicePollCqArgs, return_value_address) + sizeof(uint64_t) == sizeof(NdsDevicePollCqArgs),
+               "device poll-CQ result must be final");
 #endif
 
 #endif

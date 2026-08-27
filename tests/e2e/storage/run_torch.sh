@@ -2,8 +2,9 @@
 set -euo pipefail
 
 runner_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+support_dir="${runner_dir}/../support"
 # shellcheck source=aicpu_overlay.sh
-source "${runner_dir}/aicpu_overlay.sh"
+source "${support_dir}/aicpu_overlay.sh"
 
 usage() {
     printf '%s\n' 'Usage: run_torch_storage.sh --backend <ra|aiv|aicpu>' >&2
@@ -39,7 +40,7 @@ run_client() {
     local backend="$1"
     local case_dir="$2"
     local client_log="$3"
-    local -a client=("${NDS_E2E_TORCH_PYTHON}" "${NDS_E2E_SOURCE_DIR}/apps/nds_torch.py"
+    local -a client=("${NDS_E2E_TORCH_PYTHON}" "${NDS_E2E_SOURCE_DIR}/examples/storage/torch_client.py"
         "${NDS_E2E_SERVER_ADDRESS}" --backend "${backend}" --bytes "${bytes}")
 
     case "${backend}" in
@@ -57,7 +58,7 @@ run_client() {
             overlay="$(nds_prepare_aicpu_overlay "${case_dir}" "${cann}" "${build}")"
             client+=(--aicpu-kernel-config "${overlay}/opp/vendors/nds/aicpu/config/nds_aicpu_standard.json")
             timeout "${case_timeout}" sudo -n env "PATH=${PATH}" "PYTHONPATH=${build}/bin" \
-                unshare -m "${runner_dir}/run_with_aicpu_package.sh" "${overlay}" "${cann}" "${client[@]}" \
+                unshare -m "${support_dir}/run_with_aicpu_package.sh" "${overlay}" "${cann}" "${client[@]}" \
                 >"${client_log}" 2>&1
             ;;
     esac
@@ -90,7 +91,7 @@ server_log="${case_dir}/server.log"
 client_log="${case_dir}/client.log"
 trap cleanup EXIT
 
-timeout "${case_timeout}" "${build}/bin/nds_server" \
+timeout "${case_timeout}" "${build}/bin/nds_storage_server" \
     --device "${NDS_E2E_DEVICE}" --gid-index "${NDS_E2E_GID_INDEX}" \
     --listen "${NDS_E2E_SERVER_ADDRESS}" \
     --namespace-bytes 1048576 --storage-commands 2 --log-level info \

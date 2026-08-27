@@ -39,11 +39,7 @@ set(NDS_CANN_ROOT "" CACHE PATH "CANN root required by public ACL or device-kern
 add_subdirectory(src/common)
 add_subdirectory(src/client)
 add_subdirectory(src/server)
-add_subdirectory(apps)
-
-if(NDS_BUILD_HARDWARE_PROBES)
-    add_subdirectory(examples)
-endif()
+add_subdirectory(examples)
 
 if(NDS_BUILD_TORCH_WRAPPERS)
     find_package(Python3 COMPONENTS Interpreter Development.Module REQUIRED)

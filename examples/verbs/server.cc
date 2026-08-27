@@ -5,23 +5,30 @@
 
 #include <array>
 #include <cstddef>
+#include <cstdint>
 #include <cstdlib>
 #include <string>
+#include <vector>
 
 namespace {
 
 struct Config {
     nds::server::ConnectionConfig connection;
+    std::uint32_t receives{1U};
+    std::string operation{"send"};
     std::string log_sink{"stderr"};
     std::string log_level{"info"};
 };
 
 int parse(int argc, char **argv, Config *config, bool *exit_requested) {
-    CLI::App app{"Receive one NDS verbs Send."};
+    CLI::App app{"Receive one or more NDS verbs Sends."};
     app.add_option("--device", config->connection.backend.device_name)->required();
     app.add_option("--gid-index", config->connection.backend.gid_index)->required();
     app.add_option("--listen", config->connection.listen_address);
     app.add_option("--ib-port", config->connection.backend.port);
+    app.add_option("--receives", config->receives, "Number of Receive WQEs to post")->check(CLI::Range(1U, 2U));
+    app.add_option("--operation", config->operation)
+        ->check(CLI::IsMember({"send", "send-batch", "send-batch-invalid", "recv"}));
     app.add_option("--log-sink", config->log_sink)->check(CLI::IsMember({"stderr", "stdout", "syslog", "none"}));
     app.add_option("--log-level", config->log_level)
         ->check(CLI::IsMember({"trace", "debug", "info", "warn", "error", "critical", "off"}));
@@ -53,12 +60,51 @@ int main(int argc, char **argv) {
         NDS_LOG_ERROR("verbs-server", "connection open failed: {}", opened.error().message);
         return EXIT_FAILURE;
     }
-    std::array<std::byte, 64U> payload{};
-    const auto prepared = connection.prepare_receive(payload.data(), payload.size());
-    if (!prepared || !connection.activate() || !connection.receive(5000U)) {
-        NDS_LOG_ERROR("verbs-server", "verbs receive failed");
+    if (config.operation == "recv") {
+        std::array<std::byte, 64U> payload{};
+        for (std::size_t index = 0U; index < payload.size(); ++index)
+            payload[index] = static_cast<std::byte>(index ^ 0x5aU);
+        const auto region =
+            connection.register_memory(payload.data(), payload.size(), nds::server::MemoryAccess::LocalRead);
+        std::uint8_t ready{};
+        if (!region || !connection.activate() || !connection.bootstrap()->receive_bytes(&ready, sizeof(ready)) ||
+            ready != 1U || !connection.send(*region, payload.size())) {
+            NDS_LOG_ERROR("verbs-server", "verbs PostRecv exchange failed");
+            return EXIT_FAILURE;
+        }
+        NDS_LOG_INFO("verbs-server", "completed NDS verbs receive peer exchange");
+        return EXIT_SUCCESS;
+    }
+    std::vector<std::array<std::byte, 64U>> payloads(config.receives);
+    std::vector<nds::server::RegisteredRegion> receives;
+    receives.reserve(payloads.size());
+    for (auto &payload : payloads) {
+        auto prepared = connection.prepare_receive(payload.data(), payload.size());
+        if (!prepared) {
+            NDS_LOG_ERROR("verbs-server", "verbs Receive setup failed");
+            return EXIT_FAILURE;
+        }
+        receives.push_back(std::move(*prepared));
+    }
+    if (!connection.activate()) {
+        NDS_LOG_ERROR("verbs-server", "verbs Receive activation failed");
         return EXIT_FAILURE;
     }
-    NDS_LOG_INFO("verbs-server", "completed one NDS verbs receive");
+    for (std::uint32_t receive_index = 0U; receive_index < config.receives; ++receive_index) {
+        if (!connection.receive(5000U)) {
+            NDS_LOG_ERROR("verbs-server", "verbs Receive {} failed", receive_index);
+            return EXIT_FAILURE;
+        }
+        for (std::size_t byte_index = 0U; byte_index < payloads[receive_index].size(); ++byte_index) {
+            const std::byte expected =
+                static_cast<std::byte>((receive_index * payloads[receive_index].size() + byte_index) ^ 0x5aU);
+            if (payloads[receive_index][byte_index] != expected) {
+                NDS_LOG_ERROR("verbs-server", "verbs Receive {} payload mismatch at byte {}", receive_index,
+                              byte_index);
+                return EXIT_FAILURE;
+            }
+        }
+    }
+    NDS_LOG_INFO("verbs-server", "completed {} NDS verbs receives", config.receives);
     return EXIT_SUCCESS;
 }

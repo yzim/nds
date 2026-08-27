@@ -23,6 +23,12 @@ public:
     Result<void> launch_post_send_and_wait(std::uint64_t args_address, std::int32_t completion_timeout_ms);
     /* Launches one AIV kernel that posts a contiguous device-global WR array. */
     Result<void> launch_post_send_batch_and_wait(std::uint64_t args_address, std::int32_t completion_timeout_ms);
+    Result<void> launch_post_recv_and_wait(std::uint64_t args_address, std::int32_t completion_timeout_ms);
+    Result<void> launch_poll_cq_and_wait(std::uint64_t args_address, std::int32_t completion_timeout_ms);
+    Result<void> launch_rdma_send_and_wait(std::uint64_t args_address, std::int32_t completion_timeout_ms);
+    Result<void> launch_rdma_recv_and_wait(std::uint64_t args_address, std::int32_t completion_timeout_ms);
+    Result<void> launch_rdma_read_and_wait(std::uint64_t args_address, std::int32_t completion_timeout_ms);
+    Result<void> launch_rdma_write_and_wait(std::uint64_t args_address, std::int32_t completion_timeout_ms);
     Result<void> launch_storage_and_wait(std::uint64_t args_address, StorageOperation operation,
                                          std::int32_t completion_timeout_ms);
     Result<void> launch_storage_wait_and_wait(std::uint64_t args_address, std::int32_t completion_timeout_ms);
@@ -30,6 +36,8 @@ public:
     bool loaded() const noexcept;
 
 private:
+    Result<void> launch_named_and_wait(std::uint64_t args_address, const char *operator_name,
+                                       std::int32_t completion_timeout_ms);
     NdsAclApi *acl_{};
     NdsAclBinHandle binary_{};
     NdsAclFuncHandle function_{};

@@ -19,6 +19,23 @@ NDS_E2E_STATE_DIR   optional writable log and temporary-state directory
 NDS_E2E_TORCH_PYTHON Python interpreter with compatible torch and torch_npu
 ```
 
+The E2E tree follows the public library layers:
+
+```text
+tests/e2e/
+  verbs/       PostSend, PostRecv, PollCq, and AIV Send-batch cases
+  transport/   RdmaSend, RdmaRecv, RdmaRead, and RdmaWrite cases
+  storage/     native storage and Torch session cases
+  support/     shared target runners and AICPU package setup
+```
+
+Each case runs the matching program in `examples/<layer>/`; examples are the
+runnable layer workflows and E2E owns target orchestration and registration.
+Each layer owns its runner (`verbs/run.sh`, `transport/run.sh`, or
+`storage/run.sh`). `support/common.sh` provides only target setup, client
+backend launch, per-case state, and cleanup; it does not select a layer or
+operation.
+
 Configure and inspect registration without touching hardware:
 
 ```sh
@@ -30,12 +47,10 @@ cmake -S . -B build-e2e \
 ctest --test-dir build-e2e -N --label-regex '^e2e$'
 ```
 
-To register the RA Torch session case, also configure the optional wrapper with
+To register storage Torch session cases, also configure the optional wrapper with
 `-DNDS_BUILD_TORCH_WRAPPERS=ON`, a compatible `CMAKE_PREFIX_PATH`, and
 `-DPython3_EXECUTABLE=<torch-python>`. Set `NDS_E2E_TORCH_PYTHON` to that
-interpreter when running the test. Configuring the AIV and AICPU kernel targets
-also registers `e2e.aiv_torch_storage_session` and
-`e2e.aicpu_torch_storage_session`.
+interpreter when running a session case.
 
 Run one bounded, payload-verified case on the approved target. The runner
 accepts the backend (`ra`, `aiv`, or `aicpu`) and operation (`read`, `write`,
@@ -43,7 +58,7 @@ accepts the backend (`ra`, `aiv`, or `aicpu`) and operation (`read`, `write`,
 
 ```sh
 env <NDS_E2E_* assignments> \
-  tests/e2e/run_storage.sh --backend aicpu --operation read
+  tests/e2e/storage/run.sh --backend aicpu --operation read
 ```
 
 Use `--sweep` to run all backend/operation combinations sequentially; the
@@ -61,7 +76,11 @@ pattern, which the client verifies. Write enables server-side payload
 verification. The AICPU case creates a private mount namespace for its
 standard-CP1 package overlay; it does not modify the installed CANN files.
 
-When `NDS_BUILD_HARDWARE_PROBES=ON` is configured, CTest also registers the
-paired verbs and transport example cases for each available backend. These
-cases launch the matching example client and server and require both programs
-to complete one Send/receive exchange.
+When `NDS_BUILD_HARDWARE_PROBES=ON` is configured, CTest registers direct
+verbs and transport E2E cases for every available backend. AIV lower-layer
+clients request caller-owned CQ data-plane memory so `PollCq` can consume the
+matching completion. The verbs layer additionally registers `e2e.verbs.aiv.send-batch`
+and `e2e.verbs.aiv.send-batch-invalid`; the latter posts its valid prefix once
+and verifies the reported `bad_wr_address`. All cases launch the matching
+example client and server and verify the transferred payload or remote-memory
+result.

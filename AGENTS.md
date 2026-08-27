@@ -26,7 +26,7 @@ Source ownership and dependency direction are defined in [design](docs/design.md
   decisions; `docs/development.md` owns contributor workflow; `docs/roadmap.md`
   owns delivered and planned project work; `docs/references.md` owns evidence
   provenance and limits.
-- Keep `apps/README.md`, `examples/README.md`, and `tests/e2e/README.md`
+- Keep `examples/README.md` and `tests/e2e/README.md`
   limited to their directory-local workflows. Link to the authoritative guide
   for shared policy.
 - Update the owning document and all affected links when a contract, workflow,

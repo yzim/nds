@@ -78,8 +78,14 @@ Result<void> submit_device_storage(Runtime *runtime, Transport *transport, const
                                completion.local_key()};
     args.context.capacity = capacity;
     args.command = command;
-
-    args.return_value = std::numeric_limits<std::int32_t>::min();
+    auto return_buffer = runtime->allocate(sizeof(std::int32_t));
+    if (!return_buffer)
+        return unexpected(return_buffer.error());
+    const std::int32_t pending_return_value = std::numeric_limits<std::int32_t>::min();
+    if (const auto copied = runtime->copy_to(&*return_buffer, &pending_return_value, sizeof(pending_return_value));
+        !copied)
+        return unexpected(copied.error());
+    args.return_value_address = reinterpret_cast<std::uint64_t>(return_buffer->data());
 
     if (transport->execution().mode == NpuExecutionMode::Aicpu) {
         AicpuEntrypointLauncher launcher;
@@ -104,8 +110,11 @@ Result<void> submit_device_storage(Runtime *runtime, Transport *transport, const
             return unexpected(copied.error());
     }
 
-    if (args.return_value != 0)
-        return unexpected(ErrorCode::kRuntime, "device storage operation failed");
+    std::int32_t return_value{};
+    if (const auto copied = runtime->copy_from(&return_value, *return_buffer, sizeof(return_value)); !copied)
+        return unexpected(copied.error());
+    if (return_value != 0)
+        return unexpected(ErrorCode::kRuntime, "device storage operation failed: " + std::to_string(return_value));
     return {};
 }
 
@@ -126,7 +135,14 @@ Result<DeviceStorageWaitResult> wait_device_storage(Runtime *runtime, Transport 
     args.command_id = command_id;
     args.expected_bytes = expected_bytes;
 
-    args.return_value = std::numeric_limits<std::int32_t>::min();
+    auto return_buffer = runtime->allocate(sizeof(std::int32_t));
+    if (!return_buffer)
+        return unexpected(return_buffer.error());
+    const std::int32_t pending_return_value = std::numeric_limits<std::int32_t>::min();
+    if (const auto copied = runtime->copy_to(&*return_buffer, &pending_return_value, sizeof(pending_return_value));
+        !copied)
+        return unexpected(copied.error());
+    args.return_value_address = reinterpret_cast<std::uint64_t>(return_buffer->data());
 
     if (transport->execution().mode == NpuExecutionMode::Aicpu) {
         AicpuEntrypointLauncher launcher;
@@ -160,7 +176,10 @@ Result<DeviceStorageWaitResult> wait_device_storage(Runtime *runtime, Transport 
                               StorageSerdeResult::Ok &&
                           observed.state == StorageCompletionState::Complete && observed.command_id == command_id &&
                           observed.bytes_transferred == expected_bytes;
-    return DeviceStorageWaitResult{args.return_value, terminal};
+    std::int32_t return_value{};
+    if (const auto copied = runtime->copy_from(&return_value, *return_buffer, sizeof(return_value)); !copied)
+        return unexpected(copied.error());
+    return DeviceStorageWaitResult{return_value, terminal};
 }
 
 }  // namespace

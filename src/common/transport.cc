@@ -42,6 +42,22 @@ CodecResult validate_qp_info(const QpInfo *info) {
     return CodecResult::Ok;
 }
 
+uint64_t host_to_network_u64(uint64_t value) {
+    return (static_cast<uint64_t>(htonl(static_cast<uint32_t>(value))) << 32U) |
+           htonl(static_cast<uint32_t>(value >> 32U));
+}
+
+uint64_t network_to_host_u64(uint64_t value) {
+    return (static_cast<uint64_t>(ntohl(static_cast<uint32_t>(value))) << 32U) |
+           ntohl(static_cast<uint32_t>(value >> 32U));
+}
+
+CodecResult validate_remote_memory(const RemoteMemory *memory) {
+    if (memory == nullptr || memory->address == 0U || memory->length == 0U || memory->remote_key == 0U)
+        return CodecResult::InvalidRecord;
+    return CodecResult::Ok;
+}
+
 }  // namespace
 
 CodecResult encode(const QpInfo *info, wire::QpInfo *encoded) {
@@ -65,6 +81,20 @@ CodecResult encode(const QpInfo *info, wire::QpInfo *encoded) {
     encoded->retry_count = htonl(info->retry_count);
     encoded->retry_timeout = htonl(info->retry_timeout);
     memcpy(encoded->gid, info->gid, sizeof(encoded->gid));
+    return CodecResult::Ok;
+}
+
+CodecResult encode(const RemoteMemory *memory, wire::RemoteMemory *encoded) {
+    if (encoded == nullptr)
+        return CodecResult::InvalidArgument;
+    if (validate_remote_memory(memory) != CodecResult::Ok)
+        return CodecResult::InvalidRecord;
+    *encoded = {};
+    encoded->magic = htonl(wire::kRemoteMemoryMagic);
+    encoded->version = htons(wire::kRemoteMemoryVersion);
+    encoded->address = host_to_network_u64(memory->address);
+    encoded->length = htonl(memory->length);
+    encoded->remote_key = htonl(memory->remote_key);
     return CodecResult::Ok;
 }
 
@@ -205,7 +235,8 @@ Result<void> TcpPeerExchange::write_full(int fd, const void *buffer, std::size_t
     return {};
 }
 
-Result<nds::transport::QpInfo> TcpPeerExchange::exchange(int fd, const nds::transport::QpInfo &local, bool client_order) {
+Result<nds::transport::QpInfo> TcpPeerExchange::exchange(int fd, const nds::transport::QpInfo &local,
+                                                         bool client_order) {
     nds::wire::QpInfo local_wire{};
     nds::wire::QpInfo peer_wire{};
     if (fd < 0) {
@@ -241,7 +272,7 @@ Result<nds::transport::QpInfo> TcpPeerExchange::exchange_as_server(const nds::tr
 }
 
 Result<TcpPeerExchange> TcpPeerExchange::connect(const std::string &ipv4, std::uint16_t port,
-                                                  std::uint32_t timeout_ms) {
+                                                 std::uint32_t timeout_ms) {
     sockaddr_in address{};
     int socket_fd;
     int flags;
@@ -324,6 +355,19 @@ CodecResult decode(const wire::QpInfo *encoded, QpInfo *info) {
         return CodecResult::InvalidRecord;
     }
     *info = decoded;
+    return CodecResult::Ok;
+}
+
+CodecResult decode(const wire::RemoteMemory *encoded, RemoteMemory *memory) {
+    if (encoded == nullptr || memory == nullptr)
+        return CodecResult::InvalidArgument;
+    if (ntohl(encoded->magic) != wire::kRemoteMemoryMagic || ntohs(encoded->version) != wire::kRemoteMemoryVersion)
+        return CodecResult::InvalidRecord;
+    const RemoteMemory decoded{network_to_host_u64(encoded->address), ntohl(encoded->length),
+                               ntohl(encoded->remote_key)};
+    if (validate_remote_memory(&decoded) != CodecResult::Ok)
+        return CodecResult::InvalidRecord;
+    *memory = decoded;
     return CodecResult::Ok;
 }
 

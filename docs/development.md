@@ -85,7 +85,7 @@ provider resolution, or HCCP internal CQ activity is not storage completion.
 Keep hardware claims tied to recorded bounded target experiments.
 
 The paired lower-layer examples build with `-DNDS_BUILD_HARDWARE_PROBES=ON`.
-Storage remains the application-level test path under `apps/`.
+Storage remains the application-level test path under `examples/storage/`.
 
 ## PyTorch wrapper
 

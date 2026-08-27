@@ -33,7 +33,7 @@ The CPU server independently owns its verbs context, PD, CQ, RC QP, command
 Receive record, namespace, and completion-record source buffer. Applications
 own configuration, workload buffers, and verification. Paired examples each
 exercise one lower API layer; storage remains the complete application under
-`apps/`.
+`examples/storage/`.
 
 The source layout reflects these boundaries:
 

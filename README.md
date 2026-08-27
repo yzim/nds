@@ -43,10 +43,9 @@ ctest --test-dir build --output-on-failure
 
 ```text
 src/        Reusable client, server, common, and Torch wrapper libraries
-apps/       Complete storage and Torch applications
-examples/   Paired lower-layer client/server examples
+examples/   Storage, verbs, and transport client/server examples
 benchmarks/ Opt-in performance workloads
-tests/      Unit, integration, and opt-in hardware validation
+tests/      Unit, integration, and opt-in layer E2E validation
 docs/       Design, development, roadmap, and reference guides
 ```
 

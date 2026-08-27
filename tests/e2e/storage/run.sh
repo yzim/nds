@@ -2,8 +2,9 @@
 set -euo pipefail
 
 runner_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+support_dir="${runner_dir}/../support"
 # shellcheck source=aicpu_overlay.sh
-source "${runner_dir}/aicpu_overlay.sh"
+source "${support_dir}/aicpu_overlay.sh"
 
 usage() {
     cat <<'EOF'
@@ -43,7 +44,7 @@ run_client() {
     local operation="$2"
     local case_dir="$3"
     local client_log="$4"
-    local -a client=("${build}/bin/nds_client" --execution "${backend}"
+    local -a client=("${build}/bin/nds_storage_client" --execution "${backend}"
         --ascendcl "${cann}/aarch64-linux/lib64/libascendcl.so"
         --runtime "${cann}/aarch64-linux/lib64/libruntime.so"
         --ra "${cann}/aarch64-linux/lib64/libra.so"
@@ -65,7 +66,7 @@ run_client() {
             local overlay
             overlay="$(nds_prepare_aicpu_overlay "${case_dir}" "${cann}" "${build}")"
             client+=(--aicpu-kernel-config "${overlay}/opp/vendors/nds/aicpu/config/nds_aicpu_standard.json")
-            timeout "${case_timeout}" sudo -n unshare -m "${runner_dir}/run_with_aicpu_package.sh" \
+            timeout "${case_timeout}" sudo -n unshare -m "${support_dir}/run_with_aicpu_package.sh" \
                 "${overlay}" "${cann}" "${client[@]}" >"${client_log}" 2>&1
             ;;
     esac
@@ -81,7 +82,7 @@ run_case() {
     local server_log="${case_dir}/server.log"
     local client_log="${case_dir}/client.log"
     local verify_bytes
-    local -a server=("${build}/bin/nds_server" --device "${NDS_E2E_DEVICE}" --gid-index "${NDS_E2E_GID_INDEX}"
+    local -a server=("${build}/bin/nds_storage_server" --device "${NDS_E2E_DEVICE}" --gid-index "${NDS_E2E_GID_INDEX}"
         --listen "${NDS_E2E_SERVER_ADDRESS}" --namespace-bytes 1048576 --log-level info)
 
     if [[ "${operation}" == read || "${operation}" == batch-read ]]; then

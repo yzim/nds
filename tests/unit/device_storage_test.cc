@@ -55,3 +55,24 @@ TEST(DeviceStorageTest, ValidatesCompletionWait) {
     context.completion.length = nds::kStorageCompletionBytes - 1U;
     EXPECT_FALSE(nds_device_storage_wait_valid(&context, 1U, 64U));
 }
+
+TEST(DeviceStorageTest, DefinesDirectOperatorResultAddressEnvelopes) {
+    constexpr std::uint64_t kResultAddress = UINT64_C(0x100000);
+
+    NdsDeviceStorageReadArgs read{};
+    NdsDeviceStorageWriteArgs write{};
+    NdsDeviceStorageBatchReadArgs batch_read{};
+    NdsDeviceStorageBatchWriteArgs batch_write{};
+    NdsDeviceStorageWaitArgs wait{};
+    read.return_value_address = kResultAddress;
+    write.return_value_address = kResultAddress;
+    batch_read.return_value_address = kResultAddress;
+    batch_write.return_value_address = kResultAddress;
+    wait.return_value_address = kResultAddress;
+
+    EXPECT_EQ(read.return_value_address, kResultAddress);
+    EXPECT_EQ(write.return_value_address, kResultAddress);
+    EXPECT_EQ(batch_read.return_value_address, kResultAddress);
+    EXPECT_EQ(batch_write.return_value_address, kResultAddress);
+    EXPECT_EQ(wait.return_value_address, kResultAddress);
+}

@@ -5,8 +5,10 @@
 
 namespace nds::wire {
 
-inline constexpr uint32_t kQpInfoMagic = UINT32_C(0x4e445331); // "NDS1"
+inline constexpr uint32_t kQpInfoMagic = UINT32_C(0x4e445331);  // "NDS1"
 inline constexpr uint16_t kQpInfoVersion = UINT16_C(3);
+inline constexpr uint32_t kRemoteMemoryMagic = UINT32_C(0x4e445332);  // "NDS2"
+inline constexpr uint16_t kRemoteMemoryVersion = UINT16_C(1);
 inline constexpr uint32_t kGidBytes = 16U;
 
 /*
@@ -34,6 +36,20 @@ struct __attribute__((packed)) QpInfo {
 
 static_assert(sizeof(QpInfo) == 80, "NDS RC QP info must remain a fixed 80-byte message");
 
+/* Remote memory metadata exchanged after QP bootstrap. It carries only the
+ * address, length, and rkey required by an RC data operation. */
+struct __attribute__((packed)) RemoteMemory {
+    uint32_t magic;
+    uint16_t version;
+    uint16_t reserved0;
+    uint64_t address;
+    uint32_t length;
+    uint32_t remote_key;
+    uint8_t reserved[8];
+};
+
+static_assert(sizeof(RemoteMemory) == 32, "NDS remote-memory record must remain a fixed 32-byte message");
+
 }  // namespace nds::wire
 
 namespace nds::transport {
@@ -53,6 +69,12 @@ struct QpInfo {
     uint8_t gid[wire::kGidBytes];
 };
 
+struct RemoteMemory {
+    uint64_t address;
+    uint32_t length;
+    uint32_t remote_key;
+};
+
 enum class CodecResult {
     Ok,
     InvalidArgument,
@@ -61,6 +83,8 @@ enum class CodecResult {
 
 CodecResult encode(const QpInfo *info, wire::QpInfo *encoded);
 CodecResult decode(const wire::QpInfo *encoded, QpInfo *info);
+CodecResult encode(const RemoteMemory *memory, wire::RemoteMemory *encoded);
+CodecResult decode(const wire::RemoteMemory *encoded, RemoteMemory *memory);
 
 /* Standard RC path-MTU byte values accepted by NDS's CPU verbs adapter. */
 int mtu_is_supported(uint32_t mtu_bytes);

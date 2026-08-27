@@ -1,4 +1,5 @@
 #include "nds/device_verbs.h"
+#include "nds/device_transport.h"
 
 #include <gtest/gtest.h>
 #include <cstdint>
@@ -36,4 +37,31 @@ TEST(DeviceConnectionTest, DefinesBatchPostSendEnvelope) {
     EXPECT_EQ(args.wr_count, 64U);
     EXPECT_EQ(args.bad_wr_address, UINT64_C(0x1060));
     EXPECT_EQ(sizeof(args), 256U);
+}
+
+TEST(DeviceConnectionTest, DefinesDirectOperatorResultAddressEnvelopes) {
+    constexpr std::uint64_t kResultAddress = UINT64_C(0x100000);
+
+    NdsDevicePostSendArgs post_send{};
+    NdsDevicePostRecvArgs post_recv{};
+    NdsDevicePollCqArgs poll_cq{};
+    NdsDeviceRdmaSendArgs rdma_send{};
+    NdsDeviceRdmaRecvArgs rdma_recv{};
+    NdsDeviceRdmaReadArgs rdma_read{};
+    NdsDeviceRdmaWriteArgs rdma_write{};
+    post_send.return_value_address = kResultAddress;
+    post_recv.return_value_address = kResultAddress;
+    poll_cq.return_value_address = kResultAddress;
+    rdma_send.return_value_address = kResultAddress;
+    rdma_recv.return_value_address = kResultAddress;
+    rdma_read.return_value_address = kResultAddress;
+    rdma_write.return_value_address = kResultAddress;
+
+    EXPECT_EQ(post_send.return_value_address, kResultAddress);
+    EXPECT_EQ(post_recv.return_value_address, kResultAddress);
+    EXPECT_EQ(poll_cq.return_value_address, kResultAddress);
+    EXPECT_EQ(rdma_send.return_value_address, kResultAddress);
+    EXPECT_EQ(rdma_recv.return_value_address, kResultAddress);
+    EXPECT_EQ(rdma_read.return_value_address, kResultAddress);
+    EXPECT_EQ(rdma_write.return_value_address, kResultAddress);
 }
