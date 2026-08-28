@@ -8,7 +8,7 @@ namespace nds::wire {
 inline constexpr uint32_t kQpInfoMagic = UINT32_C(0x4e445331);  // "NDS1"
 inline constexpr uint16_t kQpInfoVersion = UINT16_C(3);
 inline constexpr uint32_t kQpInfoBatchMagic = UINT32_C(0x4e445342);  // "NDSB"
-inline constexpr uint32_t kMaxQpInfoBatch = 1024U;
+inline constexpr uint32_t kMaxQpInfoBatch = 8U;
 inline constexpr uint32_t kRemoteMemoryMagic = UINT32_C(0x4e445332);  // "NDS2"
 inline constexpr uint16_t kRemoteMemoryVersion = UINT16_C(1);
 inline constexpr uint32_t kGidBytes = 16U;

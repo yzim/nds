@@ -86,3 +86,17 @@ TEST(TransportExchangeIntegrationTest, RejectsMismatchedQpBatchCount) {
     close(sockets[0]);
     close(sockets[1]);
 }
+
+TEST(TransportExchangeIntegrationTest, RejectsQpBatchAboveConfiguredLimit) {
+    int sockets[2]{};
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, sockets), 0);
+    std::vector<nds::transport::QpInfo> endpoints;
+    endpoints.reserve(nds::wire::kMaxQpInfoBatch + 1U);
+    for (std::uint32_t index = 0U; index <= nds::wire::kMaxQpInfoBatch; ++index)
+        endpoints.push_back(make_endpoint(0x1101U + index, 0x2202U + index));
+
+    const auto result = nds::TcpPeerExchange{sockets[0]}.exchange_as_client(endpoints);
+
+    EXPECT_FALSE(result);
+    close(sockets[1]);
+}
