@@ -208,9 +208,29 @@ execution.
 
 ### Submission
 
-`PostSend` is post-and-submit on every supported backend. It returns success
-only after the work request has been submitted to its transport path; it does
-not expose a deferred-doorbell option.
+The host transport API exposes indexed opaque queue handles and NDS-owned
+`send`, `receive`, `read`, and `write` requests. A request names a registered
+local region, transfer length, and, for RDMA read/write, an NDS-owned remote
+memory record `{address, key, length}`. Storage records and backend/device WR
+layouts are not part of this API. The caller owns its buffers and registered
+regions; successful submission means only that the transport accepted the
+request, not that the peer storage operation completed.
+
+Each operation also has an operation-specific batch API. A batch is one future
+submission boundary: RA will prepare its WQEs before one runtime doorbell, AIV
+will populate its WQEs before one doorbell, and AICPU will use its linked
+provider WR list. Multi-request lowering is enabled with transport CQ-credit
+ownership; until then the public batch APIs accept exactly one request.
+
+The transport will own local CQ processing and credit accounting. It will poll
+opportunistically from submission paths, with no dedicated polling thread, and
+callers will not poll local CQs. Storage completion remains a separate
+protocol-visible completion-slot state. The present implementation does not
+yet opt AI QPs into caller CQ polling or retire transport credits.
+
+Each current single-request submission is post-and-submit on every supported
+backend. It returns success only after the work request has been submitted to
+its transport path; it does not expose a deferred-doorbell option.
 
 `NdsAivPostSendBatch` is an AIV-only transport entrypoint for one contiguous,
 device-global `NdsDeviceSendWr` array. Its launch envelope carries the array

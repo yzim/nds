@@ -60,52 +60,6 @@ private:
     MemoryBuffer buffer_;
 };
 
-Result<void> post_bootstrap_send(Runtime *runtime, Transport *transport, const NdsDeviceSendWr &wr) {
-    if (runtime == nullptr || transport == nullptr)
-        return unexpected(ErrorCode::kInvalidArgument, "storage bootstrap Send requires a runtime and transport");
-    if (transport->backend().mode == NpuBackend::Ra)
-        return NdsRaPostSend(runtime, transport->qp(), wr);
-
-    const auto device_transport = transport->qp()->make_device_transport();
-    if (!device_transport)
-        return unexpected(device_transport.error());
-    NdsDevicePostSendArgs request{device_transport->control_qp, wr, std::numeric_limits<std::int32_t>::min()};
-    auto request_buffer = runtime->allocate(sizeof(request));
-    if (!request_buffer)
-        return unexpected(request_buffer.error());
-    if (const auto copied = runtime->copy_to(&*request_buffer, &request, sizeof(request)); !copied)
-        return unexpected(copied.error());
-    const std::uint64_t request_address = reinterpret_cast<std::uint64_t>(request_buffer->data());
-    if (transport->backend().mode == NpuBackend::Aicpu) {
-        AicpuLauncher launcher;
-        if (const auto loaded = launcher.load(transport->backend().aicpu_kernel_config); !loaded)
-            return unexpected(loaded.error());
-        if (const auto launched =
-                launcher.launch_and_wait("nds_aicpu_post_send_kernel", request_address, kCompletionTimeoutMs);
-            !launched) {
-            return unexpected(launched.error());
-        }
-    } else {
-        AivLauncher launcher;
-        if (const auto loaded = launcher.load(transport->backend().aiv_kernel); !loaded)
-            return unexpected(loaded.error());
-        AivThreeAddressArguments arguments{request_address + offsetof(NdsDevicePostSendArgs, qp),
-                                           request_address + offsetof(NdsDevicePostSendArgs, wr),
-                                           request_address + offsetof(NdsDevicePostSendArgs, return_value)};
-        if (const auto launched = launcher.launch_and_wait("nds_aiv_post_send_kernel", &arguments, sizeof(arguments),
-                                                           kCompletionTimeoutMs);
-            !launched) {
-            return unexpected(launched.error());
-        }
-    }
-    if (const auto copied = runtime->copy_from(&request, *request_buffer, sizeof(request)); !copied)
-        return unexpected(copied.error());
-    if (request.return_value != 0)
-        return unexpected(ErrorCode::kRuntime,
-                          "storage bootstrap Send failed: " + std::to_string(request.return_value));
-    return {};
-}
-
 Result<void> launch_aicpu(AicpuLauncher *launcher, std::uint64_t args_address, NdsDeviceStorageReadArgs *) {
     return launcher->launch_and_wait("nds_aicpu_storage_read_kernel", args_address, kCompletionTimeoutMs);
 }
@@ -137,10 +91,12 @@ const char *aiv_storage_kernel(StorageOperation operation) {
 }
 
 template <typename Args, typename Command>
-Result<void> submit_device_storage(Runtime *runtime, Transport *transport, const MemoryRegion &command_region,
-                                   const MemoryRegion &completion, std::uint64_t capacity, StorageOperation operation,
-                                   const Command &command) {
-    const auto device_transport = transport->qp()->make_device_transport();
+Result<void> submit_device_storage(Runtime *runtime, QueuePair *qp, const BackendConfig &backend,
+                                   const MemoryRegion &command_region, const MemoryRegion &completion,
+                                   std::uint64_t capacity, StorageOperation operation, const Command &command) {
+    if (qp == nullptr)
+        return unexpected(ErrorCode::kInvalidArgument, "storage requires a transport QP");
+    const auto device_transport = qp->make_device_transport();
     if (!device_transport)
         return unexpected(device_transport.error());
     NdsDeviceStorageContext context{};
@@ -151,7 +107,7 @@ Result<void> submit_device_storage(Runtime *runtime, Transport *transport, const
                           completion.local_key()};
     context.capacity = capacity;
 
-    if (transport->backend().mode == NpuBackend::Aicpu) {
+    if (backend.mode == NpuBackend::Aicpu) {
         Args args{};
         args.context = context;
         args.command = command;
@@ -162,7 +118,7 @@ Result<void> submit_device_storage(Runtime *runtime, Transport *transport, const
         if (const auto copied = runtime->copy_host_to_device(device_args.get(), &args, sizeof(args)); !copied)
             return unexpected(copied.error());
         AicpuLauncher launcher;
-        if (const auto loaded = launcher.load(transport->backend().aicpu_kernel_config); !loaded)
+        if (const auto loaded = launcher.load(backend.aicpu_kernel_config); !loaded)
             return unexpected(loaded.error());
         if (const auto launched = launch_aicpu(&launcher, reinterpret_cast<std::uint64_t>(device_args.get()), &args);
             !launched)
@@ -192,7 +148,7 @@ Result<void> submit_device_storage(Runtime *runtime, Transport *transport, const
             !copied)
             return unexpected(copied.error());
         AivLauncher launcher;
-        if (const auto loaded = launcher.load(transport->backend().aiv_kernel); !loaded)
+        if (const auto loaded = launcher.load(backend.aiv_kernel); !loaded)
             return unexpected(loaded.error());
         const char *kernel_name = aiv_storage_kernel(operation);
         if (kernel_name == nullptr)
@@ -214,11 +170,13 @@ Result<void> submit_device_storage(Runtime *runtime, Transport *transport, const
     return {};
 }
 
-Result<DeviceStorageWaitResult> wait_device_storage(Runtime *runtime, Transport *transport,
+Result<DeviceStorageWaitResult> wait_device_storage(Runtime *runtime, QueuePair *qp, const BackendConfig &backend,
                                                     const MemoryRegion &command_region, const MemoryRegion &completion,
                                                     std::uint64_t capacity, std::uint64_t command_id,
                                                     std::uint64_t expected_bytes, std::int32_t timeout_ms) {
-    const auto device_transport = transport->qp()->make_device_transport();
+    if (qp == nullptr)
+        return unexpected(ErrorCode::kInvalidArgument, "storage requires a transport QP");
+    const auto device_transport = qp->make_device_transport();
     if (!device_transport)
         return unexpected(device_transport.error());
     NdsDeviceStorageContext context{};
@@ -230,7 +188,7 @@ Result<DeviceStorageWaitResult> wait_device_storage(Runtime *runtime, Transport 
     context.capacity = capacity;
     std::int32_t return_value = std::numeric_limits<std::int32_t>::min();
 
-    if (transport->backend().mode == NpuBackend::Aicpu) {
+    if (backend.mode == NpuBackend::Aicpu) {
         NdsDeviceStorageWaitArgs args{};
         args.context = context;
         args.command_id = command_id;
@@ -242,7 +200,7 @@ Result<DeviceStorageWaitResult> wait_device_storage(Runtime *runtime, Transport 
         if (const auto copied = runtime->copy_host_to_device(device_args.get(), &args, sizeof(args)); !copied)
             return unexpected(copied.error());
         AicpuLauncher launcher;
-        if (const auto loaded = launcher.load(transport->backend().aicpu_kernel_config); !loaded)
+        if (const auto loaded = launcher.load(backend.aicpu_kernel_config); !loaded)
             return unexpected(loaded.error());
         if (const auto launched = launcher.launch_and_wait(
                 "nds_aicpu_storage_wait_kernel", reinterpret_cast<std::uint64_t>(device_args.get()), timeout_ms);
@@ -265,7 +223,7 @@ Result<DeviceStorageWaitResult> wait_device_storage(Runtime *runtime, Transport 
             !copied)
             return unexpected(copied.error());
         AivLauncher launcher;
-        if (const auto loaded = launcher.load(transport->backend().aiv_kernel); !loaded)
+        if (const auto loaded = launcher.load(backend.aiv_kernel); !loaded)
             return unexpected(loaded.error());
         AivStorageWaitArguments arguments{reinterpret_cast<std::uint64_t>(device_context.get()), command_id,
                                           expected_bytes, reinterpret_cast<std::uint64_t>(device_return_value.get())};
@@ -310,15 +268,15 @@ Result<void> StorageClient::open(Runtime *runtime, Transport *transport) {
     if (!namespace_buffer)
         return unexpected(namespace_buffer.error());
     namespace_buffer_ = std::move(*namespace_buffer);
-    auto command_region = transport_->endpoint()->reg_mr(command_buffer_, MemoryAccess::DirectNpu);
+    auto command_region = transport_->register_memory(command_buffer_, MemoryAccess::DirectNpu);
     if (!command_region)
         return unexpected(command_region.error());
     command_region_ = std::move(*command_region);
-    auto completion_region = transport_->endpoint()->reg_mr(completion_buffer_, MemoryAccess::DirectNpu);
+    auto completion_region = transport_->register_memory(completion_buffer_, MemoryAccess::DirectNpu);
     if (!completion_region)
         return unexpected(completion_region.error());
     completion_region_ = std::move(*completion_region);
-    auto namespace_region = transport_->endpoint()->reg_mr(namespace_buffer_, MemoryAccess::DirectNpu);
+    auto namespace_region = transport_->register_memory(namespace_buffer_, MemoryAccess::DirectNpu);
     if (!namespace_region)
         return unexpected(namespace_region.error());
     namespace_region_ = std::move(*namespace_region);
@@ -339,7 +297,7 @@ Result<StorageCompletionHandle> StorageClient::read(std::uint64_t offset, Memory
         return unexpected(ready.error());
     if (const auto valid = validate_io({offset, data, length}); !valid)
         return unexpected(valid.error());
-    auto region = transport_->endpoint()->reg_mr(*data, MemoryAccess::DirectNpu);
+    auto region = transport_->register_memory(*data, MemoryAccess::DirectNpu);
     if (!region)
         return unexpected(region.error());
     const std::uint64_t command_id = allocate_command_id();
@@ -360,7 +318,7 @@ Result<StorageCompletionHandle> StorageClient::write(std::uint64_t offset, Memor
         return unexpected(ready.error());
     if (const auto valid = validate_io({offset, data, length}); !valid)
         return unexpected(valid.error());
-    auto region = transport_->endpoint()->reg_mr(*data, MemoryAccess::DirectNpu);
+    auto region = transport_->register_memory(*data, MemoryAccess::DirectNpu);
     if (!region)
         return unexpected(region.error());
     const std::uint64_t command_id = allocate_command_id();
@@ -394,7 +352,7 @@ Result<StorageCompletionHandle> StorageClient::read_batch(std::span<const Storag
         if (request.length > std::numeric_limits<std::uint64_t>::max() - total_length)
             return unexpected(ErrorCode::kInvalidArgument, "storage batch read byte count overflows");
         total_length += request.length;
-        auto region = transport_->endpoint()->reg_mr(*request.data, MemoryAccess::DirectNpu);
+        auto region = transport_->register_memory(*request.data, MemoryAccess::DirectNpu);
         if (!region)
             return unexpected(region.error());
         pending.data_regions.push_back(std::move(*region));
@@ -414,7 +372,7 @@ Result<StorageCompletionHandle> StorageClient::read_batch(std::span<const Storag
         return unexpected(descriptor_buffer.error());
     if (const auto copied = runtime_->copy_to(&*descriptor_buffer, bytes.data(), bytes.size()); !copied)
         return unexpected(copied.error());
-    auto region = transport_->endpoint()->reg_mr(*descriptor_buffer, MemoryAccess::DirectNpu);
+    auto region = transport_->register_memory(*descriptor_buffer, MemoryAccess::DirectNpu);
     if (!region)
         return unexpected(region.error());
     pending.expected_bytes = total_length;
@@ -446,7 +404,7 @@ Result<StorageCompletionHandle> StorageClient::write_batch(std::span<const Stora
         if (request.length > std::numeric_limits<std::uint64_t>::max() - total_length)
             return unexpected(ErrorCode::kInvalidArgument, "storage batch write byte count overflows");
         total_length += request.length;
-        auto region = transport_->endpoint()->reg_mr(*request.data, MemoryAccess::DirectNpu);
+        auto region = transport_->register_memory(*request.data, MemoryAccess::DirectNpu);
         if (!region)
             return unexpected(region.error());
         pending.data_regions.push_back(std::move(*region));
@@ -466,7 +424,7 @@ Result<StorageCompletionHandle> StorageClient::write_batch(std::span<const Stora
         return unexpected(descriptor_buffer.error());
     if (const auto copied = runtime_->copy_to(&*descriptor_buffer, bytes.data(), bytes.size()); !copied)
         return unexpected(copied.error());
-    auto region = transport_->endpoint()->reg_mr(*descriptor_buffer, MemoryAccess::DirectNpu);
+    auto region = transport_->register_memory(*descriptor_buffer, MemoryAccess::DirectNpu);
     if (!region)
         return unexpected(region.error());
     pending.expected_bytes = total_length;
@@ -514,9 +472,9 @@ Result<void> StorageClient::wait(StorageCompletionHandle handle, std::uint32_t t
             return unexpected(ErrorCode::kProtocol, "storage completion returned a failure status");
         return {};
     }
-    const auto completed =
-        wait_device_storage(runtime_, transport_, command_region_, completion_region_, capacity_, handle.command_id,
-                            pending_->expected_bytes, static_cast<std::int32_t>(timeout_ms));
+    const auto completed = wait_device_storage(runtime_, transport_->qp(), transport_->backend(), command_region_,
+                                               completion_region_, capacity_, handle.command_id,
+                                               pending_->expected_bytes, static_cast<std::int32_t>(timeout_ms));
     if (!completed)
         return unexpected(completed.error());
     if (completed->terminal)
@@ -569,8 +527,9 @@ Result<void> StorageClient::execute_storage_read(const StorageReadCommand &comma
             capacity_};
         return NdsRaStorageRead(context, command);
     }
-    return submit_device_storage<NdsDeviceStorageReadArgs>(runtime_, transport_, command_region_, completion_region_,
-                                                           capacity_, StorageOperation::Read, command);
+    return submit_device_storage<NdsDeviceStorageReadArgs>(runtime_, transport_->qp(), transport_->backend(),
+                                                           command_region_, completion_region_, capacity_,
+                                                           StorageOperation::Read, command);
 }
 
 Result<void> StorageClient::execute_storage_write(const StorageWriteCommand &command) {
@@ -588,8 +547,9 @@ Result<void> StorageClient::execute_storage_write(const StorageWriteCommand &com
             capacity_};
         return NdsRaStorageWrite(context, command);
     }
-    return submit_device_storage<NdsDeviceStorageWriteArgs>(runtime_, transport_, command_region_, completion_region_,
-                                                            capacity_, StorageOperation::Write, command);
+    return submit_device_storage<NdsDeviceStorageWriteArgs>(runtime_, transport_->qp(), transport_->backend(),
+                                                            command_region_, completion_region_, capacity_,
+                                                            StorageOperation::Write, command);
 }
 
 Result<void> StorageClient::execute_storage_batch_read(const StorageBatchReadCommand &command) {
@@ -607,8 +567,9 @@ Result<void> StorageClient::execute_storage_batch_read(const StorageBatchReadCom
             capacity_};
         return NdsRaStorageBatchRead(context, command);
     }
-    return submit_device_storage<NdsDeviceStorageBatchReadArgs>(
-        runtime_, transport_, command_region_, completion_region_, capacity_, StorageOperation::BatchRead, command);
+    return submit_device_storage<NdsDeviceStorageBatchReadArgs>(runtime_, transport_->qp(), transport_->backend(),
+                                                                command_region_, completion_region_, capacity_,
+                                                                StorageOperation::BatchRead, command);
 }
 
 Result<void> StorageClient::execute_storage_batch_write(const StorageBatchWriteCommand &command) {
@@ -626,8 +587,9 @@ Result<void> StorageClient::execute_storage_batch_write(const StorageBatchWriteC
             capacity_};
         return NdsRaStorageBatchWrite(context, command);
     }
-    return submit_device_storage<NdsDeviceStorageBatchWriteArgs>(
-        runtime_, transport_, command_region_, completion_region_, capacity_, StorageOperation::BatchWrite, command);
+    return submit_device_storage<NdsDeviceStorageBatchWriteArgs>(runtime_, transport_->qp(), transport_->backend(),
+                                                                 command_region_, completion_region_, capacity_,
+                                                                 StorageOperation::BatchWrite, command);
 }
 
 Result<std::uint64_t> StorageClient::exchange_bootstrap() {
@@ -645,14 +607,10 @@ Result<std::uint64_t> StorageClient::exchange_bootstrap() {
         return unexpected(copied.error());
     if (const auto ready = transport_->ready(); !ready)
         return unexpected(ready.error());
-    const NdsDeviceSendWr request{1U,
-                                  NDS_DEVICE_WR_SEND,
-                                  NDS_DEVICE_SEND_SIGNALED,
-                                  {command_region_.address(), kStorageBootstrapBytes, command_region_.local_key()},
-                                  0U,
-                                  0U,
-                                  0U};
-    if (const auto sent = post_bootstrap_send(runtime_, transport_, request); !sent)
+    const auto queue = transport_->queue(0U);
+    if (!queue)
+        return unexpected(queue.error());
+    if (const auto sent = transport_->send(*queue, {&command_region_, kStorageBootstrapBytes}); !sent)
         return unexpected(sent.error());
 
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(kCompletionTimeoutMs);
