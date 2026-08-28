@@ -271,6 +271,48 @@ Result<nds::transport::QpInfo> TcpPeerExchange::exchange_as_server(const nds::tr
     return exchange(fd_, local, false);
 }
 
+Result<std::uint32_t> TcpPeerExchange::negotiate_qp_count_as_client(std::uint32_t requested) const {
+    if (fd_ < 0 || requested == 0U || requested > wire::kMaxQpInfoBatch)
+        return unexpected(ErrorCode::kInvalidArgument, "invalid requested QP count");
+    wire::QpCount request{};
+    request.magic = htonl(wire::kQpCountMagic);
+    request.version = htons(wire::kQpCountVersion);
+    request.count = htonl(requested);
+    if (const auto sent = write_full(fd_, &request, sizeof(request)); !sent)
+        return unexpected(sent.error());
+
+    wire::QpCount response{};
+    if (const auto received = read_full(fd_, &response, sizeof(response)); !received)
+        return unexpected(received.error());
+    const std::uint32_t accepted = ntohl(response.count);
+    if (ntohl(response.magic) != wire::kQpCountMagic || ntohs(response.version) != wire::kQpCountVersion ||
+        accepted == 0U || accepted > requested || accepted > wire::kMaxQpInfoBatch) {
+        return unexpected(ErrorCode::kTransport, "invalid negotiated QP count");
+    }
+    return accepted;
+}
+
+Result<std::uint32_t> TcpPeerExchange::negotiate_qp_count_as_server(std::uint32_t maximum) const {
+    if (fd_ < 0 || maximum == 0U || maximum > wire::kMaxQpInfoBatch)
+        return unexpected(ErrorCode::kInvalidArgument, "invalid maximum QP count");
+    wire::QpCount request{};
+    if (const auto received = read_full(fd_, &request, sizeof(request)); !received)
+        return unexpected(received.error());
+    const std::uint32_t requested = ntohl(request.count);
+    if (ntohl(request.magic) != wire::kQpCountMagic || ntohs(request.version) != wire::kQpCountVersion ||
+        requested == 0U || requested > wire::kMaxQpInfoBatch) {
+        return unexpected(ErrorCode::kTransport, "invalid requested QP count");
+    }
+    const std::uint32_t accepted = requested < maximum ? requested : maximum;
+    wire::QpCount response{};
+    response.magic = htonl(wire::kQpCountMagic);
+    response.version = htons(wire::kQpCountVersion);
+    response.count = htonl(accepted);
+    if (const auto sent = write_full(fd_, &response, sizeof(response)); !sent)
+        return unexpected(sent.error());
+    return accepted;
+}
+
 Result<std::vector<nds::transport::QpInfo>> TcpPeerExchange::exchange_many(
     int fd, const std::vector<nds::transport::QpInfo> &local, bool client_order) {
     if (fd < 0 || local.empty() || local.size() > wire::kMaxQpInfoBatch)

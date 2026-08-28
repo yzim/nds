@@ -26,7 +26,7 @@ int parse(int argc, char **argv, Config *config, bool *exit_requested) {
     app.add_option("--gid-index", config->transport.backend.gid_index)->required();
     app.add_option("--listen", config->transport.listen_address);
     app.add_option("--ib-port", config->transport.backend.port);
-    app.add_option("--qp-count", config->transport.qp_count, "Connected QPs to create")
+    app.add_option("--max-qp-count", config->transport.max_qp_count, "Maximum QPs accepted per client")
         ->check(CLI::Range(1U, nds::wire::kMaxQpInfoBatch));
     app.add_option("--receives", config->receives, "Number of Receive WQEs to post")->check(CLI::Range(1U, 2U));
     app.add_option("--operation", config->operation)
@@ -57,9 +57,14 @@ int main(int argc, char **argv) {
     if (!nds::log::configure("verbs-server", config.log_sink, config.log_level))
         return EXIT_FAILURE;
 
+    nds::server::TransportListener listener;
+    if (const auto opened = listener.open(config.transport); !opened) {
+        NDS_LOG_ERROR("verbs-server", "listener open failed: {}", opened.error().message);
+        return EXIT_FAILURE;
+    }
     nds::server::Transport transport;
-    if (const auto opened = transport.open(config.transport); !opened) {
-        NDS_LOG_ERROR("verbs-server", "transport open failed: {}", opened.error().message);
+    if (const auto accepted = listener.accept(&transport); !accepted) {
+        NDS_LOG_ERROR("verbs-server", "transport accept failed: {}", accepted.error().message);
         return EXIT_FAILURE;
     }
     if (config.operation == "recv") {

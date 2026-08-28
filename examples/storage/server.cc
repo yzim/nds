@@ -12,6 +12,7 @@
 namespace {
 struct Config {
     nds::server::TransportConfig transport;
+    std::uint32_t clients{1U};
     std::uint32_t namespace_bytes{1024U * 1024U};
     std::uint32_t storage_commands{1U};
     bool seed_pattern{};
@@ -26,8 +27,10 @@ int parse(int argc, char **argv, Config *config, bool *exit_requested) {
     app.add_option("--gid-index", config->transport.backend.gid_index)->required();
     app.add_option("--listen", config->transport.listen_address, "TCP bootstrap listen address as IPv4:port");
     app.add_option("--ib-port", config->transport.backend.port);
-    app.add_option("--qp-count", config->transport.qp_count, "Connected QPs to create")
+    app.add_option("--max-qp-count", config->transport.max_qp_count, "Maximum QPs accepted per client")
         ->check(CLI::Range(1U, nds::wire::kMaxQpInfoBatch));
+    app.add_option("--clients", config->clients, "Number of serial client sessions to serve")
+        ->check(CLI::Range(1U, 65535U));
     app.add_option("--namespace-bytes", config->namespace_bytes)->check(CLI::Range(1U, 64U * 1024U * 1024U));
     app.add_option("--storage-commands", config->storage_commands,
                    "Number of serial storage commands to serve on one transport")
@@ -60,9 +63,9 @@ int main(int argc, char **argv) {
         return result;
     if (!nds::log::configure("cpu-server", config.log_sink, config.log_level))
         return EXIT_FAILURE;
-    nds::server::Transport transport;
-    if (const auto opened = transport.open(config.transport); !opened) {
-        NDS_LOG_ERROR("cpu-server", "server transport failed: {}", opened.error().message);
+    nds::server::TransportListener listener;
+    if (const auto opened = listener.open(config.transport); !opened) {
+        NDS_LOG_ERROR("cpu-server", "server listener failed: {}", opened.error().message);
         return EXIT_FAILURE;
     }
     std::vector<std::uint8_t> storage(config.namespace_bytes, 0U);
@@ -70,10 +73,17 @@ int main(int argc, char **argv) {
         for (std::size_t index = 0; index < storage.size(); ++index)
             storage[index] = static_cast<std::uint8_t>(index ^ 0x5aU);
     }
-    if (const auto served = nds::server::serve_commands(&transport, &storage, config.storage_commands, 5000U);
-        !served) {
-        NDS_LOG_ERROR("cpu-server", "protocol command failed: {}", served.error().message);
-        return EXIT_FAILURE;
+    for (std::uint32_t client_index = 0U; client_index < config.clients; ++client_index) {
+        nds::server::Transport transport;
+        if (const auto accepted = listener.accept(&transport); !accepted) {
+            NDS_LOG_ERROR("cpu-server", "client {} transport failed: {}", client_index, accepted.error().message);
+            return EXIT_FAILURE;
+        }
+        if (const auto served = nds::server::serve_commands(&transport, &storage, config.storage_commands, 5000U);
+            !served) {
+            NDS_LOG_ERROR("cpu-server", "client {} protocol command failed: {}", client_index, served.error().message);
+            return EXIT_FAILURE;
+        }
     }
     if (config.verify_write_bytes > storage.size()) {
         NDS_LOG_ERROR("cpu-server", "write verification range exceeds the namespace");
@@ -85,6 +95,6 @@ int main(int argc, char **argv) {
             return EXIT_FAILURE;
         }
     }
-    NDS_LOG_INFO("cpu-server", "completed {} NDS storage commands", config.storage_commands);
+    NDS_LOG_INFO("cpu-server", "completed {} NDS storage sessions", config.clients);
     return EXIT_SUCCESS;
 }

@@ -11,10 +11,59 @@
 
 namespace nds::server {
 
-Result<void> Transport::open(const TransportConfig &config) {
-    if (config.qp_count == 0U || config.qp_count > nds::wire::kMaxQpInfoBatch)
-        return unexpected(ErrorCode::kInvalidArgument, "transport QP count is outside the supported batch limit");
-    if (const auto opened = backend_.open(config.backend, config.qp_count); !opened)
+namespace {
+
+constexpr int kListenBacklog = 8;
+
+}  // namespace
+
+TransportListener::~TransportListener() {
+    if (listener_fd_ >= 0)
+        (void)close(listener_fd_);
+}
+
+Result<void> TransportListener::open(const TransportConfig &config) {
+    if (listener_fd_ >= 0 || config.max_qp_count == 0U || config.max_qp_count > nds::wire::kMaxQpInfoBatch)
+        return unexpected(ErrorCode::kInvalidArgument, "invalid server QP-count limit");
+    const auto listen_address = parse_tcp_address(config.listen_address);
+    if (!listen_address)
+        return unexpected(listen_address.error());
+    const int listener = socket(AF_INET, SOCK_STREAM, 0);
+    int enabled = 1;
+    sockaddr_in address{};
+    address.sin_family = AF_INET;
+    address.sin_port = htons(listen_address->port);
+    if (listener < 0 || setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &enabled, sizeof(enabled)) != 0 ||
+        inet_pton(AF_INET, listen_address->ipv4.c_str(), &address.sin_addr) != 1 ||
+        bind(listener, reinterpret_cast<const sockaddr *>(&address), sizeof(address)) != 0 ||
+        listen(listener, kListenBacklog) != 0) {
+        if (listener >= 0)
+            (void)close(listener);
+        return unexpected(ErrorCode::kTransport, std::strerror(errno));
+    }
+    listener_fd_ = listener;
+    config_ = config;
+    return {};
+}
+
+Result<void> TransportListener::accept(Transport *transport) {
+    if (listener_fd_ < 0 || transport == nullptr)
+        return unexpected(ErrorCode::kInvalidArgument, "open listener and transport are required");
+    const int peer_fd = ::accept(listener_fd_, nullptr, nullptr);
+    if (peer_fd < 0) {
+        return unexpected(ErrorCode::kTransport, std::strerror(errno));
+    }
+    TcpPeerExchange bootstrap{peer_fd};
+    const auto qp_count = bootstrap.negotiate_qp_count_as_server(config_.max_qp_count);
+    if (!qp_count)
+        return unexpected(qp_count.error());
+    return transport->open(std::move(bootstrap), config_, *qp_count);
+}
+
+Result<void> Transport::open(TcpPeerExchange bootstrap, const TransportConfig &config, std::uint32_t qp_count) {
+    if (qp_count == 0U || qp_count > config.max_qp_count || qp_count > nds::wire::kMaxQpInfoBatch)
+        return unexpected(ErrorCode::kInvalidArgument, "invalid negotiated QP count");
+    if (const auto opened = backend_.open(config.backend, qp_count); !opened)
         return unexpected(opened.error());
     local_qps_.resize(backend_.qp_count());
     const std::vector<nds::transport::QpInfo> &local = backend_.local_qp_infos();
@@ -22,33 +71,9 @@ Result<void> Transport::open(const TransportConfig &config) {
         if (nds::transport::encode(&local[index], &local_qps_[index]) != nds::transport::CodecResult::Ok)
             return unexpected(ErrorCode::kTransport, "invalid transport endpoint record");
     }
-    const int listener = socket(AF_INET, SOCK_STREAM, 0);
-    int enabled = 1;
-    sockaddr_in address{};
-    const auto listen_address = parse_tcp_address(config.listen_address);
-    if (!listen_address)
-        return unexpected(listen_address.error());
-    address.sin_family = AF_INET;
-    address.sin_port = htons(listen_address->port);
-    if (listener < 0 || setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &enabled, sizeof(enabled)) != 0 ||
-        inet_pton(AF_INET, listen_address->ipv4.c_str(), &address.sin_addr) != 1 ||
-        bind(listener, reinterpret_cast<const sockaddr *>(&address), sizeof(address)) != 0 ||
-        listen(listener, 1) != 0) {
-        if (listener >= 0)
-            (void)close(listener);
-        return unexpected(ErrorCode::kTransport, std::strerror(errno));
-    }
-    const int peer_fd = accept(listener, nullptr, nullptr);
-    (void)close(listener);
-    if (peer_fd < 0) {
-        return unexpected(ErrorCode::kTransport, std::strerror(errno));
-    }
-    if (const auto adopted = bootstrap_.adopt(peer_fd); !adopted) {
-        (void)close(peer_fd);
-        return unexpected(adopted.error());
-    }
-    std::vector<nds::transport::QpInfo> peers(config.qp_count);
-    if (config.qp_count == 1U) {
+    bootstrap_ = std::move(bootstrap);
+    std::vector<nds::transport::QpInfo> peers(qp_count);
+    if (qp_count == 1U) {
         nds::wire::QpInfo peer_wire{};
         if (const auto received = bootstrap_.receive_bytes(&peer_wire, sizeof(peer_wire)); !received)
             return unexpected(received.error());
@@ -59,10 +84,10 @@ Result<void> Transport::open(const TransportConfig &config) {
         if (const auto received = bootstrap_.receive_bytes(&header, sizeof(header)); !received)
             return unexpected(received.error());
         if (ntohl(header.magic) != nds::wire::kQpInfoBatchMagic || ntohs(header.version) != nds::wire::kQpInfoVersion ||
-            ntohl(header.count) != config.qp_count) {
+            ntohl(header.count) != qp_count) {
             return unexpected(ErrorCode::kTransport, "invalid or mismatched QP batch header");
         }
-        std::vector<nds::wire::QpInfo> peer_wire(config.qp_count);
+        std::vector<nds::wire::QpInfo> peer_wire(qp_count);
         if (const auto received = bootstrap_.receive_bytes(peer_wire.data(), peer_wire.size() * sizeof(peer_wire[0]));
             !received) {
             return unexpected(received.error());

@@ -23,17 +23,21 @@ host CPU, AICPU, and AIV. Backend and transport code do not depend on storage
 command semantics.
 
 `Runtime` owns AscendCL, network-service lifecycle, NPU allocation/copy, and
-memory services. `Transport` borrows the runtime and owns an `Endpoint`, a
-bounded indexed QP set, peer metadata, one TCP channel, and required per-QP
-AI-QP WR-ID storage. `qp_count == 1` retains the original fixed-record
-bootstrap. A larger count exchanges one framed batch of NDS-owned QP records
-on the same TCP channel and connects QPs by index.
+memory services. The client `Transport` borrows the runtime and owns an
+`Endpoint`, a bounded indexed QP set, peer metadata, one TCP channel, and
+required per-QP AI-QP WR-ID storage. It opens TCP first, requests its QP
+count, and creates QPs only after the server accepts that count. `qp_count ==
+1` retains the original fixed-record bootstrap. A larger accepted count
+exchanges one framed batch of NDS-owned QP records on the same TCP channel and
+connects QPs by index.
 `Endpoint` owns the RA lifecycle and rdev. `StorageClient` borrows the runtime
 and transport, owns protocol buffers and command sequencing, and registers
 them through the endpoint.
 
-The CPU server independently owns its verbs context, PD, and one CQ/RC-QP pair
-per transport index. Applications own configuration, workload buffers, and
+The CPU `TransportListener` owns the TCP listening socket and accepts one
+connection at a time. Each accepted connection creates an independent
+`Transport` session with its own verbs context, PD, and one CQ/RC-QP pair per
+accepted index. Applications own configuration, workload buffers, and
 verification. Paired examples each exercise one lower API layer; storage
 remains the complete application under `examples/storage/`.
 
@@ -51,6 +55,10 @@ src/torch/              reusable PyTorch extension
 
 The TCP bootstrap carries only versioned NDS records:
 
+- QP count: the client requests one through eight QPs before either endpoint
+  creates QPs. The server replies with the lesser of that request and its
+  configured per-client maximum. The accepted count applies only to that TCP
+  session.
 - Endpoint: QPN, PSN, GID, GID index, port, QoS/retry values, and diagnostic
   MTU. Multiple endpoint records are framed by a bounded count and paired by
   index; they still share one TCP connection.
@@ -101,8 +109,10 @@ AI-QPs omit `NDS_RA_AI_CALLER_POLLS_CQ` by default. HCCP owns send and receive
 CQ consumption; NDS does not interpret HCCP CQ activity as storage completion.
 The client `Transport` layer does not poll a CQ or provide synchronous
 transport completion. The current serial storage path uses QP zero and waits
-for the CPU-written protocol completion record. Transport multiplicity does
-not add command scheduling, CQ ownership, or concurrent storage requests;
+for the CPU-written protocol completion record. A listener may serve multiple
+sessions serially, with each session's QPs and verbs resources torn down before
+the next is accepted. Transport multiplicity does not add command scheduling,
+CQ ownership, concurrent storage requests, or concurrent client sessions;
 those remain later design work.
 The explicit NDS `PollCq(is_send_cq)` operation remains available only for a
 future caller-owned-CQ configuration that opts into that RA flag. Its selector

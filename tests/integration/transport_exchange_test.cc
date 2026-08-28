@@ -49,6 +49,32 @@ TEST(TransportExchangeIntegrationTest, ExchangesEndpointRecordsOverSocketPair) {
     close(sockets[1]);
 }
 
+TEST(TransportExchangeIntegrationTest, NegotiatesQpCountBeforeEndpointExchange) {
+    int sockets[2]{};
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, sockets), 0);
+    const auto client = make_endpoint(0x1101, 0x2202);
+    const auto server = make_endpoint(0x3303, 0x4404);
+    std::future<nds::Result<nds::transport::QpInfo>> server_result =
+        std::async(std::launch::async, [fd = sockets[1], server]() -> nds::Result<nds::transport::QpInfo> {
+            nds::TcpPeerExchange peer{fd};
+            const auto qp_count = peer.negotiate_qp_count_as_server(4U);
+            if (!qp_count)
+                return nds::unexpected(qp_count.error());
+            return peer.exchange_as_server(server);
+        });
+    nds::TcpPeerExchange peer{sockets[0]};
+    const auto client_result = peer.negotiate_qp_count_as_client(6U);
+    ASSERT_TRUE(client_result) << client_result.error().message;
+    EXPECT_EQ(*client_result, 4U);
+    const auto endpoint_result = peer.exchange_as_client(client);
+    const auto remote_result = server_result.get();
+
+    ASSERT_TRUE(remote_result) << remote_result.error().message;
+    ASSERT_TRUE(endpoint_result) << endpoint_result.error().message;
+    EXPECT_EQ(endpoint_result->qp_num, server.qp_num);
+    EXPECT_EQ(remote_result->qp_num, client.qp_num);
+}
+
 TEST(TransportExchangeIntegrationTest, ExchangesQpBatchOverOneSocket) {
     int sockets[2]{};
     ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, sockets), 0);

@@ -21,13 +21,30 @@ enum class MemoryAccess {
 
 struct TransportConfig {
     BackendConfig backend;
-    std::uint32_t qp_count{1U};
+    std::uint32_t max_qp_count{nds::wire::kMaxQpInfoBatch};
     std::string listen_address{"0.0.0.0:18515"};
+};
+
+class Transport;
+
+/* Owns the TCP listener and creates one isolated transport session per client. */
+class TransportListener {
+public:
+    TransportListener() = default;
+    ~TransportListener();
+    TransportListener(const TransportListener &) = delete;
+    TransportListener &operator=(const TransportListener &) = delete;
+
+    Result<void> open(const TransportConfig &config);
+    Result<void> accept(Transport *transport);
+
+private:
+    int listener_fd_{-1};
+    TransportConfig config_{};
 };
 
 class Transport {
 public:
-    Result<void> open(const TransportConfig &config);
     Result<RegisteredRegion> prepare_receive(void *buffer, std::size_t length);
     Result<RegisteredRegion> prepare_receive(std::size_t qp_index, void *buffer, std::size_t length);
     Result<void> activate();
@@ -48,6 +65,10 @@ public:
     TcpPeerExchange *bootstrap() noexcept;
 
 private:
+    friend class TransportListener;
+
+    Result<void> open(TcpPeerExchange bootstrap, const TransportConfig &config, std::uint32_t qp_count);
+
     VerbsBackend backend_;
     TcpPeerExchange bootstrap_;
     std::vector<nds::wire::QpInfo> local_qps_;

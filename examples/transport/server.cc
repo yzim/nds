@@ -29,7 +29,7 @@ int parse(int argc, char **argv, Config *config, bool *exit_requested) {
     app.add_option("--gid-index", config->transport.backend.gid_index)->required();
     app.add_option("--listen", config->transport.listen_address);
     app.add_option("--ib-port", config->transport.backend.port);
-    app.add_option("--qp-count", config->transport.qp_count, "Connected QPs to create")
+    app.add_option("--max-qp-count", config->transport.max_qp_count, "Maximum QPs accepted per client")
         ->check(CLI::Range(1U, nds::wire::kMaxQpInfoBatch));
     app.add_option("--operation", operation)->check(CLI::IsMember({"send", "recv", "read", "write"}));
     app.add_option("--log-sink", config->log_sink)->check(CLI::IsMember({"stderr", "stdout", "syslog", "none"}));
@@ -85,9 +85,14 @@ int main(int argc, char **argv) {
         return parsed;
     if (!nds::log::configure("transport-server", config.log_sink, config.log_level))
         return EXIT_FAILURE;
+    nds::server::TransportListener listener;
+    if (const auto opened = listener.open(config.transport); !opened) {
+        NDS_LOG_ERROR("transport-server", "listener open failed: {}", opened.error().message);
+        return EXIT_FAILURE;
+    }
     nds::server::Transport transport;
-    if (const auto opened = transport.open(config.transport); !opened) {
-        NDS_LOG_ERROR("transport-server", "transport open failed: {}", opened.error().message);
+    if (const auto accepted = listener.accept(&transport); !accepted) {
+        NDS_LOG_ERROR("transport-server", "transport accept failed: {}", accepted.error().message);
         return EXIT_FAILURE;
     }
     Payload buffer{};

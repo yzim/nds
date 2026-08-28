@@ -39,6 +39,12 @@ public:
     /* Server ordering: receive the peer QP info, then send the local QP info. */
     Result<transport::QpInfo> exchange_as_server(const transport::QpInfo &local) const;
 
+    /* Request the QP count before either side creates session QPs. */
+    Result<std::uint32_t> negotiate_qp_count_as_client(std::uint32_t requested) const;
+
+    /* Accept no more than `maximum` QPs for one TCP session. */
+    Result<std::uint32_t> negotiate_qp_count_as_server(std::uint32_t maximum) const;
+
     /* Batch ordering is the same; records pair by their position in this one TCP exchange. */
     Result<std::vector<transport::QpInfo>> exchange_as_client(const std::vector<transport::QpInfo> &local) const;
     Result<std::vector<transport::QpInfo>> exchange_as_server(const std::vector<transport::QpInfo> &local) const;

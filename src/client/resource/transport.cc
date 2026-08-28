@@ -14,9 +14,20 @@ Result<void> Transport::open(Runtime *runtime, const TransportConfig &config, co
     backend_ = backend;
     if (const auto opened = endpoint_.open(runtime_, config_.endpoint); !opened)
         return unexpected(opened.error());
-    qps_.reserve(config_.qp_count);
-    local_qps_.reserve(config_.qp_count);
-    for (std::uint32_t index = 0U; index < config_.qp_count; ++index) {
+    const auto server = parse_tcp_address(config_.server_address);
+    if (!server)
+        return unexpected(server.error());
+    auto connected = TcpPeerExchange::connect(server->ipv4, server->port, config_.tcp_timeout_ms);
+    if (!connected)
+        return unexpected(connected.error());
+    bootstrap_ = std::move(*connected);
+    const auto accepted_qp_count = bootstrap_.negotiate_qp_count_as_client(config_.qp_count);
+    if (!accepted_qp_count)
+        return unexpected(accepted_qp_count.error());
+
+    qps_.reserve(*accepted_qp_count);
+    local_qps_.reserve(*accepted_qp_count);
+    for (std::uint32_t index = 0U; index < *accepted_qp_count; ++index) {
         auto created = endpoint_.create_qp(config_.qp, backend_.mode);
         if (!created)
             return unexpected(created.error());
@@ -28,14 +39,6 @@ Result<void> Transport::open(Runtime *runtime, const TransportConfig &config, co
     }
     if (const auto private_memory = initialize_private_memory(); !private_memory)
         return unexpected(private_memory.error());
-    const auto server = parse_tcp_address(config_.server_address);
-    if (!server)
-        return unexpected(server.error());
-    auto connected = TcpPeerExchange::connect(server->ipv4, server->port, config_.tcp_timeout_ms);
-    if (!connected) {
-        return unexpected(connected.error());
-    }
-    bootstrap_ = std::move(*connected);
     if (qps_.size() == 1U) {
         const auto peer = bootstrap_.exchange_as_client(local_qps_.front());
         if (!peer)
