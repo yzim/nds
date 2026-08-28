@@ -129,13 +129,15 @@ TEST(StorageProtocolTest, RoundTripsSessionAndCompletionRecords) {
     std::array<std::uint8_t, nds::kStorageNamespaceBytes> namespace_bytes{};
     std::array<std::uint8_t, nds::kStorageCompletionBytes> completion_bytes{};
 
-    const nds::StorageBootstrap bootstrap{{kAddress, nds::kStorageCompletionBytes, kRemoteKey}};
+    const nds::StorageBootstrap bootstrap{{kAddress, nds::kStorageCompletionBytes, kRemoteKey},
+                                          {kAddress + 4096U, nds::kStorageNamespaceBytes, kRemoteKey}};
     nds::StorageBootstrap decoded_bootstrap{};
     ASSERT_EQ(nds::serialize_storage_bootstrap(bootstrap, bootstrap_bytes.data(), bootstrap_bytes.size()),
               nds::StorageSerdeResult::Ok);
     ASSERT_EQ(nds::deserialize_storage_bootstrap(bootstrap_bytes.data(), bootstrap_bytes.size(), &decoded_bootstrap),
               nds::StorageSerdeResult::Ok);
     expect_memory(decoded_bootstrap.completion, kAddress, nds::kStorageCompletionBytes, kRemoteKey);
+    expect_memory(decoded_bootstrap.namespace_response, kAddress + 4096U, nds::kStorageNamespaceBytes, kRemoteKey);
 
     const nds::StorageNamespace storage_namespace{UINT64_C(1024) * 1024U};
     nds::StorageNamespace decoded_namespace{};
@@ -173,5 +175,22 @@ TEST(StorageProtocolTest, RejectsWrongOperationAndAccess) {
     bytes[7] = static_cast<std::uint8_t>(nds::StorageOperation::Read);
     bytes[55] = 0x04U;
     EXPECT_EQ(nds::deserialize_storage_read(bytes.data(), bytes.size(), &decoded),
+              nds::StorageSerdeResult::InvalidRecord);
+}
+
+TEST(StorageProtocolTest, RejectsIncompleteBootstrapResponseDescriptor) {
+    std::array<std::uint8_t, nds::kStorageBootstrapBytes> bytes{};
+    const nds::StorageBootstrap bootstrap{{kAddress, nds::kStorageCompletionBytes, kRemoteKey},
+                                          {kAddress + 4096U, nds::kStorageNamespaceBytes, kRemoteKey}};
+    nds::StorageBootstrap decoded{};
+    ASSERT_EQ(nds::serialize_storage_bootstrap(bootstrap, bytes.data(), bytes.size()), nds::StorageSerdeResult::Ok);
+
+    bytes[52U] = 0U;
+    EXPECT_EQ(nds::deserialize_storage_bootstrap(bytes.data(), bytes.size(), &decoded),
+              nds::StorageSerdeResult::InvalidRecord);
+
+    ASSERT_EQ(nds::serialize_storage_bootstrap(bootstrap, bytes.data(), bytes.size()), nds::StorageSerdeResult::Ok);
+    bytes[5U] = 2U;
+    EXPECT_EQ(nds::deserialize_storage_bootstrap(bytes.data(), bytes.size(), &decoded),
               nds::StorageSerdeResult::InvalidRecord);
 }

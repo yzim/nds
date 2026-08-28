@@ -53,8 +53,10 @@ private:
     Transport *transport_{};
     MemoryBuffer command_buffer_;
     MemoryBuffer completion_buffer_;
+    MemoryBuffer namespace_buffer_;
     MemoryRegion command_region_;
     MemoryRegion completion_region_;
+    MemoryRegion namespace_region_;
     std::uint64_t capacity_{};
     std::uint64_t next_command_id_{};
     struct PendingRequest {

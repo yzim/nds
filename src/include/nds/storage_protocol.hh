@@ -11,7 +11,7 @@
 
 namespace nds {
 
-inline constexpr uint32_t kStorageBootstrapBytes = 40U;
+inline constexpr uint32_t kStorageBootstrapBytes = 64U;
 inline constexpr uint32_t kStorageNamespaceBytes = 16U;
 inline constexpr uint32_t kStorageCommandBytes = 64U;
 inline constexpr uint32_t kStorageBatchEntryBytes = 40U;
@@ -99,6 +99,7 @@ struct StorageCompletion {
 
 struct StorageBootstrap {
     StorageMemory completion;
+    StorageMemory namespace_response;
 };
 
 struct StorageNamespace {
@@ -112,6 +113,7 @@ inline constexpr uint32_t kCommandMagic = UINT32_C(0x4e445343);     // "NDSC"
 inline constexpr uint32_t kCompletionMagic = UINT32_C(0x4e445344);  // "NDSD"
 inline constexpr uint32_t kNamespaceMagic = UINT32_C(0x4e44534e);   // "NDSN"
 inline constexpr uint16_t kVersion = 2U;
+inline constexpr uint16_t kBootstrapVersion = 3U;
 inline constexpr uint32_t kRemoteWrite = UINT32_C(0x00000002);
 inline constexpr uint32_t kRemoteRead = UINT32_C(0x00000004);
 
@@ -408,15 +410,20 @@ NDS_STORAGE_SERDE_INLINE StorageSerdeResult serialize_storage_bootstrap(const St
                                                                         uint8_t *bytes, uint32_t size) {
     if (bytes == nullptr || size < kStorageBootstrapBytes)
         return StorageSerdeResult::InvalidArgument;
-    if (!storage_serde_detail::memory_valid(bootstrap.completion, kStorageCompletionBytes))
+    if (!storage_serde_detail::memory_valid(bootstrap.completion, kStorageCompletionBytes) ||
+        !storage_serde_detail::memory_valid(bootstrap.namespace_response, kStorageNamespaceBytes))
         return StorageSerdeResult::InvalidRecord;
     storage_serde_detail::clear(bytes, kStorageBootstrapBytes);
     storage_serde_detail::write_u32(bytes, storage_serde_detail::kBootstrapMagic);
-    storage_serde_detail::write_u16(bytes + 4U, storage_serde_detail::kVersion);
+    storage_serde_detail::write_u16(bytes + 4U, storage_serde_detail::kBootstrapVersion);
     storage_serde_detail::write_u64(bytes + 8U, bootstrap.completion.address);
     storage_serde_detail::write_u64(bytes + 16U, bootstrap.completion.length);
     storage_serde_detail::write_u32(bytes + 24U, bootstrap.completion.remote_key);
     storage_serde_detail::write_u32(bytes + 28U, storage_serde_detail::kRemoteWrite);
+    storage_serde_detail::write_u64(bytes + 32U, bootstrap.namespace_response.address);
+    storage_serde_detail::write_u64(bytes + 40U, bootstrap.namespace_response.length);
+    storage_serde_detail::write_u32(bytes + 48U, bootstrap.namespace_response.remote_key);
+    storage_serde_detail::write_u32(bytes + 52U, storage_serde_detail::kRemoteWrite);
     return StorageSerdeResult::Ok;
 }
 
@@ -425,12 +432,18 @@ NDS_STORAGE_SERDE_INLINE StorageSerdeResult deserialize_storage_bootstrap(const 
     if (bytes == nullptr || bootstrap == nullptr || size < kStorageBootstrapBytes)
         return StorageSerdeResult::InvalidArgument;
     if (storage_serde_detail::read_u32(bytes) != storage_serde_detail::kBootstrapMagic ||
-        storage_serde_detail::read_u16(bytes + 4U) != storage_serde_detail::kVersion ||
+        storage_serde_detail::read_u16(bytes + 4U) != storage_serde_detail::kBootstrapVersion ||
         (storage_serde_detail::read_u32(bytes + 28U) & storage_serde_detail::kRemoteWrite) == 0U)
         return StorageSerdeResult::InvalidRecord;
     bootstrap->completion = {storage_serde_detail::read_u64(bytes + 8U), storage_serde_detail::read_u64(bytes + 16U),
                              storage_serde_detail::read_u32(bytes + 24U)};
-    return storage_serde_detail::memory_valid(bootstrap->completion, kStorageCompletionBytes)
+    bootstrap->namespace_response = {storage_serde_detail::read_u64(bytes + 32U),
+                                     storage_serde_detail::read_u64(bytes + 40U),
+                                     storage_serde_detail::read_u32(bytes + 48U)};
+    const uint32_t namespace_access = storage_serde_detail::read_u32(bytes + 52U);
+    return (namespace_access & storage_serde_detail::kRemoteWrite) != 0U &&
+                   storage_serde_detail::memory_valid(bootstrap->namespace_response, kStorageNamespaceBytes) &&
+                   storage_serde_detail::memory_valid(bootstrap->completion, kStorageCompletionBytes)
                ? StorageSerdeResult::Ok
                : StorageSerdeResult::InvalidRecord;
 }

@@ -14,9 +14,10 @@ current architecture and protocol contract.
 - A storage Write makes the CPU RDMA Read NPU-advertised data into its
   memory-backed namespace; a storage Read makes the CPU RDMA Write namespace
   data back to NPU memory or a page-locked host client buffer.
-- TCP is bootstrap-only: it first negotiates the client-requested QP count,
-  then exchanges endpoint metadata, namespace capacity, and the session-static
-  completion-record descriptor. The CPU listener may serve serial client
+- TCP is bootstrap-only: it first negotiates the client-requested QP count and
+  then exchanges endpoint metadata. After QP zero connects, RDMA exchanges the
+  storage bootstrap and returns namespace capacity through a CPU RDMA Write to
+  client-advertised response memory. The CPU listener may serve serial client
   sessions; it creates a fresh endpoint-local QP set only after accepting a
   session's count.
 - RA, AIV, and standard-CP1 AICPU implement the NPU command post. The

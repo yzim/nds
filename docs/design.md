@@ -62,15 +62,22 @@ The TCP bootstrap carries only versioned NDS records:
 - Endpoint: QPN, PSN, GID, GID index, port, QoS/retry values, and diagnostic
   MTU. Multiple endpoint records are framed by a bounded count and paired by
   index; they still share one TCP connection.
-- Storage bootstrap: completion-record address, length, rkey, and access.
-- Namespace: CPU memory-backed capacity.
-- Command: command ID, operation, namespace range, and NPU application-memory
-  descriptor. Batch commands instead reference an NPU-resident array of
-  fixed-width storage descriptors governed by the enclosing command version.
 
 It never carries HCCP QP or MR handles, AI-QP descriptors, queue or doorbell
 addresses, or provider objects. Those are local to the environment that owns
 them.
+
+After QP zero is connected, RDMA carries the storage protocol records:
+
+- Storage bootstrap: the NPU sends a fixed record containing the completion
+  descriptor and a registered namespace-response descriptor. The CPU pre-posts
+  one Receive for this record before publishing its QP identity.
+- Namespace: the CPU serializes capacity and RDMA Writes that record to the
+  NPU-advertised namespace-response descriptor. The client observes the record
+  through bounded memory copies; it does not use a client receive CQ.
+- Command: command ID, operation, namespace range, and NPU application-memory
+  descriptor. Batch commands instead reference an NPU-resident array of
+  fixed-width storage descriptors governed by the enclosing command version.
 
 The NPU creates one offline HCCP rdev and one or more RC QPs. Its lifecycle is:
 
@@ -139,6 +146,13 @@ One connected RC QP permits one command in flight. A storage Write causes the
 CPU to RDMA Read NPU application data into its namespace; a storage Read causes
 the CPU to RDMA Write namespace data to that buffer. The CPU posts the data
 operation and terminal completion Write in order on the same QP.
+
+Storage session setup is a QP-zero control exchange. The CPU posts the
+bootstrap Receive before it publishes its local QP identity. The NPU sends the
+expanded `StorageBootstrap` record only after the RC QP is connected. The CPU
+validates that record and RDMA Writes `StorageNamespace` capacity to the
+client's registered response memory. The client waits for that record before it
+permits storage submission. TCP has no storage-protocol payload after QP setup.
 
 `StorageClient::read`, `write`, and their batch variants submit a command and
 return a `StorageCompletionHandle`. `StorageClient::wait(handle, timeout_ms)`

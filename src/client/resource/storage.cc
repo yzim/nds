@@ -60,6 +60,52 @@ private:
     MemoryBuffer buffer_;
 };
 
+Result<void> post_bootstrap_send(Runtime *runtime, Transport *transport, const NdsDeviceSendWr &wr) {
+    if (runtime == nullptr || transport == nullptr)
+        return unexpected(ErrorCode::kInvalidArgument, "storage bootstrap Send requires a runtime and transport");
+    if (transport->backend().mode == NpuBackend::Ra)
+        return NdsRaPostSend(runtime, transport->qp(), wr);
+
+    const auto device_transport = transport->qp()->make_device_transport();
+    if (!device_transport)
+        return unexpected(device_transport.error());
+    NdsDevicePostSendArgs request{device_transport->control_qp, wr, std::numeric_limits<std::int32_t>::min()};
+    auto request_buffer = runtime->allocate(sizeof(request));
+    if (!request_buffer)
+        return unexpected(request_buffer.error());
+    if (const auto copied = runtime->copy_to(&*request_buffer, &request, sizeof(request)); !copied)
+        return unexpected(copied.error());
+    const std::uint64_t request_address = reinterpret_cast<std::uint64_t>(request_buffer->data());
+    if (transport->backend().mode == NpuBackend::Aicpu) {
+        AicpuLauncher launcher;
+        if (const auto loaded = launcher.load(transport->backend().aicpu_kernel_config); !loaded)
+            return unexpected(loaded.error());
+        if (const auto launched =
+                launcher.launch_and_wait("nds_aicpu_post_send_kernel", request_address, kCompletionTimeoutMs);
+            !launched) {
+            return unexpected(launched.error());
+        }
+    } else {
+        AivLauncher launcher;
+        if (const auto loaded = launcher.load(transport->backend().aiv_kernel); !loaded)
+            return unexpected(loaded.error());
+        AivThreeAddressArguments arguments{request_address + offsetof(NdsDevicePostSendArgs, qp),
+                                           request_address + offsetof(NdsDevicePostSendArgs, wr),
+                                           request_address + offsetof(NdsDevicePostSendArgs, return_value)};
+        if (const auto launched = launcher.launch_and_wait("nds_aiv_post_send_kernel", &arguments, sizeof(arguments),
+                                                           kCompletionTimeoutMs);
+            !launched) {
+            return unexpected(launched.error());
+        }
+    }
+    if (const auto copied = runtime->copy_from(&request, *request_buffer, sizeof(request)); !copied)
+        return unexpected(copied.error());
+    if (request.return_value != 0)
+        return unexpected(ErrorCode::kRuntime,
+                          "storage bootstrap Send failed: " + std::to_string(request.return_value));
+    return {};
+}
+
 Result<void> launch_aicpu(AicpuLauncher *launcher, std::uint64_t args_address, NdsDeviceStorageReadArgs *) {
     return launcher->launch_and_wait("nds_aicpu_storage_read_kernel", args_address, kCompletionTimeoutMs);
 }
@@ -260,6 +306,10 @@ Result<void> StorageClient::open(Runtime *runtime, Transport *transport) {
     if (!completion_buffer)
         return unexpected(completion_buffer.error());
     completion_buffer_ = std::move(*completion_buffer);
+    auto namespace_buffer = runtime_->allocate(kStorageNamespaceBytes);
+    if (!namespace_buffer)
+        return unexpected(namespace_buffer.error());
+    namespace_buffer_ = std::move(*namespace_buffer);
     auto command_region = transport_->endpoint()->reg_mr(command_buffer_, MemoryAccess::DirectNpu);
     if (!command_region)
         return unexpected(command_region.error());
@@ -268,6 +318,10 @@ Result<void> StorageClient::open(Runtime *runtime, Transport *transport) {
     if (!completion_region)
         return unexpected(completion_region.error());
     completion_region_ = std::move(*completion_region);
+    auto namespace_region = transport_->endpoint()->reg_mr(namespace_buffer_, MemoryAccess::DirectNpu);
+    if (!namespace_region)
+        return unexpected(namespace_region.error());
+    namespace_region_ = std::move(*namespace_region);
     const auto capacity = exchange_bootstrap();
     if (!capacity)
         return unexpected(capacity.error());
@@ -578,21 +632,41 @@ Result<void> StorageClient::execute_storage_batch_write(const StorageBatchWriteC
 
 Result<std::uint64_t> StorageClient::exchange_bootstrap() {
     const StorageBootstrap bootstrap{
-        {completion_region_.address(), completion_region_.length(), completion_region_.remote_key()}};
+        {completion_region_.address(), completion_region_.length(), completion_region_.remote_key()},
+        {namespace_region_.address(), namespace_region_.length(), namespace_region_.remote_key()}};
     uint8_t bootstrap_bytes[kStorageBootstrapBytes]{};
     uint8_t namespace_bytes[kStorageNamespaceBytes]{};
     StorageNamespace storage_namespace{};
     if (serialize_storage_bootstrap(bootstrap, bootstrap_bytes, sizeof(bootstrap_bytes)) != StorageSerdeResult::Ok)
         return unexpected(ErrorCode::kProtocol, "invalid storage bootstrap record");
-    if (const auto sent = transport_->bootstrap()->send_bytes(bootstrap_bytes, sizeof(bootstrap_bytes)); !sent)
+    if (const auto cleared = runtime_->copy_to(&namespace_buffer_, namespace_bytes, sizeof(namespace_bytes)); !cleared)
+        return unexpected(cleared.error());
+    if (const auto copied = runtime_->copy_to(&command_buffer_, bootstrap_bytes, sizeof(bootstrap_bytes)); !copied)
+        return unexpected(copied.error());
+    if (const auto ready = transport_->ready(); !ready)
+        return unexpected(ready.error());
+    const NdsDeviceSendWr request{1U,
+                                  NDS_DEVICE_WR_SEND,
+                                  NDS_DEVICE_SEND_SIGNALED,
+                                  {command_region_.address(), kStorageBootstrapBytes, command_region_.local_key()},
+                                  0U,
+                                  0U,
+                                  0U};
+    if (const auto sent = post_bootstrap_send(runtime_, transport_, request); !sent)
         return unexpected(sent.error());
-    if (const auto received = transport_->bootstrap()->receive_bytes(namespace_bytes, sizeof(namespace_bytes));
-        !received)
-        return unexpected(received.error());
-    if (deserialize_storage_namespace(namespace_bytes, sizeof(namespace_bytes), &storage_namespace) !=
-        StorageSerdeResult::Ok)
-        return unexpected(ErrorCode::kProtocol, "invalid storage namespace record");
-    return storage_namespace.capacity;
+
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(kCompletionTimeoutMs);
+    while (std::chrono::steady_clock::now() < deadline) {
+        if (const auto copied = runtime_->copy_from(namespace_bytes, namespace_buffer_, sizeof(namespace_bytes));
+            !copied)
+            return unexpected(copied.error());
+        if (deserialize_storage_namespace(namespace_bytes, sizeof(namespace_bytes), &storage_namespace) ==
+            StorageSerdeResult::Ok) {
+            return storage_namespace.capacity;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    return unexpected(ErrorCode::kProtocol, "timed out waiting for storage namespace response");
 }
 
 }  // namespace nds::client

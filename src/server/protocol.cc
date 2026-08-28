@@ -10,18 +10,22 @@
 namespace nds::server {
 namespace {
 
-Result<StorageBootstrap> exchange_bootstrap(Transport *transport, std::uint64_t capacity) {
-    uint8_t bootstrap_bytes[kStorageBootstrapBytes]{};
+Result<StorageBootstrap> exchange_bootstrap(Transport *transport, const uint8_t *bootstrap_bytes,
+                                            std::uint64_t capacity) {
     uint8_t namespace_bytes[kStorageNamespaceBytes]{};
-    if (const auto received = transport->bootstrap()->receive_bytes(bootstrap_bytes, sizeof(bootstrap_bytes));
-        !received)
-        return unexpected(received.error());
     StorageBootstrap bootstrap{};
-    if (deserialize_storage_bootstrap(bootstrap_bytes, sizeof(bootstrap_bytes), &bootstrap) != StorageSerdeResult::Ok ||
+    if (deserialize_storage_bootstrap(bootstrap_bytes, kStorageBootstrapBytes, &bootstrap) != StorageSerdeResult::Ok ||
         serialize_storage_namespace({capacity}, namespace_bytes, sizeof(namespace_bytes)) != StorageSerdeResult::Ok)
         return unexpected(ErrorCode::kProtocol, "invalid storage bootstrap record");
-    if (const auto sent = transport->bootstrap()->send_bytes(namespace_bytes, sizeof(namespace_bytes)); !sent)
-        return unexpected(sent.error());
+    auto namespace_region =
+        transport->register_memory(namespace_bytes, sizeof(namespace_bytes), MemoryAccess::LocalRead);
+    if (!namespace_region)
+        return unexpected(namespace_region.error());
+    if (const auto completed = transport->write(*namespace_region, bootstrap.namespace_response.address,
+                                                bootstrap.namespace_response.remote_key, sizeof(namespace_bytes));
+        !completed) {
+        return unexpected(completed.error());
+    }
     return bootstrap;
 }
 
@@ -103,6 +107,10 @@ Result<void> serve_commands(Transport *transport, std::vector<unsigned char> *st
         return unexpected(ErrorCode::kInvalidArgument, "transport and namespace are required");
     uint8_t command_bytes[kStorageCommandBytes]{};
     uint8_t completion_bytes[kStorageCompletionBytes]{};
+    uint8_t bootstrap_bytes[kStorageBootstrapBytes]{};
+    auto bootstrap_region = transport->prepare_receive(bootstrap_bytes, sizeof(bootstrap_bytes));
+    if (!bootstrap_region)
+        return unexpected(bootstrap_region.error());
     auto completion_region =
         transport->register_memory(completion_bytes, sizeof(completion_bytes), MemoryAccess::LocalRead);
     if (!completion_region)
@@ -110,7 +118,9 @@ Result<void> serve_commands(Transport *transport, std::vector<unsigned char> *st
     if (const auto result = transport->activate(); !result)
         return unexpected(result.error());
 
-    const auto bootstrap = exchange_bootstrap(transport, storage->size());
+    if (const auto received = transport->receive(timeout_ms); !received)
+        return unexpected(received.error());
+    const auto bootstrap = exchange_bootstrap(transport, bootstrap_bytes, storage->size());
     if (!bootstrap)
         return unexpected(bootstrap.error());
     for (std::uint32_t command_index = 0U; command_index < command_count; ++command_index) {
