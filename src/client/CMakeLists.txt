@@ -64,16 +64,6 @@ target_include_directories(nds_backend_launcher PUBLIC ${CMAKE_CURRENT_SOURCE_DI
 target_link_libraries(nds_backend_launcher PUBLIC nds_ascendcl nds_client_loaders tl::expected)
 target_compile_options(nds_backend_launcher PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
-# Host-side AICPU adapters keep the package's void *args ABI behind typed NDS
-# request records. The package itself is still selected by the backend loader.
-add_library(nds_aicpu_host STATIC backends/aicpu/host/launcher.cc)
-target_include_directories(nds_aicpu_host PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/backends/aicpu/host
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${PROJECT_SOURCE_DIR}/src/include)
-target_link_libraries(nds_aicpu_host PUBLIC nds_ascendcl)
-target_compile_options(nds_aicpu_host PRIVATE -Wall -Wextra -Wpedantic -Werror)
-
 add_library(nds_client_control STATIC
     transport.cc)
 target_include_directories(nds_client_control PUBLIC
