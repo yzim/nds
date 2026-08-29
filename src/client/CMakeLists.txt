@@ -64,6 +64,16 @@ target_include_directories(nds_backend_launcher PUBLIC ${CMAKE_CURRENT_SOURCE_DI
 target_link_libraries(nds_backend_launcher PUBLIC nds_ascendcl nds_client_loaders tl::expected)
 target_compile_options(nds_backend_launcher PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
+# Host-side AICPU adapters keep the package's void *args ABI behind typed NDS
+# request records. The package itself is still selected by the backend loader.
+add_library(nds_aicpu_host STATIC backends/aicpu/host/launcher.cc)
+target_include_directories(nds_aicpu_host PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/backends/aicpu/host
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${PROJECT_SOURCE_DIR}/src/include)
+target_link_libraries(nds_aicpu_host PUBLIC nds_ascendcl)
+target_compile_options(nds_aicpu_host PRIVATE -Wall -Wextra -Wpedantic -Werror)
+
 add_library(nds_client_control STATIC
     transport.cc)
 target_include_directories(nds_client_control PUBLIC
@@ -106,6 +116,7 @@ if(NDS_BUILD_AIV_KERNEL)
     set(NDS_AIV_OUTPUT_DIR "${CMAKE_BINARY_DIR}/aiv")
     set(NDS_AIV_OBJECT "${NDS_AIV_OUTPUT_DIR}/nds_aiv_kernel.o")
     set(NDS_AIV_ENTRY_OBJECT "${NDS_AIV_OUTPUT_DIR}/nds_aiv_entry.o")
+    set(NDS_AIV_HOST_OBJECT "${NDS_AIV_OUTPUT_DIR}/nds_aiv_host.o")
     set(NDS_AIV_CCEC_INCLUDES
             -I${NDS_CANN_ROOT}/aarch64-linux/asc/include -I${NDS_CANN_ROOT}/aarch64-linux/asc
             -I${NDS_CANN_ROOT}/aarch64-linux/asc/include/interface -I${NDS_CANN_ROOT}/aarch64-linux/asc/include/basic_api
@@ -136,7 +147,25 @@ if(NDS_BUILD_AIV_KERNEL)
             "${CMAKE_CURRENT_SOURCE_DIR}/include/device_storage.h"
             "${PROJECT_SOURCE_DIR}/src/include/storage_protocol.hh"
         VERBATIM)
-    add_custom_target(nds_aiv_kernel ALL DEPENDS "${NDS_AIV_OBJECT}")
+    # ccec compiles the host wrapper and emits the launch stubs for its <<< >>>
+    # calls. Keep the wrapper and device object as one build artifact pair.
+    add_custom_command(
+        OUTPUT "${NDS_AIV_HOST_OBJECT}"
+        COMMAND "${CMAKE_COMMAND}" -E make_directory "${NDS_AIV_OUTPUT_DIR}"
+        COMMAND "${NDS_CCEC}" -c -x cce -O2 --cce-aicore-arch=dav-c220-vec -std=c++17
+            ${NDS_AIV_CCEC_INCLUDES}
+            -I${NDS_ACL_INCLUDE_DIR}
+            ${CMAKE_CURRENT_SOURCE_DIR}/backends/aiv/host/launcher.cc -o ${NDS_AIV_HOST_OBJECT}
+        DEPENDS "${NDS_AIV_OBJECT}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/backends/aiv/host/launcher.cc"
+            "${CMAKE_CURRENT_SOURCE_DIR}/backends/aiv/host/launcher.hh"
+            "${NDS_AIV_DEVICE_DIR}/entrypoints.cc"
+            "${CMAKE_CURRENT_SOURCE_DIR}/include/device_transport.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/include/device_verbs.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/include/device_storage.h"
+            "${PROJECT_SOURCE_DIR}/src/include/storage_protocol.hh"
+        VERBATIM)
+    add_custom_target(nds_aiv_kernel ALL DEPENDS "${NDS_AIV_OBJECT}" "${NDS_AIV_HOST_OBJECT}")
 endif()
 
 if(NDS_BUILD_AICPU_KERNEL)
