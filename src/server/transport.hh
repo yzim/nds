@@ -2,8 +2,8 @@
 #define NDS_SERVER_TRANSPORT_HH
 
 #include "backend.hh"
-#include "nds/result.hh"
-#include "nds/tcp_bootstrap.hh"
+#include "result.hh"
+#include "tcp_socket.hh"
 
 #include <cstddef>
 #include <cstdint>
@@ -31,7 +31,7 @@ class Transport;
 class TransportListener {
 public:
     TransportListener() = default;
-    ~TransportListener();
+    ~TransportListener() = default;
     TransportListener(const TransportListener &) = delete;
     TransportListener &operator=(const TransportListener &) = delete;
 
@@ -39,7 +39,7 @@ public:
     Result<void> accept(Transport *transport);
 
 private:
-    int listener_fd_{-1};
+    TcpListener tcp_listener_;
     TransportConfig config_{};
 };
 
@@ -47,7 +47,6 @@ class Transport {
 public:
     Result<RegisteredRegion> prepare_receive(void *buffer, std::size_t length);
     Result<RegisteredRegion> prepare_receive(std::size_t qp_index, void *buffer, std::size_t length);
-    Result<void> activate();
     Result<void> receive(std::uint32_t timeout_ms);
     Result<void> receive(std::size_t qp_index, std::uint32_t timeout_ms);
     Result<void> send(const RegisteredRegion &local, std::uint32_t length);
@@ -62,16 +61,15 @@ public:
     Result<void> write(std::size_t qp_index, const RegisteredRegion &local, std::uint64_t remote_address,
                        std::uint32_t remote_key, std::uint32_t length);
     std::size_t qp_count() const noexcept;
-    TcpPeerExchange *bootstrap() noexcept;
+    TcpConnection *exchange_channel() noexcept;
 
 private:
     friend class TransportListener;
 
-    Result<void> open(TcpPeerExchange bootstrap, const TransportConfig &config, std::uint32_t qp_count);
+    Result<void> open(TcpConnection exchange_channel, const TransportConfig &config, std::uint32_t qp_count);
 
     VerbsBackend backend_;
-    TcpPeerExchange bootstrap_;
-    std::vector<nds::wire::QpInfo> local_qps_;
+    TcpConnection exchange_channel_;
 };
 
 }  // namespace nds::server

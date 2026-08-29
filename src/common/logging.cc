@@ -1,4 +1,4 @@
-#include "nds/logging.hh"
+#include "logging.hh"
 
 #include <mutex>
 #include <stdexcept>

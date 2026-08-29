@@ -1,5 +1,5 @@
-#include "nds/device_verbs.h"
-#include "nds/device_transport.h"
+#include "device_verbs.h"
+#include "device_transport.h"
 
 #include <gtest/gtest.h>
 #include <cstdint>

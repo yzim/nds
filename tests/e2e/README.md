@@ -12,7 +12,7 @@ variables in the target's ignored operational environment:
 NDS_E2E_BUILD_DIR   absolute target build directory
 NDS_E2E_CANN_ROOT   absolute CANN installation root
 NDS_E2E_SOURCE_DIR  absolute NDS source directory
-NDS_E2E_SERVER_ADDRESS server TCP bootstrap address as IPv4:port
+NDS_E2E_SERVER_ADDRESS server TCP exchange address as IPv4:port
 NDS_E2E_DEVICE      CPU verbs device name
 NDS_E2E_GID_INDEX   CPU verbs GID index
 NDS_E2E_STATE_DIR   optional writable log and temporary-state directory

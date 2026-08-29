@@ -1,5 +1,5 @@
-#include "nds/logging.hh"
-#include "nds/result.hh"
+#include "logging.hh"
+#include "result.hh"
 #include "runtime.hh"
 #include "storage.hh"
 #include "transport.hh"
@@ -53,7 +53,7 @@ nds::Result<int> parse_args(int argc, char **argv, ClientConfig *config, bool *e
         ->check(CLI::Range(std::uint16_t{1}, std::numeric_limits<std::uint16_t>::max()));
     app.add_option("--qp-count", config->transport.qp_count, "Connected QPs to create")
         ->check(CLI::Range(1U, nds::wire::kMaxQpInfoBatch));
-    app.add_option("--server", config->transport.server_address, "Server TCP bootstrap address as IPv4:port")
+    app.add_option("--server", config->transport.server_address, "Server TCP exchange address as IPv4:port")
         ->required();
     app.add_option("--tcp-timeout-ms", config->transport.tcp_timeout_ms, "TCP server bootstrap timeout")
         ->check(CLI::PositiveNumber);

@@ -1,8 +1,8 @@
 #ifndef NDS_CPU_VERBS_BACKEND_HH
 #define NDS_CPU_VERBS_BACKEND_HH
 
-#include "nds/wire/transport.hh"
-#include "nds/result.hh"
+#include "transport_protocol.hh"
+#include "result.hh"
 
 #include <infiniband/verbs.h>
 

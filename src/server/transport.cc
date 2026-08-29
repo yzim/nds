@@ -1,102 +1,88 @@
 #include "transport.hh"
 
-#include "nds/wire/transport.hh"
+#include "transport_protocol.hh"
 
-#include <arpa/inet.h>
-#include <cerrno>
-#include <cstring>
-#include <sys/socket.h>
-#include <unistd.h>
+#include <algorithm>
+#include <span>
 #include <utility>
 
 namespace nds::server {
 
 namespace {
 
-constexpr int kListenBacklog = 8;
+constexpr int kTcpListenBacklog = 8;
+
+Result<void> send_transport_info(TcpConnection *channel, const nds::transport::TransportInfo &info) {
+    if (channel == nullptr)
+        return unexpected(ErrorCode::kInvalidArgument, "TCP connection is required");
+    nds::wire::TransportInfo encoded{};
+    if (nds::transport::encode(&info, &encoded) != nds::transport::CodecResult::Ok)
+        return unexpected(ErrorCode::kTransport, "cannot encode transport information");
+    return channel->send(std::as_bytes(std::span{&encoded, 1U}));
+}
+
+Result<nds::transport::TransportInfo> receive_transport_info(TcpConnection *channel) {
+    if (channel == nullptr)
+        return unexpected(ErrorCode::kInvalidArgument, "TCP connection is required");
+    nds::wire::TransportInfo encoded{};
+    if (const auto received = channel->receive(std::as_writable_bytes(std::span{&encoded, 1U})); !received)
+        return unexpected(received.error());
+    nds::transport::TransportInfo info{};
+    if (nds::transport::decode(&encoded, &info) != nds::transport::CodecResult::Ok)
+        return unexpected(ErrorCode::kTransport, "invalid transport information");
+    return info;
+}
 
 }  // namespace
 
-TransportListener::~TransportListener() {
-    if (listener_fd_ >= 0)
-        (void)close(listener_fd_);
-}
-
 Result<void> TransportListener::open(const TransportConfig &config) {
-    if (listener_fd_ >= 0 || config.max_qp_count == 0U || config.max_qp_count > nds::wire::kMaxQpInfoBatch)
+    if (tcp_listener_.is_open() || config.max_qp_count == 0U || config.max_qp_count > nds::wire::kMaxQpInfoBatch)
         return unexpected(ErrorCode::kInvalidArgument, "invalid server QP-count limit");
     const auto listen_address = parse_tcp_address(config.listen_address);
     if (!listen_address)
         return unexpected(listen_address.error());
-    const int listener = socket(AF_INET, SOCK_STREAM, 0);
-    int enabled = 1;
-    sockaddr_in address{};
-    address.sin_family = AF_INET;
-    address.sin_port = htons(listen_address->port);
-    if (listener < 0 || setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &enabled, sizeof(enabled)) != 0 ||
-        inet_pton(AF_INET, listen_address->ipv4.c_str(), &address.sin_addr) != 1 ||
-        bind(listener, reinterpret_cast<const sockaddr *>(&address), sizeof(address)) != 0 ||
-        listen(listener, kListenBacklog) != 0) {
-        if (listener >= 0)
-            (void)close(listener);
-        return unexpected(ErrorCode::kTransport, std::strerror(errno));
-    }
-    listener_fd_ = listener;
+    auto listener = TcpListener::listen(listen_address->ipv4, listen_address->port, kTcpListenBacklog);
+    if (!listener)
+        return unexpected(listener.error());
+    tcp_listener_ = std::move(*listener);
     config_ = config;
     return {};
 }
 
 Result<void> TransportListener::accept(Transport *transport) {
-    if (listener_fd_ < 0 || transport == nullptr)
+    if (!tcp_listener_.is_open() || transport == nullptr)
         return unexpected(ErrorCode::kInvalidArgument, "open listener and transport are required");
-    const int peer_fd = ::accept(listener_fd_, nullptr, nullptr);
-    if (peer_fd < 0) {
-        return unexpected(ErrorCode::kTransport, std::strerror(errno));
-    }
-    TcpPeerExchange bootstrap{peer_fd};
-    const auto qp_count = bootstrap.negotiate_qp_count_as_server(config_.max_qp_count);
-    if (!qp_count)
-        return unexpected(qp_count.error());
-    return transport->open(std::move(bootstrap), config_, *qp_count);
+    auto exchange_channel = tcp_listener_.accept();
+    if (!exchange_channel)
+        return unexpected(exchange_channel.error());
+    const auto count_request = receive_transport_info(&*exchange_channel);
+    if (!count_request)
+        return unexpected(count_request.error());
+    if (count_request->kind != nds::transport::TransportInfoKind::QpCountRequest)
+        return unexpected(ErrorCode::kTransport, "expected a QP-count request");
+    const std::uint32_t qp_count = std::min(count_request->qp_count, config_.max_qp_count);
+    const nds::transport::TransportInfo count_response{
+        nds::transport::TransportInfoKind::QpCountResponse, qp_count, {}};
+    NDS_RETURN_IF_ERROR(send_transport_info(&*exchange_channel, count_response));
+    return transport->open(std::move(*exchange_channel), config_, qp_count);
 }
 
-Result<void> Transport::open(TcpPeerExchange bootstrap, const TransportConfig &config, std::uint32_t qp_count) {
+Result<void> Transport::open(TcpConnection exchange_channel, const TransportConfig &config, std::uint32_t qp_count) {
     if (qp_count == 0U || qp_count > config.max_qp_count || qp_count > nds::wire::kMaxQpInfoBatch)
         return unexpected(ErrorCode::kInvalidArgument, "invalid negotiated QP count");
     if (const auto opened = backend_.open(config.backend, qp_count); !opened)
         return unexpected(opened.error());
-    local_qps_.resize(backend_.qp_count());
     const std::vector<nds::transport::QpInfo> &local = backend_.local_qp_infos();
-    for (std::size_t index = 0U; index < local.size(); ++index) {
-        if (nds::transport::encode(&local[index], &local_qps_[index]) != nds::transport::CodecResult::Ok)
-            return unexpected(ErrorCode::kTransport, "invalid transport endpoint record");
-    }
-    bootstrap_ = std::move(bootstrap);
-    std::vector<nds::transport::QpInfo> peers(qp_count);
-    if (qp_count == 1U) {
-        nds::wire::QpInfo peer_wire{};
-        if (const auto received = bootstrap_.receive_bytes(&peer_wire, sizeof(peer_wire)); !received)
-            return unexpected(received.error());
-        if (nds::transport::decode(&peer_wire, &peers.front()) != nds::transport::CodecResult::Ok)
-            return unexpected(ErrorCode::kTransport, "invalid transport endpoint record");
-    } else {
-        nds::wire::QpInfoBatchHeader header{};
-        if (const auto received = bootstrap_.receive_bytes(&header, sizeof(header)); !received)
-            return unexpected(received.error());
-        if (ntohl(header.magic) != nds::wire::kQpInfoBatchMagic || ntohs(header.version) != nds::wire::kQpInfoVersion ||
-            ntohl(header.count) != qp_count) {
-            return unexpected(ErrorCode::kTransport, "invalid or mismatched QP batch header");
-        }
-        std::vector<nds::wire::QpInfo> peer_wire(qp_count);
-        if (const auto received = bootstrap_.receive_bytes(peer_wire.data(), peer_wire.size() * sizeof(peer_wire[0]));
-            !received) {
-            return unexpected(received.error());
-        }
-        for (std::size_t index = 0U; index < peer_wire.size(); ++index) {
-            if (nds::transport::decode(&peer_wire[index], &peers[index]) != nds::transport::CodecResult::Ok)
-                return unexpected(ErrorCode::kTransport, "invalid QP record in batch");
-        }
-    }
+    exchange_channel_ = std::move(exchange_channel);
+    const auto peer_info = receive_transport_info(&exchange_channel_);
+    if (!peer_info)
+        return unexpected(peer_info.error());
+    if (peer_info->kind != nds::transport::TransportInfoKind::QpEndpoints || peer_info->qp_count != qp_count)
+        return unexpected(ErrorCode::kTransport, "peer returned mismatched QP information");
+    nds::transport::TransportInfo local_info{nds::transport::TransportInfoKind::QpEndpoints, qp_count, {}};
+    std::copy(local.begin(), local.end(), local_info.qps.begin());
+    NDS_RETURN_IF_ERROR(send_transport_info(&exchange_channel_, local_info));
+    std::vector<nds::transport::QpInfo> peers(peer_info->qps.begin(), peer_info->qps.begin() + qp_count);
     if (const auto connected = backend_.connect(peers); !connected)
         return unexpected(connected.error());
     return {};
@@ -115,16 +101,6 @@ Result<RegisteredRegion> Transport::prepare_receive(std::size_t qp_index, void *
     return std::move(*registered);
 }
 
-Result<void> Transport::activate() {
-    if (local_qps_.size() == 1U)
-        return bootstrap_.send_bytes(local_qps_.data(), sizeof(local_qps_.front()));
-    nds::wire::QpInfoBatchHeader header{};
-    header.magic = htonl(nds::wire::kQpInfoBatchMagic);
-    header.version = htons(nds::wire::kQpInfoVersion);
-    header.count = htonl(static_cast<std::uint32_t>(local_qps_.size()));
-    NDS_RETURN_IF_ERROR(bootstrap_.send_bytes(&header, sizeof(header)));
-    return bootstrap_.send_bytes(local_qps_.data(), local_qps_.size() * sizeof(local_qps_.front()));
-}
 Result<void> Transport::receive(std::uint32_t timeout_ms) {
     return receive(0U, timeout_ms);
 }
@@ -177,8 +153,8 @@ Result<void> Transport::write(std::size_t qp_index, const RegisteredRegion &loca
 std::size_t Transport::qp_count() const noexcept {
     return backend_.qp_count();
 }
-TcpPeerExchange *Transport::bootstrap() noexcept {
-    return &bootstrap_;
+TcpConnection *Transport::exchange_channel() noexcept {
+    return &exchange_channel_;
 }
 
 }  // namespace nds::server

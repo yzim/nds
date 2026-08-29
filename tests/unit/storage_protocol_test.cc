@@ -1,4 +1,4 @@
-#include "nds/storage_protocol.hh"
+#include "storage_protocol.hh"
 
 #include <gtest/gtest.h>
 

@@ -12,7 +12,7 @@ if(IBVERBS_FOUND)
     target_link_libraries(nds_server_transport PUBLIC nds_verbs_backend nds_transport)
     target_compile_options(nds_server_transport PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
-    add_library(nds_server_protocol STATIC protocol.cc)
+    add_library(nds_server_protocol STATIC storage.cc)
     target_include_directories(nds_server_protocol PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
     target_link_libraries(nds_server_protocol PUBLIC nds_server_transport nds_storage_protocol)
     target_compile_options(nds_server_protocol PRIVATE -Wall -Wextra -Wpedantic -Werror)

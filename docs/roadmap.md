@@ -103,9 +103,10 @@ designed as transport and protocol behavior, not application-side parallel
 loops:
 
 1. Define queue depth, credits, receive-WR replenishment, command IDs,
-   completion demultiplexing, per-command timeouts, and error handling. Define
-   client transport-local CQ ownership and error handling: normal AI-QPs
-   currently let HCCP consume CQs, while `Transport` does not poll them.
+   completion demultiplexing, per-command timeouts, and error handling for
+   concurrent storage commands. `Transport` already retires its own final-CQE
+   windows in the submission path; storage needs a separate credit and
+   completion-demultiplexing policy.
 2. Define command/data-QP selection policy and the synchronization required by
    concurrent device submitters. Transport now creates and connects a bounded,
    index-paired QP set, but storage continues to use QP zero.

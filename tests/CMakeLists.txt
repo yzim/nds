@@ -20,7 +20,7 @@ endif()
 nds_add_unit_test(nds_device_hns_codec_test device_hns_codec_test.cc)
 target_include_directories(nds_device_hns_codec_test PRIVATE
     ${PROJECT_SOURCE_DIR}/src/client/include
-    ${PROJECT_SOURCE_DIR}/src/client/backend/common)
+    ${PROJECT_SOURCE_DIR}/src/client/backends/common)
 nds_add_unit_test(nds_device_connection_test device_connection_test.cc)
 target_include_directories(nds_device_connection_test PRIVATE
     ${PROJECT_SOURCE_DIR}/src/client/include)
@@ -37,7 +37,7 @@ endif()
 
 add_test(NAME integration.nds_aicpu_manifest_test
     COMMAND ${CMAKE_COMMAND}
-        -DNDS_AICPU_MANIFEST=${PROJECT_SOURCE_DIR}/src/client/backend/aicpu/device/package/nds_aicpu_standard.json.in
+        -DNDS_AICPU_MANIFEST=${PROJECT_SOURCE_DIR}/src/client/backends/aicpu/device/package/nds_aicpu_standard.json.in
         -P ${CMAKE_CURRENT_SOURCE_DIR}/integration/aicpu_manifest_test.cmake)
 set_tests_properties(integration.nds_aicpu_manifest_test PROPERTIES LABELS "integration")
 

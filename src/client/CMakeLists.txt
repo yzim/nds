@@ -1,11 +1,11 @@
 add_library(nds_client_loaders STATIC
-    resource/loaders/dsmi_loader.cc
-    resource/loaders/ra_loader.cc
-    resource/loaders/cann_runtime_loader.cc
-    resource/loaders/shared_library.cc)
+    loaders/dsmi_loader.cc
+    loaders/ra_loader.cc
+    loaders/cann_runtime_loader.cc
+    loaders/shared_library.cc)
 target_include_directories(nds_client_loaders
-    PUBLIC resource ${PROJECT_SOURCE_DIR}/src/include
-    PRIVATE resource/loaders)
+    PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${PROJECT_SOURCE_DIR}/src/include
+    PRIVATE loaders)
 target_link_libraries(nds_client_loaders PUBLIC ${CMAKE_DL_LIBS} tl::expected)
 target_compile_options(nds_client_loaders PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
@@ -27,48 +27,54 @@ if(UNIX)
         "-Wl,-rpath,${NDS_ASCEND_HAL_LIBRARY_DIR}")
 endif()
 
-add_library(nds_client_runtime STATIC resource/runtime.cc)
-target_include_directories(nds_client_runtime PUBLIC resource ${PROJECT_SOURCE_DIR}/src/include)
+add_library(nds_client_runtime STATIC runtime.cc)
+target_include_directories(nds_client_runtime PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${PROJECT_SOURCE_DIR}/src/include)
 target_link_libraries(nds_client_runtime PUBLIC nds_client_loaders nds_ascendcl tl::expected)
 target_compile_options(nds_client_runtime PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
-add_library(nds_client_endpoint STATIC resource/endpoint.cc)
-target_include_directories(nds_client_endpoint PUBLIC resource include)
+add_library(nds_client_endpoint STATIC endpoint.cc)
+target_include_directories(nds_client_endpoint PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} include)
 target_link_libraries(nds_client_endpoint PUBLIC nds_client_runtime nds_client_loaders nds_transport)
 target_compile_options(nds_client_endpoint PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 add_library(nds_ra STATIC
-    backend/ra/verbs.cc
-    backend/ra/transport.cc
-    backend/ra/storage.cc)
-target_include_directories(nds_ra PUBLIC backend/ra resource)
+    backends/ra/verbs.cc
+    backends/ra/transport.cc
+    backends/ra/storage.cc)
+target_include_directories(nds_ra PUBLIC backends/ra ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(nds_ra PUBLIC nds_client_runtime nds_client_endpoint nds_logging)
 target_compile_options(nds_ra PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
-add_library(nds_aiv_launcher STATIC backend/aiv/host/launcher.cc)
+add_library(nds_aiv_launcher STATIC backends/aiv/host/launcher.cc)
 target_include_directories(nds_aiv_launcher PUBLIC
-    backend include ${PROJECT_SOURCE_DIR}/src/include)
+    backends include ${PROJECT_SOURCE_DIR}/src/include)
 target_link_libraries(nds_aiv_launcher PUBLIC nds_ascendcl tl::expected)
 target_compile_options(nds_aiv_launcher PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
-add_library(nds_aicpu_launcher STATIC backend/aicpu/host/launcher.cc)
+add_library(nds_aicpu_launcher STATIC backends/aicpu/host/launcher.cc)
 target_include_directories(nds_aicpu_launcher PUBLIC
-    backend include ${PROJECT_SOURCE_DIR}/src/include)
+    backends include ${PROJECT_SOURCE_DIR}/src/include)
 target_link_libraries(nds_aicpu_launcher PUBLIC nds_ascendcl tl::expected)
 target_compile_options(nds_aicpu_launcher PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 add_library(nds_client_control STATIC
-    resource/transport.cc)
+    transport.cc)
 target_include_directories(nds_client_control PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/resource
-    ${CMAKE_CURRENT_SOURCE_DIR}/backend)
-target_link_libraries(nds_client_control PUBLIC nds_client_runtime nds_client_endpoint nds_ra nds_transport)
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/backends)
+target_link_libraries(nds_client_control PUBLIC
+    nds_client_runtime
+    nds_client_endpoint
+    nds_ra
+    nds_aiv_launcher
+    nds_aicpu_launcher
+    nds_transport)
 target_compile_options(nds_client_control PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
-add_library(nds_client_storage STATIC resource/storage.cc)
+add_library(nds_client_storage STATIC storage.cc)
 target_include_directories(nds_client_storage PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/backend
-    ${CMAKE_CURRENT_SOURCE_DIR}/resource)
+    ${CMAKE_CURRENT_SOURCE_DIR}/backends
+    ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(nds_client_storage PUBLIC
     nds_client_control
     nds_ra
@@ -91,7 +97,7 @@ if(NDS_BUILD_AIV_KERNEL)
         message(FATAL_ERROR "CANN AIV CCEC/ld.lld tools were not found below ${NDS_CANN_ROOT}/aarch64-linux/bin")
     endif()
 
-    set(NDS_AIV_DEVICE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/backend/aiv/device")
+    set(NDS_AIV_DEVICE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/backends/aiv/device")
     set(NDS_AIV_OUTPUT_DIR "${CMAKE_BINARY_DIR}/aiv")
     set(NDS_AIV_OBJECT "${NDS_AIV_OUTPUT_DIR}/nds_aiv_kernel.o")
     set(NDS_AIV_ENTRY_OBJECT "${NDS_AIV_OUTPUT_DIR}/nds_aiv_entry.o")
@@ -102,7 +108,7 @@ if(NDS_BUILD_AIV_KERNEL)
             -I${NDS_CANN_ROOT}/aarch64-linux/asc/impl/basic_api -I${NDS_CANN_ROOT}/aarch64-linux/asc/impl/micro_api
             -I${NDS_CANN_ROOT}/aarch64-linux/ascendc/include -I${NDS_CANN_ROOT}/aarch64-linux/ascendc/include/highlevel_api
             -I${NDS_AIV_DEVICE_DIR}
-            -I${CMAKE_CURRENT_SOURCE_DIR}/backend/common
+            -I${CMAKE_CURRENT_SOURCE_DIR}/backends/common
             -I${CMAKE_CURRENT_SOURCE_DIR}/include
             -I${PROJECT_SOURCE_DIR}/src/include)
     add_custom_command(
@@ -119,11 +125,11 @@ if(NDS_BUILD_AIV_KERNEL)
             "${NDS_AIV_DEVICE_DIR}/storage.cc"
             "${NDS_AIV_DEVICE_DIR}/api.h"
             "${NDS_AIV_DEVICE_DIR}/internal.h"
-            "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_transport.h"
-            "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_verbs.h"
-            "${CMAKE_CURRENT_SOURCE_DIR}/backend/common/hns_hw.h"
-            "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_storage.h"
-            "${PROJECT_SOURCE_DIR}/src/include/nds/storage_protocol.hh"
+            "${CMAKE_CURRENT_SOURCE_DIR}/include/device_transport.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/include/device_verbs.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/backends/common/hns_hw.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/include/device_storage.h"
+            "${PROJECT_SOURCE_DIR}/src/include/storage_protocol.hh"
         VERBATIM)
     add_custom_target(nds_aiv_kernel ALL DEPENDS "${NDS_AIV_OBJECT}")
 endif()
@@ -136,7 +142,7 @@ if(NDS_BUILD_AICPU_KERNEL)
         message(FATAL_ERROR "NDS_BUILD_AICPU_KERNEL requires -DNDS_CANN_ROOT=<CANN root>")
     endif()
 
-    set(NDS_AICPU_DEVICE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/backend/aicpu/device")
+    set(NDS_AICPU_DEVICE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/backends/aicpu/device")
     set(NDS_AICPU_COMPILER "${NDS_CANN_ROOT}/tools/hcc/bin/aarch64-target-linux-gnu-g++")
     if(NOT EXISTS "${NDS_AICPU_COMPILER}")
         message(FATAL_ERROR "CANN AICPU shared-library compiler not found: ${NDS_AICPU_COMPILER}")
@@ -152,7 +158,7 @@ if(NDS_BUILD_AICPU_KERNEL)
         COMMAND "${NDS_AICPU_COMPILER}" -x c++ -shared -fPIC -O2 -std=c++17
             -D_GLIBCXX_USE_CXX11_ABI=1 -D_FORTIFY_SOURCE=2 -D_GNU_SOURCE -fvisibility=hidden -fstack-protector-strong
             -fno-common -fno-strict-aliasing -Wall -Wextra -Werror -I${NDS_AICPU_DEVICE_DIR}
-            -I${CMAKE_CURRENT_SOURCE_DIR}/backend/common
+            -I${CMAKE_CURRENT_SOURCE_DIR}/backends/common
             -I${CMAKE_CURRENT_SOURCE_DIR}/include
             -I${PROJECT_SOURCE_DIR}/src/include
             ${NDS_AICPU_DEVICE_DIR}/entrypoints.cc
@@ -167,11 +173,11 @@ if(NDS_BUILD_AICPU_KERNEL)
             "${NDS_AICPU_DEVICE_DIR}/api.h"
             "${NDS_AICPU_DEVICE_DIR}/internal.h"
             "${NDS_AICPU_DEVICE_DIR}/hns.h"
-            "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_transport.h"
-            "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_verbs.h"
-            "${CMAKE_CURRENT_SOURCE_DIR}/backend/common/hns_hw.h"
-            "${CMAKE_CURRENT_SOURCE_DIR}/include/nds/device_storage.h"
-            "${PROJECT_SOURCE_DIR}/src/include/nds/storage_protocol.hh"
+            "${CMAKE_CURRENT_SOURCE_DIR}/include/device_transport.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/include/device_verbs.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/backends/common/hns_hw.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/include/device_storage.h"
+            "${PROJECT_SOURCE_DIR}/src/include/storage_protocol.hh"
         VERBATIM)
     configure_file(${NDS_AICPU_DEVICE_DIR}/package/nds_aicpu_standard.json.in "${NDS_AICPU_STANDARD_CONFIG}" @ONLY)
     add_custom_command(

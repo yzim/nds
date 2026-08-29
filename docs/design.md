@@ -13,10 +13,11 @@ The endpoint-local dependency direction is:
 Application -> StorageClient -> Transport -> Verbs -> protocol resources
 ```
 
-`src/include/nds/wire/transport.hh` owns the fixed QP-bootstrap wire record.
-`src/common/transport.cc` implements shared QP identity, TCP bootstrap, and MTU
-policy; `src/include/nds/tcp_bootstrap.hh` is its C++ interface.
-`src/include/nds/storage_protocol.hh` owns the four semantic storage command
+`src/include/tcp_socket.hh` owns TCP connection and listener lifecycles.
+`src/include/transport_protocol.hh` owns the fixed transport records and
+their serializers; `src/common/transport_protocol.cc` implements them and MTU
+policy. Client and server transport own the ordering of those records.
+`src/include/storage_protocol.hh` owns the four semantic storage command
 types and their fixed-layout, endian-explicit serializers and deserializers.
 They operate on ordinary byte buffers and are the same functions used by the
 host CPU, AICPU, and AIV. Backend and transport code do not depend on storage
@@ -24,12 +25,12 @@ command semantics.
 
 `Runtime` owns AscendCL, network-service lifecycle, NPU allocation/copy, and
 memory services. The client `Transport` borrows the runtime and owns an
-`Endpoint`, a bounded indexed QP set, peer metadata, one TCP channel, and
-required per-QP AI-QP WR-ID storage. It opens TCP first, requests its QP
-count, and creates QPs only after the server accepts that count. `qp_count ==
-1` retains the original fixed-record bootstrap. A larger accepted count
-exchanges one framed batch of NDS-owned QP records on the same TCP channel and
-connects QPs by index.
+`Endpoint`, a bounded indexed QP set, peer metadata, one TCP-backed peer
+channel, and required per-QP AI-QP WR-ID storage. It opens the channel first,
+sends a `TransportInfo` QP-count request, and creates QPs only after the
+server replies with the accepted count. The endpoints then exchange one fixed
+`TransportInfo` record containing the ordered QP descriptors and connect QPs
+by index.
 `Endpoint` owns the RA lifecycle and rdev. `StorageClient` borrows the runtime
 and transport, owns protocol buffers and command sequencing, and registers
 them through the endpoint.
@@ -44,8 +45,9 @@ remains the complete application under `examples/storage/`.
 The source layout reflects these boundaries:
 
 ```text
-src/client/resource/    NPU lifecycle, transport, storage session
-src/client/backend/     RA, AIV, and AICPU client backends
+src/client/             NPU lifecycle, transport, and storage session
+src/client/loaders/     dynamic CANN, RA, and DSMI ABI loaders
+src/client/backends/    RA, AIV, and AICPU client backends
 src/server/             CPU protocol, transport, and verbs backend
 src/common/             shared transport implementation
 src/torch/              reusable PyTorch extension
@@ -53,15 +55,16 @@ src/torch/              reusable PyTorch extension
 
 ## Wire boundary and resources
 
-The TCP bootstrap carries only versioned NDS records:
+The TCP connection carries exact bytes and has no framing or typed operations.
+The transport protocol serializes these versioned `TransportInfo` records on
+that connection:
 
 - QP count: the client requests one through eight QPs before either endpoint
   creates QPs. The server replies with the lesser of that request and its
   configured per-client maximum. The accepted count applies only to that TCP
   session.
 - Endpoint: QPN, PSN, GID, GID index, port, QoS/retry values, and diagnostic
-  MTU. Multiple endpoint records are framed by a bounded count and paired by
-  index; they still share one TCP connection.
+  MTU. The fixed record holds up to eight descriptors, paired by index.
 
 It never carries HCCP QP or MR handles, AI-QP descriptors, queue or doorbell
 addresses, or provider objects. Those are local to the environment that owns
@@ -266,7 +269,7 @@ selecting the logical device.
 ### AIV
 
 AIV operates on an NDS-owned device QP and connection, never an HCCP handle or
-host C++ object. The device ABI under `src/client/include/nds/` describes QP,
+host C++ object. The device ABI under `src/client/include/` describes QP,
 work request, CQ, connection, and host-launch records. AIV exposes device
 Send, Receive, Read, Write, and an optional caller-owned `PollCq(is_send_cq)` API. CANN 9.0.0 requires its loadable
 image to be one CCEC translation unit, though standalone objects remain for

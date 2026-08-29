@@ -1,5 +1,5 @@
-#include "nds/wire/transport.hh"
-#include "nds/tcp_bootstrap.hh"
+#include "transport_protocol.hh"
+#include "tcp_socket.hh"
 
 #include <arpa/inet.h>
 
@@ -27,7 +27,7 @@ nds::transport::QpInfo endpoint() {
 
 }  // namespace
 
-TEST(TransportCodecTest, ParsesTcpBootstrapAddress) {
+TEST(TransportCodecTest, ParsesTcpExchangeAddress) {
     const auto parsed = nds::parse_tcp_address("192.168.100.100:18515");
     ASSERT_TRUE(parsed);
     EXPECT_EQ(parsed->ipv4, "192.168.100.100");

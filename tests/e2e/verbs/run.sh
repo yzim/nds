@@ -9,12 +9,12 @@ source "${NDS_E2E_SUPPORT_DIR}/common.sh"
 source "${NDS_E2E_SUPPORT_DIR}/aicpu_overlay.sh"
 
 usage() {
-    printf '%s\n' 'Usage: run.sh --backend <ra|aiv|aicpu> --operation <send|recv|send-batch|send-batch-invalid>' >&2
+    printf '%s\n' 'Usage: run.sh --backend <ra|aiv|aicpu> --operation <send|recv|send-batch>' >&2
 }
 
 validate_operation() {
     case "$1" in
-        send|recv|send-batch|send-batch-invalid) ;;
+        send|recv|send-batch) ;;
         *) printf 'unsupported verbs operation: %s\n' "$1" >&2; return 2 ;;
     esac
 }

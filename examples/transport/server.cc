@@ -1,5 +1,5 @@
-#include "nds/logging.hh"
-#include "nds/wire/transport.hh"
+#include "logging.hh"
+#include "transport_protocol.hh"
 #include "transport.hh"
 
 #include <CLI/CLI.hpp>
@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <string>
+#include <span>
 
 namespace {
 constexpr std::size_t kBytes = 64U;
@@ -60,7 +61,7 @@ Payload payload() {
 
 bool wait_signal(nds::server::Transport *transport) {
     std::uint8_t value{};
-    return transport->bootstrap()->receive_bytes(&value, sizeof(value)) && value == 1U;
+    return transport->exchange_channel()->receive(std::as_writable_bytes(std::span{&value, 1U})) && value == 1U;
 }
 
 bool publish_memory(nds::server::Transport *transport, const nds::server::RegisteredRegion &region) {
@@ -68,7 +69,7 @@ bool publish_memory(nds::server::Transport *transport, const nds::server::Regist
     const nds::transport::RemoteMemory memory{reinterpret_cast<std::uint64_t>(region.address()),
                                               static_cast<std::uint32_t>(region.length()), region.remote_key()};
     return nds::transport::encode(&memory, &wire) == nds::transport::CodecResult::Ok &&
-           transport->bootstrap()->send_bytes(&wire, sizeof(wire));
+           transport->exchange_channel()->send(std::as_bytes(std::span{&wire, 1U}));
 }
 
 bool verify(const Payload &received) {
@@ -98,7 +99,7 @@ int main(int argc, char **argv) {
     Payload buffer{};
     if (config.operation == Operation::Send) {
         const auto region = transport.prepare_receive(buffer.data(), buffer.size());
-        if (!region || !transport.activate() || !transport.receive(5000U) || !verify(buffer)) {
+        if (!region || !transport.receive(5000U) || !verify(buffer)) {
             NDS_LOG_ERROR("transport-server", "RdmaSend exchange failed");
             return EXIT_FAILURE;
         }
@@ -106,7 +107,7 @@ int main(int argc, char **argv) {
         buffer = payload();
         const auto region =
             transport.register_memory(buffer.data(), buffer.size(), nds::server::MemoryAccess::LocalRead);
-        if (!region || !transport.activate() || !wait_signal(&transport) || !transport.send(*region, buffer.size())) {
+        if (!region || !wait_signal(&transport) || !transport.send(*region, buffer.size())) {
             NDS_LOG_ERROR("transport-server", "RdmaRecv exchange failed");
             return EXIT_FAILURE;
         }
@@ -114,7 +115,7 @@ int main(int argc, char **argv) {
         buffer = payload();
         const auto region =
             transport.register_memory(buffer.data(), buffer.size(), nds::server::MemoryAccess::RemoteRead);
-        if (!region || !transport.activate() || !publish_memory(&transport, *region) || !wait_signal(&transport)) {
+        if (!region || !publish_memory(&transport, *region) || !wait_signal(&transport)) {
             NDS_LOG_ERROR("transport-server", "RdmaRead exchange failed");
             return EXIT_FAILURE;
         }
@@ -123,8 +124,7 @@ int main(int argc, char **argv) {
         const auto receive = transport.prepare_receive(completion.data(), completion.size());
         const auto region =
             transport.register_memory(buffer.data(), buffer.size(), nds::server::MemoryAccess::RemoteWrite);
-        if (!receive || !region || !transport.activate() || !publish_memory(&transport, *region) ||
-            !transport.receive(5000U) ||
+        if (!receive || !region || !publish_memory(&transport, *region) || !transport.receive(5000U) ||
             !verify(buffer)) {
             NDS_LOG_ERROR("transport-server", "RdmaWrite exchange failed");
             return EXIT_FAILURE;

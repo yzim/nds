@@ -1,4 +1,4 @@
-#include "nds/device_storage.h"
+#include "device_storage.h"
 
 #include <gtest/gtest.h>
 

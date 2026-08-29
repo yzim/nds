@@ -1,4 +1,4 @@
-#include "nds/wire/transport.hh"
+#include "transport_protocol.hh"
 
 #include <gtest/gtest.h>
 

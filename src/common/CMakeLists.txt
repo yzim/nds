@@ -1,6 +1,6 @@
 find_package(Threads REQUIRED)
 
-add_library(nds_transport STATIC transport.cc)
+add_library(nds_transport STATIC tcp_socket.cc transport_protocol.cc)
 target_include_directories(nds_transport PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../include)
 target_link_libraries(nds_transport PUBLIC Threads::Threads tl::expected)
 target_compile_options(nds_transport PRIVATE -Wall -Wextra -Wpedantic -Werror)

@@ -1,4 +1,4 @@
-#include "nds/logging.hh"
+#include "logging.hh"
 #include "transport.hh"
 
 #include <CLI/CLI.hpp>
@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <string>
+#include <span>
 #include <vector>
 
 namespace {
@@ -29,8 +30,7 @@ int parse(int argc, char **argv, Config *config, bool *exit_requested) {
     app.add_option("--max-qp-count", config->transport.max_qp_count, "Maximum QPs accepted per client")
         ->check(CLI::Range(1U, nds::wire::kMaxQpInfoBatch));
     app.add_option("--receives", config->receives, "Number of Receive WQEs to post")->check(CLI::Range(1U, 2U));
-    app.add_option("--operation", config->operation)
-        ->check(CLI::IsMember({"send", "send-batch", "send-batch-invalid", "recv"}));
+    app.add_option("--operation", config->operation)->check(CLI::IsMember({"send", "send-batch", "recv"}));
     app.add_option("--log-sink", config->log_sink)->check(CLI::IsMember({"stderr", "stdout", "syslog", "none"}));
     app.add_option("--log-level", config->log_level)
         ->check(CLI::IsMember({"trace", "debug", "info", "warn", "error", "critical", "off"}));
@@ -74,7 +74,7 @@ int main(int argc, char **argv) {
         const auto region =
             transport.register_memory(payload.data(), payload.size(), nds::server::MemoryAccess::LocalRead);
         std::uint8_t ready{};
-        if (!region || !transport.activate() || !transport.bootstrap()->receive_bytes(&ready, sizeof(ready)) ||
+        if (!region || !transport.exchange_channel()->receive(std::as_writable_bytes(std::span{&ready, 1U})) ||
             ready != 1U || !transport.send(*region, payload.size())) {
             NDS_LOG_ERROR("verbs-server", "verbs PostRecv exchange failed");
             return EXIT_FAILURE;
@@ -92,10 +92,6 @@ int main(int argc, char **argv) {
             return EXIT_FAILURE;
         }
         receives.push_back(std::move(*prepared));
-    }
-    if (!transport.activate()) {
-        NDS_LOG_ERROR("verbs-server", "verbs Receive activation failed");
-        return EXIT_FAILURE;
     }
     for (std::uint32_t receive_index = 0U; receive_index < config.receives; ++receive_index) {
         if (!transport.receive(5000U)) {

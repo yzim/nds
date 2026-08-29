@@ -1,0 +1,14 @@
+#ifndef NDS_SERVER_STORAGE_HH
+#define NDS_SERVER_STORAGE_HH
+
+#include "transport.hh"
+
+#include <cstdint>
+#include <string>
+#include <vector>
+
+namespace nds::server {
+Result<void> serve_commands(Transport *transport, std::vector<unsigned char> *storage, std::uint32_t command_count,
+                            std::uint32_t timeout_ms);
+}
+#endif

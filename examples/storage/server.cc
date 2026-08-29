@@ -1,5 +1,5 @@
-#include "nds/logging.hh"
-#include "protocol.hh"
+#include "logging.hh"
+#include "storage.hh"
 #include "transport.hh"
 
 #include <CLI/CLI.hpp>
@@ -25,7 +25,7 @@ int parse(int argc, char **argv, Config *config, bool *exit_requested) {
     CLI::App app{"Serve NDS memory-backed storage commands."};
     app.add_option("--device", config->transport.backend.device_name)->required();
     app.add_option("--gid-index", config->transport.backend.gid_index)->required();
-    app.add_option("--listen", config->transport.listen_address, "TCP bootstrap listen address as IPv4:port");
+    app.add_option("--listen", config->transport.listen_address, "TCP exchange listen address as IPv4:port");
     app.add_option("--ib-port", config->transport.backend.port);
     app.add_option("--max-qp-count", config->transport.max_qp_count, "Maximum QPs accepted per client")
         ->check(CLI::Range(1U, nds::wire::kMaxQpInfoBatch));
