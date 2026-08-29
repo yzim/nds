@@ -69,7 +69,7 @@ nds_e2e_run_client() {
         aicpu)
             local overlay
             overlay="$(nds_prepare_aicpu_overlay "${case_dir}" "${nds_e2e_cann}" "${nds_e2e_build}")"
-            client+=(--aicpu-kernel-config "${overlay}/opp/vendors/nds/aicpu/config/nds_aicpu_standard.json")
+            client+=(--aicpu-kernel "${overlay}/opp/vendors/nds/aicpu/config/nds_aicpu_standard.json")
             timeout "${nds_e2e_timeout}" sudo -n unshare -m "${NDS_E2E_SUPPORT_DIR}/run_with_aicpu_package.sh" \
                 "${overlay}" "${nds_e2e_cann}" "${client[@]}" >"${log}" 2>&1
             ;;

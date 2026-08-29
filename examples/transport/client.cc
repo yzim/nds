@@ -34,7 +34,7 @@ nds::Result<Config> parse(int argc, char **argv) {
     app.add_option("--cann-runtime", config.runtime.cann_runtime_library)->required();
     app.add_option("--ra", config.transport.endpoint.ra_library)->required();
     app.add_option("--aiv-kernel", config.backend.aiv_kernel);
-    app.add_option("--aicpu-kernel-config", config.backend.aicpu_kernel_config);
+    app.add_option("--aicpu-kernel", config.backend.aicpu_kernel);
     app.add_option("--logical-device", config.runtime.logical_device_id)->required();
     app.add_option("--server", config.transport.server_address)->required();
     app.add_option("--qp-count", config.transport.qp_count)->check(CLI::Range(1U, nds::wire::kMaxQpInfoBatch));
@@ -49,7 +49,7 @@ nds::Result<Config> parse(int argc, char **argv) {
     else if (backend == "aicpu")
         config.backend.mode = nds::client::NpuBackend::Aicpu;
     if ((config.backend.mode == nds::client::NpuBackend::Aiv && config.backend.aiv_kernel.empty()) ||
-        (config.backend.mode == nds::client::NpuBackend::Aicpu && config.backend.aicpu_kernel_config.empty()))
+        (config.backend.mode == nds::client::NpuBackend::Aicpu && config.backend.aicpu_kernel.empty()))
         return nds::unexpected(nds::ErrorCode::kInvalidArgument, "device backend requires its kernel artifact");
     if (operation == "recv")
         config.operation = Operation::Recv;

@@ -56,6 +56,9 @@ typedef struct NdsDeviceQp {
     NdsDeviceWorkQueue receive_queue;
     NdsDeviceCq send_cq;
     NdsDeviceCq receive_cq;
+    /* Optional host-side handles used only by the RA host launcher. */
+    uint64_t host_runtime_address;
+    uint64_t host_qp_address;
 } NdsDeviceQp;
 
 enum NdsDeviceWrOpcode {
@@ -158,15 +161,15 @@ typedef struct NdsDevicePollCqArgs {
 #if defined(__cplusplus)
 static_assert(sizeof(NdsDeviceWorkQueue) == 56, "device WQ ABI changed");
 static_assert(sizeof(NdsDeviceCq) == 40, "device CQ ABI changed");
-static_assert(sizeof(NdsDeviceQp) == 232, "device QP ABI changed");
+static_assert(sizeof(NdsDeviceQp) == 248, "device QP ABI changed");
 static_assert(sizeof(NdsDeviceSge) == 16, "device SGE ABI changed");
 static_assert(sizeof(NdsDeviceSendWr) == 48, "device send WR ABI changed");
 static_assert(sizeof(NdsDeviceRecvWr) == 24, "device receive WR ABI changed");
 static_assert(sizeof(NdsDeviceWc) == 40, "device WC ABI changed");
-static_assert(sizeof(NdsDevicePostSendArgs) == 288, "device post-send operator ABI changed");
-static_assert(sizeof(NdsDevicePostSendBatchArgs) == 256, "device post-send batch operator ABI changed");
-static_assert(sizeof(NdsDevicePostRecvArgs) == 264, "device post-recv operator ABI changed");
-static_assert(sizeof(NdsDevicePollCqArgs) == 256, "device poll-CQ operator ABI changed");
+static_assert(sizeof(NdsDevicePostSendArgs) == 304, "device post-send operator ABI changed");
+static_assert(sizeof(NdsDevicePostSendBatchArgs) == 272, "device post-send batch operator ABI changed");
+static_assert(sizeof(NdsDevicePostRecvArgs) == 280, "device post-recv operator ABI changed");
+static_assert(sizeof(NdsDevicePollCqArgs) == 272, "device poll-CQ operator ABI changed");
 static_assert(offsetof(NdsDevicePostSendArgs, return_value) > offsetof(NdsDevicePostSendArgs, wr),
               "device post-send result must follow the request");
 static_assert(offsetof(NdsDevicePostRecvArgs, return_value) > offsetof(NdsDevicePostRecvArgs, wr),
@@ -176,15 +179,15 @@ static_assert(offsetof(NdsDevicePollCqArgs, return_value) > offsetof(NdsDevicePo
 #else
 _Static_assert(sizeof(NdsDeviceWorkQueue) == 56, "device WQ ABI changed");
 _Static_assert(sizeof(NdsDeviceCq) == 40, "device CQ ABI changed");
-_Static_assert(sizeof(NdsDeviceQp) == 232, "device QP ABI changed");
+_Static_assert(sizeof(NdsDeviceQp) == 248, "device QP ABI changed");
 _Static_assert(sizeof(NdsDeviceSge) == 16, "device SGE ABI changed");
 _Static_assert(sizeof(NdsDeviceSendWr) == 48, "device send WR ABI changed");
 _Static_assert(sizeof(NdsDeviceRecvWr) == 24, "device receive WR ABI changed");
 _Static_assert(sizeof(NdsDeviceWc) == 40, "device WC ABI changed");
-_Static_assert(sizeof(NdsDevicePostSendArgs) == 288, "device post-send operator ABI changed");
-_Static_assert(sizeof(NdsDevicePostSendBatchArgs) == 256, "device post-send batch operator ABI changed");
-_Static_assert(sizeof(NdsDevicePostRecvArgs) == 264, "device post-recv operator ABI changed");
-_Static_assert(sizeof(NdsDevicePollCqArgs) == 256, "device poll-CQ operator ABI changed");
+_Static_assert(sizeof(NdsDevicePostSendArgs) == 304, "device post-send operator ABI changed");
+_Static_assert(sizeof(NdsDevicePostSendBatchArgs) == 272, "device post-send batch operator ABI changed");
+_Static_assert(sizeof(NdsDevicePostRecvArgs) == 280, "device post-recv operator ABI changed");
+_Static_assert(sizeof(NdsDevicePollCqArgs) == 272, "device poll-CQ operator ABI changed");
 _Static_assert(offsetof(NdsDevicePostSendArgs, return_value) > offsetof(NdsDevicePostSendArgs, wr),
                "device post-send result must follow the request");
 _Static_assert(offsetof(NdsDevicePostRecvArgs, return_value) > offsetof(NdsDevicePostRecvArgs, wr),

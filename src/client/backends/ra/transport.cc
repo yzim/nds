@@ -12,13 +12,10 @@ Result<void> NdsRaRdmaSend(const RaConnection &connection, const NdsDeviceSendWr
     return post(connection.runtime, connection.qp, request);
 }
 
-Result<void> NdsRaRdmaRecv(const RaConnection &connection, const NdsDeviceSendWr &request) {
+Result<void> NdsRaRdmaRecv(const RaConnection &connection, const NdsDeviceRecvWr &request) {
     if (connection.runtime == nullptr || connection.qp == nullptr)
         return unexpected(ErrorCode::kInvalidArgument, "RA receive requires a runtime and QP");
-    NdsDeviceRecvWr recv{};
-    recv.wr_id = request.wr_id;
-    recv.local = request.local;
-    return NdsRaPostRecv(connection.qp, recv);
+    return NdsRaPostRecv(connection.qp, request);
 }
 
 Result<void> NdsRaRdmaRead(const RaConnection &connection, const NdsDeviceSendWr &request) {

@@ -1,107 +1,54 @@
+#include "../examples/verbs/direct.hh"
 #include "verbs_wire.hh"
-
+#include "backend.hh"
 #include "logging.hh"
-#include "transport_protocol.hh"
-#include "transport.hh"
 
 #include <CLI/CLI.hpp>
 
+#include <array>
 #include <cstddef>
-#include <cstdint>
 #include <cstdlib>
-#include <limits>
-#include <span>
 #include <string>
-#include <vector>
 
-namespace {
-
-constexpr std::uint32_t kMaximumInFlight = 16U;
-
-struct Config {
-    nds::server::TransportConfig transport;
-    nds::benchmark::VerbsOperation operation{nds::benchmark::VerbsOperation::Read};
-    std::uint32_t bytes{};
-    std::uint32_t in_flight{1U};
-};
-
-nds::Result<Config> parse(int argc, char **argv) {
-    Config config;
-    std::string operation{"read"};
-    CLI::App app{"Serve CPU DRAM for the NDS verbs benchmark."};
-    app.add_option("--device", config.transport.backend.device_name)->required();
-    app.add_option("--gid-index", config.transport.backend.gid_index)->required();
-    app.add_option("--listen", config.transport.listen_address)->required();
-    app.add_option("--ib-port", config.transport.backend.port);
-    app.add_option("--operation", operation)->required()->check(CLI::IsMember({"read", "write"}));
-    app.add_option("--bytes", config.bytes)->required()->check(CLI::Range(1U, UINT32_MAX));
-    app.add_option("--in-flight", config.in_flight)->check(CLI::Range(1U, kMaximumInFlight));
+int main(int argc, char **argv) {
+    nds::server::BackendConfig config;
+    std::string listen{"0.0.0.0:18515"};
+    CLI::App app{"Run the direct one-QP, one-MR CPU verbs benchmark."};
+    app.add_option("--device", config.device_name)->required();
+    app.add_option("--gid-index", config.gid_index)->required();
+    app.add_option("--listen", listen);
+    app.add_option("--ib-port", config.port);
     try {
         app.parse(argc, argv);
     } catch (const CLI::ParseError &error) {
-        return nds::unexpected(nds::ErrorCode::kInvalidArgument,
-                               app.exit(error) == 0 ? "help requested" : "invalid options");
+        return app.exit(error);
     }
-    config.operation =
-        operation == "read" ? nds::benchmark::VerbsOperation::Read : nds::benchmark::VerbsOperation::Write;
-    return config;
-}
+    const auto address = nds::parse_tcp_address(listen);
+    if (!address)
+        return EXIT_FAILURE;
+    const auto listener = nds::TcpListener::listen(address->ipv4, address->port, 1);
+    if (!listener)
+        return EXIT_FAILURE;
+    const auto channel = listener->accept();
+    if (!channel)
+        return EXIT_FAILURE;
+    nds::server::VerbsBackend backend;
+    if (!backend.open(config, 1U))
+        return EXIT_FAILURE;
+    const auto peer = nds::examples::verbs::exchange_qp(&*channel, backend.local_qp_infos().front(), false);
+    if (!peer || !backend.connect({*peer}))
+        return EXIT_FAILURE;
 
-nds::Result<std::size_t> memory_bytes(const Config &config) {
-    if (config.bytes > std::numeric_limits<std::size_t>::max() / config.in_flight)
-        return nds::unexpected(nds::ErrorCode::kInvalidArgument, "benchmark memory size overflows address space");
-    const std::size_t total = static_cast<std::size_t>(config.bytes) * config.in_flight;
-    if (total > UINT32_MAX)
-        return nds::unexpected(nds::ErrorCode::kInvalidArgument, "benchmark memory exceeds wire-record capacity");
-    return total;
-}
-
-}  // namespace
-
-int main(int argc, char **argv) {
-    (void)nds::log::configure("verbs-benchmark-server", "stderr", "info");
-    const auto config = parse(argc, argv);
-    if (!config) {
-        NDS_LOG_ERROR("verbs-benchmark-server", "options failed: {}", config.error().message);
+    // Arm one receive against the benchmark's single CPU MR before notifying the client.
+    std::array<std::byte, 64U> payload{};
+    const auto region = backend.register_memory(payload.data(), payload.size(), IBV_ACCESS_LOCAL_WRITE);
+    if (!region || !backend.post_receive(0U, *region))
         return EXIT_FAILURE;
-    }
-    const auto bytes = memory_bytes(*config);
-    if (!bytes) {
-        NDS_LOG_ERROR("verbs-benchmark-server", "invalid memory size: {}", bytes.error().message);
+    if (!nds::examples::verbs::send_ready(&*channel))
         return EXIT_FAILURE;
-    }
-    nds::server::TransportListener listener;
-    if (const auto opened = listener.open(config->transport); !opened) {
-        NDS_LOG_ERROR("verbs-benchmark-server", "listener open failed: {}", opened.error().message);
+    if (const auto completed = backend.wait_receive(0U, 5000U); !completed)
         return EXIT_FAILURE;
-    }
-    nds::server::Transport transport;
-    if (const auto accepted = listener.accept(&transport); !accepted) {
-        NDS_LOG_ERROR("verbs-benchmark-server", "transport setup failed");
-        return EXIT_FAILURE;
-    }
-    std::vector<std::byte> memory(*bytes, std::byte{0x5a});
-    const auto access = config->operation == nds::benchmark::VerbsOperation::Read
-                            ? nds::server::MemoryAccess::RemoteRead
-                            : nds::server::MemoryAccess::RemoteWrite;
-    const auto region = transport.register_memory(memory.data(), memory.size(), access);
-    if (!region) {
-        NDS_LOG_ERROR("verbs-benchmark-server", "CPU memory registration failed: {}", region.error().message);
-        return EXIT_FAILURE;
-    }
-    nds::wire::RemoteMemory peer{};
-    const nds::transport::RemoteMemory local{reinterpret_cast<std::uint64_t>(region->address()),
-                                             static_cast<std::uint32_t>(region->length()), region->remote_key()};
-    if (nds::transport::encode(&local, &peer) != nds::transport::CodecResult::Ok ||
-        !transport.exchange_channel()->send(std::as_bytes(std::span{&peer, 1U}))) {
-        NDS_LOG_ERROR("verbs-benchmark-server", "remote-memory bootstrap failed");
-        return EXIT_FAILURE;
-    }
-    std::uint8_t finished{};
-    if (const auto received = transport.exchange_channel()->receive(std::as_writable_bytes(std::span{&finished, 1U}));
-        !received || finished != 1U) {
-        NDS_LOG_ERROR("verbs-benchmark-server", "benchmark completion handshake failed");
-        return EXIT_FAILURE;
-    }
+    NDS_LOG_INFO("verbs-benchmark-server", "completed {} verbs operation",
+                 nds::benchmark::operation_name(nds::benchmark::VerbsOperation::Send));
     return EXIT_SUCCESS;
 }

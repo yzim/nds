@@ -1,113 +1,97 @@
+#include "direct.hh"
+#include "backend.hh"
 #include "logging.hh"
-#include "transport.hh"
 
 #include <CLI/CLI.hpp>
 
 #include <array>
 #include <cstddef>
-#include <cstdint>
 #include <cstdlib>
 #include <string>
-#include <span>
-#include <vector>
 
 namespace {
 
 struct Config {
-    nds::server::TransportConfig transport;
-    std::uint32_t receives{1U};
-    std::string operation{"send"};
-    std::string log_sink{"stderr"};
-    std::string log_level{"info"};
+    nds::server::BackendConfig backend;
+    std::string listen{"0.0.0.0:18515"};
 };
 
-int parse(int argc, char **argv, Config *config, bool *exit_requested) {
-    CLI::App app{"Receive one or more NDS verbs Sends."};
-    app.add_option("--device", config->transport.backend.device_name)->required();
-    app.add_option("--gid-index", config->transport.backend.gid_index)->required();
-    app.add_option("--listen", config->transport.listen_address);
-    app.add_option("--ib-port", config->transport.backend.port);
-    app.add_option("--max-qp-count", config->transport.max_qp_count, "Maximum QPs accepted per client")
-        ->check(CLI::Range(1U, nds::wire::kMaxQpInfoBatch));
-    app.add_option("--receives", config->receives, "Number of Receive WQEs to post")->check(CLI::Range(1U, 2U));
-    app.add_option("--operation", config->operation)->check(CLI::IsMember({"send", "send-batch", "recv"}));
-    app.add_option("--log-sink", config->log_sink)->check(CLI::IsMember({"stderr", "stdout", "syslog", "none"}));
-    app.add_option("--log-level", config->log_level)
-        ->check(CLI::IsMember({"trace", "debug", "info", "warn", "error", "critical", "off"}));
+nds::Result<Config> parse(int argc, char **argv) {
+    Config config;
+    CLI::App app{"Receive a direct RA verbs Send with a TCP QP bootstrap."};
+    app.add_option("--device", config.backend.device_name)->required();
+    app.add_option("--gid-index", config.backend.gid_index)->required();
+    app.add_option("--listen", config.listen);
+    app.add_option("--ib-port", config.backend.port);
     try {
         app.parse(argc, argv);
-    } catch (const CLI::CallForHelp &help) {
-        *exit_requested = true;
-        return app.exit(help);
     } catch (const CLI::ParseError &error) {
-        return app.exit(error);
+        return nds::unexpected(nds::ErrorCode::kInvalidArgument,
+                               app.exit(error) == 0 ? "help requested" : "invalid options");
     }
-    return 0;
+    return config;
 }
 
 }  // namespace
 
 int main(int argc, char **argv) {
     (void)nds::log::configure("verbs-server", "stderr", "info");
-    Config config;
-    bool exit_requested{};
-    const int result = parse(argc, argv, &config, &exit_requested);
-    if (exit_requested || result != 0)
-        return result;
-    if (!nds::log::configure("verbs-server", config.log_sink, config.log_level))
+    const auto config = parse(argc, argv);
+    if (!config) {
+        NDS_LOG_ERROR("verbs-server", "options failed: {}", config.error().message);
         return EXIT_FAILURE;
+    }
+    const auto address = nds::parse_tcp_address(config->listen);
+    if (!address) {
+        NDS_LOG_ERROR("verbs-server", "invalid listen address: {}", address.error().message);
+        return EXIT_FAILURE;
+    }
+    const auto listener = nds::TcpListener::listen(address->ipv4, address->port, 1);
+    if (!listener) {
+        NDS_LOG_ERROR("verbs-server", "listener open failed: {}", listener.error().message);
+        return EXIT_FAILURE;
+    }
+    const auto channel = listener->accept();
+    if (!channel) {
+        NDS_LOG_ERROR("verbs-server", "TCP accept failed: {}", channel.error().message);
+        return EXIT_FAILURE;
+    }
 
-    nds::server::TransportListener listener;
-    if (const auto opened = listener.open(config.transport); !opened) {
-        NDS_LOG_ERROR("verbs-server", "listener open failed: {}", opened.error().message);
+    nds::server::VerbsBackend backend;
+    if (const auto opened = backend.open(config->backend, 1U); !opened) {
+        NDS_LOG_ERROR("verbs-server", "verbs backend open failed: {}", opened.error().message);
         return EXIT_FAILURE;
     }
-    nds::server::Transport transport;
-    if (const auto accepted = listener.accept(&transport); !accepted) {
-        NDS_LOG_ERROR("verbs-server", "transport accept failed: {}", accepted.error().message);
+    const auto peer = nds::examples::verbs::exchange_qp(&*channel, backend.local_qp_infos().front(), false);
+    if (!peer) {
+        NDS_LOG_ERROR("verbs-server", "QP exchange failed: {}", peer.error().message);
         return EXIT_FAILURE;
     }
-    if (config.operation == "recv") {
-        std::array<std::byte, 64U> payload{};
-        for (std::size_t index = 0U; index < payload.size(); ++index)
-            payload[index] = static_cast<std::byte>(index ^ 0x5aU);
-        const auto region =
-            transport.register_memory(payload.data(), payload.size(), nds::server::MemoryAccess::LocalRead);
-        std::uint8_t ready{};
-        if (!region || !transport.exchange_channel()->receive(std::as_writable_bytes(std::span{&ready, 1U})) ||
-            ready != 1U || !transport.send(*region, payload.size())) {
-            NDS_LOG_ERROR("verbs-server", "verbs PostRecv exchange failed");
-            return EXIT_FAILURE;
-        }
-        NDS_LOG_INFO("verbs-server", "completed NDS verbs receive peer exchange");
-        return EXIT_SUCCESS;
+    if (const auto connected = backend.connect({*peer}); !connected) {
+        NDS_LOG_ERROR("verbs-server", "QP connection failed: {}", connected.error().message);
+        return EXIT_FAILURE;
     }
-    std::vector<std::array<std::byte, 64U>> payloads(config.receives);
-    std::vector<nds::server::RegisteredRegion> receives;
-    receives.reserve(payloads.size());
-    for (auto &payload : payloads) {
-        auto prepared = transport.prepare_receive(payload.data(), payload.size());
-        if (!prepared) {
-            NDS_LOG_ERROR("verbs-server", "verbs Receive setup failed");
-            return EXIT_FAILURE;
-        }
-        receives.push_back(std::move(*prepared));
+
+    // The CPU side owns one receive MR and one posted receive for the client's Send.
+    std::array<std::byte, 64U> payload{};
+    const auto region = backend.register_memory(payload.data(), payload.size(), IBV_ACCESS_LOCAL_WRITE);
+    if (!region) {
+        NDS_LOG_ERROR("verbs-server", "memory registration failed: {}", region.error().message);
+        return EXIT_FAILURE;
     }
-    for (std::uint32_t receive_index = 0U; receive_index < config.receives; ++receive_index) {
-        if (!transport.receive(5000U)) {
-            NDS_LOG_ERROR("verbs-server", "verbs Receive {} failed", receive_index);
-            return EXIT_FAILURE;
-        }
-        for (std::size_t byte_index = 0U; byte_index < payloads[receive_index].size(); ++byte_index) {
-            const std::byte expected =
-                static_cast<std::byte>((receive_index * payloads[receive_index].size() + byte_index) ^ 0x5aU);
-            if (payloads[receive_index][byte_index] != expected) {
-                NDS_LOG_ERROR("verbs-server", "verbs Receive {} payload mismatch at byte {}", receive_index,
-                              byte_index);
-                return EXIT_FAILURE;
-            }
-        }
+    if (const auto posted = backend.post_receive(0U, *region); !posted) {
+        NDS_LOG_ERROR("verbs-server", "receive post failed: {}", posted.error().message);
+        return EXIT_FAILURE;
     }
-    NDS_LOG_INFO("verbs-server", "completed {} NDS verbs receives", config.receives);
+    // Do not let the client submit until the receive is armed.
+    if (const auto ready = nds::examples::verbs::send_ready(&*channel); !ready) {
+        NDS_LOG_ERROR("verbs-server", "client readiness failed: {}", ready.error().message);
+        return EXIT_FAILURE;
+    }
+    if (const auto completed = backend.wait_receive(0U, 5000U); !completed) {
+        NDS_LOG_ERROR("verbs-server", "receive completion failed: {}", completed.error().message);
+        return EXIT_FAILURE;
+    }
+    NDS_LOG_INFO("verbs-server", "completed direct RA verbs receive");
     return EXIT_SUCCESS;
 }

@@ -8,6 +8,7 @@ target_include_directories(nds_client_loaders
     PRIVATE loaders)
 target_link_libraries(nds_client_loaders PUBLIC ${CMAKE_DL_LIBS} tl::expected)
 target_compile_options(nds_client_loaders PRIVATE -Wall -Wextra -Wpedantic -Werror)
+set_target_properties(nds_client_loaders PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 find_path(NDS_ACL_INCLUDE_DIR NAMES acl/acl.h
     HINTS "${NDS_CANN_ROOT}/include" "${NDS_CANN_ROOT}/aarch64-linux/include" NO_DEFAULT_PATH REQUIRED)
@@ -31,11 +32,13 @@ add_library(nds_client_runtime STATIC runtime.cc)
 target_include_directories(nds_client_runtime PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${PROJECT_SOURCE_DIR}/src/include)
 target_link_libraries(nds_client_runtime PUBLIC nds_client_loaders nds_ascendcl tl::expected)
 target_compile_options(nds_client_runtime PRIVATE -Wall -Wextra -Wpedantic -Werror)
+set_target_properties(nds_client_runtime PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 add_library(nds_client_endpoint STATIC endpoint.cc)
 target_include_directories(nds_client_endpoint PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} include)
 target_link_libraries(nds_client_endpoint PUBLIC nds_client_runtime nds_client_loaders nds_transport)
 target_compile_options(nds_client_endpoint PRIVATE -Wall -Wextra -Wpedantic -Werror)
+set_target_properties(nds_client_endpoint PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 add_library(nds_ra STATIC
     backends/ra/verbs.cc
@@ -44,18 +47,22 @@ add_library(nds_ra STATIC
 target_include_directories(nds_ra PUBLIC backends/ra ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(nds_ra PUBLIC nds_client_runtime nds_client_endpoint nds_logging)
 target_compile_options(nds_ra PRIVATE -Wall -Wextra -Wpedantic -Werror)
+set_target_properties(nds_ra PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
-add_library(nds_aiv_launcher STATIC backends/aiv/host/launcher.cc)
-target_include_directories(nds_aiv_launcher PUBLIC
-    backends include ${PROJECT_SOURCE_DIR}/src/include)
-target_link_libraries(nds_aiv_launcher PUBLIC nds_ascendcl tl::expected)
-target_compile_options(nds_aiv_launcher PRIVATE -Wall -Wextra -Wpedantic -Werror)
+# The NDS-owned RA package contains the verbs, transport, and storage backend layers.
+add_library(nds_ra_backend SHARED
+    backends/ra/entrypoints.cc
+    backends/ra/verbs.cc
+    backends/ra/transport.cc
+    backends/ra/storage.cc)
+target_include_directories(nds_ra_backend PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} backends/ra ${PROJECT_SOURCE_DIR}/src/include)
+target_link_libraries(nds_ra_backend PRIVATE nds_client_runtime nds_client_endpoint nds_logging)
+target_compile_options(nds_ra_backend PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
-add_library(nds_aicpu_launcher STATIC backends/aicpu/host/launcher.cc)
-target_include_directories(nds_aicpu_launcher PUBLIC
-    backends include ${PROJECT_SOURCE_DIR}/src/include)
-target_link_libraries(nds_aicpu_launcher PUBLIC nds_ascendcl tl::expected)
-target_compile_options(nds_aicpu_launcher PRIVATE -Wall -Wextra -Wpedantic -Werror)
+add_library(nds_backend_launcher STATIC backends/launcher.cc)
+target_include_directories(nds_backend_launcher PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/backends ${CMAKE_CURRENT_SOURCE_DIR} include ${PROJECT_SOURCE_DIR}/src/include)
+target_link_libraries(nds_backend_launcher PUBLIC nds_ascendcl nds_client_loaders tl::expected)
+target_compile_options(nds_backend_launcher PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 add_library(nds_client_control STATIC
     transport.cc)
@@ -66,8 +73,7 @@ target_link_libraries(nds_client_control PUBLIC
     nds_client_runtime
     nds_client_endpoint
     nds_ra
-    nds_aiv_launcher
-    nds_aicpu_launcher
+    nds_backend_launcher
     nds_transport)
 target_compile_options(nds_client_control PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
@@ -78,8 +84,7 @@ target_include_directories(nds_client_storage PUBLIC
 target_link_libraries(nds_client_storage PUBLIC
     nds_client_control
     nds_ra
-    nds_aiv_launcher
-    nds_aicpu_launcher
+    nds_backend_launcher
     nds_storage_protocol)
 target_compile_options(nds_client_storage PRIVATE -Wall -Wextra -Wpedantic -Werror)
 

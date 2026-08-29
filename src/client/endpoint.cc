@@ -345,6 +345,8 @@ Result<NdsDeviceTransport> QueuePair::make_device_transport() const {
     output.control_qp.provider_qp_address = ai_qp_info_.ai_qp_address;
     output.control_qp.provider_send_cq_address = ai_qp_info_.ai_scq_address;
     output.control_qp.provider_receive_cq_address = ai_qp_info_.ai_rcq_address;
+    output.control_qp.host_runtime_address = reinterpret_cast<std::uint64_t>(endpoint_->runtime_);
+    output.control_qp.host_qp_address = reinterpret_cast<std::uint64_t>(this);
     output.control_qp.send_queue = copy_wq(source->send_wq, send_wr_ids_, true);
     output.control_qp.receive_queue = copy_wq(source->receive_wq, receive_wr_ids_, false);
     output.control_qp.send_cq = copy_cq(source->send_cq);

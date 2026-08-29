@@ -65,7 +65,7 @@ run_client() {
         aicpu)
             local overlay
             overlay="$(nds_prepare_aicpu_overlay "${case_dir}" "${cann}" "${build}")"
-            client+=(--aicpu-kernel-config "${overlay}/opp/vendors/nds/aicpu/config/nds_aicpu_standard.json")
+            client+=(--aicpu-kernel "${overlay}/opp/vendors/nds/aicpu/config/nds_aicpu_standard.json")
             timeout "${case_timeout}" sudo -n unshare -m "${support_dir}/run_with_aicpu_package.sh" \
                 "${overlay}" "${cann}" "${client[@]}" >"${client_log}" 2>&1
             ;;

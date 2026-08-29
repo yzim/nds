@@ -36,8 +36,7 @@ nds::Result<int> parse_args(int argc, char **argv, ClientConfig *config, bool *e
     app.add_option("--ra", config->transport.endpoint.ra_library, "CANN RA shared library")->required();
     std::string backend{"ra"};
     app.add_option("--backend", backend, "Storage backend mode")->check(CLI::IsMember({"ra", "aicpu", "aiv"}));
-    app.add_option("--aicpu-kernel-config", config->backend.aicpu_kernel_config,
-                   "AICPU standard-kernel package configuration");
+    app.add_option("--aicpu-kernel", config->backend.aicpu_kernel, "AICPU standard-kernel package");
     app.add_option("--aiv-kernel", config->backend.aiv_kernel, "AIV kernel binary");
     app.add_option("--operation", config->operation, "Storage operation")
         ->check(CLI::IsMember({"read", "write", "batch-read", "batch-write"}));
@@ -74,7 +73,7 @@ nds::Result<int> parse_args(int argc, char **argv, ClientConfig *config, bool *e
         config->backend.mode = nds::client::NpuBackend::Aicpu;
     if (backend == "aiv")
         config->backend.mode = nds::client::NpuBackend::Aiv;
-    if ((backend == "aicpu" && config->backend.aicpu_kernel_config.empty()) ||
+    if ((backend == "aicpu" && config->backend.aicpu_kernel.empty()) ||
         (backend == "aiv" && config->backend.aiv_kernel.empty())) {
         return nds::unexpected(nds::ErrorCode::kInvalidArgument, "invalid option combination");
     }

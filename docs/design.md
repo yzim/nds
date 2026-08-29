@@ -53,6 +53,11 @@ src/common/             shared transport implementation
 src/torch/              reusable PyTorch extension
 ```
 
+The RA backend is also built as the NDS-owned `nds_ra_backend` shared artifact.
+It packages the RA verbs, transport, and storage layers behind C entrypoints;
+`RaLauncher` resolves the complete entrypoint set at runtime. The artifact is
+separate from the vendor `libra.so` loader and does not replace that loader.
+
 ## Wire boundary and resources
 
 The TCP connection carries exact bytes and has no framing or typed operations.

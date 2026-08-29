@@ -2,8 +2,7 @@
 
 #include "transport_protocol.hh"
 
-#include "aicpu/host/launcher.hh"
-#include "aiv/host/launcher.hh"
+#include "launcher.hh"
 #include "ra/ra.hh"
 
 #include <cstddef>
@@ -606,7 +605,7 @@ Result<void> Transport::initialize_launcher() {
         return {};
     }
     aicpu_launcher_ = std::make_unique<AicpuLauncher>();
-    if (const auto loaded = aicpu_launcher_->load(backend_.aicpu_kernel_config); !loaded)
+    if (const auto loaded = aicpu_launcher_->load(backend_.aicpu_kernel); !loaded)
         return unexpected(loaded.error());
     return {};
 }

@@ -33,7 +33,7 @@ struct TransportConfig {
 
 struct BackendConfig {
     NpuBackend mode{NpuBackend::Ra};
-    std::string aicpu_kernel_config;
+    std::string aicpu_kernel;
     std::string aiv_kernel;
 };
 

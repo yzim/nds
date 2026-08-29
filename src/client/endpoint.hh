@@ -103,7 +103,7 @@ public:
     const NdsRaQpAttr &local_attributes() const noexcept;
     NpuBackend backend_mode() const noexcept;
 
-    /* Temporary RA backend accessors; replaced by explicit backend views next. */
+    /* RA provider state remains owned by the endpoint and is accessed by the RA backend layer. */
     NdsRaApi *ra_api() const noexcept;
     void *handle() const noexcept;
     NdsRaSge *posted_send_sge() noexcept;

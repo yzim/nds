@@ -1,7 +1,6 @@
 #include "storage.hh"
 
-#include "aicpu/host/launcher.hh"
-#include "aiv/host/launcher.hh"
+#include "launcher.hh"
 #include "ra/ra.hh"
 
 #include <chrono>
@@ -118,7 +117,7 @@ Result<void> submit_device_storage(Runtime *runtime, QueuePair *qp, const Backen
         if (const auto copied = runtime->copy_host_to_device(device_args.get(), &args, sizeof(args)); !copied)
             return unexpected(copied.error());
         AicpuLauncher launcher;
-        if (const auto loaded = launcher.load(backend.aicpu_kernel_config); !loaded)
+        if (const auto loaded = launcher.load(backend.aicpu_kernel); !loaded)
             return unexpected(loaded.error());
         if (const auto launched = launch_aicpu(&launcher, reinterpret_cast<std::uint64_t>(device_args.get()), &args);
             !launched)
@@ -200,7 +199,7 @@ Result<DeviceStorageWaitResult> wait_device_storage(Runtime *runtime, QueuePair 
         if (const auto copied = runtime->copy_host_to_device(device_args.get(), &args, sizeof(args)); !copied)
             return unexpected(copied.error());
         AicpuLauncher launcher;
-        if (const auto loaded = launcher.load(backend.aicpu_kernel_config); !loaded)
+        if (const auto loaded = launcher.load(backend.aicpu_kernel); !loaded)
             return unexpected(loaded.error());
         if (const auto launched = launcher.launch_and_wait(
                 "nds_aicpu_storage_wait_kernel", reinterpret_cast<std::uint64_t>(device_args.get()), timeout_ms);

@@ -88,12 +88,12 @@ static inline int nds_device_storage_wait_valid(const NdsDeviceStorageContext *c
     return nds_device_storage_context_valid(context) && command_id != 0U && expected_bytes != 0U;
 }
 
-static_assert(sizeof(NdsDeviceStorageContext) == 272, "device storage context ABI changed");
-static_assert(sizeof(NdsDeviceStorageReadArgs) == 328, "device storage read ABI changed");
-static_assert(sizeof(NdsDeviceStorageWriteArgs) == 328, "device storage write ABI changed");
-static_assert(sizeof(NdsDeviceStorageBatchReadArgs) == 328, "device storage batch-read ABI changed");
-static_assert(sizeof(NdsDeviceStorageBatchWriteArgs) == 328, "device storage batch-write ABI changed");
-static_assert(sizeof(NdsDeviceStorageWaitArgs) == 296, "device storage wait ABI changed");
+static_assert(sizeof(NdsDeviceStorageContext) == 288, "device storage context ABI changed");
+static_assert(sizeof(NdsDeviceStorageReadArgs) == 344, "device storage read ABI changed");
+static_assert(sizeof(NdsDeviceStorageWriteArgs) == 344, "device storage write ABI changed");
+static_assert(sizeof(NdsDeviceStorageBatchReadArgs) == 344, "device storage batch-read ABI changed");
+static_assert(sizeof(NdsDeviceStorageBatchWriteArgs) == 344, "device storage batch-write ABI changed");
+static_assert(sizeof(NdsDeviceStorageWaitArgs) == 312, "device storage wait ABI changed");
 static_assert(offsetof(NdsDeviceStorageReadArgs, return_value) > offsetof(NdsDeviceStorageReadArgs, command),
               "device storage read result must follow the request");
 static_assert(offsetof(NdsDeviceStorageWriteArgs, return_value) > offsetof(NdsDeviceStorageWriteArgs, command),

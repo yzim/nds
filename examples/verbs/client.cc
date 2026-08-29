@@ -1,115 +1,58 @@
+#include "direct.hh"
+#include "endpoint.hh"
 #include "logging.hh"
 #include "runtime.hh"
-#include "transport.hh"
 
 #include <CLI/CLI.hpp>
 
 #include <array>
-#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
-#include <span>
 #include <string>
+#include <utility>
 
 namespace {
 
-constexpr std::size_t kPayloadBytes = 64U;
-constexpr std::size_t kBatchCount = 2U;
-using Payload = std::array<std::byte, kPayloadBytes>;
-using BatchPayload = std::array<Payload, kBatchCount>;
-
 struct Config {
     nds::client::RuntimeConfig runtime;
-    nds::client::TransportConfig transport;
-    nds::client::BackendConfig backend;
-    std::string operation{"send"};
+    nds::client::EndpointConfig endpoint;
+    nds::examples::verbs::BackendConfig backend;
+    std::string server;
 };
 
 nds::Result<Config> parse(int argc, char **argv) {
     Config config;
-    std::string backend{"ra"};
-    CLI::App app{"Exercise NDS transport verbs requests."};
-    app.add_option("--backend", backend)->required()->check(CLI::IsMember({"ra", "aiv", "aicpu"}));
+    CLI::App app{"Exercise direct NPU verbs with a TCP QP bootstrap."};
     app.add_option("--cann-runtime", config.runtime.cann_runtime_library)->required();
-    app.add_option("--ra", config.transport.endpoint.ra_library)->required();
-    app.add_option("--aiv-kernel", config.backend.aiv_kernel);
-    app.add_option("--aicpu-kernel-config", config.backend.aicpu_kernel_config);
+    app.add_option("--ra", config.endpoint.ra_library)->required();
+    app.add_option("--ra-backend", config.backend.ra_backend);
     app.add_option("--logical-device", config.runtime.logical_device_id)->required();
-    app.add_option("--server", config.transport.server_address)->required();
-    app.add_option("--qp-count", config.transport.qp_count)->check(CLI::Range(1U, nds::wire::kMaxQpInfoBatch));
-    app.add_option("--operation", config.operation)->check(CLI::IsMember({"send", "send-batch", "recv"}));
+    app.add_option("--server", config.server)->required();
+    std::string backend_name{"ra"};
+    app.add_option("--backend", backend_name, "Backend: ra, aiv, or aicpu");
+    app.add_option("--aiv-kernel", config.backend.aiv_kernel);
+    app.add_option("--aicpu-kernel", config.backend.aicpu_kernel);
     try {
         app.parse(argc, argv);
     } catch (const CLI::ParseError &error) {
         return nds::unexpected(nds::ErrorCode::kInvalidArgument,
                                app.exit(error) == 0 ? "help requested" : "invalid options");
     }
-    if (backend == "aiv")
+    if (backend_name == "ra")
+        config.backend.mode = nds::client::NpuBackend::Ra;
+    else if (backend_name == "aiv")
         config.backend.mode = nds::client::NpuBackend::Aiv;
-    else if (backend == "aicpu")
+    else if (backend_name == "aicpu")
         config.backend.mode = nds::client::NpuBackend::Aicpu;
-    if ((config.backend.mode == nds::client::NpuBackend::Aiv && config.backend.aiv_kernel.empty()) ||
-        (config.backend.mode == nds::client::NpuBackend::Aicpu && config.backend.aicpu_kernel_config.empty())) {
-        return nds::unexpected(nds::ErrorCode::kInvalidArgument, "device backend requires its kernel artifact");
-    }
-    if (config.operation == "send-batch" && config.backend.mode == nds::client::NpuBackend::Aicpu) {
-        return nds::unexpected(nds::ErrorCode::kUnsupported,
-                               "AICPU Send batches require a linked-provider implementation");
-    }
+    else
+        return nds::unexpected(nds::ErrorCode::kInvalidArgument, "--backend must be ra, aiv, or aicpu");
+    if (config.backend.mode == nds::client::NpuBackend::Aiv && config.backend.aiv_kernel.empty())
+        return nds::unexpected(nds::ErrorCode::kInvalidArgument, "--aiv-kernel is required for AIV");
+    if (config.backend.mode == nds::client::NpuBackend::Aicpu && config.backend.aicpu_kernel.empty())
+        return nds::unexpected(nds::ErrorCode::kInvalidArgument, "--aicpu-kernel is required for AICPU");
+    if (config.backend.mode == nds::client::NpuBackend::Ra && config.backend.ra_backend.empty())
+        return nds::unexpected(nds::ErrorCode::kInvalidArgument, "--ra-backend is required for RA");
     return config;
-}
-
-BatchPayload payloads() {
-    BatchPayload payload{};
-    for (std::size_t payload_index = 0U; payload_index < payload.size(); ++payload_index) {
-        for (std::size_t byte_index = 0U; byte_index < payload[payload_index].size(); ++byte_index)
-            payload[payload_index][byte_index] =
-                static_cast<std::byte>((payload_index * kPayloadBytes + byte_index) ^ 0x5aU);
-    }
-    return payload;
-}
-
-nds::Result<void> send(nds::client::Runtime *runtime, nds::client::Transport *transport, nds::client::QueueHandle queue,
-                       const BatchPayload &payload, bool batch) {
-    auto buffer = runtime->allocate(sizeof(payload));
-    if (!buffer)
-        return nds::unexpected(buffer.error());
-    if (const auto copied = runtime->copy_to(&*buffer, payload.data(), sizeof(payload)); !copied)
-        return nds::unexpected(copied.error());
-    const auto region = transport->register_memory(*buffer, nds::client::MemoryAccess::DirectNpu);
-    if (!region)
-        return nds::unexpected(region.error());
-    if (batch) {
-        const std::array requests{nds::client::TransportSend{&*region, kPayloadBytes, 0U},
-                                  nds::client::TransportSend{&*region, kPayloadBytes, kPayloadBytes}};
-        if (const auto submitted = transport->send_batch(queue, requests); !submitted)
-            return nds::unexpected(submitted.error());
-    } else if (const auto submitted = transport->send(queue, {&*region, kPayloadBytes}); !submitted) {
-        return nds::unexpected(submitted.error());
-    }
-    return {};
-}
-
-nds::Result<void> receive(nds::client::Runtime *runtime, nds::client::Transport *transport,
-                          nds::client::QueueHandle queue, const Payload &expected) {
-    auto buffer = runtime->allocate(expected.size());
-    if (!buffer)
-        return nds::unexpected(buffer.error());
-    const auto region = transport->register_memory(*buffer, nds::client::MemoryAccess::DirectNpu);
-    if (!region)
-        return nds::unexpected(region.error());
-    if (const auto posted = transport->receive(queue, {&*region, static_cast<std::uint32_t>(expected.size())}); !posted)
-        return nds::unexpected(posted.error());
-    const std::uint8_t ready{1U};
-    if (const auto sent = transport->exchange_channel()->send(std::as_bytes(std::span{&ready, 1U})); !sent)
-        return nds::unexpected(sent.error());
-    if (const auto completed = transport->wait_receive(queue); !completed)
-        return nds::unexpected(completed.error());
-    Payload observed{};
-    if (const auto copied = runtime->copy_from(observed.data(), *buffer, observed.size()); !copied)
-        return nds::unexpected(copied.error());
-    return observed == expected ? nds::Result<void>{}
-                                : nds::unexpected(nds::ErrorCode::kRuntime, "verbs receive payload mismatch");
 }
 
 }  // namespace
@@ -121,29 +64,94 @@ int main(int argc, char **argv) {
         NDS_LOG_ERROR("verbs-client", "options failed: {}", config.error().message);
         return EXIT_FAILURE;
     }
+    const auto address = nds::parse_tcp_address(config->server);
+    if (!address) {
+        NDS_LOG_ERROR("verbs-client", "invalid server address: {}", address.error().message);
+        return EXIT_FAILURE;
+    }
+
     nds::client::Runtime runtime;
-    nds::client::Transport transport;
+    nds::client::Endpoint endpoint;
     if (const auto opened = runtime.open(config->runtime); !opened) {
         NDS_LOG_ERROR("verbs-client", "runtime open failed: {}", opened.error().message);
         return EXIT_FAILURE;
     }
-    if (const auto opened = transport.open(&runtime, config->transport, config->backend); !opened) {
-        NDS_LOG_ERROR("verbs-client", "transport open failed: {}", opened.error().message);
+    if (const auto opened = endpoint.open(&runtime, config->endpoint); !opened) {
+        NDS_LOG_ERROR("verbs-client", "endpoint open failed: {}", opened.error().message);
         return EXIT_FAILURE;
     }
-    const auto queue = transport.queue(0U);
-    if (!queue) {
-        NDS_LOG_ERROR("verbs-client", "transport queue unavailable: {}", queue.error().message);
+
+    // Keep the workload to one QP, matching the single receive posted by the CPU peer.
+    const nds::client::QueuePairConfig qp_config{};
+    const auto created = endpoint.create_qp(qp_config, config->backend.mode);
+    const auto channel = nds::TcpConnection::connect(address->ipv4, address->port, 5000U);
+    if (!created) {
+        NDS_LOG_ERROR("verbs-client", "QP creation failed: {}", created.error().message);
         return EXIT_FAILURE;
     }
-    const BatchPayload payload = payloads();
-    const auto completed = config->operation == "recv"         ? receive(&runtime, &transport, *queue, payload.front())
-                           : config->operation == "send-batch" ? send(&runtime, &transport, *queue, payload, true)
-                                                               : send(&runtime, &transport, *queue, payload, false);
-    if (!completed) {
-        NDS_LOG_ERROR("verbs-client", "{} failed: {}", config->operation, completed.error().message);
+    if (!channel) {
+        NDS_LOG_ERROR("verbs-client", "TCP connection failed: {}", channel.error().message);
         return EXIT_FAILURE;
     }
-    NDS_LOG_INFO("verbs-client", "completed NDS verbs {}", config->operation);
+    auto qp = std::move(*created);
+    const auto device_backend = nds::examples::verbs::open_device_backend(&runtime, &qp, qp_config, config->backend);
+    if (!device_backend) {
+        NDS_LOG_ERROR("verbs-client", "backend setup failed: {}", device_backend.error().message);
+        return EXIT_FAILURE;
+    }
+    const auto local = qp.local_qp_info();
+    if (!local) {
+        NDS_LOG_ERROR("verbs-client", "QP metadata failed: {}", local.error().message);
+        return EXIT_FAILURE;
+    }
+    const auto peer = nds::examples::verbs::exchange_qp(&*channel, *local, true);
+    if (!peer) {
+        NDS_LOG_ERROR("verbs-client", "QP exchange failed: {}", peer.error().message);
+        return EXIT_FAILURE;
+    }
+    if (const auto connected = qp.connect(*peer); !connected) {
+        NDS_LOG_ERROR("verbs-client", "QP connection failed: {}", connected.error().message);
+        return EXIT_FAILURE;
+    }
+
+    // Register exactly one device MR and use it for the Send WR.
+    std::array<std::byte, 64U> payload{};
+    const auto buffer = runtime.allocate(payload.size());
+    if (!buffer) {
+        NDS_LOG_ERROR("verbs-client", "NPU allocation failed: {}", buffer.error().message);
+        return EXIT_FAILURE;
+    }
+    const auto region = endpoint.reg_mr(*buffer, nds::client::MemoryAccess::DirectNpu);
+    if (!region) {
+        NDS_LOG_ERROR("verbs-client", "memory registration failed: {}", region.error().message);
+        return EXIT_FAILURE;
+    }
+    const NdsDeviceSendWr request{1U,
+                                  NDS_DEVICE_WR_SEND,
+                                  NDS_DEVICE_SEND_SIGNALED,
+                                  {region->address(), static_cast<std::uint32_t>(payload.size()), region->local_key()},
+                                  0U,
+                                  0U,
+                                  0U};
+    // The server signals readiness only after its receive WR is posted.
+    if (const auto ready = nds::examples::verbs::wait_ready(&*channel); !ready) {
+        NDS_LOG_ERROR("verbs-client", "server readiness failed: {}", ready.error().message);
+        return EXIT_FAILURE;
+    }
+    if (const auto submitted = nds::examples::verbs::submit_device(&runtime, &qp, *device_backend, request);
+        !submitted) {
+        NDS_LOG_ERROR("verbs-client", "Send failed: {}", submitted.error().message);
+        return EXIT_FAILURE;
+    }
+    // Only RA exposes a host CQ poll in this direct example. AI modes are confirmed by the CPU peer.
+    if (config->backend.mode == nds::client::NpuBackend::Ra) {
+        if (const auto completed = nds::examples::verbs::wait_ra_completion(device_backend->ra, &qp, true, 5000U);
+            !completed) {
+            NDS_LOG_ERROR("verbs-client", "RA Send completion failed: {}", completed.error().message);
+            return EXIT_FAILURE;
+        }
+    }
+    NDS_LOG_INFO("verbs-client", "submitted direct {} verbs Send",
+                 nds::examples::verbs::backend_name(config->backend.mode));
     return EXIT_SUCCESS;
 }
