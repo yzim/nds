@@ -26,7 +26,7 @@ NDS supports three backend modes across three API layers:
 | Storage | `StorageRead`, `StorageWrite`, batch Read/Write, PyTorch | ✓ | ✓ | ✓ |
 
 `ra` is the NPU-attached host CANN RA path; `aiv` is an NPU vector-core
-operator; `aicpu` is a standard-CP1 CPU-kernel operator.
+operator; `aicpu` is a CANN AICPU package operator.
 
 See [design](docs/design.md) for lifecycle, completion, and API details.
 
@@ -41,6 +41,18 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 ```
+
+The AICPU backend follows HCOMM's package path: CPU-kernel mode 0, an operator
+manifest and kernel archive installed below the selected CANN root, and an
+`ascend_package_load.ini` registration. Deploy the built package explicitly on
+the target rather than using an overlay:
+
+```sh
+scripts/install_aicpu_package.sh --cann-root <cann-root> --package-dir <build>/aicpu
+```
+
+Remove that package with `--uninstall`. This command modifies only NDS's vendor
+files and package-registration stanza in the selected CANN installation.
 
 ## Repository Layout
 

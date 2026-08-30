@@ -101,7 +101,7 @@ context. The selected backend mode determines QP creation:
 |---|---|---|---|
 | `ra` | `RaTypicalQpCreate` | OPBASE (`2`) | RA returns doorbell information. |
 | `aiv` | `RaAiQpCreate` | OPBASE_EXT (`4`) by default | Caller-owned work queues; HCCP-owned CQs. |
-| `aicpu` | `RaAiQpCreate` | NORMAL (`0`) | CP1 provider-owned Send path; HCCP-owned CQs. |
+| `aicpu` | `RaAiQpCreate` | NORMAL (`0`) | AICPU provider-owned Send path; HCCP-owned CQs. |
 
 The CPU creates one independent RC QP for each NPU QP and moves each through
 `INIT`, `RTR`, and `RTS`. Its active-port MTU determines `IBV_QP_PATH_MTU`; the
@@ -212,7 +212,7 @@ execution.
 |---|---|---|---|
 | `ra` | Host CPU: `NdsRaPostSend` calls `RaTypicalSendWr`, then `rtRDMADBSend` | Executes the post and submission | RA CQ available |
 | `aiv` | NPU AIV writes WQEs and rings a doorbell | Creates and launches the operation-specific device args | HCCP-owned SCQ/RCQ by default; caller-owned polling is opt-in |
-| `aicpu` | Standard CP1 provider posts Send | Creates and launches the operation-specific device args | HCCP-owned SCQ/RCQ by default; caller-owned polling is opt-in |
+| `aicpu` | AICPU provider posts Send | Creates and launches the operation-specific device args | HCCP-owned SCQ/RCQ by default; caller-owned polling is opt-in |
 
 ### Submission
 
@@ -259,7 +259,7 @@ normal OPBASE send path. HCOMM also batches several prepared WQEs before one
 runtime doorbell when its algorithm explicitly chooses that policy.
 
 AIV directly writes its WQE and doorbell in `PostSend`. AICPU uses the
-standard-CP1 provider's `ibv_exp_post_send`, whose documented ABI has no
+AICPU provider's `ibv_exp_post_send`, whose documented ABI has no
 deferred-doorbell control. Do not introduce a common deferred-submission API
 until a measured bottleneck justifies it and a documented AICPU mechanism can
 support its contract.
@@ -290,20 +290,29 @@ memory.
 
 ### AICPU
 
-AICPU is an NDS-built standard-CP1 package registered through ACL CPU-kernel
-mode `0`; this means package registration, not a process named CP0. CP1
-dynamically resolves `libhns-rdmav25.so:ibv_exp_post_send` within the device
-environment. The optional caller-owned CQ poll uses provider symbols when
-exported and the NDS queue-address fallback otherwise. The host process must never load this
-provider. NDS intentionally has no custom-process AICPU mode because CANN does
-not publish the required RNIC mapping/import contract.
+NDS follows HCOMM's AICPU deployment model. The backend uses
+`ACL_RT_BINARY_LOAD_OPT_CPU_KERNEL_MODE` with value `0`, and its operator JSON
+manifest and kernel archive are installed in the selected CANN root under
+`opp/vendors/nds`. The archive is registered in that CANN root's
+`ascend_package_load.ini`.
 
-Both AIV and AICPU launch through `aclrtLaunchKernelWithHostArgs`, passing one
-host-side `uint64_t` containing the device-global envelope address. The AIV
-`GM_ADDR` entrypoint consumes that scalar directly; the AICPU entrypoint
-decodes the scalar from CANN's host-argument storage before accessing the same
-device-resident envelope. The shared launch API is therefore input-only; the
-envelope's embedded result is copied back explicitly after synchronization.
+This is an implementation decision based on target validation, not merely a
+packaging preference. On node200, the CANN-root mode-0 package deployment
+completed the AI-QP operation. Two alternatives failed: Bisheng's
+compiler-embedded `<<< >>>` loading path, and a package loaded from outside
+the CANN package tree. The latter could load and submit an operator, but AICPU
+execution failed before the QP operation completed. NDS therefore does not use
+either alternative for this backend.
+
+`scripts/install_aicpu_package.sh` installs or removes exactly the NDS vendor
+files and registration stanza. Normal users do not need a mount-namespace
+overlay.
+
+The kernels use the required AICPU memory-sharing permission and dynamically resolve
+`libhns-rdmav25.so` only inside the AICPU device environment. The host process
+must never load that provider. Permission is a deployment concern independent
+of the one-pointer kernel ABI. The envelope's embedded result is copied back
+explicitly after synchronization.
 
 ## Runtime ABI boundary
 

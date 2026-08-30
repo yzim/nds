@@ -73,8 +73,9 @@ ctest --test-dir build-e2e --output-on-failure --label-regex '^e2e$'
 Each single case transfers 4096 bytes; each batch case transfers two 4096-byte
 entries in one command. Read starts the server with its deterministic seed
 pattern, which the client verifies. Write enables server-side payload
-verification. The AICPU case creates a private mount namespace for its
-standard-CP1 package overlay; it does not modify the installed CANN files.
+verification. AICPU uses the CANN-root mode-0 package in the client executable.
+Install that package explicitly before running the test; the E2E runner itself
+does not modify the CANN installation.
 
 When `NDS_BUILD_HARDWARE_PROBES=ON` is configured, CTest registers direct
 verbs and transport E2E cases for every available backend. AIV lower-layer

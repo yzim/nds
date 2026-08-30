@@ -20,7 +20,8 @@ current architecture and protocol contract.
   client-advertised response memory. The CPU listener may serve serial client
   sessions; it creates a fresh endpoint-local QP set only after accepting a
   session's count.
-- RA, AIV, and standard-CP1 AICPU implement the NPU command post. The
+- RA and AIV implement the NPU command post. The AICPU backend follows HCOMM's
+  CANN-root, CPU-kernel mode-0 package deployment path. The
   CPU-written NDS completion record remains the protocol completion in every
   mode.
 

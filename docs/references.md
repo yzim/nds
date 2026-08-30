@@ -27,7 +27,7 @@ device boundary.
   integration context; it is not part of the NDS CPU-peer topology.
 - [rdma-core](https://github.com/linux-rdma/rdma-core): standard verbs and
   provider patterns. The patched HNS provider is relevant only to the narrow
-  CP1 device-side post boundary.
+  AICPU device-side post boundary.
 - Public Ascend/CANN documentation and headers: AscendCL lifecycle, binary and
   CPU-kernel package loading, and public toolchain behavior.
 

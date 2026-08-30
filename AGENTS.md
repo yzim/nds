@@ -55,7 +55,7 @@ Source ownership and dependency direction are defined in [design](docs/design.md
   implementation code. Dynamically load the narrow CANN/RA boundary; link only
   platform dependencies and the CPU-only `libibverbs` target.
 - The host process must not load `libhns-rdmav25.so`. It is an NPU-side provider
-  dependency used only by the standard-CP1 AICPU kernel.
+  dependency used only by the standard AICPU kernel.
 
 ## Source and ABI rules
 
