@@ -12,7 +12,7 @@ if(NDS_BUILD_NPU_CLIENT AND TARGET nds_verbs_backend)
         nds_logging
         nds_client_endpoint
         nds_client_runtime
-        nds_backend_launcher
+        nds_backend_launchers
         nds_transport)
     target_compile_options(nds_verbs_benchmark_client PRIVATE -Wall -Wextra -Wpedantic -Werror)
 

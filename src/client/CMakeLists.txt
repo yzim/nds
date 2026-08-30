@@ -59,10 +59,14 @@ target_include_directories(nds_ra_backend PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} bac
 target_link_libraries(nds_ra_backend PRIVATE nds_client_runtime nds_client_endpoint nds_logging)
 target_compile_options(nds_ra_backend PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
-add_library(nds_backend_launcher STATIC backends/launcher.cc)
-target_include_directories(nds_backend_launcher PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/backends ${CMAKE_CURRENT_SOURCE_DIR} include ${PROJECT_SOURCE_DIR}/src/include)
-target_link_libraries(nds_backend_launcher PUBLIC nds_ascendcl nds_client_loaders tl::expected)
-target_compile_options(nds_backend_launcher PRIVATE -Wall -Wextra -Wpedantic -Werror)
+add_library(nds_backend_launchers STATIC
+    backends/dispatcher.cc
+    backends/ra/launcher.cc
+    backends/aiv/launcher.cc
+    backends/aicpu/launcher.cc)
+target_include_directories(nds_backend_launchers PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} include ${PROJECT_SOURCE_DIR}/src/include)
+target_link_libraries(nds_backend_launchers PUBLIC nds_ascendcl nds_client_loaders tl::expected)
+target_compile_options(nds_backend_launchers PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 add_library(nds_client_control STATIC
     transport.cc)
@@ -73,7 +77,7 @@ target_link_libraries(nds_client_control PUBLIC
     nds_client_runtime
     nds_client_endpoint
     nds_ra
-    nds_backend_launcher
+    nds_backend_launchers
     nds_transport)
 target_compile_options(nds_client_control PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
@@ -84,7 +88,7 @@ target_include_directories(nds_client_storage PUBLIC
 target_link_libraries(nds_client_storage PUBLIC
     nds_client_control
     nds_ra
-    nds_backend_launcher
+    nds_backend_launchers
     nds_storage_protocol)
 target_compile_options(nds_client_storage PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
@@ -106,7 +110,6 @@ if(NDS_BUILD_AIV_KERNEL)
     set(NDS_AIV_OUTPUT_DIR "${CMAKE_BINARY_DIR}/aiv")
     set(NDS_AIV_OBJECT "${NDS_AIV_OUTPUT_DIR}/nds_aiv_kernel.o")
     set(NDS_AIV_ENTRY_OBJECT "${NDS_AIV_OUTPUT_DIR}/nds_aiv_entry.o")
-    set(NDS_AIV_HOST_OBJECT "${NDS_AIV_OUTPUT_DIR}/nds_aiv_host.o")
     set(NDS_AIV_CCEC_INCLUDES
             -I${NDS_CANN_ROOT}/aarch64-linux/asc/include -I${NDS_CANN_ROOT}/aarch64-linux/asc
             -I${NDS_CANN_ROOT}/aarch64-linux/asc/include/interface -I${NDS_CANN_ROOT}/aarch64-linux/asc/include/basic_api
@@ -137,25 +140,7 @@ if(NDS_BUILD_AIV_KERNEL)
             "${CMAKE_CURRENT_SOURCE_DIR}/include/device_storage.h"
             "${PROJECT_SOURCE_DIR}/src/include/storage_protocol.hh"
         VERBATIM)
-    # ccec compiles the host wrapper and emits the launch stubs for its <<< >>>
-    # calls. Keep the wrapper and device object as one build artifact pair.
-    add_custom_command(
-        OUTPUT "${NDS_AIV_HOST_OBJECT}"
-        COMMAND "${CMAKE_COMMAND}" -E make_directory "${NDS_AIV_OUTPUT_DIR}"
-        COMMAND "${NDS_CCEC}" -c -x cce -O2 --cce-aicore-arch=dav-c220-vec -std=c++17
-            ${NDS_AIV_CCEC_INCLUDES}
-            -I${NDS_ACL_INCLUDE_DIR}
-            ${CMAKE_CURRENT_SOURCE_DIR}/backends/aiv/host/launcher.cc -o ${NDS_AIV_HOST_OBJECT}
-        DEPENDS "${NDS_AIV_OBJECT}"
-            "${CMAKE_CURRENT_SOURCE_DIR}/backends/aiv/host/launcher.cc"
-            "${CMAKE_CURRENT_SOURCE_DIR}/backends/aiv/host/launcher.hh"
-            "${NDS_AIV_DEVICE_DIR}/entrypoints.cc"
-            "${CMAKE_CURRENT_SOURCE_DIR}/include/device_transport.h"
-            "${CMAKE_CURRENT_SOURCE_DIR}/include/device_verbs.h"
-            "${CMAKE_CURRENT_SOURCE_DIR}/include/device_storage.h"
-            "${PROJECT_SOURCE_DIR}/src/include/storage_protocol.hh"
-        VERBATIM)
-    add_custom_target(nds_aiv_kernel ALL DEPENDS "${NDS_AIV_OBJECT}" "${NDS_AIV_HOST_OBJECT}")
+    add_custom_target(nds_aiv_kernel ALL DEPENDS "${NDS_AIV_OBJECT}")
 endif()
 
 if(NDS_BUILD_AICPU_KERNEL)

@@ -15,8 +15,9 @@
 #include <vector>
 
 namespace nds {
-class AicpuLauncher;
-class AivLauncher;
+namespace client {
+class BackendDispatcher;
+}
 }  // namespace nds
 
 namespace nds::client {
@@ -146,8 +147,7 @@ private:
     std::vector<MemoryBuffer> send_wr_ids_;
     std::vector<MemoryBuffer> receive_wr_ids_;
     std::vector<std::uint64_t> next_wr_ids_;
-    std::unique_ptr<nds::AivLauncher> aiv_launcher_;
-    std::unique_ptr<nds::AicpuLauncher> aicpu_launcher_;
+    std::unique_ptr<BackendDispatcher> backend_dispatcher_;
     TcpConnection exchange_channel_;
     std::vector<nds::transport::QpInfo> local_qps_;
 };

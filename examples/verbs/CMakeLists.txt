@@ -7,7 +7,7 @@ target_link_libraries(nds_verbs_client PRIVATE
     nds_logging
     nds_client_endpoint
     nds_client_runtime
-    nds_backend_launcher
+    nds_backend_launchers
     nds_transport)
 target_compile_options(nds_verbs_client PRIVATE -Wall -Wextra -Wpedantic -Werror)
 set_target_properties(nds_verbs_client PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")

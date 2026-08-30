@@ -2,7 +2,7 @@
 
 #include "transport_protocol.hh"
 
-#include "launcher.hh"
+#include "backends/dispatcher.hh"
 #include "ra/ra.hh"
 
 #include <cstddef>
@@ -20,29 +20,6 @@ namespace {
 constexpr std::uint32_t kTransportLaunchTimeoutMs = 5000U;
 
 enum class SendOperation { Send, Read, Write };
-
-struct AivThreeAddressArguments {
-    std::uint64_t first_address;
-    std::uint64_t second_address;
-    std::uint64_t return_value_address;
-};
-
-struct AivBatchArguments {
-    std::uint64_t qp_address;
-    std::uint64_t wrs_address;
-    std::uint32_t wr_count;
-    std::uint32_t reserved;
-    std::uint64_t bad_wr_address;
-    std::uint64_t return_value_address;
-};
-
-struct AivPollArguments {
-    std::uint64_t qp_address;
-    std::uint32_t is_send_cq;
-    std::uint32_t max_completions;
-    std::uint64_t wc_address;
-    std::uint64_t return_value_address;
-};
 
 Result<void> send_transport_info(TcpConnection *channel, const nds::transport::TransportInfo &info) {
     if (channel == nullptr)
@@ -65,192 +42,49 @@ Result<nds::transport::TransportInfo> receive_transport_info(TcpConnection *chan
     return info;
 }
 
-Result<void> launch_send(Runtime *runtime, const BackendConfig &backend, AivLauncher *aiv, AicpuLauncher *aicpu,
+Result<void> launch_send(Runtime *runtime, const BackendConfig &backend, BackendDispatcher *dispatcher,
                          const NdsDeviceTransport &device_transport, const NdsDeviceSendWr &wr,
                          SendOperation operation) {
-    if (backend.mode == NpuBackend::Ra) {
+    if (runtime == nullptr || dispatcher == nullptr || backend.mode == NpuBackend::Ra)
         return unexpected(ErrorCode::kInvalidArgument, "RA transport submissions require an RA queue");
+    switch (operation) {
+        case SendOperation::Send:
+            return dispatcher->rdma_send(*runtime, device_transport, wr, kTransportLaunchTimeoutMs);
+        case SendOperation::Read:
+            return dispatcher->rdma_read(*runtime, device_transport, wr, kTransportLaunchTimeoutMs);
+        case SendOperation::Write:
+            return dispatcher->rdma_write(*runtime, device_transport, wr, kTransportLaunchTimeoutMs);
     }
-    const char *const aicpu_kernel = operation == SendOperation::Send   ? "nds_aicpu_rdma_send_kernel"
-                                     : operation == SendOperation::Read ? "nds_aicpu_rdma_read_kernel"
-                                                                        : "nds_aicpu_rdma_write_kernel";
-    const char *const aiv_kernel = operation == SendOperation::Send   ? "nds_aiv_rdma_send_kernel"
-                                   : operation == SendOperation::Read ? "nds_aiv_rdma_read_kernel"
-                                                                      : "nds_aiv_rdma_write_kernel";
-    if (backend.mode == NpuBackend::Aicpu) {
-        NdsDeviceRdmaSendArgs request{device_transport, wr, std::numeric_limits<std::int32_t>::min()};
-        auto request_buffer = runtime->allocate(sizeof(request));
-        if (!request_buffer)
-            return unexpected(request_buffer.error());
-        if (const auto copied = runtime->copy_to(&*request_buffer, &request, sizeof(request)); !copied)
-            return unexpected(copied.error());
-        if (aicpu == nullptr)
-            return unexpected(ErrorCode::kRuntime, "AICPU transport launcher is unavailable");
-        if (const auto launched = aicpu->launch_and_wait(
-                aicpu_kernel, reinterpret_cast<std::uint64_t>(request_buffer->data()), kTransportLaunchTimeoutMs);
-            !launched) {
-            return unexpected(launched.error());
-        }
-        if (const auto copied = runtime->copy_from(&request, *request_buffer, sizeof(request)); !copied)
-            return unexpected(copied.error());
-        if (request.return_value != 0)
-            return unexpected(ErrorCode::kRuntime,
-                              "device transport send failed: " + std::to_string(request.return_value));
-        return {};
-    }
-
-    NdsDeviceRdmaSendArgs request{device_transport, wr, std::numeric_limits<std::int32_t>::min()};
-    auto request_buffer = runtime->allocate(sizeof(request));
-    if (!request_buffer)
-        return unexpected(request_buffer.error());
-    if (const auto copied = runtime->copy_to(&*request_buffer, &request, sizeof(request)); !copied)
-        return unexpected(copied.error());
-    if (aiv == nullptr)
-        return unexpected(ErrorCode::kRuntime, "AIV transport launcher is unavailable");
-    const std::uint64_t request_address = reinterpret_cast<std::uint64_t>(request_buffer->data());
-    AivThreeAddressArguments arguments{request_address + offsetof(NdsDeviceRdmaSendArgs, transport),
-                                       request_address + offsetof(NdsDeviceRdmaSendArgs, wr),
-                                       request_address + offsetof(NdsDeviceRdmaSendArgs, return_value)};
-    if (const auto launched =
-            aiv->launch_and_wait(aiv_kernel, &arguments, sizeof(arguments), kTransportLaunchTimeoutMs);
-        !launched) {
-        return unexpected(launched.error());
-    }
-    if (const auto copied = runtime->copy_from(&request, *request_buffer, sizeof(request)); !copied)
-        return unexpected(copied.error());
-    if (request.return_value != 0)
-        return unexpected(ErrorCode::kRuntime, "device transport send failed: " + std::to_string(request.return_value));
-    return {};
+    return unexpected(ErrorCode::kInvalidArgument, "invalid transport send operation");
 }
 
-Result<void> launch_receive(Runtime *runtime, const BackendConfig &backend, AivLauncher *aiv, AicpuLauncher *aicpu,
+Result<void> launch_receive(Runtime *runtime, const BackendConfig &backend, BackendDispatcher *dispatcher,
                             const NdsDeviceTransport &device_transport, const NdsDeviceRecvWr &wr) {
-    if (backend.mode == NpuBackend::Aicpu) {
-        NdsDeviceRdmaRecvArgs request{device_transport, wr, std::numeric_limits<std::int32_t>::min()};
-        auto request_buffer = runtime->allocate(sizeof(request));
-        if (!request_buffer)
-            return unexpected(request_buffer.error());
-        if (const auto copied = runtime->copy_to(&*request_buffer, &request, sizeof(request)); !copied)
-            return unexpected(copied.error());
-        if (aicpu == nullptr)
-            return unexpected(ErrorCode::kRuntime, "AICPU transport launcher is unavailable");
-        if (const auto launched = aicpu->launch_and_wait("nds_aicpu_rdma_recv_kernel",
-                                                         reinterpret_cast<std::uint64_t>(request_buffer->data()),
-                                                         kTransportLaunchTimeoutMs);
-            !launched) {
-            return unexpected(launched.error());
-        }
-        if (const auto copied = runtime->copy_from(&request, *request_buffer, sizeof(request)); !copied)
-            return unexpected(copied.error());
-        if (request.return_value != 0)
-            return unexpected(ErrorCode::kRuntime,
-                              "device transport receive failed: " + std::to_string(request.return_value));
-        return {};
-    }
-    NdsDeviceRdmaRecvArgs request{device_transport, wr, std::numeric_limits<std::int32_t>::min()};
-    auto request_buffer = runtime->allocate(sizeof(request));
-    if (!request_buffer)
-        return unexpected(request_buffer.error());
-    if (const auto copied = runtime->copy_to(&*request_buffer, &request, sizeof(request)); !copied)
-        return unexpected(copied.error());
-    if (aiv == nullptr)
-        return unexpected(ErrorCode::kRuntime, "AIV transport launcher is unavailable");
-    const std::uint64_t request_address = reinterpret_cast<std::uint64_t>(request_buffer->data());
-    AivThreeAddressArguments arguments{request_address + offsetof(NdsDeviceRdmaRecvArgs, transport),
-                                       request_address + offsetof(NdsDeviceRdmaRecvArgs, wr),
-                                       request_address + offsetof(NdsDeviceRdmaRecvArgs, return_value)};
-    if (const auto launched =
-            aiv->launch_and_wait("nds_aiv_rdma_recv_kernel", &arguments, sizeof(arguments), kTransportLaunchTimeoutMs);
-        !launched) {
-        return unexpected(launched.error());
-    }
-    if (const auto copied = runtime->copy_from(&request, *request_buffer, sizeof(request)); !copied)
-        return unexpected(copied.error());
-    if (request.return_value != 0)
-        return unexpected(ErrorCode::kRuntime,
-                          "device transport receive failed: " + std::to_string(request.return_value));
-    return {};
+    if (runtime == nullptr || dispatcher == nullptr || backend.mode == NpuBackend::Ra)
+        return unexpected(ErrorCode::kInvalidArgument, "RA transport receives require an RA queue");
+    return dispatcher->rdma_recv(*runtime, device_transport, wr, kTransportLaunchTimeoutMs);
 }
 
-Result<void> launch_send_batch(Runtime *runtime, AivLauncher *aiv, const NdsDeviceTransport &device_transport,
-                               std::span<const NdsDeviceSendWr> wrs) {
-    if (aiv == nullptr || wrs.empty())
+Result<void> launch_send_batch(Runtime *runtime, BackendDispatcher *dispatcher,
+                               const NdsDeviceTransport &device_transport, std::span<const NdsDeviceSendWr> wrs) {
+    if (runtime == nullptr || dispatcher == nullptr || wrs.empty())
         return unexpected(ErrorCode::kInvalidArgument, "AIV transport batch requires work requests");
-    auto wr_buffer = runtime->allocate(wrs.size_bytes());
-    if (!wr_buffer)
-        return unexpected(wr_buffer.error());
-    if (const auto copied = runtime->copy_to(&*wr_buffer, wrs.data(), wrs.size_bytes()); !copied)
-        return unexpected(copied.error());
-    NdsDevicePostSendBatchArgs request{device_transport.control_qp, reinterpret_cast<std::uint64_t>(wr_buffer->data()),
-                                       static_cast<std::uint32_t>(wrs.size()), std::numeric_limits<std::int32_t>::min(),
-                                       0U};
-    auto request_buffer = runtime->allocate(sizeof(request));
-    if (!request_buffer)
-        return unexpected(request_buffer.error());
-    if (const auto copied = runtime->copy_to(&*request_buffer, &request, sizeof(request)); !copied)
-        return unexpected(copied.error());
-    const std::uint64_t address = reinterpret_cast<std::uint64_t>(request_buffer->data());
-    AivBatchArguments arguments{address + offsetof(NdsDevicePostSendBatchArgs, qp),
-                                request.wrs_address,
-                                request.wr_count,
-                                0U,
-                                address + offsetof(NdsDevicePostSendBatchArgs, bad_wr_address),
-                                address + offsetof(NdsDevicePostSendBatchArgs, return_value)};
-    if (const auto launched = aiv->launch_and_wait("nds_aiv_post_send_batch_kernel", &arguments, sizeof(arguments),
-                                                   kTransportLaunchTimeoutMs);
-        !launched) {
-        return unexpected(launched.error());
-    }
-    if (const auto copied = runtime->copy_from(&request, *request_buffer, sizeof(request)); !copied)
-        return unexpected(copied.error());
-    return request.return_value == 0
-               ? Result<void>{}
-               : unexpected(ErrorCode::kRuntime, "AIV transport batch failed: " + std::to_string(request.return_value));
+    return dispatcher->post_send_batch(*runtime, device_transport.control_qp, wrs, kTransportLaunchTimeoutMs);
 }
 
-Result<void> launch_poll(Runtime *runtime, const BackendConfig &backend, AivLauncher *aiv, AicpuLauncher *aicpu,
+Result<void> launch_poll(Runtime *runtime, const BackendConfig &backend, BackendDispatcher *dispatcher,
                          const NdsDeviceTransport &device_transport, bool send_cq) {
-    auto wc = runtime->allocate(sizeof(NdsDeviceWc));
-    if (!wc)
-        return unexpected(wc.error());
-    auto request_buffer = runtime->allocate(sizeof(NdsDevicePollCqArgs));
-    if (!request_buffer)
-        return unexpected(request_buffer.error());
+    if (runtime == nullptr || dispatcher == nullptr || backend.mode == NpuBackend::Ra)
+        return unexpected(ErrorCode::kInvalidArgument, "RA CQ polling does not use the AI backend dispatcher");
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(kTransportLaunchTimeoutMs);
     while (std::chrono::steady_clock::now() < deadline) {
-        NdsDevicePollCqArgs request{device_transport.control_qp, send_cq ? 1U : 0U, 1U,
-                                    reinterpret_cast<std::uint64_t>(wc->data()),
-                                    std::numeric_limits<std::int32_t>::min()};
-        if (const auto copied = runtime->copy_to(&*request_buffer, &request, sizeof(request)); !copied)
-            return unexpected(copied.error());
-        if (backend.mode == NpuBackend::Aicpu) {
-            if (aicpu == nullptr)
-                return unexpected(ErrorCode::kRuntime, "AICPU transport launcher is unavailable");
-            if (const auto launched = aicpu->launch_and_wait("nds_aicpu_poll_cq_kernel",
-                                                             reinterpret_cast<std::uint64_t>(request_buffer->data()),
-                                                             kTransportLaunchTimeoutMs);
-                !launched) {
-                return unexpected(launched.error());
-            }
-        } else {
-            if (aiv == nullptr)
-                return unexpected(ErrorCode::kRuntime, "AIV transport launcher is unavailable");
-            const std::uint64_t address = reinterpret_cast<std::uint64_t>(request_buffer->data());
-            AivPollArguments arguments{address + offsetof(NdsDevicePollCqArgs, qp), send_cq ? 1U : 0U, 1U,
-                                       reinterpret_cast<std::uint64_t>(wc->data()),
-                                       address + offsetof(NdsDevicePollCqArgs, return_value)};
-            if (const auto launched = aiv->launch_and_wait("nds_aiv_poll_cq_kernel", &arguments, sizeof(arguments),
-                                                           kTransportLaunchTimeoutMs);
-                !launched) {
-                return unexpected(launched.error());
-            }
-        }
-        if (const auto copied = runtime->copy_from(&request, *request_buffer, sizeof(request)); !copied)
-            return unexpected(copied.error());
-        if (request.return_value > 0)
+        NdsDeviceWc completion{};
+        const auto polled = dispatcher->poll_cq(*runtime, device_transport.control_qp, send_cq, 1U, &completion,
+                                                kTransportLaunchTimeoutMs);
+        if (!polled)
+            return unexpected(polled.error());
+        if (*polled != 0U)
             return {};
-        if (request.return_value < 0)
-            return unexpected(ErrorCode::kRuntime, "device CQ poll failed: " + std::to_string(request.return_value));
         std::this_thread::yield();
     }
     return unexpected(ErrorCode::kRuntime, "timed out waiting for transport CQ completion");
@@ -482,14 +316,15 @@ Result<void> Transport::submit_sends(QueueHandle queue, std::span<const SendRequ
     if (!device_transport)
         return unexpected(device_transport.error());
     if (backend_.mode == NpuBackend::Aiv) {
-        if (const auto submitted = launch_send_batch(runtime_, aiv_launcher_.get(), *device_transport, wrs); !submitted)
+        if (const auto submitted = launch_send_batch(runtime_, backend_dispatcher_.get(), *device_transport, wrs);
+            !submitted)
             return unexpected(submitted.error());
     } else {
         const SendOperation operation = opcode == NDS_DEVICE_WR_SEND        ? SendOperation::Send
                                         : opcode == NDS_DEVICE_WR_RDMA_READ ? SendOperation::Read
                                                                             : SendOperation::Write;
-        if (const auto submitted = launch_send(runtime_, backend_, aiv_launcher_.get(), aicpu_launcher_.get(),
-                                               *device_transport, wrs.front(), operation);
+        if (const auto submitted =
+                launch_send(runtime_, backend_, backend_dispatcher_.get(), *device_transport, wrs.front(), operation);
             !submitted) {
             return unexpected(submitted.error());
         }
@@ -515,7 +350,7 @@ Result<void> Transport::submit_receive(QueueHandle queue, const TransportReceive
     const auto device_transport = qp->make_device_transport();
     if (!device_transport)
         return unexpected(device_transport.error());
-    return launch_receive(runtime_, backend_, aiv_launcher_.get(), aicpu_launcher_.get(), *device_transport, recv);
+    return launch_receive(runtime_, backend_, backend_dispatcher_.get(), *device_transport, recv);
 }
 
 Result<void> Transport::complete(QueuePair *qp, bool send_cq) {
@@ -539,7 +374,7 @@ Result<void> Transport::complete(QueuePair *qp, bool send_cq) {
     const auto device_transport = qp->make_device_transport();
     if (!device_transport)
         return unexpected(device_transport.error());
-    return launch_poll(runtime_, backend_, aiv_launcher_.get(), aicpu_launcher_.get(), *device_transport, send_cq);
+    return launch_poll(runtime_, backend_, backend_dispatcher_.get(), *device_transport, send_cq);
 }
 
 std::size_t Transport::qp_count() const noexcept {
@@ -598,14 +433,9 @@ Result<void> Transport::initialize_private_memory() {
 Result<void> Transport::initialize_launcher() {
     if (backend_.mode == NpuBackend::Ra)
         return {};
-    if (backend_.mode == NpuBackend::Aiv) {
-        aiv_launcher_ = std::make_unique<AivLauncher>();
-        if (const auto loaded = aiv_launcher_->load(backend_.aiv_kernel); !loaded)
-            return unexpected(loaded.error());
-        return {};
-    }
-    aicpu_launcher_ = std::make_unique<AicpuLauncher>();
-    if (const auto loaded = aicpu_launcher_->load(backend_.aicpu_kernel); !loaded)
+    backend_dispatcher_ = std::make_unique<BackendDispatcher>();
+    if (const auto loaded = backend_dispatcher_->open(backend_.mode, backend_.aiv_kernel, backend_.aicpu_kernel);
+        !loaded)
         return unexpected(loaded.error());
     return {};
 }

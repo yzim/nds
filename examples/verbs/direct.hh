@@ -6,7 +6,9 @@
 #include "tcp_socket.hh"
 #include "transport_protocol.hh"
 #include "device_verbs.h"
-#include "launcher.hh"
+#include "backends/aicpu/launcher.hh"
+#include "backends/aiv/launcher.hh"
+#include "backends/ra/launcher.hh"
 
 #include <chrono>
 #include <array>
