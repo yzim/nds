@@ -56,6 +56,117 @@ nds::Result<Config> parse(int argc, char **argv) {
     return config;
 }
 
+template <typename LauncherView>
+nds::Result<void> poll_completion(const LauncherView &launcher, const NdsDeviceQp &device_qp, bool send_cq) {
+    const std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (std::chrono::steady_clock::now() < deadline) {
+        NdsDeviceWc completion{};
+        NDS_ASSIGN_OR_RETURN(std::uint32_t completion_count, launcher.poll_cq(device_qp, send_cq, 1U, &completion));
+        if (completion_count == 0U) {
+            std::this_thread::yield();
+            continue;
+        }
+        if (completion.status != NDS_DEVICE_WC_SUCCESS)
+            return nds::Error{nds::ErrorCode::kRa, "CQ completion failed"};
+        return {};
+    }
+    return nds::Error{nds::ErrorCode::kRuntime, "CQ completion timed out"};
+}
+
+nds::Result<void> run_simple_send(nds::client::Launcher *launcher, const NdsDeviceQp &device_qp,
+                                  const nds::client::MemoryRegion &payload_region, std::uint32_t payload_length,
+                                  nds::TcpConnection *connection, bool caller_polls_cq, aclrtStream stream) {
+    const NdsDeviceSendWr send_wr{
+        .wr_id = 1U,
+        .opcode = NDS_DEVICE_WR_SEND,
+        .flags = NDS_DEVICE_SEND_SIGNALED,
+        .local = {.address = payload_region.address(),
+                  .length = payload_length,
+                  .local_key = payload_region.local_key()},
+        .remote_address = 0U,
+        .remote_key = 0U,
+        .reserved = 0U,
+    };
+    NDS_RETURN_IF_ERROR(launcher
+                            ->with_config({
+                                .block_dim = 1U,
+                                .stream = stream,
+                                .sync_timeout_ms = 5000,
+                            })
+                            .post_send(device_qp, send_wr));
+    if (caller_polls_cq)
+        NDS_RETURN_IF_ERROR(poll_completion(launcher->with_config({
+                                                 .block_dim = 1U,
+                                                 .stream = stream,
+                                                 .sync_timeout_ms = 5000,
+                                             }),
+                                             device_qp, true));
+    // AICPU uses the server's completed receive as its completion observation.
+    return nds::examples::verbs::wait_barrier(*connection);
+}
+
+nds::Result<void> run_simple_receive(nds::client::Launcher *launcher, const NdsDeviceQp &device_qp,
+                                     const nds::client::MemoryRegion &payload_region, std::uint32_t payload_length,
+                                     nds::TcpConnection *connection, bool caller_polls_cq, aclrtStream stream) {
+    const NdsDeviceRecvWr receive_wr{
+        .wr_id = 2U,
+        .local = {.address = payload_region.address(),
+                  .length = payload_length,
+                  .local_key = payload_region.local_key()},
+    };
+    NDS_RETURN_IF_ERROR(launcher
+                            ->with_config({
+                                .block_dim = 1U,
+                                .stream = stream,
+                                .sync_timeout_ms = 5000,
+                            })
+                            .post_recv(device_qp, receive_wr));
+
+    // The server sends only after this TCP acknowledgement, so the receive is armed first.
+    NDS_RETURN_IF_ERROR(nds::examples::verbs::send_barrier(*connection));
+    if (caller_polls_cq)
+        NDS_RETURN_IF_ERROR(poll_completion(launcher->with_config({
+                                                 .block_dim = 1U,
+                                                 .stream = stream,
+                                                 .sync_timeout_ms = 5000,
+                                             }),
+                                             device_qp, false));
+    // The server sends this barrier after its return Send has completed.
+    return nds::examples::verbs::wait_barrier(*connection);
+}
+
+nds::Result<void> run_write_with_stream(nds::client::Launcher *launcher, const NdsDeviceQp &device_qp,
+                                        const nds::client::MemoryRegion &payload_region, std::uint32_t payload_length,
+                                        nds::TcpConnection *connection, bool caller_polls_cq, aclrtStream stream) {
+    NDS_ASSIGN_OR_RETURN(nds::RemoteMemory remote_memory, nds::examples::verbs::receive_remote_memory(*connection));
+    const NdsDeviceSendWr write_wr{
+        .wr_id = 3U,
+        .opcode = NDS_DEVICE_WR_RDMA_WRITE,
+        .flags = NDS_DEVICE_SEND_SIGNALED,
+        .local = {.address = payload_region.address(),
+                  .length = payload_length,
+                  .local_key = payload_region.local_key()},
+        .remote_address = remote_memory.address,
+        .remote_key = remote_memory.remote_key,
+        .reserved = 0U,
+    };
+    NDS_RETURN_IF_ERROR(launcher
+                            ->with_config({
+                                .block_dim = 1U,
+                                .stream = stream,
+                                .sync_timeout_ms = 5000,
+                            })
+                            .post_send(device_qp, write_wr));
+    if (caller_polls_cq)
+        NDS_RETURN_IF_ERROR(poll_completion(launcher->with_config({
+                                                 .block_dim = 1U,
+                                                 .stream = stream,
+                                                 .sync_timeout_ms = 5000,
+                                             }),
+                                             device_qp, true));
+    return nds::examples::verbs::send_barrier(*connection);
+}
+
 nds::Result<void> run(int argc, char **argv) {
     NDS_ASSIGN_OR_RETURN(Config config, parse(argc, argv));
     NDS_ASSIGN_OR_RETURN(nds::TcpAddress address, nds::parse_tcp_address(config.server));
@@ -74,17 +185,24 @@ nds::Result<void> run(int argc, char **argv) {
         .ai_qp_mode = -1,
         .send_queue_depth = 32768U,
         .receive_queue_depth = 128U,
-        .control_flags = 0U,
+        // Only AIV's direct CQ path is caller-owned; AICPU keeps CQ ownership in HCCP.
+        .control_flags = config.backend == nds::client::BackendMode::Aiv
+                             ? nds::client::QueuePairCallerPollsCq
+                             : 0U,
     };
     NDS_ASSIGN_OR_RETURN(nds::client::Endpoint endpoint, runtime.create_endpoint(config.endpoint));
     NDS_ASSIGN_OR_RETURN(nds::client::QueuePair queue_pair, endpoint.create_qp(qp_config, config.backend));
 
     // Register exactly one device MR and use it for the Send WR.
     std::array<std::byte, 64U> payload{};
+    payload.fill(std::byte{0x5a});
     NDS_ASSIGN_OR_RETURN(nds::client::MemoryBuffer payload_buffer,
                          runtime.allocate(payload.size(), nds::client::MemoryLocation::Device));
-    NDS_ASSIGN_OR_RETURN(nds::client::MemoryRegion payload_region,
-                         endpoint.reg_mr(payload_buffer, nds::client::MemoryAccess::DirectNpu));
+    NDS_RETURN_IF_ERROR(runtime.copy_to(&payload_buffer, payload.data(), payload.size()));
+    NDS_ASSIGN_OR_RETURN(
+        nds::client::MemoryRegion payload_region,
+        endpoint.reg_mr(payload_buffer, nds::client::MemoryAccess::LocalWrite | nds::client::MemoryAccess::RemoteWrite |
+                                            nds::client::MemoryAccess::RemoteRead));
 
     // The launcher owns backend launch details; the example keeps only the QP.
     NDS_ASSIGN_OR_RETURN(std::unique_ptr<nds::client::Launcher> launcher,
@@ -97,33 +215,31 @@ nds::Result<void> run(int argc, char **argv) {
     NDS_ASSIGN_OR_RETURN(nds::QpInfo local_qp_info, queue_pair.local_qp_info());
     NDS_ASSIGN_OR_RETURN(nds::QpInfo peer_qp_info, nds::examples::verbs::exchange_client_qp(connection, local_qp_info));
     NDS_RETURN_IF_ERROR(queue_pair.connect(peer_qp_info));
-    NDS_RETURN_IF_ERROR(nds::examples::verbs::wait_ready(connection));
+    NDS_RETURN_IF_ERROR(nds::examples::verbs::wait_barrier(connection));
 
-    const NdsDeviceSendWr send_wr{
-        .wr_id = 1U,
-        .opcode = NDS_DEVICE_WR_SEND,
-        .flags = NDS_DEVICE_SEND_SIGNALED,
-        .local = {.address = payload_region.address(),
-                  .length = static_cast<std::uint32_t>(payload.size()),
-                  .local_key = payload_region.local_key()},
-        .remote_address = 0U,
-        .remote_key = 0U,
-        .reserved = 0U,
-    };
-    NDS_RETURN_IF_ERROR(launcher->post_send(device_qp, send_wr));
+    // The caller owns one stream and passes it to every backend launch.
+    aclrtStream stream{};
+    const int stream_result = aclrtCreateStream(&stream);
+    if (stream_result != ACL_SUCCESS || stream == nullptr)
+        return nds::Error{nds::ErrorCode::kRuntime, "aclrtCreateStream failed: " + std::to_string(stream_result)};
+    struct StreamGuard {
+        aclrtStream stream{};
 
-    const std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
-    while (std::chrono::steady_clock::now() < deadline) {
-        NdsDeviceWc completion{};
-        NDS_ASSIGN_OR_RETURN(std::uint32_t completion_count, launcher->poll_cq(device_qp, true, 1U, &completion));
-        if (completion_count != 0U) {
-            if (completion.status != NDS_DEVICE_WC_SUCCESS)
-                return nds::Error{nds::ErrorCode::kRa, "Send completion failed"};
-            return {};
+        ~StreamGuard() {
+            if (stream != nullptr)
+                (void)aclrtDestroyStream(stream);
         }
-        std::this_thread::yield();
-    }
-    return nds::Error{nds::ErrorCode::kRuntime, "Send completion timed out"};
+    } stream_guard{stream};
+
+    // Exercise Send and Recv, then the configured Write call.
+    const bool caller_polls_cq = config.backend != nds::client::BackendMode::Aicpu;
+    NDS_RETURN_IF_ERROR(run_simple_send(launcher.get(), device_qp, payload_region,
+                                        static_cast<std::uint32_t>(payload.size()), &connection, caller_polls_cq, stream));
+    NDS_RETURN_IF_ERROR(run_simple_receive(launcher.get(), device_qp, payload_region,
+                                           static_cast<std::uint32_t>(payload.size()), &connection, caller_polls_cq,
+                                           stream));
+    return run_write_with_stream(launcher.get(), device_qp, payload_region, static_cast<std::uint32_t>(payload.size()),
+                                 &connection, caller_polls_cq, stream);
 }
 
 }  // namespace

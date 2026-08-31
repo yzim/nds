@@ -45,6 +45,10 @@ current architecture and protocol contract.
   separate from client-server protocol data.
 - Added native storage, paired lower-layer examples, persistent Torch storage,
   and opt-in bounded E2E coverage.
+- Settled the verbs example and E2E contract: direct one-QP Send/Recv/PollCq
+  and configured RDMA Write are tested for RA and AIV, while AICPU remains in
+  the storage E2E matrix because its CANN-root NORMAL package leaves receive
+  and CQ ownership in HCCP rather than exposing the synchronous verbs CQ path.
 
 ## Active Engineering Work
 

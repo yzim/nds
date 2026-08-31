@@ -62,8 +62,8 @@ __aicore__ inline bool ValidSendWr(const NdsDeviceSendWr *wr) {
 }
 
 /* Populates and publishes one SQ WQE after its body and WR ID are visible. */
-__aicore__ inline void PopulateSendWqe(__gm__ const NdsDeviceWorkQueue *queue, uint32_t producer,
-                                       const NdsDeviceSendWr *wr) {
+__aicore__ inline void PopulateDeviceSendWqe(__gm__ const NdsDeviceWorkQueue *queue, uint32_t producer,
+                                             const NdsDeviceSendWr *wr) {
     __gm__ uint8_t *wqe_address = reinterpret_cast<__gm__ uint8_t *>(
         queue->buffer_address + (uint64_t)queue->entry_size * (producer % queue->depth));
     __gm__ HnsRoceRcSqWqe *wqe = reinterpret_cast<__gm__ HnsRoceRcSqWqe *>(wqe_address);
@@ -91,36 +91,73 @@ __aicore__ inline void PopulateSendWqe(__gm__ const NdsDeviceWorkQueue *queue, u
 }
 
 /* Advances the SQ producer and rings one doorbell for the populated prefix. */
-__aicore__ inline void RingSendDoorbell(__gm__ const NdsDeviceQp *qp, __gm__ const NdsDeviceWorkQueue *queue,
-                                        uint32_t producer, TBuf<> *scratch) {
+__aicore__ inline void RingDeviceSendDoorbell(uint32_t service_level, __gm__ const NdsDeviceWorkQueue *queue,
+                                              uint32_t producer, TBuf<> *scratch) {
     StoreU32(queue->head_address, producer);
     PipeBarrier<PIPE_ALL>();
     const uint64_t doorbell =
-        (uint64_t)queue->number | ((uint64_t)(producer & 0xffffU) << 32U) | ((uint64_t)qp->service_level << 48U);
+        (uint64_t)queue->number | ((uint64_t)(producer & 0xffffU) << 32U) | ((uint64_t)service_level << 48U);
+    StoreU64(queue->doorbell_address, doorbell, scratch);
+}
+
+__aicore__ inline void PopulateLocalSendWqe(const NdsDeviceWorkQueue *queue, uint32_t producer,
+                                            const NdsDeviceSendWr *wr) {
+    __gm__ uint8_t *wqe_address = reinterpret_cast<__gm__ uint8_t *>(
+        queue->buffer_address + (uint64_t)queue->entry_size * (producer % queue->depth));
+    __gm__ HnsRoceRcSqWqe *wqe = reinterpret_cast<__gm__ HnsRoceRcSqWqe *>(wqe_address);
+    const uint32_t hns_opcode = NDS_HNS_HW_SQ_OPCODE_FROM_DEVICE(wr->opcode);
+    const uint32_t signaled = (wr->flags & NDS_DEVICE_SEND_SIGNALED) != 0U ? NDS_HNS_HW_SQ_SIGNALED : 0U;
+    wqe->byte_4 = hns_opcode | signaled;
+    wqe->message_length = wr->local.length;
+    wqe->immediate_data = 0U;
+    wqe->sge_count = 1U << 24U;
+    wqe->start_sge_index = 0U;
+    wqe->remote_key = wr->opcode == NDS_DEVICE_WR_SEND ? 0U : wr->remote_key;
+    wqe->remote_address = wr->opcode == NDS_DEVICE_WR_SEND ? 0U : wr->remote_address;
+    __gm__ HnsRoceSge *sge = reinterpret_cast<__gm__ HnsRoceSge *>(wqe_address + sizeof(HnsRoceRcSqWqe));
+    sge->length = wr->local.length;
+    sge->local_key = wr->local.local_key;
+    sge->local_address = wr->local.address;
+    __gm__ uint64_t *wr_id = &reinterpret_cast<__gm__ uint64_t *>(queue->wr_id_address)[producer % queue->depth];
+    *wr_id = wr->wr_id;
+    NdsAivCacheSync(reinterpret_cast<__gm__ uint8_t *>(wr_id), sizeof(*wr_id));
+    NdsAivCacheSync(wqe_address, sizeof(HnsRoceRcSqWqe) + sizeof(HnsRoceSge));
+    PipeBarrier<PIPE_ALL>();
+    const uint32_t owner = (producer >> 15U) & 1U;
+    wqe->byte_4 |= ((~owner) << 7U) & (1U << 7U);
+    NdsAivCacheSync(reinterpret_cast<__gm__ uint8_t *>(&wqe->byte_4), sizeof(wqe->byte_4));
+}
+
+__aicore__ inline void RingLocalSendDoorbell(uint32_t service_level, const NdsDeviceWorkQueue *queue, uint32_t producer,
+                                             TBuf<> *scratch) {
+    StoreU32(queue->head_address, producer);
+    PipeBarrier<PIPE_ALL>();
+    const uint64_t doorbell =
+        (uint64_t)queue->number | ((uint64_t)(producer & 0xffffU) << 32U) | ((uint64_t)service_level << 48U);
     StoreU64(queue->doorbell_address, doorbell, scratch);
 }
 }  // namespace
 
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void nds_aiv_post_send(__gm__ const NdsDeviceQp *qp, const NdsDeviceSendWr *wr,
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void nds_aiv_post_send(const NdsDeviceQp *qp, const NdsDeviceSendWr *wr,
                                                              __gm__ int32_t *return_value, TBuf<> *scratch) {
     if (return_value == nullptr)
         return;
-    if (!NdsAivValidQp(qp) || !ValidSendWr(wr) || scratch == nullptr) {
+    if (qp == nullptr || !ValidSendWr(wr) || scratch == nullptr) {
         NdsAivSetReturnValue(return_value, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
         return;
     }
-    __gm__ const NdsDeviceWorkQueue *queue = &qp->send_queue;
-    __gm__ uint32_t *head_address = reinterpret_cast<__gm__ uint32_t *>(queue->head_address);
-    __gm__ uint32_t *tail_address = reinterpret_cast<__gm__ uint32_t *>(queue->tail_address);
+    const NdsDeviceWorkQueue queue = qp->send_queue;
+    __gm__ uint32_t *head_address = reinterpret_cast<__gm__ uint32_t *>(queue.head_address);
+    __gm__ uint32_t *tail_address = reinterpret_cast<__gm__ uint32_t *>(queue.tail_address);
     NdsAivCacheSync(reinterpret_cast<__gm__ uint8_t *>(head_address), sizeof(uint32_t));
     const uint32_t head = *head_address;
     NdsAivCacheSync(reinterpret_cast<__gm__ uint8_t *>(tail_address), sizeof(uint32_t));
-    if (queue->depth <= 1U || (head - *tail_address) >= queue->depth - 1U) {
+    if (queue.depth <= 1U || (head - *tail_address) >= queue.depth - 1U) {
         NdsAivSetReturnValue(return_value, NDS_DEVICE_OPERATION_QUEUE_FULL);
         return;
     }
-    PopulateSendWqe(queue, head, wr);
-    RingSendDoorbell(qp, queue, head + 1U, scratch);
+    PopulateLocalSendWqe(&queue, head, wr);
+    RingLocalSendDoorbell(qp->service_level, &queue, head + 1U, scratch);
     NdsAivSetReturnValue(return_value, NDS_DEVICE_OPERATION_SUCCESS);
 }
 
@@ -168,44 +205,44 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void nds_aiv_post_send_batch(__gm__ const 
             SetBadWrAddress(bad_wr_address, reinterpret_cast<uint64_t>(&wrs[posted]));
             break;
         }
-        PopulateSendWqe(queue, head + posted, &local);
+        PopulateDeviceSendWqe(queue, head + posted, &local);
     }
     if (posted != 0U)
-        RingSendDoorbell(qp, queue, head + posted, scratch);
+        RingDeviceSendDoorbell(qp->service_level, queue, head + posted, scratch);
     NdsAivSetReturnValue(return_value, status);
 }
 
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void nds_aiv_post_recv(__gm__ const NdsDeviceQp *qp, const NdsDeviceRecvWr *wr,
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void nds_aiv_post_recv(const NdsDeviceQp *qp, const NdsDeviceRecvWr *wr,
                                                              __gm__ int32_t *return_value) {
     if (return_value == nullptr)
         return;
-    if (!NdsAivValidQp(qp) || wr == nullptr) {
+    if (qp == nullptr || wr == nullptr) {
         NdsAivSetReturnValue(return_value, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
         return;
     }
-    __gm__ const NdsDeviceWorkQueue *queue = &qp->receive_queue;
-    __gm__ uint32_t *head_address = reinterpret_cast<__gm__ uint32_t *>(queue->head_address);
-    __gm__ uint32_t *tail_address = reinterpret_cast<__gm__ uint32_t *>(queue->tail_address);
+    const NdsDeviceWorkQueue queue = qp->receive_queue;
+    __gm__ uint32_t *head_address = reinterpret_cast<__gm__ uint32_t *>(queue.head_address);
+    __gm__ uint32_t *tail_address = reinterpret_cast<__gm__ uint32_t *>(queue.tail_address);
     NdsAivCacheSync(reinterpret_cast<__gm__ uint8_t *>(head_address), sizeof(uint32_t));
     NdsAivCacheSync(reinterpret_cast<__gm__ uint8_t *>(tail_address), sizeof(uint32_t));
     const uint32_t head = *head_address;
-    if ((head - *tail_address) >= queue->depth) {
+    if ((head - *tail_address) >= queue.depth) {
         NdsAivSetReturnValue(return_value, NDS_DEVICE_OPERATION_QUEUE_FULL);
         return;
     }
-    __gm__ HnsRoceSge *sge = reinterpret_cast<__gm__ HnsRoceSge *>(queue->buffer_address +
-                                                                   (uint64_t)queue->entry_size * (head % queue->depth));
+    __gm__ HnsRoceSge *sge =
+        reinterpret_cast<__gm__ HnsRoceSge *>(queue.buffer_address + (uint64_t)queue.entry_size * (head % queue.depth));
     sge->length = wr->local.length;
     sge->local_key = wr->local.local_key;
     sge->local_address = wr->local.address;
-    __gm__ uint64_t *wr_id = &reinterpret_cast<__gm__ uint64_t *>(queue->wr_id_address)[head % queue->depth];
+    __gm__ uint64_t *wr_id = &reinterpret_cast<__gm__ uint64_t *>(queue.wr_id_address)[head % queue.depth];
     *wr_id = wr->wr_id;
     NdsAivCacheSync(reinterpret_cast<__gm__ uint8_t *>(wr_id), sizeof(*wr_id));
     NdsAivCacheSync(reinterpret_cast<__gm__ uint8_t *>(sge), sizeof(HnsRoceSge));
     PipeBarrier<PIPE_ALL>();
     const uint32_t next = head + 1U;
-    StoreU32(queue->doorbell_address, next & 0xffffU);
-    StoreU32(queue->head_address, next);
+    StoreU32(queue.doorbell_address, next & 0xffffU);
+    StoreU32(queue.head_address, next);
     NdsAivSetReturnValue(return_value, NDS_DEVICE_OPERATION_SUCCESS);
 }
 

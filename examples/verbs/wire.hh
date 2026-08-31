@@ -40,16 +40,33 @@ inline Result<QpInfo> exchange_server_qp(TcpConnection &channel, const QpInfo &l
     return peer;
 }
 
-inline Result<void> send_ready(TcpConnection &channel) {
+inline Result<void> send_barrier(TcpConnection &channel) {
     const std::uint8_t ready{1U};
     return channel.send(std::as_bytes(std::span{&ready, 1U}));
 }
 
-inline Result<void> wait_ready(TcpConnection &channel) {
+inline Result<void> wait_barrier(TcpConnection &channel) {
     std::uint8_t ready{};
     if (const auto received = channel.receive(std::as_writable_bytes(std::span{&ready, 1U})); !received)
         return Error{received.error()};
-    return ready == 1U ? Result<void>{} : Error{ErrorCode::kTransport, "peer sent an invalid readiness record"};
+    return ready == 1U ? Result<void>{} : Error{ErrorCode::kTransport, "peer sent an invalid barrier record"};
+}
+
+inline Result<RemoteMemory> receive_remote_memory(TcpConnection &channel) {
+    wire::RemoteMemory record{};
+    if (const auto received = channel.receive(std::as_writable_bytes(std::span{&record, 1U})); !received)
+        return Error{received.error()};
+    RemoteMemory memory{};
+    if (transport::decode(&record, &memory) != transport::CodecResult::Ok)
+        return Error{ErrorCode::kTransport, "peer sent invalid remote-memory information"};
+    return memory;
+}
+
+inline Result<void> send_remote_memory(TcpConnection &channel, const RemoteMemory &memory) {
+    wire::RemoteMemory record{};
+    if (transport::encode(&memory, &record) != transport::CodecResult::Ok)
+        return Error{ErrorCode::kTransport, "cannot encode remote-memory information"};
+    return channel.send(std::as_bytes(std::span{&record, 1U}));
 }
 
 }  // namespace nds::examples::verbs

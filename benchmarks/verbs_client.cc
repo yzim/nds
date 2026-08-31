@@ -85,8 +85,9 @@ int main(int argc, char **argv) {
         runtime.allocate(payload.size(), nds::client::MemoryLocation::Device);
     if (!payload_buffer_result.ok())
         return EXIT_FAILURE;
-    const nds::Result<nds::client::MemoryRegion> payload_region_result =
-        transport.register_memory(payload_buffer_result.value(), nds::client::MemoryAccess::DirectNpu);
+    const nds::Result<nds::client::MemoryRegion> payload_region_result = transport.register_memory(
+        payload_buffer_result.value(), nds::client::MemoryAccess::LocalWrite | nds::client::MemoryAccess::RemoteWrite |
+                                           nds::client::MemoryAccess::RemoteRead);
     if (!payload_region_result.ok())
         return EXIT_FAILURE;
     const nds::Result<nds::client::QueueHandle> queue_result = transport.queue(0U);

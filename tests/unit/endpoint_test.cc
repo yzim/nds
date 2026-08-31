@@ -302,7 +302,9 @@ TEST(EndpointTest, MemoryRegionOwnsRegistration) {
     nds::client::MemoryBuffer buffer;
     nds::client::EndpointTestAccess::make_host_buffer(&buffer, 64U);
     {
-        auto registered = endpoint.reg_mr(buffer, nds::client::MemoryAccess::DirectNpu);
+        auto registered =
+            endpoint.reg_mr(buffer, nds::client::MemoryAccess::LocalWrite | nds::client::MemoryAccess::RemoteWrite |
+                                        nds::client::MemoryAccess::RemoteRead);
         ASSERT_TRUE(registered.ok());
         auto region = std::move(registered).value();
         EXPECT_EQ(region.address(), reinterpret_cast<std::uint64_t>(buffer.data()));
@@ -325,7 +327,9 @@ TEST(EndpointTest, MemoryRegionRegistersMappedHostAddress) {
     void *const mapped_address = reinterpret_cast<void *>(static_cast<std::uintptr_t>(0x10000U));
     nds::client::EndpointTestAccess::set_rdma_address(&buffer, mapped_address);
 
-    auto registered = endpoint.reg_mr(buffer, nds::client::MemoryAccess::DirectNpu);
+    auto registered =
+        endpoint.reg_mr(buffer, nds::client::MemoryAccess::LocalWrite | nds::client::MemoryAccess::RemoteWrite |
+                                    nds::client::MemoryAccess::RemoteRead);
     ASSERT_TRUE(registered.ok());
     EXPECT_EQ(fake.mr.address, mapped_address);
     EXPECT_EQ(registered.value().address(), reinterpret_cast<std::uint64_t>(mapped_address));

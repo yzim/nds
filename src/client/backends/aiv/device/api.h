@@ -9,14 +9,14 @@
 #define NDS_AIV_DEVICE_API_LINKAGE extern "C"
 #endif
 
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void nds_aiv_post_send(__gm__ const NdsDeviceQp *qp, const NdsDeviceSendWr *wr,
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void nds_aiv_post_send(const NdsDeviceQp *qp, const NdsDeviceSendWr *wr,
                                                              __gm__ int32_t *return_value, AscendC::TBuf<> *scratch);
 /* Posts a contiguous WR array and returns the first unposted WR address on failure. */
 NDS_AIV_DEVICE_API_LINKAGE __aicore__ void nds_aiv_post_send_batch(__gm__ const NdsDeviceQp *qp,
                                                                    __gm__ const NdsDeviceSendWr *wrs, uint32_t wr_count,
                                                                    __gm__ int32_t *return_value,
                                                                    __gm__ uint64_t *bad_wr, AscendC::TBuf<> *scratch);
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void nds_aiv_post_recv(__gm__ const NdsDeviceQp *qp, const NdsDeviceRecvWr *wr,
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void nds_aiv_post_recv(const NdsDeviceQp *qp, const NdsDeviceRecvWr *wr,
                                                              __gm__ int32_t *return_value);
 NDS_AIV_DEVICE_API_LINKAGE __aicore__ void nds_aiv_poll_cq(__gm__ const NdsDeviceQp *qp, uint32_t is_send_cq,
                                                            uint32_t max_completions, __gm__ NdsDeviceWc *wc,

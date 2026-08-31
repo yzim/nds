@@ -30,8 +30,8 @@ nds::QpInfo endpoint() {
 TEST(TransportCodecTest, ParsesTcpExchangeAddress) {
     const auto parsed = nds::parse_tcp_address("192.168.100.100:18515");
     ASSERT_TRUE(parsed);
-    EXPECT_EQ(parsed->ipv4, "192.168.100.100");
-    EXPECT_EQ(parsed->port, 18515U);
+    EXPECT_EQ(parsed.value().ipv4, "192.168.100.100");
+    EXPECT_EQ(parsed.value().port, 18515U);
 
     EXPECT_FALSE(nds::parse_tcp_address("192.168.100.100"));
     EXPECT_FALSE(nds::parse_tcp_address("192.168.100.100:0"));

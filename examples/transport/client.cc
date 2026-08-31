@@ -66,7 +66,7 @@ nds::Result<nds::client::RemoteMemory> remote_memory(nds::client::Transport *tra
     if (const auto received = transport->exchange_channel()->receive(std::as_writable_bytes(std::span{&wire, 1U}));
         !received)
         return Error{received.error()};
-    nds::transport::RemoteMemory decoded{};
+    nds::RemoteMemory decoded{};
     if (nds::transport::decode(&wire, &decoded) != nds::transport::CodecResult::Ok)
         return Error{nds::ErrorCode::kTransport, "invalid remote-memory record"};
     return {{decoded.address, decoded.remote_key, decoded.length}};
@@ -82,7 +82,9 @@ nds::Result<void> run(nds::client::Runtime *runtime, nds::client::Transport *tra
         if (const auto copied = runtime->copy_to(&*buffer, data.data(), data.size()); !copied)
             return Error{copied.error()};
     }
-    const auto region = transport->register_memory(*buffer, nds::client::MemoryAccess::DirectNpu);
+    const auto region = transport->register_memory(*buffer, nds::client::MemoryAccess::LocalWrite |
+                                                                nds::client::MemoryAccess::RemoteWrite |
+                                                                nds::client::MemoryAccess::RemoteRead);
     if (!region)
         return Error{region.error()};
     if (operation == Operation::Recv) {

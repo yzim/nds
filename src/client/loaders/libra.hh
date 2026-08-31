@@ -33,8 +33,6 @@ public:
         ACCESS_LOCAL_WRITE = 1,
         ACCESS_REMOTE_WRITE = 1 << 1,
         ACCESS_REMOTE_READ = 1 << 2,
-        /* HCOMM v9.0.0 TransportDirectNpu::RegUserMem access policy. */
-        ACCESS_DIRECT_NPU = ACCESS_LOCAL_WRITE | ACCESS_REMOTE_WRITE | ACCESS_REMOTE_READ,
         WR_RDMA_WRITE = 0,
         WR_SEND = 2,
         WR_RDMA_READ = 4,

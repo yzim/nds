@@ -44,7 +44,7 @@ uint64_t network_to_host_u64(uint64_t value) {
            ntohl(static_cast<uint32_t>(value >> 32U));
 }
 
-CodecResult validate_remote_memory(const RemoteMemory *memory) {
+CodecResult validate_remote_memory(const nds::RemoteMemory *memory) {
     if (memory == nullptr || memory->address == 0U || memory->length == 0U || memory->remote_key == 0U)
         return CodecResult::InvalidRecord;
     return CodecResult::Ok;
@@ -95,7 +95,7 @@ CodecResult encode(const nds::QpInfo *info, wire::QpInfo *encoded) {
     return CodecResult::Ok;
 }
 
-CodecResult encode(const RemoteMemory *memory, wire::RemoteMemory *encoded) {
+CodecResult encode(const nds::RemoteMemory *memory, wire::RemoteMemory *encoded) {
     if (encoded == nullptr)
         return CodecResult::InvalidArgument;
     if (validate_remote_memory(memory) != CodecResult::Ok)
@@ -181,13 +181,13 @@ CodecResult decode(const wire::QpInfo *encoded, nds::QpInfo *info) {
     return CodecResult::Ok;
 }
 
-CodecResult decode(const wire::RemoteMemory *encoded, RemoteMemory *memory) {
+CodecResult decode(const wire::RemoteMemory *encoded, nds::RemoteMemory *memory) {
     if (encoded == nullptr || memory == nullptr)
         return CodecResult::InvalidArgument;
     if (ntohl(encoded->magic) != wire::kRemoteMemoryMagic || ntohs(encoded->version) != wire::kRemoteMemoryVersion)
         return CodecResult::InvalidRecord;
-    const RemoteMemory decoded{network_to_host_u64(encoded->address), ntohl(encoded->length),
-                               ntohl(encoded->remote_key)};
+    const nds::RemoteMemory decoded{network_to_host_u64(encoded->address), ntohl(encoded->length),
+                                    ntohl(encoded->remote_key)};
     if (validate_remote_memory(&decoded) != CodecResult::Ok)
         return CodecResult::InvalidRecord;
     *memory = decoded;

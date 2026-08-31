@@ -24,8 +24,11 @@ enum class MemoryAccess : int {
     LocalWrite = Libra::ACCESS_LOCAL_WRITE,
     RemoteWrite = Libra::ACCESS_REMOTE_WRITE,
     RemoteRead = Libra::ACCESS_REMOTE_READ,
-    DirectNpu = Libra::ACCESS_DIRECT_NPU,
 };
+
+constexpr MemoryAccess operator|(MemoryAccess left, MemoryAccess right) noexcept {
+    return static_cast<MemoryAccess>(static_cast<int>(left) | static_cast<int>(right));
+}
 
 struct EndpointConfig {
     std::int32_t hdc_type{Libra::HDC_SERVICE_TYPE_RDMA_V2};

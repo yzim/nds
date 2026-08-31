@@ -23,7 +23,7 @@ The E2E tree follows the public library layers:
 
 ```text
 tests/e2e/
-  verbs/       PostSend, PostRecv, PollCq, and AIV Send-batch cases
+  verbs/       one-QP Send, Recv, PollCq, and configured RDMA Write case
   transport/   RdmaSend, RdmaRecv, RdmaRead, and RdmaWrite cases
   storage/     native storage and Torch session cases
   support/     shared target runners and AICPU package setup
@@ -77,11 +77,15 @@ verification. AICPU uses the CANN-root mode-0 package in the client executable.
 Install that package explicitly before running the test; the E2E runner itself
 does not modify the CANN installation.
 
-When `NDS_BUILD_HARDWARE_PROBES=ON` is configured, CTest registers direct
-verbs and transport E2E cases for every available backend. AIV lower-layer
-clients request caller-owned CQ data-plane memory so `PollCq` can consume the
-matching completion. The verbs layer additionally registers `e2e.verbs.aiv.send-batch`
-and `e2e.verbs.aiv.send-batch-invalid`; the latter posts its valid prefix once
-and verifies the reported `bad_wr_address`. All cases launch the matching
-example client and server and verify the transferred payload or remote-memory
-result.
+When `NDS_BUILD_HARDWARE_PROBES=ON` is configured, CTest registers one direct
+verbs case for each available RA and AIV backend. Each case launches the
+matching example client and server and exercises the complete lower-level
+workflow: the client posts Send, posts Recv, polls its CQ, and performs a
+configured stream-based RDMA Write. The server verifies the received and
+written payload.
+
+The direct verbs case deliberately does not register AICPU. The CANN-root
+NORMAL AICPU package keeps receive and CQ ownership in HCCP and does not expose
+the receive/poll operations required by this synchronous verbs example. AICPU
+completion is therefore covered by the storage E2E path, which uses its
+completion barriers.

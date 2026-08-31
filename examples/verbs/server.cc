@@ -4,10 +4,13 @@
 
 #include <CLI/CLI.hpp>
 
+#include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstddef>
 #include <cstdlib>
 #include <string>
+#include <thread>
 
 namespace {
 
@@ -15,6 +18,21 @@ struct Config {
     nds::server::BackendConfig backend;
     std::string listen{"0.0.0.0:18515"};
 };
+
+bool payload_matches(const std::array<std::byte, 64U> &payload, std::byte expected) {
+    return std::all_of(payload.begin(), payload.end(), [expected](std::byte value) { return value == expected; });
+}
+
+bool wait_for_payload(const std::array<std::byte, 64U> &payload, std::byte expected, std::uint32_t timeout_ms) {
+    const std::chrono::steady_clock::time_point deadline =
+        std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+    while (std::chrono::steady_clock::now() < deadline) {
+        if (payload_matches(payload, expected))
+            return true;
+        std::this_thread::yield();
+    }
+    return payload_matches(payload, expected);
+}
 
 nds::Result<Config> parse(int argc, char **argv) {
     Config config;
@@ -57,7 +75,7 @@ int main(int argc, char **argv) {
     // The CPU side owns one receive MR and one posted receive for the client's Send.
     std::array<std::byte, 64U> payload{};
     const nds::Result<nds::server::RegisteredRegion> region_result =
-        backend.register_memory(payload.data(), payload.size(), IBV_ACCESS_LOCAL_WRITE);
+        backend.register_memory(payload.data(), payload.size(), IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
     if (!region_result.ok()) {
         NDS_LOG_ERROR("verbs-server", "memory registration failed: {}", region_result.error().message);
         return EXIT_FAILURE;
@@ -94,9 +112,9 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
     // Do not let the client submit until the receive is armed.
-    const nds::Result<void> ready_result = nds::examples::verbs::send_ready(channel);
-    if (!ready_result.ok()) {
-        NDS_LOG_ERROR("verbs-server", "client readiness failed: {}", ready_result.error().message);
+    const nds::Result<void> barrier_result = nds::examples::verbs::send_barrier(channel);
+    if (!barrier_result.ok()) {
+        NDS_LOG_ERROR("verbs-server", "client barrier failed: {}", barrier_result.error().message);
         return EXIT_FAILURE;
     }
     const nds::Result<void> completion_result = backend.wait_receive(0U, 5000U);
@@ -104,6 +122,47 @@ int main(int argc, char **argv) {
         NDS_LOG_ERROR("verbs-server", "receive completion failed: {}", completion_result.error().message);
         return EXIT_FAILURE;
     }
-    NDS_LOG_INFO("verbs-server", "completed direct RA verbs receive");
+    const nds::Result<void> send_completion_barrier = nds::examples::verbs::send_barrier(channel);
+    if (!send_completion_barrier.ok()) {
+        NDS_LOG_ERROR("verbs-server", "send completion barrier failed: {}", send_completion_barrier.error().message);
+        return EXIT_FAILURE;
+    }
+    // The client posts its receive before requesting this return Send.
+    const nds::Result<void> receive_barrier_result = nds::examples::verbs::wait_barrier(channel);
+    if (!receive_barrier_result.ok()) {
+        NDS_LOG_ERROR("verbs-server", "client receive barrier failed: {}", receive_barrier_result.error().message);
+        return EXIT_FAILURE;
+    }
+    // Use a distinct pattern so the final RDMA Write verifies a new payload.
+    payload.fill(std::byte{0xa5});
+    const nds::Result<void> send_result = backend.send(0U, region, static_cast<std::uint32_t>(payload.size()));
+    if (!send_result.ok()) {
+        NDS_LOG_ERROR("verbs-server", "return Send failed: {}", send_result.error().message);
+        return EXIT_FAILURE;
+    }
+    const nds::Result<void> return_send_barrier = nds::examples::verbs::send_barrier(channel);
+    if (!return_send_barrier.ok()) {
+        NDS_LOG_ERROR("verbs-server", "return Send completion barrier failed: {}",
+                      return_send_barrier.error().message);
+        return EXIT_FAILURE;
+    }
+    const nds::RemoteMemory remote_memory{reinterpret_cast<std::uint64_t>(region.address()),
+                                          static_cast<std::uint32_t>(region.length()), region.remote_key()};
+    const nds::Result<void> remote_memory_result = nds::examples::verbs::send_remote_memory(channel, remote_memory);
+    if (!remote_memory_result.ok()) {
+        NDS_LOG_ERROR("verbs-server", "remote-memory exchange failed: {}", remote_memory_result.error().message);
+        return EXIT_FAILURE;
+    }
+    const nds::Result<void> write_complete_result = nds::examples::verbs::wait_barrier(channel);
+    if (!write_complete_result.ok()) {
+        NDS_LOG_ERROR("verbs-server", "RDMA Write completion acknowledgement failed: {}",
+                      write_complete_result.error().message);
+        return EXIT_FAILURE;
+    }
+    if (!wait_for_payload(payload, std::byte{0xa5}, 5000U)) {
+        NDS_LOG_ERROR("verbs-server", "RDMA Write did not update the server payload");
+        return EXIT_FAILURE;
+    }
+    NDS_LOG_INFO("verbs-server", "completed direct verbs Send, Recv, and configured RDMA Write");
     return EXIT_SUCCESS;
 }

@@ -78,6 +78,13 @@ struct QpInfo {
     uint8_t gid[wire::kGidBytes];
 };
 
+/* Peer MR identity exchanged after the QP bootstrap. */
+struct RemoteMemory {
+    uint64_t address;
+    uint32_t length;
+    uint32_t remote_key;
+};
+
 }  // namespace nds
 
 namespace nds::transport {
@@ -94,12 +101,6 @@ struct TransportInfo {
     std::array<nds::QpInfo, wire::kMaxQpInfoBatch> qps{};
 };
 
-struct RemoteMemory {
-    uint64_t address;
-    uint32_t length;
-    uint32_t remote_key;
-};
-
 enum class CodecResult {
     Ok,
     InvalidArgument,
@@ -108,8 +109,8 @@ enum class CodecResult {
 
 CodecResult encode(const nds::QpInfo *info, wire::QpInfo *encoded);
 CodecResult decode(const wire::QpInfo *encoded, nds::QpInfo *info);
-CodecResult encode(const RemoteMemory *memory, wire::RemoteMemory *encoded);
-CodecResult decode(const wire::RemoteMemory *encoded, RemoteMemory *memory);
+CodecResult encode(const nds::RemoteMemory *memory, wire::RemoteMemory *encoded);
+CodecResult decode(const wire::RemoteMemory *encoded, nds::RemoteMemory *memory);
 CodecResult encode(const TransportInfo *info, wire::TransportInfo *encoded);
 CodecResult decode(const wire::TransportInfo *encoded, TransportInfo *info);
 

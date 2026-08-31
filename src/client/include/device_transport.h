@@ -13,11 +13,23 @@ typedef struct NdsDeviceTransport {
     uint32_t reserved;
 } NdsDeviceTransport;
 
-static inline const NdsDeviceQp *nds_device_transport_qp(const NdsDeviceTransport *transport, uint32_t queue_index) {
+#if defined(__CCE_AICORE__)
+#define NDS_DEVICE_TRANSPORT_INLINE __aicore__ inline
+#define NDS_DEVICE_TRANSPORT_GLOBAL __gm__
+#else
+#define NDS_DEVICE_TRANSPORT_INLINE inline
+#define NDS_DEVICE_TRANSPORT_GLOBAL
+#endif
+
+NDS_DEVICE_TRANSPORT_INLINE const NdsDeviceQp *nds_device_transport_qp(
+    NDS_DEVICE_TRANSPORT_GLOBAL const NdsDeviceTransport *transport, uint32_t queue_index) {
     if (transport == 0 || queue_index >= transport->qp_count || transport->qp_descriptors_address == 0U)
         return 0;
     return (const NdsDeviceQp *)(uintptr_t)(transport->qp_descriptors_address) + queue_index;
 }
+
+#undef NDS_DEVICE_TRANSPORT_INLINE
+#undef NDS_DEVICE_TRANSPORT_GLOBAL
 
 /* Legacy transport-operation envelopes select QP zero. New verbs submission
  * uses NdsDeviceQp directly after Transport selects the QueueHandle index. */

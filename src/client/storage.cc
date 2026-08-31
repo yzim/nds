@@ -266,15 +266,18 @@ Result<void> StorageClient::open(Runtime *runtime, Transport *transport) {
     if (!namespace_buffer)
         return Error{namespace_buffer.error()};
     namespace_buffer_ = std::move(*namespace_buffer);
-    auto command_region = transport_->register_memory(command_buffer_, MemoryAccess::DirectNpu);
+    auto command_region = transport_->register_memory(
+        command_buffer_, MemoryAccess::LocalWrite | MemoryAccess::RemoteWrite | MemoryAccess::RemoteRead);
     if (!command_region)
         return Error{command_region.error()};
     command_region_ = std::move(*command_region);
-    auto completion_region = transport_->register_memory(completion_buffer_, MemoryAccess::DirectNpu);
+    auto completion_region = transport_->register_memory(
+        completion_buffer_, MemoryAccess::LocalWrite | MemoryAccess::RemoteWrite | MemoryAccess::RemoteRead);
     if (!completion_region)
         return Error{completion_region.error()};
     completion_region_ = std::move(*completion_region);
-    auto namespace_region = transport_->register_memory(namespace_buffer_, MemoryAccess::DirectNpu);
+    auto namespace_region = transport_->register_memory(
+        namespace_buffer_, MemoryAccess::LocalWrite | MemoryAccess::RemoteWrite | MemoryAccess::RemoteRead);
     if (!namespace_region)
         return Error{namespace_region.error()};
     namespace_region_ = std::move(*namespace_region);
@@ -295,7 +298,8 @@ Result<StorageCompletionHandle> StorageClient::read(std::uint64_t offset, Memory
         return Error{ready.error()};
     if (const auto valid = validate_io({offset, data, length}); !valid)
         return Error{valid.error()};
-    auto region = transport_->register_memory(*data, MemoryAccess::DirectNpu);
+    auto region = transport_->register_memory(
+        *data, MemoryAccess::LocalWrite | MemoryAccess::RemoteWrite | MemoryAccess::RemoteRead);
     if (!region)
         return Error{region.error()};
     const std::uint64_t command_id = allocate_command_id();
@@ -316,7 +320,8 @@ Result<StorageCompletionHandle> StorageClient::write(std::uint64_t offset, Memor
         return Error{ready.error()};
     if (const auto valid = validate_io({offset, data, length}); !valid)
         return Error{valid.error()};
-    auto region = transport_->register_memory(*data, MemoryAccess::DirectNpu);
+    auto region = transport_->register_memory(
+        *data, MemoryAccess::LocalWrite | MemoryAccess::RemoteWrite | MemoryAccess::RemoteRead);
     if (!region)
         return Error{region.error()};
     const std::uint64_t command_id = allocate_command_id();
@@ -350,7 +355,8 @@ Result<StorageCompletionHandle> StorageClient::read_batch(std::span<const Storag
         if (request.length > std::numeric_limits<std::uint64_t>::max() - total_length)
             return Error{ErrorCode::kInvalidArgument, "storage batch read byte count overflows"};
         total_length += request.length;
-        auto region = transport_->register_memory(*request.data, MemoryAccess::DirectNpu);
+        auto region = transport_->register_memory(
+            *request.data, MemoryAccess::LocalWrite | MemoryAccess::RemoteWrite | MemoryAccess::RemoteRead);
         if (!region)
             return Error{region.error()};
         pending.data_regions.push_back(std::move(*region));
@@ -370,7 +376,8 @@ Result<StorageCompletionHandle> StorageClient::read_batch(std::span<const Storag
         return Error{descriptor_buffer.error()};
     if (const auto copied = runtime_->copy_to(&*descriptor_buffer, bytes.data(), bytes.size()); !copied)
         return Error{copied.error()};
-    auto region = transport_->register_memory(*descriptor_buffer, MemoryAccess::DirectNpu);
+    auto region = transport_->register_memory(
+        *descriptor_buffer, MemoryAccess::LocalWrite | MemoryAccess::RemoteWrite | MemoryAccess::RemoteRead);
     if (!region)
         return Error{region.error()};
     pending.expected_bytes = total_length;
@@ -402,7 +409,8 @@ Result<StorageCompletionHandle> StorageClient::write_batch(std::span<const Stora
         if (request.length > std::numeric_limits<std::uint64_t>::max() - total_length)
             return Error{ErrorCode::kInvalidArgument, "storage batch write byte count overflows"};
         total_length += request.length;
-        auto region = transport_->register_memory(*request.data, MemoryAccess::DirectNpu);
+        auto region = transport_->register_memory(
+            *request.data, MemoryAccess::LocalWrite | MemoryAccess::RemoteWrite | MemoryAccess::RemoteRead);
         if (!region)
             return Error{region.error()};
         pending.data_regions.push_back(std::move(*region));
@@ -422,7 +430,8 @@ Result<StorageCompletionHandle> StorageClient::write_batch(std::span<const Stora
         return Error{descriptor_buffer.error()};
     if (const auto copied = runtime_->copy_to(&*descriptor_buffer, bytes.data(), bytes.size()); !copied)
         return Error{copied.error()};
-    auto region = transport_->register_memory(*descriptor_buffer, MemoryAccess::DirectNpu);
+    auto region = transport_->register_memory(
+        *descriptor_buffer, MemoryAccess::LocalWrite | MemoryAccess::RemoteWrite | MemoryAccess::RemoteRead);
     if (!region)
         return Error{region.error()};
     pending.expected_bytes = total_length;

@@ -167,6 +167,7 @@ if(NDS_BUILD_AICPU_KERNEL)
         COMMAND "${NDS_AICPU_COMPILER}" -x c++ -shared -fPIC -O2 -std=c++17
             -D_GLIBCXX_USE_CXX11_ABI=1 -D_FORTIFY_SOURCE=2 -D_GNU_SOURCE -fvisibility=hidden -fstack-protector-strong
             -fno-common -fno-strict-aliasing -Wall -Wextra -Werror -I${NDS_AICPU_DEVICE_DIR}
+            -I${CMAKE_CURRENT_SOURCE_DIR}/backends/aicpu
             -I${CMAKE_CURRENT_SOURCE_DIR}/backends/common
             -I${CMAKE_CURRENT_SOURCE_DIR}/include
             -I${PROJECT_SOURCE_DIR}/src/include
@@ -181,7 +182,7 @@ if(NDS_BUILD_AICPU_KERNEL)
             "${NDS_AICPU_DEVICE_DIR}/storage.cc"
             "${NDS_AICPU_DEVICE_DIR}/api.h"
             "${NDS_AICPU_DEVICE_DIR}/internal.h"
-            "${NDS_AICPU_DEVICE_DIR}/launch_args.hh"
+            "${CMAKE_CURRENT_SOURCE_DIR}/backends/aicpu/launch_args.hh"
             "${NDS_AICPU_DEVICE_DIR}/hns.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/include/device_transport.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/include/device_verbs.h"

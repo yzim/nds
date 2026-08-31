@@ -18,18 +18,13 @@ __aicore__ inline void SetInvalid(__gm__ int32_t *return_value) {
 }  // namespace
 
 /* Posts one send WR and stores the operation return value. */
-extern "C" __global__ __aicore__ void nds_aiv_post_send_kernel(GM_ADDR qp_address, GM_ADDR wr_address,
+extern "C" __global__ __aicore__ void nds_aiv_post_send_kernel(NdsDeviceQp qp, NdsDeviceSendWr wr,
                                                                GM_ADDR return_value) {
-    __gm__ const auto *qp = reinterpret_cast<__gm__ const NdsDeviceQp *>(qp_address);
-    __gm__ const auto *wr = reinterpret_cast<__gm__ const NdsDeviceSendWr *>(wr_address);
     __gm__ auto *return_value_ptr = reinterpret_cast<__gm__ int32_t *>(return_value);
-    if (qp == nullptr || wr == nullptr)
-        return SetInvalid(return_value_ptr);
-    NdsDeviceSendWr send_wr = LoadSendWr(wr);
     TPipe pipe;
     TBuf<> scratch;
     pipe.InitBuffer(scratch, 64U);
-    nds_aiv_post_send(qp, &send_wr, return_value_ptr, &scratch);
+    nds_aiv_post_send(&qp, &wr, return_value_ptr, &scratch);
 }
 
 /* Posts a contiguous WR array and rings the send doorbell once for its valid prefix. */
@@ -47,19 +42,10 @@ extern "C" __global__ __aicore__ void nds_aiv_post_send_batch_kernel(GM_ADDR qp_
 }
 
 /* Posts one receive WR and stores the operation return value. */
-extern "C" __global__ __aicore__ void nds_aiv_post_recv_kernel(GM_ADDR qp_address, GM_ADDR wr_address,
+extern "C" __global__ __aicore__ void nds_aiv_post_recv_kernel(NdsDeviceQp qp, NdsDeviceRecvWr wr,
                                                                GM_ADDR return_value) {
-    __gm__ const auto *qp = reinterpret_cast<__gm__ const NdsDeviceQp *>(qp_address);
-    __gm__ const auto *wr = reinterpret_cast<__gm__ const NdsDeviceRecvWr *>(wr_address);
     __gm__ auto *return_value_ptr = reinterpret_cast<__gm__ int32_t *>(return_value);
-    if (qp == nullptr || wr == nullptr)
-        return SetInvalid(return_value_ptr);
-    NdsDeviceRecvWr recv{};
-    recv.wr_id = wr->wr_id;
-    recv.local.address = wr->local.address;
-    recv.local.length = wr->local.length;
-    recv.local.local_key = wr->local.local_key;
-    nds_aiv_post_recv(qp, &recv, return_value_ptr);
+    nds_aiv_post_recv(&qp, &wr, return_value_ptr);
 }
 
 /* Polls one CQ and stores either the completion count or a negative operation error. */

@@ -7,7 +7,7 @@ normal project targets; the lower-layer probes are opt-in hardware targets.
 | Directory | Client target | Server target | Scope |
 |---|---|---|---|
 | `storage/` | `nds_storage_client` | `nds_storage_server` | NDS storage commands and namespace verification |
-| `verbs/` | `nds_verbs_client` | `nds_verbs_server` | NPU PostSend, PostRecv, PollCq, and AIV batch posting |
+| `verbs/` | `nds_verbs_client` | `nds_verbs_server` | NPU PostSend, PostRecv, PollCq, and configured RDMA Write |
 | `transport/` | `nds_transport_client` | `nds_transport_server` | NPU RdmaSend, RdmaRecv, RdmaRead, and RdmaWrite peer workflows |
 
 Configure the verbs and transport pairs with `-DNDS_BUILD_HARDWARE_PROBES=ON`.

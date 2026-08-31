@@ -66,8 +66,8 @@ bool wait_signal(nds::server::Transport *transport) {
 
 bool publish_memory(nds::server::Transport *transport, const nds::server::RegisteredRegion &region) {
     nds::wire::RemoteMemory wire{};
-    const nds::transport::RemoteMemory memory{reinterpret_cast<std::uint64_t>(region.address()),
-                                              static_cast<std::uint32_t>(region.length()), region.remote_key()};
+    const nds::RemoteMemory memory{reinterpret_cast<std::uint64_t>(region.address()),
+                                   static_cast<std::uint32_t>(region.length()), region.remote_key()};
     return nds::transport::encode(&memory, &wire) == nds::transport::CodecResult::Ok &&
            transport->exchange_channel()->send(std::as_bytes(std::span{&wire, 1U}));
 }
@@ -107,7 +107,7 @@ int main(int argc, char **argv) {
         buffer = payload();
         const auto region =
             transport.register_memory(buffer.data(), buffer.size(), nds::server::MemoryAccess::LocalRead);
-        if (!region || !wait_signal(&transport) || !transport.send(*region, buffer.size())) {
+        if (!region || !wait_signal(&transport) || !transport.send(region.value(), buffer.size())) {
             NDS_LOG_ERROR("transport-server", "RdmaRecv exchange failed");
             return EXIT_FAILURE;
         }
@@ -115,7 +115,7 @@ int main(int argc, char **argv) {
         buffer = payload();
         const auto region =
             transport.register_memory(buffer.data(), buffer.size(), nds::server::MemoryAccess::RemoteRead);
-        if (!region || !publish_memory(&transport, *region) || !wait_signal(&transport)) {
+        if (!region || !publish_memory(&transport, region.value()) || !wait_signal(&transport)) {
             NDS_LOG_ERROR("transport-server", "RdmaRead exchange failed");
             return EXIT_FAILURE;
         }
@@ -124,7 +124,7 @@ int main(int argc, char **argv) {
         const auto receive = transport.prepare_receive(completion.data(), completion.size());
         const auto region =
             transport.register_memory(buffer.data(), buffer.size(), nds::server::MemoryAccess::RemoteWrite);
-        if (!receive || !region || !publish_memory(&transport, *region) || !transport.receive(5000U) ||
+        if (!receive || !region || !publish_memory(&transport, region.value()) || !transport.receive(5000U) ||
             !verify(buffer)) {
             NDS_LOG_ERROR("transport-server", "RdmaWrite exchange failed");
             return EXIT_FAILURE;

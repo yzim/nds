@@ -34,7 +34,7 @@ Result<nds::transport::TransportInfo> receive_transport_info(TcpConnection *chan
         return Error{ErrorCode::kInvalidArgument, "TCP connection is required"};
     nds::wire::TransportInfo encoded{};
     if (const auto received = channel->receive(std::as_writable_bytes(std::span{&encoded, 1U})); !received)
-        return Error{received.error()};
+        return received.error();
     nds::transport::TransportInfo info{};
     if (nds::transport::decode(&encoded, &info) != nds::transport::CodecResult::Ok)
         return Error{ErrorCode::kTransport, "invalid transport information"};
@@ -67,7 +67,9 @@ Result<void> launch_send_batch(Runtime *runtime, Launcher *launcher, const NdsDe
                                std::span<const NdsDeviceSendWr> wrs) {
     if (runtime == nullptr || launcher == nullptr || wrs.empty())
         return Error{ErrorCode::kInvalidArgument, "AIV transport batch requires work requests"};
-    return launcher->post_send_batch(runtime, device_qp, wrs, kTransportLaunchTimeoutMs);
+    for (const NdsDeviceSendWr &wr : wrs)
+        NDS_RETURN_IF_ERROR(launcher->with_config(kLegacyTransportLaunchConfig).post_send(device_qp, wr));
+    return {};
 }
 
 Result<void> launch_poll(Runtime *runtime, Launcher *launcher, const NdsDeviceQp &device_qp, bool send_cq) {
@@ -108,27 +110,27 @@ Result<void> Transport::open(Runtime *runtime, const TransportConfig &config, co
     if (backend_.mode != BackendMode::Ra)
         config_.qp.control_flags |= QueuePairCallerPollsCq;
     if (const auto launcher = initialize_launcher(); !launcher)
-        return Error{launcher.error()};
+        return launcher.error();
     NDS_ASSIGN_OR_RETURN(endpoint_, runtime_->create_endpoint(config_.endpoint));
 
     const auto server = parse_tcp_address(config_.server_address);
     if (!server)
-        return Error{server.error()};
-    auto connected = TcpConnection::connect(server->ipv4, server->port, config_.tcp_timeout_ms);
+        return server.error();
+    auto connected = TcpConnection::connect(server.value().ipv4, server.value().port, config_.tcp_timeout_ms);
     if (!connected)
-        return Error{connected.error()};
-    exchange_channel_ = std::move(*connected);
+        return connected.error();
+    exchange_channel_ = std::move(connected).value();
     const nds::transport::TransportInfo count_request{
         nds::transport::TransportInfoKind::QpCountRequest, config_.qp_count, {}};
     NDS_RETURN_IF_ERROR(send_transport_info(&exchange_channel_, count_request));
     const auto count_response = receive_transport_info(&exchange_channel_);
     if (!count_response)
-        return Error{count_response.error()};
-    if (count_response->kind != nds::transport::TransportInfoKind::QpCountResponse ||
-        count_response->qp_count > config_.qp_count) {
+        return count_response.error();
+    if (count_response.value().kind != nds::transport::TransportInfoKind::QpCountResponse ||
+        count_response.value().qp_count > config_.qp_count) {
         return Error{ErrorCode::kTransport, "invalid accepted QP count"};
     }
-    const std::uint32_t accepted_qp_count = count_response->qp_count;
+    const std::uint32_t accepted_qp_count = count_response.value().qp_count;
 
     qps_.reserve(accepted_qp_count);
     local_qps_.reserve(accepted_qp_count);
@@ -136,26 +138,27 @@ Result<void> Transport::open(Runtime *runtime, const TransportConfig &config, co
     for (std::uint32_t index = 0U; index < accepted_qp_count; ++index) {
         auto created = endpoint_.create_qp(config_.qp, backend_.mode);
         if (!created)
-            return Error{created.error()};
-        qps_.push_back(std::move(*created));
+            return created.error();
+        qps_.push_back(std::move(created).value());
         next_wr_ids_.push_back(1U);
         const auto local = qps_.back().local_qp_info();
         if (!local)
-            return Error{local.error()};
-        local_qps_.push_back(*local);
+            return local.error();
+        local_qps_.push_back(local.value());
     }
     nds::transport::TransportInfo local_info{nds::transport::TransportInfoKind::QpEndpoints, accepted_qp_count, {}};
     std::copy(local_qps_.begin(), local_qps_.end(), local_info.qps.begin());
     NDS_RETURN_IF_ERROR(send_transport_info(&exchange_channel_, local_info));
     const auto peer_info = receive_transport_info(&exchange_channel_);
     if (!peer_info)
-        return Error{peer_info.error()};
-    if (peer_info->kind != nds::transport::TransportInfoKind::QpEndpoints || peer_info->qp_count != accepted_qp_count) {
+        return peer_info.error();
+    if (peer_info.value().kind != nds::transport::TransportInfoKind::QpEndpoints ||
+        peer_info.value().qp_count != accepted_qp_count) {
         return Error{ErrorCode::kTransport, "peer returned mismatched QP information"};
     }
     for (std::size_t index = 0U; index < qps_.size(); ++index) {
-        if (const auto qp_connected = qps_[index].connect(peer_info->qps[index]); !qp_connected)
-            return Error{qp_connected.error()};
+        if (const auto qp_connected = qps_[index].connect(peer_info.value().qps[index]); !qp_connected)
+            return qp_connected.error();
     }
     NDS_RETURN_IF_ERROR(build_device_transport());
     return ready();
@@ -454,15 +457,15 @@ Result<void> Transport::ready() {
     for (QueuePair &qp : qps_) {
         const auto port = qp.query_port_status();
         if (!port)
-            return Error{port.error()};
+            return port.error();
         const auto qp_status = qp.query_status();
         if (!qp_status)
-            return Error{qp_status.error()};
+            return qp_status.error();
         const auto lite = qp.query_support_lite();
         if (!lite)
-            return Error{lite.error()};
-        if (*port != Libra::PORT_STATUS_ACTIVE || *qp_status != Libra::QP_STATUS_CONNECTED ||
-            *lite == Libra::LITE_NOT_SUPPORTED) {
+            return lite.error();
+        if (port.value() != Libra::PORT_STATUS_ACTIVE || qp_status.value() != Libra::QP_STATUS_CONNECTED ||
+            lite.value() == Libra::LITE_NOT_SUPPORTED) {
             return Error{ErrorCode::kRa, "client transport is not ready"};
         }
     }
