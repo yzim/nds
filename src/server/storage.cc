@@ -16,15 +16,15 @@ Result<StorageBootstrap> exchange_bootstrap(Transport *transport, const uint8_t 
     StorageBootstrap bootstrap{};
     if (deserialize_storage_bootstrap(bootstrap_bytes, kStorageBootstrapBytes, &bootstrap) != StorageSerdeResult::Ok ||
         serialize_storage_namespace({capacity}, namespace_bytes, sizeof(namespace_bytes)) != StorageSerdeResult::Ok)
-        return unexpected(ErrorCode::kProtocol, "invalid storage bootstrap record");
+        return Error{ErrorCode::kProtocol, "invalid storage bootstrap record"};
     auto namespace_region =
         transport->register_memory(namespace_bytes, sizeof(namespace_bytes), MemoryAccess::LocalRead);
     if (!namespace_region)
-        return unexpected(namespace_region.error());
+        return Error{namespace_region.error()};
     if (const auto completed = transport->write(*namespace_region, bootstrap.namespace_response.address,
                                                 bootstrap.namespace_response.remote_key, sizeof(namespace_bytes));
         !completed) {
-        return unexpected(completed.error());
+        return Error{completed.error()};
     }
     return bootstrap;
 }
@@ -34,12 +34,12 @@ Result<void> move_data(Transport *transport, std::vector<unsigned char> *storage
     auto *data = storage->data() + offset;
     auto data_region = transport->register_memory(data, length, MemoryAccess::LocalWrite);
     if (!data_region)
-        return unexpected(data_region.error());
+        return Error{data_region.error()};
     const auto transferred =
         read ? transport->write(*data_region, remote.address, remote.remote_key, static_cast<std::uint32_t>(length))
              : transport->read(*data_region, remote.address, remote.remote_key, static_cast<std::uint32_t>(length));
     if (!transferred)
-        return unexpected(transferred.error());
+        return Error{transferred.error()};
     return {};
 }
 
@@ -50,11 +50,11 @@ Result<void> process_batch(Transport *transport, std::vector<unsigned char> *sto
     std::vector<uint8_t> entry_bytes(count * kStorageBatchEntryBytes);
     auto entry_region = transport->register_memory(entry_bytes.data(), entry_bytes.size(), MemoryAccess::LocalWrite);
     if (!entry_region)
-        return unexpected(entry_region.error());
+        return Error{entry_region.error()};
     if (const auto fetched = transport->read(*entry_region, command.entries.address, command.entries.remote_key,
                                              static_cast<std::uint32_t>(entry_bytes.size()));
         !fetched)
-        return unexpected(fetched.error());
+        return Error{fetched.error()};
 
     std::vector<Entry> entries(count);
     std::uint64_t total_length{};
@@ -79,7 +79,7 @@ Result<void> process_batch(Transport *transport, std::vector<unsigned char> *sto
         return {};
     for (const Entry &entry : entries) {
         if (const auto moved = move_data(transport, storage, entry.offset, entry.length, entry.data, read); !moved)
-            return unexpected(moved.error());
+            return Error{moved.error()};
     }
     completion->bytes_transferred = total_length;
     return {};
@@ -94,7 +94,7 @@ Result<void> process_single(Transport *transport, std::vector<unsigned char> *st
         return {};
     }
     if (const auto moved = move_data(transport, storage, command.offset, command.length, command.data, read); !moved)
-        return unexpected(moved.error());
+        return Error{moved.error()};
     completion->bytes_transferred = command.length;
     return {};
 }
@@ -104,39 +104,39 @@ Result<void> process_single(Transport *transport, std::vector<unsigned char> *st
 Result<void> serve_commands(Transport *transport, std::vector<unsigned char> *storage, std::uint32_t command_count,
                             std::uint32_t timeout_ms) {
     if (transport == nullptr || storage == nullptr || command_count == 0U)
-        return unexpected(ErrorCode::kInvalidArgument, "transport and namespace are required");
+        return Error{ErrorCode::kInvalidArgument, "transport and namespace are required"};
     uint8_t command_bytes[kStorageCommandBytes]{};
     uint8_t completion_bytes[kStorageCompletionBytes]{};
     uint8_t bootstrap_bytes[kStorageBootstrapBytes]{};
     auto bootstrap_region = transport->prepare_receive(bootstrap_bytes, sizeof(bootstrap_bytes));
     if (!bootstrap_region)
-        return unexpected(bootstrap_region.error());
+        return Error{bootstrap_region.error()};
     auto completion_region =
         transport->register_memory(completion_bytes, sizeof(completion_bytes), MemoryAccess::LocalRead);
     if (!completion_region)
-        return unexpected(completion_region.error());
+        return Error{completion_region.error()};
     if (const auto received = transport->receive(timeout_ms); !received)
-        return unexpected(received.error());
+        return Error{received.error()};
     const auto bootstrap = exchange_bootstrap(transport, bootstrap_bytes, storage->size());
     if (!bootstrap)
-        return unexpected(bootstrap.error());
+        return Error{bootstrap.error()};
     for (std::uint32_t command_index = 0U; command_index < command_count; ++command_index) {
         auto command_region = transport->prepare_receive(command_bytes, sizeof(command_bytes));
         if (!command_region)
-            return unexpected(command_region.error());
+            return Error{command_region.error()};
         if (const auto result = transport->receive(timeout_ms); !result)
-            return unexpected(result.error());
+            return Error{result.error()};
 
         StorageOperation operation{};
         if (deserialize_storage_operation(command_bytes, sizeof(command_bytes), &operation) != StorageSerdeResult::Ok)
-            return unexpected(ErrorCode::kProtocol, "invalid storage operation");
+            return Error{ErrorCode::kProtocol, "invalid storage operation"};
         StorageCompletion completion{0U, StorageCompletionState::Complete, StorageStatus::Success, 0U};
         Result<void> processed;
         switch (operation) {
             case StorageOperation::Read: {
                 StorageReadCommand command{};
                 if (deserialize_storage_read(command_bytes, sizeof(command_bytes), &command) != StorageSerdeResult::Ok)
-                    return unexpected(ErrorCode::kProtocol, "invalid storage read command");
+                    return Error{ErrorCode::kProtocol, "invalid storage read command"};
                 completion.command_id = command.command_id;
                 processed = process_single(transport, storage, command, true, &completion);
                 break;
@@ -144,7 +144,7 @@ Result<void> serve_commands(Transport *transport, std::vector<unsigned char> *st
             case StorageOperation::Write: {
                 StorageWriteCommand command{};
                 if (deserialize_storage_write(command_bytes, sizeof(command_bytes), &command) != StorageSerdeResult::Ok)
-                    return unexpected(ErrorCode::kProtocol, "invalid storage write command");
+                    return Error{ErrorCode::kProtocol, "invalid storage write command"};
                 completion.command_id = command.command_id;
                 processed = process_single(transport, storage, command, false, &completion);
                 break;
@@ -153,7 +153,7 @@ Result<void> serve_commands(Transport *transport, std::vector<unsigned char> *st
                 StorageBatchReadCommand command{};
                 if (deserialize_storage_batch_read(command_bytes, sizeof(command_bytes), &command) !=
                     StorageSerdeResult::Ok)
-                    return unexpected(ErrorCode::kProtocol, "invalid storage batch-read command");
+                    return Error{ErrorCode::kProtocol, "invalid storage batch-read command"};
                 completion.command_id = command.command_id;
                 processed = process_batch<StorageBatchReadCommand, StorageBatchReadEntry>(
                     transport, storage, command, true, deserialize_storage_batch_read_entry, &completion);
@@ -163,7 +163,7 @@ Result<void> serve_commands(Transport *transport, std::vector<unsigned char> *st
                 StorageBatchWriteCommand command{};
                 if (deserialize_storage_batch_write(command_bytes, sizeof(command_bytes), &command) !=
                     StorageSerdeResult::Ok)
-                    return unexpected(ErrorCode::kProtocol, "invalid storage batch-write command");
+                    return Error{ErrorCode::kProtocol, "invalid storage batch-write command"};
                 completion.command_id = command.command_id;
                 processed = process_batch<StorageBatchWriteCommand, StorageBatchWriteEntry>(
                     transport, storage, command, false, deserialize_storage_batch_write_entry, &completion);
@@ -171,14 +171,14 @@ Result<void> serve_commands(Transport *transport, std::vector<unsigned char> *st
             }
         }
         if (!processed)
-            return unexpected(processed.error());
+            return Error{processed.error()};
         if (serialize_storage_completion(completion, completion_bytes, sizeof(completion_bytes)) !=
             StorageSerdeResult::Ok)
-            return unexpected(ErrorCode::kProtocol, "invalid storage completion");
+            return Error{ErrorCode::kProtocol, "invalid storage completion"};
         if (const auto completed = transport->write(*completion_region, bootstrap->completion.address,
                                                     bootstrap->completion.remote_key, sizeof(completion_bytes));
             !completed)
-            return unexpected(completed.error());
+            return Error{completed.error()};
     }
     return {};
 }

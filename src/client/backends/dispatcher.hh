@@ -3,6 +3,7 @@
 
 #include "aicpu/launcher.hh"
 #include "aiv/launcher.hh"
+#include "ra/launcher.hh"
 
 #include "endpoint.hh"
 #include "result.hh"
@@ -20,24 +21,22 @@ namespace nds::client {
 
 class Runtime;
 
-/* Selects one AI backend and owns its private, ordered launch stream. */
+/* Selects one backend and owns its loader and private AI launch stream. */
 class BackendDispatcher {
 public:
     ~BackendDispatcher();
-    Result<void> open(NpuBackend mode, const std::string &aiv_kernel, const std::string &aicpu_kernel);
+    BackendDispatcher() = default;
+    BackendDispatcher(const BackendDispatcher &) = delete;
+    BackendDispatcher &operator=(const BackendDispatcher &) = delete;
+    BackendDispatcher(BackendDispatcher &&) noexcept = default;
+    BackendDispatcher &operator=(BackendDispatcher &&) noexcept = default;
+    Result<void> open(NpuBackend mode, const std::string &ra_backend, const std::string &aiv_kernel,
+                      const std::string &aicpu_kernel);
 
     Result<void> post_send(Runtime &runtime, const NdsDeviceQp &qp, const NdsDeviceSendWr &wr, std::int32_t timeout_ms);
     Result<void> post_recv(Runtime &runtime, const NdsDeviceQp &qp, const NdsDeviceRecvWr &wr, std::int32_t timeout_ms);
     Result<void> post_send_batch(Runtime &runtime, const NdsDeviceQp &qp, std::span<const NdsDeviceSendWr> wrs,
                                  std::int32_t timeout_ms);
-    Result<void> rdma_send(Runtime &runtime, const NdsDeviceTransport &transport, const NdsDeviceSendWr &wr,
-                           std::int32_t timeout_ms);
-    Result<void> rdma_recv(Runtime &runtime, const NdsDeviceTransport &transport, const NdsDeviceRecvWr &wr,
-                           std::int32_t timeout_ms);
-    Result<void> rdma_read(Runtime &runtime, const NdsDeviceTransport &transport, const NdsDeviceSendWr &wr,
-                           std::int32_t timeout_ms);
-    Result<void> rdma_write(Runtime &runtime, const NdsDeviceTransport &transport, const NdsDeviceSendWr &wr,
-                            std::int32_t timeout_ms);
     Result<std::uint32_t> poll_cq(Runtime &runtime, const NdsDeviceQp &qp, bool send_cq, std::uint32_t max_completions,
                                   NdsDeviceWc *completions, std::int32_t timeout_ms);
     Result<void> storage_read(Runtime &runtime, const NdsDeviceStorageContext &context,
@@ -51,6 +50,7 @@ public:
 
 private:
     NpuBackend mode_{NpuBackend::Ra};
+    std::unique_ptr<::nds::RaLauncher> ra_;
     std::unique_ptr<::nds::AivLauncher> aiv_;
     std::unique_ptr<::nds::AicpuLauncher> aicpu_;
 };

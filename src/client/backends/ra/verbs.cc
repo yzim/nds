@@ -25,9 +25,9 @@ Result<NdsRaSendResponse> post_unrung(client::QueuePair *qp, const NdsDeviceSend
         request.local.local_key == 0U || opcode < 0 ||
         (request.opcode != NDS_DEVICE_WR_SEND && (request.remote_address == 0U || request.remote_key == 0U)) ||
         (request.opcode == NDS_DEVICE_WR_SEND && (request.remote_address != 0U || request.remote_key != 0U))) {
-        return unexpected(ErrorCode::kInvalidArgument,
-                          "RA post requires a connected RA QP, valid local SGE, supported opcode, "
-                          "and matching remote-memory metadata");
+        return Error{ErrorCode::kInvalidArgument,
+                     "RA post requires a connected RA QP, valid local SGE, supported opcode, "
+                     "and matching remote-memory metadata"};
     }
     NdsRaSge *local = sge == nullptr ? qp->posted_send_sge() : sge;
     *local = {request.local.address, request.local.length, request.local.local_key};
@@ -41,7 +41,7 @@ Result<NdsRaSendResponse> post_unrung(client::QueuePair *qp, const NdsDeviceSend
     NdsRaSendResponse response{};
     const int result = qp->ra_api()->ra_typical_send_wr(qp->handle(), &wr, &response);
     if (result != 0)
-        return unexpected(ErrorCode::kRa, "RaTypicalSendWr failed: " + std::to_string(result));
+        return Error{ErrorCode::kRa, "RaTypicalSendWr failed: " + std::to_string(result)};
     return response;
 }
 }  // namespace
@@ -49,7 +49,7 @@ Result<NdsRaSendResponse> post_unrung(client::QueuePair *qp, const NdsDeviceSend
 Result<void> NdsRaPostSend(client::Runtime *runtime, client::QueuePair *qp, const NdsDeviceSendWr &request) {
     const auto posted = NdsRaPrepareSend(qp, request, nullptr);
     if (!posted)
-        return unexpected(posted.error());
+        return Error{posted.error()};
     return NdsRaRingSend(runtime, *posted);
 }
 
@@ -59,16 +59,16 @@ Result<NdsRaSendResponse> NdsRaPrepareSend(client::QueuePair *qp, const NdsDevic
 
 Result<void> NdsRaRingSend(client::Runtime *runtime, const NdsRaSendResponse &response) {
     if (runtime == nullptr)
-        return unexpected(ErrorCode::kInvalidArgument, "RA post requires a runtime");
+        return Error{ErrorCode::kInvalidArgument, "RA post requires a runtime"};
     auto &api = runtime->cann_runtime_api();
     if (api.set_device == nullptr || api.rdma_db_send == nullptr)
-        return unexpected(ErrorCode::kRuntime, "runtime doorbell ABI is unavailable");
+        return Error{ErrorCode::kRuntime, "runtime doorbell ABI is unavailable"};
     if (const int result = api.set_device(static_cast<std::int32_t>(runtime->config().logical_device_id)); result != 0)
-        return unexpected(ErrorCode::kRuntime, "rtSetDevice before rtRDMADBSend failed: " + std::to_string(result));
+        return Error{ErrorCode::kRuntime, "rtSetDevice before rtRDMADBSend failed: " + std::to_string(result)};
     if (const int result = api.rdma_db_send(response.doorbell.db_index,
                                             static_cast<std::uint64_t>(response.doorbell.db_info), nullptr);
         result != 0) {
-        return unexpected(ErrorCode::kRuntime, "rtRDMADBSend failed: " + std::to_string(result));
+        return Error{ErrorCode::kRuntime, "rtRDMADBSend failed: " + std::to_string(result)};
     }
     return {};
 }
@@ -77,13 +77,13 @@ Result<void> NdsRaPostRecv(client::QueuePair *qp, const NdsDeviceRecvWr &request
     if (qp == nullptr || qp->backend_mode() != client::NpuBackend::Ra || !qp->connected() || qp->ra_api() == nullptr ||
         qp->ra_api()->ra_recv_wrlist == nullptr || qp->handle() == nullptr || request.local.address == 0U ||
         request.local.length == 0U || request.local.local_key == 0U) {
-        return unexpected(ErrorCode::kInvalidArgument, "RA receive post requires a connected RA QP and valid SGE");
+        return Error{ErrorCode::kInvalidArgument, "RA receive post requires a connected RA QP and valid SGE"};
     }
     NdsRaRecvWr wr{request.wr_id, {request.local.address, request.local.length, request.local.local_key}};
     unsigned int completed{};
     const int result = qp->ra_api()->ra_recv_wrlist(qp->handle(), &wr, 1U, &completed);
     if (result != 0 || completed != 1U)
-        return unexpected(ErrorCode::kRa, "RaRecvWrlist failed: " + std::to_string(result));
+        return Error{ErrorCode::kRa, "RaRecvWrlist failed: " + std::to_string(result)};
     return {};
 }
 
@@ -92,13 +92,13 @@ Result<std::uint32_t> NdsRaPollCq(client::QueuePair *qp, bool is_send_cq, std::u
     if (qp == nullptr || wc == nullptr || max_completions == 0U || max_completions > NDS_DEVICE_MAX_COMPLETIONS ||
         qp->backend_mode() != client::NpuBackend::Ra || !qp->created() || qp->ra_api() == nullptr ||
         qp->handle() == nullptr) {
-        return unexpected(ErrorCode::kInvalidArgument,
-                          "RA completion poll requires an RA QP, output, and supported completion limit");
+        return Error{ErrorCode::kInvalidArgument,
+                     "RA completion poll requires an RA QP, output, and supported completion limit"};
     }
     NdsRaCompletion completions[NDS_DEVICE_MAX_COMPLETIONS]{};
     const int result = qp->ra_api()->ra_poll_cq(qp->handle(), is_send_cq, max_completions, completions);
     if (result < 0 || result > static_cast<int>(max_completions)) {
-        return unexpected(ErrorCode::kRa, "RaPollCq returned an invalid result: " + std::to_string(result));
+        return Error{ErrorCode::kRa, "RaPollCq returned an invalid result: " + std::to_string(result)};
     }
     for (int index = 0; index < result; ++index) {
         const NdsRaCompletion &source = completions[index];

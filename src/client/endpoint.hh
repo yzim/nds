@@ -5,6 +5,7 @@
 #include "device_transport.h"
 #include "loaders/ra_loader.hh"
 #include "result.hh"
+#include "runtime.hh"
 
 #include <cstdint>
 #include <string>
@@ -12,7 +13,6 @@
 
 namespace nds::client {
 
-class MemoryBuffer;
 class Runtime;
 struct EndpointTestAccess;
 
@@ -95,8 +95,6 @@ public:
     Result<int> query_support_lite();
     Result<int> query_status();
     Result<std::vector<NdsRaCqeError>> query_cqe_errors();
-    Result<void> set_device_wr_id_storage(std::uint64_t send_address, std::uint64_t receive_address);
-    Result<NdsDeviceTransport> make_device_transport() const;
 
     bool created() const noexcept;
     bool connected() const noexcept;
@@ -110,6 +108,7 @@ public:
 
 private:
     friend class Endpoint;
+    friend class Transport;
     QueuePair(Endpoint *endpoint, const QueuePairConfig &config, NpuBackend backend);
     Result<void> initialize();
     void reset() noexcept;
@@ -123,8 +122,12 @@ private:
     void *handle_{};
     NdsRaQpAttr local_attributes_{};
     NdsRaAiQpInfo ai_qp_info_{};
-    std::uint64_t send_wr_ids_{};
-    std::uint64_t receive_wr_ids_{};
+    // Raw AIV CQEs identify a queue slot, not the submitted work request.
+    // These device-visible tables recover the request ID at completion time.
+    // They are deliberately private: provider-backed RA and AICPU own their
+    // corresponding bookkeeping internally.
+    MemoryBuffer send_wr_ids_;
+    MemoryBuffer receive_wr_ids_;
     NdsRaSge posted_send_sge_{};
     bool connected_{};
 };

@@ -17,9 +17,9 @@ NdsDeviceQp host_qp_view(client::Runtime *runtime, client::QueuePair *qp) {
 }
 
 NdsDeviceTransport host_transport_view(const RaConnection &connection) {
-    NdsDeviceTransport view{};
-    view.control_qp = host_qp_view(connection.runtime, connection.qp);
-    return view;
+    static thread_local NdsDeviceQp qp;
+    qp = host_qp_view(connection.runtime, connection.qp);
+    return {reinterpret_cast<std::uint64_t>(&qp), 1U, 0U};
 }
 
 NdsDeviceStorageContext host_storage_view(const RaStorageContext &context) {
@@ -51,45 +51,44 @@ RaLauncher::~RaLauncher() = default;
 
 Result<void> RaLauncher::load(const std::string &backend_path) {
     if (impl_ != nullptr || backend_path.empty())
-        return unexpected(ErrorCode::kInvalidArgument, impl_ != nullptr
-                                                           ? "NDS RA launcher is already loaded"
-                                                           : "NDS RA requires an NDS backend artifact path");
+        return Error{ErrorCode::kInvalidArgument, impl_ != nullptr ? "NDS RA launcher is already loaded"
+                                                                   : "NDS RA requires an NDS backend artifact path"};
 
     auto library = client::SharedLibrary::open(backend_path);
     if (!library)
-        return unexpected(library.error());
+        return Error{library.error()};
     auto post_send = library->resolve_required<NdsRaBackendPostSend>("nds_ra_backend_post_send");
     if (!post_send)
-        return unexpected(post_send.error());
+        return Error{post_send.error()};
     auto poll_cq = library->resolve_required<NdsRaBackendPollCq>("nds_ra_backend_poll_cq");
     if (!poll_cq)
-        return unexpected(poll_cq.error());
+        return Error{poll_cq.error()};
     auto rdma_send = library->resolve_required<NdsRaBackendRdmaSend>("nds_ra_backend_rdma_send");
     if (!rdma_send)
-        return unexpected(rdma_send.error());
+        return Error{rdma_send.error()};
     auto rdma_recv = library->resolve_required<NdsRaBackendRdmaRecv>("nds_ra_backend_rdma_recv");
     if (!rdma_recv)
-        return unexpected(rdma_recv.error());
+        return Error{rdma_recv.error()};
     auto rdma_read = library->resolve_required<NdsRaBackendRdmaSend>("nds_ra_backend_rdma_read");
     if (!rdma_read)
-        return unexpected(rdma_read.error());
+        return Error{rdma_read.error()};
     auto rdma_write = library->resolve_required<NdsRaBackendRdmaSend>("nds_ra_backend_rdma_write");
     if (!rdma_write)
-        return unexpected(rdma_write.error());
+        return Error{rdma_write.error()};
     auto storage_read = library->resolve_required<NdsRaBackendStorage>("nds_ra_backend_storage_read");
     if (!storage_read)
-        return unexpected(storage_read.error());
+        return Error{storage_read.error()};
     auto storage_write = library->resolve_required<NdsRaBackendStorageWrite>("nds_ra_backend_storage_write");
     if (!storage_write)
-        return unexpected(storage_write.error());
+        return Error{storage_write.error()};
     auto storage_batch_read =
         library->resolve_required<NdsRaBackendStorageBatchRead>("nds_ra_backend_storage_batch_read");
     if (!storage_batch_read)
-        return unexpected(storage_batch_read.error());
+        return Error{storage_batch_read.error()};
     auto storage_batch_write =
         library->resolve_required<NdsRaBackendStorageBatchWrite>("nds_ra_backend_storage_batch_write");
     if (!storage_batch_write)
-        return unexpected(storage_batch_write.error());
+        return Error{storage_batch_write.error()};
     impl_ = std::make_unique<Impl>();
     impl_->library = std::move(*library);
     impl_->post_send = *post_send;
@@ -107,8 +106,8 @@ Result<void> RaLauncher::load(const std::string &backend_path) {
 
 Result<void> RaLauncher::post_send(const NdsDeviceQp &qp, const NdsDeviceSendWr &wr) {
     if (impl_ == nullptr || impl_->post_send == nullptr)
-        return unexpected(ErrorCode::kRuntime, "RA backend is not loaded");
-    return impl_->post_send(&qp, &wr) == 0 ? Result<void>{} : unexpected(ErrorCode::kRa, "RA backend Send failed");
+        return Error{ErrorCode::kRuntime, "RA backend is not loaded"};
+    return impl_->post_send(&qp, &wr) == 0 ? Result<void>{} : Error{ErrorCode::kRa, "RA backend Send failed"};
 }
 
 Result<void> RaLauncher::post_send(client::Runtime *runtime, client::QueuePair *qp, const NdsDeviceSendWr &wr) {
@@ -118,9 +117,9 @@ Result<void> RaLauncher::post_send(client::Runtime *runtime, client::QueuePair *
 Result<std::uint32_t> RaLauncher::poll_cq(const NdsDeviceQp &qp, std::uint32_t send_cq, std::uint32_t max_completions,
                                           NdsDeviceWc *wc) {
     if (impl_ == nullptr || impl_->poll_cq == nullptr)
-        return unexpected(ErrorCode::kRuntime, "RA backend is not loaded");
+        return Error{ErrorCode::kRuntime, "RA backend is not loaded"};
     const int result = impl_->poll_cq(&qp, send_cq, max_completions, wc);
-    return result < 0 ? Result<std::uint32_t>(unexpected(ErrorCode::kRa, "RA backend CQ poll failed"))
+    return result < 0 ? Result<std::uint32_t>(Error{ErrorCode::kRa, "RA backend CQ poll failed"})
                       : Result<std::uint32_t>(static_cast<std::uint32_t>(result));
 }
 
@@ -131,9 +130,9 @@ Result<std::uint32_t> RaLauncher::poll_cq(client::QueuePair *qp, bool send_cq, s
 
 Result<void> RaLauncher::rdma_send(const NdsDeviceTransport &transport, const NdsDeviceSendWr &wr) {
     if (impl_ == nullptr || impl_->rdma_send == nullptr)
-        return unexpected(ErrorCode::kRuntime, "RA backend is not loaded");
+        return Error{ErrorCode::kRuntime, "RA backend is not loaded"};
     return impl_->rdma_send(&transport, &wr) == 0 ? Result<void>{}
-                                                  : unexpected(ErrorCode::kRa, "RA backend RDMA send failed");
+                                                  : Error{ErrorCode::kRa, "RA backend RDMA send failed"};
 }
 
 Result<void> RaLauncher::rdma_send(const RaConnection &connection, const NdsDeviceSendWr &wr) {
@@ -142,9 +141,9 @@ Result<void> RaLauncher::rdma_send(const RaConnection &connection, const NdsDevi
 
 Result<void> RaLauncher::rdma_recv(const NdsDeviceTransport &transport, const NdsDeviceRecvWr &wr) {
     if (impl_ == nullptr || impl_->rdma_recv == nullptr)
-        return unexpected(ErrorCode::kRuntime, "RA backend is not loaded");
+        return Error{ErrorCode::kRuntime, "RA backend is not loaded"};
     return impl_->rdma_recv(&transport, &wr) == 0 ? Result<void>{}
-                                                  : unexpected(ErrorCode::kRa, "RA backend RDMA receive failed");
+                                                  : Error{ErrorCode::kRa, "RA backend RDMA receive failed"};
 }
 
 Result<void> RaLauncher::rdma_recv(const RaConnection &connection, const NdsDeviceRecvWr &wr) {
@@ -153,9 +152,9 @@ Result<void> RaLauncher::rdma_recv(const RaConnection &connection, const NdsDevi
 
 Result<void> RaLauncher::rdma_read(const NdsDeviceTransport &transport, const NdsDeviceSendWr &wr) {
     if (impl_ == nullptr || impl_->rdma_read == nullptr)
-        return unexpected(ErrorCode::kRuntime, "RA backend is not loaded");
+        return Error{ErrorCode::kRuntime, "RA backend is not loaded"};
     return impl_->rdma_read(&transport, &wr) == 0 ? Result<void>{}
-                                                  : unexpected(ErrorCode::kRa, "RA backend RDMA read failed");
+                                                  : Error{ErrorCode::kRa, "RA backend RDMA read failed"};
 }
 
 Result<void> RaLauncher::rdma_read(const RaConnection &connection, const NdsDeviceSendWr &wr) {
@@ -164,9 +163,9 @@ Result<void> RaLauncher::rdma_read(const RaConnection &connection, const NdsDevi
 
 Result<void> RaLauncher::rdma_write(const NdsDeviceTransport &transport, const NdsDeviceSendWr &wr) {
     if (impl_ == nullptr || impl_->rdma_write == nullptr)
-        return unexpected(ErrorCode::kRuntime, "RA backend is not loaded");
+        return Error{ErrorCode::kRuntime, "RA backend is not loaded"};
     return impl_->rdma_write(&transport, &wr) == 0 ? Result<void>{}
-                                                   : unexpected(ErrorCode::kRa, "RA backend RDMA write failed");
+                                                   : Error{ErrorCode::kRa, "RA backend RDMA write failed"};
 }
 
 Result<void> RaLauncher::rdma_write(const RaConnection &connection, const NdsDeviceSendWr &wr) {
@@ -175,9 +174,9 @@ Result<void> RaLauncher::rdma_write(const RaConnection &connection, const NdsDev
 
 Result<void> RaLauncher::storage_read(const NdsDeviceStorageContext &context, const StorageReadCommand &command) {
     if (impl_ == nullptr || impl_->storage_read == nullptr)
-        return unexpected(ErrorCode::kRuntime, "RA backend is not loaded");
+        return Error{ErrorCode::kRuntime, "RA backend is not loaded"};
     return impl_->storage_read(&context, &command) == 0 ? Result<void>{}
-                                                        : unexpected(ErrorCode::kRa, "RA backend storage read failed");
+                                                        : Error{ErrorCode::kRa, "RA backend storage read failed"};
 }
 
 Result<void> RaLauncher::storage_read(const RaStorageContext &context, const StorageReadCommand &command) {
@@ -186,10 +185,9 @@ Result<void> RaLauncher::storage_read(const RaStorageContext &context, const Sto
 
 Result<void> RaLauncher::storage_write(const NdsDeviceStorageContext &context, const StorageWriteCommand &command) {
     if (impl_ == nullptr || impl_->storage_write == nullptr)
-        return unexpected(ErrorCode::kRuntime, "RA backend is not loaded");
-    return impl_->storage_write(&context, &command) == 0
-               ? Result<void>{}
-               : unexpected(ErrorCode::kRa, "RA backend storage write failed");
+        return Error{ErrorCode::kRuntime, "RA backend is not loaded"};
+    return impl_->storage_write(&context, &command) == 0 ? Result<void>{}
+                                                         : Error{ErrorCode::kRa, "RA backend storage write failed"};
 }
 
 Result<void> RaLauncher::storage_write(const RaStorageContext &context, const StorageWriteCommand &command) {
@@ -199,10 +197,10 @@ Result<void> RaLauncher::storage_write(const RaStorageContext &context, const St
 Result<void> RaLauncher::storage_batch_read(const NdsDeviceStorageContext &context,
                                             const StorageBatchReadCommand &command) {
     if (impl_ == nullptr || impl_->storage_batch_read == nullptr)
-        return unexpected(ErrorCode::kRuntime, "RA backend is not loaded");
+        return Error{ErrorCode::kRuntime, "RA backend is not loaded"};
     return impl_->storage_batch_read(&context, &command) == 0
                ? Result<void>{}
-               : unexpected(ErrorCode::kRa, "RA backend batch storage read failed");
+               : Error{ErrorCode::kRa, "RA backend batch storage read failed"};
 }
 
 Result<void> RaLauncher::storage_batch_read(const RaStorageContext &context, const StorageBatchReadCommand &command) {
@@ -212,10 +210,10 @@ Result<void> RaLauncher::storage_batch_read(const RaStorageContext &context, con
 Result<void> RaLauncher::storage_batch_write(const NdsDeviceStorageContext &context,
                                              const StorageBatchWriteCommand &command) {
     if (impl_ == nullptr || impl_->storage_batch_write == nullptr)
-        return unexpected(ErrorCode::kRuntime, "RA backend is not loaded");
+        return Error{ErrorCode::kRuntime, "RA backend is not loaded"};
     return impl_->storage_batch_write(&context, &command) == 0
                ? Result<void>{}
-               : unexpected(ErrorCode::kRa, "RA backend batch storage write failed");
+               : Error{ErrorCode::kRa, "RA backend batch storage write failed"};
 }
 
 Result<void> RaLauncher::storage_batch_write(const RaStorageContext &context, const StorageBatchWriteCommand &command) {

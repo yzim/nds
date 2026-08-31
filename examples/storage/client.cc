@@ -30,7 +30,7 @@ struct ClientConfig {
 
 nds::Result<int> parse_args(int argc, char **argv, ClientConfig *config, bool *exit_requested) {
     if (config == nullptr || exit_requested == nullptr)
-        return nds::unexpected(nds::ErrorCode::kInvalidArgument, "client configuration and exit state are required");
+        return Error{nds::ErrorCode::kInvalidArgument, "client configuration and exit state are required"};
     CLI::App app{"Send one NDS storage command from an NPU to a CPU memory namespace."};
     app.add_option("--cann-runtime", config->runtime.cann_runtime_library, "CANN runtime shared library")->required();
     app.add_option("--ra", config->transport.endpoint.ra_library, "CANN RA shared library")->required();
@@ -75,7 +75,7 @@ nds::Result<int> parse_args(int argc, char **argv, ClientConfig *config, bool *e
         config->backend.mode = nds::client::NpuBackend::Aiv;
     if ((backend == "aicpu" && config->backend.aicpu_kernel.empty()) ||
         (backend == "aiv" && config->backend.aiv_kernel.empty())) {
-        return nds::unexpected(nds::ErrorCode::kInvalidArgument, "invalid option combination");
+        return Error{nds::ErrorCode::kInvalidArgument, "invalid option combination"};
     }
     return 0;
 }

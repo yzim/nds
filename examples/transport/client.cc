@@ -41,8 +41,8 @@ nds::Result<Config> parse(int argc, char **argv) {
     try {
         app.parse(argc, argv);
     } catch (const CLI::ParseError &error) {
-        return nds::unexpected(nds::ErrorCode::kInvalidArgument,
-                               app.exit(error) == 0 ? "help requested" : "invalid options");
+        return Error{nds::ErrorCode::kInvalidArgument,
+                               app.exit(error) == 0 ? "help requested" : "invalid options"};
     }
     if (backend == "aiv")
         config.backend.mode = nds::client::NpuBackend::Aiv;
@@ -50,7 +50,7 @@ nds::Result<Config> parse(int argc, char **argv) {
         config.backend.mode = nds::client::NpuBackend::Aicpu;
     if ((config.backend.mode == nds::client::NpuBackend::Aiv && config.backend.aiv_kernel.empty()) ||
         (config.backend.mode == nds::client::NpuBackend::Aicpu && config.backend.aicpu_kernel.empty()))
-        return nds::unexpected(nds::ErrorCode::kInvalidArgument, "device backend requires its kernel artifact");
+        return Error{nds::ErrorCode::kInvalidArgument, "device backend requires its kernel artifact"};
     if (operation == "recv")
         config.operation = Operation::Recv;
     else if (operation == "read")
@@ -70,10 +70,10 @@ nds::Result<nds::client::RemoteMemory> remote_memory(nds::client::Transport *tra
     nds::wire::RemoteMemory wire{};
     if (const auto received = transport->exchange_channel()->receive(std::as_writable_bytes(std::span{&wire, 1U}));
         !received)
-        return nds::unexpected(received.error());
+        return Error{received.error()};
     nds::transport::RemoteMemory decoded{};
     if (nds::transport::decode(&wire, &decoded) != nds::transport::CodecResult::Ok)
-        return nds::unexpected(nds::ErrorCode::kTransport, "invalid remote-memory record");
+        return Error{nds::ErrorCode::kTransport, "invalid remote-memory record"};
     return {{decoded.address, decoded.remote_key, decoded.length}};
 }
 
@@ -81,49 +81,49 @@ nds::Result<void> run(nds::client::Runtime *runtime, nds::client::Transport *tra
                       Operation operation) {
     auto buffer = runtime->allocate(kBytes);
     if (!buffer)
-        return nds::unexpected(buffer.error());
+        return Error{buffer.error()};
     if (operation == Operation::Send || operation == Operation::Write) {
         const Payload data = payload();
         if (const auto copied = runtime->copy_to(&*buffer, data.data(), data.size()); !copied)
-            return nds::unexpected(copied.error());
+            return Error{copied.error()};
     }
     const auto region = transport->register_memory(*buffer, nds::client::MemoryAccess::DirectNpu);
     if (!region)
-        return nds::unexpected(region.error());
+        return Error{region.error()};
     if (operation == Operation::Recv) {
         if (const auto posted = transport->receive(queue, {&*region, kBytes}); !posted)
-            return nds::unexpected(posted.error());
+            return Error{posted.error()};
         const std::uint8_t ready{1U};
         if (const auto sent = transport->exchange_channel()->send(std::as_bytes(std::span{&ready, 1U})); !sent)
-            return nds::unexpected(sent.error());
+            return Error{sent.error()};
         if (const auto completed = transport->wait_receive(queue); !completed)
-            return nds::unexpected(completed.error());
+            return Error{completed.error()};
     } else if (operation == Operation::Send) {
         if (const auto sent = transport->send(queue, {&*region, kBytes}); !sent)
-            return nds::unexpected(sent.error());
+            return Error{sent.error()};
     } else {
         const auto remote = remote_memory(transport);
         if (!remote)
-            return nds::unexpected(remote.error());
+            return Error{remote.error()};
         const auto moved = operation == Operation::Read ? transport->read(queue, {&*region, *remote, kBytes})
                                                         : transport->write(queue, {&*region, *remote, kBytes});
         if (!moved)
-            return nds::unexpected(moved.error());
+            return Error{moved.error()};
         if (operation == Operation::Write) {
             if (const auto sent = transport->send(queue, {&*region, 1U}); !sent)
-                return nds::unexpected(sent.error());
+                return Error{sent.error()};
         } else {
             const std::uint8_t ready{1U};
             if (const auto sent = transport->exchange_channel()->send(std::as_bytes(std::span{&ready, 1U})); !sent)
-                return nds::unexpected(sent.error());
+                return Error{sent.error()};
         }
     }
     if (operation == Operation::Recv || operation == Operation::Read) {
         Payload observed{};
         if (const auto copied = runtime->copy_from(observed.data(), *buffer, observed.size()); !copied)
-            return nds::unexpected(copied.error());
+            return Error{copied.error()};
         if (observed != payload())
-            return nds::unexpected(nds::ErrorCode::kRuntime, "payload mismatch");
+            return Error{nds::ErrorCode::kRuntime, "payload mismatch"};
     }
     return {};
 }

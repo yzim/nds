@@ -14,7 +14,7 @@ Result<void> NdsRaRdmaSend(const RaConnection &connection, const NdsDeviceSendWr
 
 Result<void> NdsRaRdmaRecv(const RaConnection &connection, const NdsDeviceRecvWr &request) {
     if (connection.runtime == nullptr || connection.qp == nullptr)
-        return unexpected(ErrorCode::kInvalidArgument, "RA receive requires a runtime and QP");
+        return Error{ErrorCode::kInvalidArgument, "RA receive requires a runtime and QP"};
     return NdsRaPostRecv(connection.qp, request);
 }
 

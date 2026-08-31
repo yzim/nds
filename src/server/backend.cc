@@ -105,7 +105,7 @@ VerbsBackend::~VerbsBackend() {
 
 Result<void> VerbsBackend::open(const BackendConfig &config, std::uint32_t qp_count) {
     if (qp_count == 0U || qp_count > nds::wire::kMaxQpInfoBatch)
-        return unexpected(ErrorCode::kInvalidArgument, "CPU transport QP count is outside the supported batch limit");
+        return Error{ErrorCode::kInvalidArgument, "CPU transport QP count is outside the supported batch limit"};
     int count = 0;
     ibv_device **devices = ibv_get_device_list(&count);
     ibv_device *selected = nullptr;
@@ -116,18 +116,18 @@ Result<void> VerbsBackend::open(const BackendConfig &config, std::uint32_t qp_co
     if (selected == nullptr) {
         if (devices != nullptr)
             ibv_free_device_list(devices);
-        return unexpected(ErrorCode::kVerbs, "RDMA device not found: " + config.device_name);
+        return Error{ErrorCode::kVerbs, "RDMA device not found: " + config.device_name};
     }
     context_ = ibv_open_device(selected);
     ibv_free_device_list(devices);
     if (context_ == nullptr || (pd_ = ibv_alloc_pd(context_)) == nullptr) {
-        return unexpected(ErrorCode::kVerbs, std::strerror(errno));
+        return Error{ErrorCode::kVerbs, std::strerror(errno)};
     }
     ibv_port_attr port{};
     ibv_gid gid{};
     if (ibv_query_port(context_, config.port, &port) != 0 || port.state != IBV_PORT_ACTIVE ||
         ibv_query_gid(context_, config.port, static_cast<int>(config.gid_index), &gid) != 0) {
-        return unexpected(ErrorCode::kVerbs, "failed to query active CPU verbs port");
+        return Error{ErrorCode::kVerbs, "failed to query active CPU verbs port"};
     }
     config_ = config;
     qps_.reserve(qp_count);
@@ -147,7 +147,7 @@ Result<void> VerbsBackend::open(const BackendConfig &config, std::uint32_t qp_co
         if (qp.handle == nullptr) {
             if (qp.cq != nullptr)
                 (void)ibv_destroy_cq(qp.cq);
-            return unexpected(ErrorCode::kVerbs, "failed to create CPU verbs QP");
+            return Error{ErrorCode::kVerbs, "failed to create CPU verbs QP"};
         }
         qp.local.qp_num = qp.handle->qp_num;
         qp.local.psn = (make_psn() + index) & UINT32_C(0x00ffffff);
@@ -166,7 +166,7 @@ Result<void> VerbsBackend::open(const BackendConfig &config, std::uint32_t qp_co
             0) {
             (void)ibv_destroy_qp(qp.handle);
             (void)ibv_destroy_cq(qp.cq);
-            return unexpected(ErrorCode::kVerbs, std::strerror(errno));
+            return Error{ErrorCode::kVerbs, std::strerror(errno)};
         }
         qps_.push_back(qp);
         local_qps_.push_back(qp.local);
@@ -176,13 +176,13 @@ Result<void> VerbsBackend::open(const BackendConfig &config, std::uint32_t qp_co
 
 Result<void> VerbsBackend::connect(const std::vector<nds::transport::QpInfo> &peers) {
     if (peers.size() != qps_.size())
-        return unexpected(ErrorCode::kTransport, "peer returned a different QP count");
+        return Error{ErrorCode::kTransport, "peer returned a different QP count"};
     for (std::size_t index = 0U; index < qps_.size(); ++index) {
         const nds::transport::QpInfo &peer = peers[index];
         QueuePair &qp = qps_[index];
         ibv_mtu mtu{};
         if (!mtu_value(nds::transport::select_mtu(qp.local.path_mtu, peer.path_mtu), &mtu))
-            return unexpected(ErrorCode::kVerbs, "unsupported local path MTU");
+            return Error{ErrorCode::kVerbs, "unsupported local path MTU"};
         ibv_qp_attr attr{};
         attr.qp_state = IBV_QPS_RTR;
         attr.path_mtu = mtu;
@@ -200,7 +200,7 @@ Result<void> VerbsBackend::connect(const std::vector<nds::transport::QpInfo> &pe
         if (ibv_modify_qp(qp.handle, &attr,
                           IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | IBV_QP_DEST_QPN | IBV_QP_RQ_PSN |
                               IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER) != 0) {
-            return unexpected(ErrorCode::kVerbs, std::strerror(errno));
+            return Error{ErrorCode::kVerbs, std::strerror(errno)};
         }
         attr = {};
         attr.qp_state = IBV_QPS_RTS;
@@ -212,7 +212,7 @@ Result<void> VerbsBackend::connect(const std::vector<nds::transport::QpInfo> &pe
         if (ibv_modify_qp(qp.handle, &attr,
                           IBV_QP_STATE | IBV_QP_TIMEOUT | IBV_QP_RETRY_CNT | IBV_QP_RNR_RETRY | IBV_QP_SQ_PSN |
                               IBV_QP_MAX_QP_RD_ATOMIC) != 0) {
-            return unexpected(ErrorCode::kVerbs, std::strerror(errno));
+            return Error{ErrorCode::kVerbs, std::strerror(errno)};
         }
     }
     return {};
@@ -220,18 +220,18 @@ Result<void> VerbsBackend::connect(const std::vector<nds::transport::QpInfo> &pe
 
 Result<RegisteredRegion> VerbsBackend::register_memory(void *address, std::size_t length, int access) {
     if (address == nullptr || length == 0U)
-        return unexpected(ErrorCode::kInvalidArgument, "invalid memory region");
+        return Error{ErrorCode::kInvalidArgument, "invalid memory region"};
     RegisteredRegion region;
     region.mr_ = ibv_reg_mr(pd_, address, length, access);
     if (region.mr_ == nullptr) {
-        return unexpected(ErrorCode::kVerbs, std::strerror(errno));
+        return Error{ErrorCode::kVerbs, std::strerror(errno)};
     }
     return region;
 }
 
 Result<void> VerbsBackend::post_receive(std::size_t qp_index, const RegisteredRegion &region) {
     if (qp_index >= qps_.size())
-        return unexpected(ErrorCode::kInvalidArgument, "CPU transport QP index is out of range");
+        return Error{ErrorCode::kInvalidArgument, "CPU transport QP index is out of range"};
     ibv_sge sge{reinterpret_cast<std::uintptr_t>(region.address()), static_cast<std::uint32_t>(region.length()),
                 region.local_key()};
     ibv_recv_wr wr{};
@@ -240,25 +240,25 @@ Result<void> VerbsBackend::post_receive(std::size_t qp_index, const RegisteredRe
     wr.sg_list = &sge;
     wr.num_sge = 1;
     if (ibv_post_recv(qps_[qp_index].handle, &wr, &bad) != 0) {
-        return unexpected(ErrorCode::kVerbs, std::strerror(errno));
+        return Error{ErrorCode::kVerbs, std::strerror(errno)};
     }
     return {};
 }
 
 Result<void> VerbsBackend::poll(std::size_t qp_index, ibv_wc_opcode opcode, std::uint32_t timeout_ms) {
     if (qp_index >= qps_.size())
-        return unexpected(ErrorCode::kInvalidArgument, "CPU transport QP index is out of range");
+        return Error{ErrorCode::kInvalidArgument, "CPU transport QP index is out of range"};
     for (std::uint32_t elapsed = 0U; elapsed < timeout_ms; ++elapsed) {
         ibv_wc completion{};
         const int count = ibv_poll_cq(qps_[qp_index].cq, 1, &completion);
         if (count < 0 || (count == 1 && (completion.status != IBV_WC_SUCCESS || completion.opcode != opcode))) {
-            return unexpected(ErrorCode::kVerbs, "unexpected verbs completion");
+            return Error{ErrorCode::kVerbs, "unexpected verbs completion"};
         }
         if (count == 1)
             return {};
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
-    return unexpected(ErrorCode::kVerbs, "timed out waiting for verbs completion");
+    return Error{ErrorCode::kVerbs, "timed out waiting for verbs completion"};
 }
 
 Result<void> VerbsBackend::wait_receive(std::size_t qp_index, std::uint32_t timeout_ms) {
@@ -267,9 +267,9 @@ Result<void> VerbsBackend::wait_receive(std::size_t qp_index, std::uint32_t time
 
 Result<void> VerbsBackend::send(std::size_t qp_index, const RegisteredRegion &local, std::uint32_t length) {
     if (qp_index >= qps_.size())
-        return unexpected(ErrorCode::kInvalidArgument, "CPU transport QP index is out of range");
+        return Error{ErrorCode::kInvalidArgument, "CPU transport QP index is out of range"};
     if (length == 0U || length > local.length()) {
-        return unexpected(ErrorCode::kInvalidArgument, "invalid send length");
+        return Error{ErrorCode::kInvalidArgument, "invalid send length"};
     }
     ibv_sge sge{reinterpret_cast<std::uintptr_t>(local.address()), length, local.local_key()};
     ibv_send_wr wr{};
@@ -280,7 +280,7 @@ Result<void> VerbsBackend::send(std::size_t qp_index, const RegisteredRegion &lo
     wr.opcode = IBV_WR_SEND;
     wr.send_flags = IBV_SEND_SIGNALED;
     if (ibv_post_send(qps_[qp_index].handle, &wr, &bad) != 0) {
-        return unexpected(ErrorCode::kVerbs, std::strerror(errno));
+        return Error{ErrorCode::kVerbs, std::strerror(errno)};
     }
     return poll(qp_index, IBV_WC_SEND, 5000U);
 }
@@ -288,7 +288,7 @@ Result<void> VerbsBackend::send(std::size_t qp_index, const RegisteredRegion &lo
 Result<void> VerbsBackend::transfer(std::size_t qp_index, ibv_wr_opcode opcode, const RegisteredRegion &local,
                                     std::uint64_t remote_address, std::uint32_t remote_key, std::uint32_t length) {
     if (qp_index >= qps_.size())
-        return unexpected(ErrorCode::kInvalidArgument, "CPU transport QP index is out of range");
+        return Error{ErrorCode::kInvalidArgument, "CPU transport QP index is out of range"};
     ibv_sge sge{reinterpret_cast<std::uintptr_t>(local.address()), length, local.local_key()};
     ibv_send_wr wr{};
     ibv_send_wr *bad = nullptr;
@@ -300,7 +300,7 @@ Result<void> VerbsBackend::transfer(std::size_t qp_index, ibv_wr_opcode opcode, 
     wr.wr.rdma.remote_addr = remote_address;
     wr.wr.rdma.rkey = remote_key;
     if (ibv_post_send(qps_[qp_index].handle, &wr, &bad) != 0) {
-        return unexpected(ErrorCode::kVerbs, std::strerror(errno));
+        return Error{ErrorCode::kVerbs, std::strerror(errno)};
     }
     return poll(qp_index, opcode == IBV_WR_RDMA_READ ? IBV_WC_RDMA_READ : IBV_WC_RDMA_WRITE, 5000U);
 }

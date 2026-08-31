@@ -21,7 +21,7 @@ static_assert(sizeof(NdsRaAiQpInfo) == 368, "unexpected AiQpInfo ABI layout");
 nds::Result<NdsRaApi> nds_ra_open(std::string_view library_path) {
     auto library = nds::client::SharedLibrary::open(library_path);
     if (!library)
-        return nds::unexpected(library.error());
+        return Error{library.error()};
     NdsRaApi api{};
     NDS_RETURN_IF_ERROR(library->resolve_required("RaInit", &api.ra_init));
     NDS_RETURN_IF_ERROR(library->resolve_required("RaDeinit", &api.ra_deinit));

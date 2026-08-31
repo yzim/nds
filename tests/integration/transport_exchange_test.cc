@@ -38,17 +38,17 @@ nds::transport::TransportInfo endpoint_info(std::uint32_t count, nds::transport:
 nds::Result<void> send_info(nds::TcpConnection *channel, const nds::transport::TransportInfo &info) {
     nds::wire::TransportInfo encoded{};
     if (nds::transport::encode(&info, &encoded) != nds::transport::CodecResult::Ok)
-        return nds::unexpected(nds::ErrorCode::kTransport, "cannot encode transport information");
+        return Error{nds::ErrorCode::kTransport, "cannot encode transport information"};
     return channel->send(std::as_bytes(std::span{&encoded, 1U}));
 }
 
 nds::Result<nds::transport::TransportInfo> receive_info(nds::TcpConnection *channel) {
     nds::wire::TransportInfo encoded{};
     if (const auto received = channel->receive(std::as_writable_bytes(std::span{&encoded, 1U})); !received)
-        return nds::unexpected(received.error());
+        return Error{received.error()};
     nds::transport::TransportInfo info{};
     if (nds::transport::decode(&encoded, &info) != nds::transport::CodecResult::Ok)
-        return nds::unexpected(nds::ErrorCode::kTransport, "invalid transport information");
+        return Error{nds::ErrorCode::kTransport, "invalid transport information"};
     return info;
 }
 
@@ -64,15 +64,15 @@ TEST(TransportExchangeIntegrationTest, NegotiatesQpCountThenExchangesEndpointInf
             nds::TcpConnection channel{fd};
             const auto request = receive_info(&channel);
             if (!request || request->kind != nds::transport::TransportInfoKind::QpCountRequest)
-                return nds::unexpected(nds::ErrorCode::kTransport, "expected QP-count request");
+                return Error{nds::ErrorCode::kTransport, "expected QP-count request"};
             const nds::transport::TransportInfo response{nds::transport::TransportInfoKind::QpCountResponse, 2U, {}};
             if (const auto sent = send_info(&channel, response); !sent)
-                return nds::unexpected(sent.error());
+                return Error{sent.error()};
             const auto peer = receive_info(&channel);
             if (!peer)
-                return nds::unexpected(peer.error());
+                return Error{peer.error()};
             if (const auto sent = send_info(&channel, server); !sent)
-                return nds::unexpected(sent.error());
+                return Error{sent.error()};
             return peer;
         });
     nds::TcpConnection channel{sockets[0]};

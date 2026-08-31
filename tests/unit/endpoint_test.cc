@@ -276,29 +276,6 @@ TEST(EndpointTest, CreatesAdvertisesAndConnectsQueuePair) {
     EXPECT_EQ((*cqe_errors)[1].qp_number, 0x1001U);
 }
 
-TEST(EndpointTest, ProducesAiQueuePairDeviceView) {
-    FakeRa fake{};
-    fake_state = &fake;
-    nds::client::Endpoint endpoint;
-    nds::client::EndpointTestAccess::adopt(&endpoint, make_api(), &fake_rdev);
-    nds::client::QueuePairConfig config{};
-    config.send_queue_depth = 64U;
-    config.receive_queue_depth = 32U;
-
-    auto created = endpoint.create_qp(config, nds::client::NpuBackend::Aiv);
-    ASSERT_TRUE(created);
-    auto qp = std::move(*created);
-    EXPECT_EQ(fake.ai_qp_create_calls, 1);
-    EXPECT_EQ(fake.ai_attributes.qp_mode, NDS_RA_QP_MODE_OPBASE_EXT);
-    EXPECT_EQ(fake.ai_attributes.data_plane_flag, 0U);
-    ASSERT_TRUE(qp.set_device_wr_id_storage(0x50000U, 0x60000U));
-    const auto transport = qp.make_device_transport();
-    ASSERT_TRUE(transport);
-    EXPECT_EQ(transport->control_qp.provider_qp_address, 0x1000U);
-    EXPECT_EQ(transport->control_qp.send_queue.wr_id_address, 0x50000U);
-    EXPECT_EQ(transport->control_qp.receive_queue.wr_id_address, 0x60000U);
-}
-
 TEST(EndpointTest, MemoryRegionOwnsRegistration) {
     FakeRa fake{};
     fake_state = &fake;

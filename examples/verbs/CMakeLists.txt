@@ -1,6 +1,6 @@
 add_executable(nds_verbs_client client.cc)
 target_include_directories(nds_verbs_client PRIVATE
-    ${PROJECT_SOURCE_DIR}/src/client/backends
+    ${CMAKE_CURRENT_SOURCE_DIR}
     ${PROJECT_SOURCE_DIR}/src/client)
 target_link_libraries(nds_verbs_client PRIVATE
     CLI11::CLI11

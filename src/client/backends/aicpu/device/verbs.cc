@@ -1,7 +1,6 @@
 #include "api.h"
 #include "internal.h"
 #include "hns.h"
-#include "hns_hw.h"
 
 namespace {
 int32_t provider_opcode(uint32_t opcode) {
@@ -71,22 +70,9 @@ extern "C" uint32_t nds_aicpu_post_recv(const NdsDeviceQp *qp, const NdsDeviceRe
             return_value, provider_result == 0 ? NDS_DEVICE_OPERATION_SUCCESS : NDS_DEVICE_OPERATION_PROVIDER_FAILED);
         return kNdsAicpuSuccess;
     }
-    const NdsDeviceWorkQueue &queue = qp->receive_queue;
-    auto *head = reinterpret_cast<uint32_t *>(queue.head_address);
-    auto *tail = reinterpret_cast<uint32_t *>(queue.tail_address);
-    if (!nds_hns_hw_queue_has_space(*head, *tail, queue.depth, 0U)) {
-        NdsAicpuSetReturnValue(return_value, NDS_DEVICE_OPERATION_QUEUE_FULL);
-        return kNdsAicpuSuccess;
-    }
-    const uint32_t index = *head % queue.depth;
-    auto *segment =
-        reinterpret_cast<NdsHnsHwWqeDataSeg *>(queue.buffer_address + static_cast<uint64_t>(queue.entry_size) * index);
-    nds_hns_hw_encode_wqe_data_seg(segment, wr->local.address, wr->local.length, wr->local.local_key);
-    reinterpret_cast<uint64_t *>(queue.wr_id_address)[index] = wr->wr_id;
-    NdsAicpuBarrier();
-    ++*head;
-    *reinterpret_cast<uint32_t *>(queue.doorbell_address) = *head & 0xffffU;
-    NdsAicpuSetReturnValue(return_value, NDS_DEVICE_OPERATION_SUCCESS);
+    // The provider owns its private WR-ID table. The exported AI-QP metadata
+    // does not disclose that table, so a raw RQ fallback cannot be correct.
+    NdsAicpuSetReturnValue(return_value, NDS_DEVICE_OPERATION_SYMBOL_UNAVAILABLE);
     return kNdsAicpuSuccess;
 }
 
@@ -118,29 +104,8 @@ extern "C" uint32_t nds_aicpu_poll_cq(const NdsDeviceQp *qp, uint32_t is_send_cq
         *return_value = count;
         return kNdsAicpuSuccess;
     }
-    const NdsDeviceCq &cq = is_send_cq ? qp->send_cq : qp->receive_cq;
-    const NdsDeviceWorkQueue &wq = is_send_cq ? qp->send_queue : qp->receive_queue;
-    auto *consumer_address = reinterpret_cast<uint32_t *>(cq.consumer_address);
-    auto *tail_address = reinterpret_cast<uint32_t *>(wq.tail_address);
-    uint32_t consumer = *consumer_address;
-    uint32_t tail = *tail_address;
-    uint32_t count = 0U;
-    while (count < limit) {
-        auto *cqe = reinterpret_cast<NdsHnsHwCqe *>(cq.buffer_address +
-                                                    static_cast<uint64_t>(cq.entry_size) * (consumer % cq.depth));
-        if (!nds_hns_hw_cqe_is_ready(cqe, consumer, cq.depth))
-            break;
-        if (is_send_cq)
-            tail = nds_hns_hw_send_tail_for_cqe(tail, wq.depth, cqe);
-        nds_hns_hw_decode_cqe(cqe, reinterpret_cast<uint64_t *>(wq.wr_id_address)[tail % wq.depth], &wc[count++]);
-        ++consumer;
-        ++tail;
-    }
-    *return_value = static_cast<int32_t>(count);
-    if (count != 0U) {
-        *consumer_address = consumer;
-        *tail_address = tail;
-        *reinterpret_cast<uint32_t *>(cq.doorbell_address) = consumer & 0x00ffffffU;
-    }
+    // See post_recv: without the provider's private WR-ID table this raw CQ
+    // path cannot produce a valid completion identity.
+    NdsAicpuSetReturnValue(return_value, NDS_DEVICE_OPERATION_SYMBOL_UNAVAILABLE);
     return kNdsAicpuSuccess;
 }

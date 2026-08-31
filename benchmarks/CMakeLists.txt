@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.20)
 if(NDS_BUILD_NPU_CLIENT AND TARGET nds_verbs_backend)
     add_executable(nds_verbs_benchmark_client verbs_client.cc)
     target_include_directories(nds_verbs_benchmark_client PRIVATE
-        ${PROJECT_SOURCE_DIR}/src/client/backends
+        ${PROJECT_SOURCE_DIR}/examples/verbs
         ${PROJECT_SOURCE_DIR}/src/client)
     target_link_libraries(nds_verbs_benchmark_client PRIVATE
         CLI11::CLI11
@@ -18,6 +18,7 @@ if(NDS_BUILD_NPU_CLIENT AND TARGET nds_verbs_backend)
 
     add_executable(nds_verbs_benchmark_server verbs_server.cc)
     target_include_directories(nds_verbs_benchmark_server PRIVATE
+        ${PROJECT_SOURCE_DIR}/examples/verbs
         ${PROJECT_SOURCE_DIR}/src/client/backends
         ${PROJECT_SOURCE_DIR}/src/client)
     target_link_libraries(nds_verbs_benchmark_server PRIVATE CLI11::CLI11 nds_logging nds_verbs_backend nds_transport)

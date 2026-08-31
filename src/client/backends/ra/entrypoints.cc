@@ -8,7 +8,7 @@ nds::Result<nds::RaConnection> host_connection(const NdsDeviceQp &qp) {
     auto *runtime = reinterpret_cast<nds::client::Runtime *>(qp.host_runtime_address);
     auto *queue_pair = reinterpret_cast<nds::client::QueuePair *>(qp.host_qp_address);
     if (runtime == nullptr || queue_pair == nullptr)
-        return nds::unexpected(nds::ErrorCode::kInvalidArgument, "RA QP is missing host handles");
+        return Error{nds::ErrorCode::kInvalidArgument, "RA QP is missing host handles"};
     return nds::RaConnection{runtime, queue_pair};
 }
 
@@ -17,7 +17,10 @@ int rdma_operation(const NdsDeviceTransport *transport, const WorkRequest *wr,
                    nds::Result<void> (*operation)(const nds::RaConnection &, const WorkRequest &)) {
     if (transport == nullptr || wr == nullptr)
         return -1;
-    const auto connection = host_connection(transport->control_qp);
+    const NdsDeviceQp *qp = nds_device_transport_qp(transport, 0U);
+    if (qp == nullptr)
+        return -1;
+    const auto connection = host_connection(*qp);
     if (!connection)
         return -1;
     return operation(*connection, *wr) ? 0 : -1;
@@ -28,7 +31,10 @@ int storage_operation(const NdsDeviceStorageContext *context, const Command *com
                       nds::Result<void> (*operation)(const nds::RaStorageContext &, const Command &)) {
     if (context == nullptr || command == nullptr)
         return -1;
-    const auto connection = host_connection(context->transport.control_qp);
+    const NdsDeviceQp *qp = nds_device_transport_qp(&context->transport, 0U);
+    if (qp == nullptr)
+        return -1;
+    const auto connection = host_connection(*qp);
     if (!connection)
         return -1;
     const nds::RaStorageContext host_context{

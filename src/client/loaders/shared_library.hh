@@ -29,7 +29,7 @@ public:
         static_assert(sizeof(Function) == sizeof(void *), "function pointer and dlsym result must have equal size");
         const auto symbol = resolve(name);
         if (!symbol)
-            return unexpected(symbol.error());
+            return Error{symbol.error()};
         Function function{};
         std::memcpy(&function, &*symbol, sizeof(function));
         return function;
@@ -38,10 +38,10 @@ public:
     template <typename Function>
     Result<void> resolve_required(const char *name, Function *destination) const {
         if (destination == nullptr)
-            return unexpected(ErrorCode::kInvalidArgument, "shared-library symbol destination is required");
+            return Error{ErrorCode::kInvalidArgument, "shared-library symbol destination is required"};
         const auto function = resolve_required<Function>(name);
         if (!function)
-            return unexpected(function.error());
+            return Error{function.error()};
         *destination = *function;
         return {};
     }

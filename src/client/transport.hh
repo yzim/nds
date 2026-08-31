@@ -34,6 +34,7 @@ struct TransportConfig {
 
 struct BackendConfig {
     NpuBackend mode{NpuBackend::Ra};
+    std::string ra_backend;
     std::string aicpu_kernel;
     std::string aiv_kernel;
 };
@@ -110,6 +111,9 @@ public:
     Result<void> write(QueueHandle queue, const TransportWrite &request);
     Result<void> wait_receive(QueueHandle queue);
 
+    // Internal ABI view for backend-owned launch paths such as storage.
+    const NdsDeviceTransport &device_transport() const noexcept;
+
     /* Send, Read, and Write batches post one window, signal its final WR, and
      * consume that CQE before returning. Receive batching remains unavailable. */
     Result<void> send_batch(QueueHandle queue, std::span<const TransportSend> requests);
@@ -130,8 +134,9 @@ private:
         const RemoteMemory *remote{};
     };
 
-    Result<void> initialize_private_memory();
     Result<void> initialize_launcher();
+    Result<void> build_device_transport();
+    const NdsDeviceQp *device_qp(QueueHandle queue) const noexcept;
     Result<void> submit_sends(QueueHandle queue, std::span<const SendRequest> requests, std::uint32_t opcode);
     Result<void> submit_receive(QueueHandle queue, const TransportReceive &request);
     Result<void> complete(QueuePair *qp, bool send_cq);
@@ -144,8 +149,11 @@ private:
     BackendConfig backend_{};
     Endpoint endpoint_;
     std::vector<QueuePair> qps_;
-    std::vector<MemoryBuffer> send_wr_ids_;
-    std::vector<MemoryBuffer> receive_wr_ids_;
+    // Transport owns the device ABI projection of all of its host QPs.
+    // QueuePair itself never exposes or constructs a transport descriptor.
+    std::vector<NdsDeviceQp> device_qps_;
+    MemoryBuffer device_qp_storage_;
+    NdsDeviceTransport device_transport_{};
     std::vector<std::uint64_t> next_wr_ids_;
     std::unique_ptr<BackendDispatcher> backend_dispatcher_;
     TcpConnection exchange_channel_;

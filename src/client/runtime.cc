@@ -13,7 +13,7 @@ constexpr std::size_t kHostPageSize = 4096U;
 
 Result<std::size_t> page_rounded_size(std::size_t size) {
     if (size > std::numeric_limits<std::size_t>::max() - (kHostPageSize - 1U))
-        return unexpected(ErrorCode::kInvalidArgument, "host-pinned allocation size is too large");
+        return Error{ErrorCode::kInvalidArgument, "host-pinned allocation size is too large"};
     return (size + kHostPageSize - 1U) & ~(kHostPageSize - 1U);
 }
 
@@ -25,7 +25,7 @@ Runtime::~Runtime() {
 
 Result<void> Runtime::open(const RuntimeConfig &config) {
     if (initialized_)
-        return unexpected(ErrorCode::kInvalidArgument, "NPU runtime is already open");
+        return Error{ErrorCode::kInvalidArgument, "NPU runtime is already open"};
     return initialize(config);
 }
 
@@ -35,7 +35,7 @@ Result<void> Runtime::initialize(const RuntimeConfig &config) {
     NdsRtNetServiceOpenArgs open_args{};
 
     if (!config.adopt_existing_context && config.cann_runtime_library.empty())
-        return unexpected(ErrorCode::kInvalidArgument, "NPU runtime requires an explicit CANN runtime library path");
+        return Error{ErrorCode::kInvalidArgument, "NPU runtime requires an explicit CANN runtime library path"};
     config_ = config;
     if (config_.cann_runtime_library.empty())
         config_.cann_runtime_library = "libruntime.so";
@@ -47,26 +47,26 @@ Result<void> Runtime::initialize(const RuntimeConfig &config) {
         if (const int result = aclInit(nullptr); result != ACL_SUCCESS) {
             const std::string error = "aclInit failed: " + std::to_string(result);
             reset();
-            return unexpected(ErrorCode::kRuntime, error);
+            return Error{ErrorCode::kRuntime, error};
         }
         acl_initialized_ = true;
         if (const int result = aclrtSetDevice(static_cast<std::int32_t>(config_.logical_device_id));
             result != ACL_SUCCESS) {
             const std::string error = "aclrtSetDevice failed: " + std::to_string(result);
             reset();
-            return unexpected(ErrorCode::kRuntime, error);
+            return Error{ErrorCode::kRuntime, error};
         }
     }
     const auto cann_runtime = nds_cann_runtime_open(config_.cann_runtime_library);
     if (!cann_runtime) {
         reset();
-        return unexpected(cann_runtime.error());
+        return Error{cann_runtime.error()};
     }
     cann_runtime_ = *cann_runtime;
     if (const int result = cann_runtime_.open_net_service(&open_args); result != 0) {
         const std::string error = "rtOpenNetService failed: " + std::to_string(result);
         reset();
-        return unexpected(ErrorCode::kRuntime, error);
+        return Error{ErrorCode::kRuntime, error};
     }
     net_service_open_ = true;
     initialized_ = true;
@@ -96,56 +96,54 @@ bool Runtime::initialized() const noexcept {
 
 Result<void *> Runtime::allocate_device_memory(std::size_t size) {
     if (!initialized_ || size == 0U) {
-        return unexpected(ErrorCode::kInvalidArgument,
-                          "device allocation requires an initialized runtime and nonzero size");
+        return Error{ErrorCode::kInvalidArgument, "device allocation requires an initialized runtime and nonzero size"};
     }
     void *device_ptr = nullptr;
     const auto policy = static_cast<aclrtMemMallocPolicy>(ACL_MEM_MALLOC_HUGE_FIRST | ACL_MEM_TYPE_HIGH_BAND_WIDTH);
     const int result = aclrtMalloc(&device_ptr, size, policy);
     if (result != ACL_SUCCESS || device_ptr == nullptr) {
-        return unexpected(ErrorCode::kRuntime, "aclrtMalloc failed: " + std::to_string(result));
+        return Error{ErrorCode::kRuntime, "aclrtMalloc failed: " + std::to_string(result)};
     }
     return device_ptr;
 }
 
 Result<void> Runtime::free_device_memory(void *device_ptr) {
     if (!initialized_ || device_ptr == nullptr) {
-        return unexpected(ErrorCode::kInvalidArgument,
-                          "device free requires an initialized runtime and allocation pointer");
+        return Error{ErrorCode::kInvalidArgument, "device free requires an initialized runtime and allocation pointer"};
     }
     const int result = aclrtFree(device_ptr);
     if (result != ACL_SUCCESS) {
-        return unexpected(ErrorCode::kRuntime, "aclrtFree failed: " + std::to_string(result));
+        return Error{ErrorCode::kRuntime, "aclrtFree failed: " + std::to_string(result)};
     }
     return {};
 }
 
 Result<HostPinnedAllocation> Runtime::allocate_host_pinned_memory(std::size_t size) {
     if (!initialized_ || size == 0U)
-        return unexpected(ErrorCode::kInvalidArgument,
-                          "host-pinned allocation requires an initialized runtime and nonzero size");
+        return Error{ErrorCode::kInvalidArgument,
+                     "host-pinned allocation requires an initialized runtime and nonzero size"};
     const auto rounded_size = page_rounded_size(size);
     if (!rounded_size)
-        return unexpected(rounded_size.error());
+        return Error{rounded_size.error()};
     void *host_ptr = nullptr;
     if (posix_memalign(&host_ptr, kHostPageSize, *rounded_size) != 0 || host_ptr == nullptr)
-        return unexpected(ErrorCode::kRuntime, "host memory allocation failed");
+        return Error{ErrorCode::kRuntime, "host memory allocation failed"};
     void *device_ptr = nullptr;
     const int result = aclrtHostRegister(host_ptr, *rounded_size, ACL_HOST_REGISTER_MAPPED, &device_ptr);
     if (result != ACL_SUCCESS || device_ptr == nullptr) {
         std::free(host_ptr);
-        return unexpected(ErrorCode::kRuntime, "aclrtHostRegister failed: " + std::to_string(result));
+        return Error{ErrorCode::kRuntime, "aclrtHostRegister failed: " + std::to_string(result)};
     }
     return HostPinnedAllocation{host_ptr, device_ptr};
 }
 
 Result<void> Runtime::free_host_pinned_memory(void *host_ptr) {
     if (!initialized_ || host_ptr == nullptr)
-        return unexpected(ErrorCode::kInvalidArgument,
-                          "host-pinned free requires an initialized runtime and allocation pointer");
+        return Error{ErrorCode::kInvalidArgument,
+                     "host-pinned free requires an initialized runtime and allocation pointer"};
     const int result = aclrtHostUnregister(host_ptr);
     if (result != ACL_SUCCESS)
-        return unexpected(ErrorCode::kRuntime, "aclrtHostUnregister failed: " + std::to_string(result));
+        return Error{ErrorCode::kRuntime, "aclrtHostUnregister failed: " + std::to_string(result)};
     std::free(host_ptr);
     return {};
 }
@@ -155,7 +153,7 @@ Result<void> Runtime::copy_host_to_device(void *device_ptr, const void *host_ptr
                            ? -1
                            : aclrtMemcpy(device_ptr, size, host_ptr, size, ACL_MEMCPY_HOST_TO_DEVICE);
     if (result != ACL_SUCCESS) {
-        return unexpected(ErrorCode::kRuntime, "aclrtMemcpy(host-to-device) failed: " + std::to_string(result));
+        return Error{ErrorCode::kRuntime, "aclrtMemcpy(host-to-device) failed: " + std::to_string(result)};
     }
     return {};
 }
@@ -165,7 +163,7 @@ Result<void> Runtime::copy_device_to_host(void *host_ptr, const void *device_ptr
                            ? -1
                            : aclrtMemcpy(host_ptr, size, device_ptr, size, ACL_MEMCPY_DEVICE_TO_HOST);
     if (result != ACL_SUCCESS) {
-        return unexpected(ErrorCode::kRuntime, "aclrtMemcpy(device-to-host) failed: " + std::to_string(result));
+        return Error{ErrorCode::kRuntime, "aclrtMemcpy(device-to-host) failed: " + std::to_string(result)};
     }
     return {};
 }
@@ -235,26 +233,26 @@ Result<MemoryBuffer> Runtime::allocate(std::size_t size) {
 
 Result<MemoryBuffer> Runtime::allocate(std::size_t size, MemoryLocation location) {
     if (!initialized_ || size == 0U)
-        return unexpected(ErrorCode::kInvalidArgument, "memory allocation requires an open runtime and nonzero size");
+        return Error{ErrorCode::kInvalidArgument, "memory allocation requires an open runtime and nonzero size"};
     MemoryBuffer buffer;
     if (location == MemoryLocation::Device) {
         auto allocated = allocate_device_memory(size);
         if (!allocated)
-            return unexpected(allocated.error());
+            return Error{allocated.error()};
         buffer.data_ = *allocated;
         buffer.rdma_data_ = *allocated;
         buffer.runtime_ = this;
     } else if (location == MemoryLocation::HostPinned) {
         auto allocated = allocate_host_pinned_memory(size);
         if (!allocated)
-            return unexpected(allocated.error());
+            return Error{allocated.error()};
         buffer.data_ = allocated->host_address;
         buffer.rdma_data_ = allocated->device_address;
         buffer.runtime_ = this;
     } else {
         buffer.data_ = new (std::nothrow) std::byte[size];
         if (buffer.data_ == nullptr)
-            return unexpected(ErrorCode::kRuntime, "host memory allocation failed");
+            return Error{ErrorCode::kRuntime, "host memory allocation failed"};
         buffer.rdma_data_ = buffer.data_;
     }
     buffer.size_ = size;
@@ -265,7 +263,7 @@ Result<MemoryBuffer> Runtime::allocate(std::size_t size, MemoryLocation location
 Result<void> Runtime::copy_to(MemoryBuffer *buffer, const void *source, std::size_t size) {
     if (!initialized_ || buffer == nullptr || buffer->data_ == nullptr || source == nullptr || size > buffer->size_ ||
         (buffer->location_ != MemoryLocation::Host && buffer->runtime_ != this)) {
-        return unexpected(ErrorCode::kInvalidArgument, "memory copy requires a runtime buffer and valid source");
+        return Error{ErrorCode::kInvalidArgument, "memory copy requires a runtime buffer and valid source"};
     }
     if (buffer->location_ == MemoryLocation::Host || buffer->location_ == MemoryLocation::HostPinned) {
         std::memcpy(buffer->data_, source, size);
@@ -277,7 +275,7 @@ Result<void> Runtime::copy_to(MemoryBuffer *buffer, const void *source, std::siz
 Result<void> Runtime::copy_from(void *destination, const MemoryBuffer &buffer, std::size_t size) {
     if (!initialized_ || destination == nullptr || buffer.data_ == nullptr || size > buffer.size_ ||
         (buffer.location_ != MemoryLocation::Host && buffer.runtime_ != this)) {
-        return unexpected(ErrorCode::kInvalidArgument, "memory copy requires a runtime buffer and valid destination");
+        return Error{ErrorCode::kInvalidArgument, "memory copy requires a runtime buffer and valid destination"};
     }
     if (buffer.location_ == MemoryLocation::Host || buffer.location_ == MemoryLocation::HostPinned) {
         std::memcpy(destination, buffer.data_, size);

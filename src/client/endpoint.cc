@@ -90,8 +90,8 @@ QueuePair::QueuePair(QueuePair &&other) noexcept
       handle_(std::exchange(other.handle_, nullptr)),
       local_attributes_(std::exchange(other.local_attributes_, {})),
       ai_qp_info_(std::exchange(other.ai_qp_info_, {})),
-      send_wr_ids_(std::exchange(other.send_wr_ids_, 0U)),
-      receive_wr_ids_(std::exchange(other.receive_wr_ids_, 0U)),
+      send_wr_ids_(std::move(other.send_wr_ids_)),
+      receive_wr_ids_(std::move(other.receive_wr_ids_)),
       posted_send_sge_(std::exchange(other.posted_send_sge_, {})),
       connected_(std::exchange(other.connected_, false)) {}
 
@@ -104,8 +104,8 @@ QueuePair &QueuePair::operator=(QueuePair &&other) noexcept {
         handle_ = std::exchange(other.handle_, nullptr);
         local_attributes_ = std::exchange(other.local_attributes_, {});
         ai_qp_info_ = std::exchange(other.ai_qp_info_, {});
-        send_wr_ids_ = std::exchange(other.send_wr_ids_, 0U);
-        receive_wr_ids_ = std::exchange(other.receive_wr_ids_, 0U);
+        send_wr_ids_ = std::move(other.send_wr_ids_);
+        receive_wr_ids_ = std::move(other.receive_wr_ids_);
         posted_send_sge_ = std::exchange(other.posted_send_sge_, {});
         connected_ = std::exchange(other.connected_, false);
     }
@@ -116,7 +116,7 @@ Result<NdsRaTypicalQp> QueuePair::build_typical_qp(const NdsRaQpAttr &attributes
                                                    std::uint32_t service_level, std::uint32_t retry_count,
                                                    std::uint32_t retry_timeout) const {
     if (!is_valid_qp_number(attributes.qpn) || !is_valid_psn(attributes.psn))
-        return unexpected(ErrorCode::kInvalidArgument, "invalid QP number or PSN");
+        return Error{ErrorCode::kInvalidArgument, "invalid QP number or PSN"};
     NdsRaTypicalQp result{};
     result.qpn = attributes.qpn;
     result.psn = attributes.psn;
@@ -131,19 +131,19 @@ Result<NdsRaTypicalQp> QueuePair::build_typical_qp(const NdsRaQpAttr &attributes
 
 Result<void> QueuePair::initialize() {
     if (endpoint_ == nullptr || !endpoint_->opened())
-        return unexpected(ErrorCode::kInvalidArgument, "QP creation requires an open endpoint");
+        return Error{ErrorCode::kInvalidArgument, "QP creation requires an open endpoint"};
     const auto is_power_of_two = [](std::uint32_t value) { return value >= 2U && (value & (value - 1U)) == 0U; };
     if (config_.port_num == 0U || config_.path_mtu == 0U || !is_power_of_two(config_.send_queue_depth) ||
         !is_power_of_two(config_.receive_queue_depth)) {
-        return unexpected(ErrorCode::kInvalidArgument,
-                          "QP creation requires valid transport settings and power-of-two queue depths");
+        return Error{ErrorCode::kInvalidArgument,
+                     "QP creation requires valid transport settings and power-of-two queue depths"};
     }
     if (backend_ != NpuBackend::Ra && backend_ != NpuBackend::Aicpu && backend_ != NpuBackend::Aiv) {
-        return unexpected(ErrorCode::kInvalidArgument, "QP backend mode is invalid");
+        return Error{ErrorCode::kInvalidArgument, "QP backend mode is invalid"};
     }
     if (backend_ == NpuBackend::Aicpu && config_.ai_qp_mode >= 0 && config_.ai_qp_mode != NDS_RA_QP_MODE_NORMAL) {
-        return unexpected(ErrorCode::kInvalidArgument,
-                          "AICPU backend requires a NORMAL AI QP so the provider owns Send doorbells");
+        return Error{ErrorCode::kInvalidArgument,
+                     "AICPU backend requires a NORMAL AI QP so the provider owns Send doorbells"};
     }
 
     auto *api = &endpoint_->api_;
@@ -152,7 +152,7 @@ Result<void> QueuePair::initialize() {
         ((backend_ == NpuBackend::Aicpu || backend_ == NpuBackend::Aiv) &&
          (api->ra_ai_qp_create == nullptr || api->ra_set_qp_attr_qos == nullptr ||
           api->ra_set_qp_attr_timeout == nullptr || api->ra_set_qp_attr_retry_count == nullptr))) {
-        return unexpected(ErrorCode::kRa, "RA API is missing a required QP operation");
+        return Error{ErrorCode::kRa, "RA API is missing a required QP operation"};
     }
 
     int result{};
@@ -164,7 +164,7 @@ Result<void> QueuePair::initialize() {
                                            &initial_qp, &handle_);
         if (result != 0 || handle_ == nullptr) {
             reset();
-            return unexpected(ErrorCode::kRa, "RaTypicalQpCreate failed: " + std::to_string(result));
+            return Error{ErrorCode::kRa, "RaTypicalQpCreate failed: " + std::to_string(result)};
         }
     } else {
         NdsRaQpExtAttrs attributes{};
@@ -184,7 +184,7 @@ Result<void> QueuePair::initialize() {
         result = api->ra_ai_qp_create(endpoint_->rdev_handle_, &attributes, &ai_qp_info_, &handle_);
         if (result != 0 || handle_ == nullptr || ai_qp_info_.ai_qp_address == 0U) {
             reset();
-            return unexpected(ErrorCode::kRa, "RaAiQpCreate failed: " + std::to_string(result));
+            return Error{ErrorCode::kRa, "RaAiQpCreate failed: " + std::to_string(result)};
         }
         NdsRaQosAttr qos{};
         qos.traffic_class = static_cast<std::uint8_t>(config_.traffic_class);
@@ -195,21 +195,37 @@ Result<void> QueuePair::initialize() {
             (result = api->ra_set_qp_attr_timeout(handle_, &timeout)) != 0 ||
             (result = api->ra_set_qp_attr_retry_count(handle_, &retry_count)) != 0) {
             reset();
-            return unexpected(ErrorCode::kRa, "setting AI QP attributes failed: " + std::to_string(result));
+            return Error{ErrorCode::kRa, "setting AI QP attributes failed: " + std::to_string(result)};
+        }
+
+        if (backend_ == NpuBackend::Aiv) {
+            // AIV writes WQEs and reads CQEs directly. Unlike the provider
+            // paths, it therefore needs an NDS-owned slot-to-WR-ID mapping.
+            auto send_wr_ids = endpoint_->runtime_->allocate(config_.send_queue_depth * sizeof(std::uint64_t));
+            if (!send_wr_ids.ok()) {
+                reset();
+                return send_wr_ids.error();
+            }
+            auto receive_wr_ids = endpoint_->runtime_->allocate(config_.receive_queue_depth * sizeof(std::uint64_t));
+            if (!receive_wr_ids.ok()) {
+                reset();
+                return receive_wr_ids.error();
+            }
+            send_wr_ids_ = std::move(send_wr_ids.value());
+            receive_wr_ids_ = std::move(receive_wr_ids.value());
         }
     }
     result = api->ra_get_qp_attr(handle_, &local_attributes_);
     if (result != 0 || !is_valid_qp_number(local_attributes_.qpn) || !is_valid_psn(local_attributes_.psn)) {
         reset();
-        return unexpected(ErrorCode::kRa,
-                          "RaGetQpAttr failed or returned invalid attributes: " + std::to_string(result));
+        return Error{ErrorCode::kRa, "RaGetQpAttr failed or returned invalid attributes: " + std::to_string(result)};
     }
     return {};
 }
 
 Result<nds::transport::QpInfo> QueuePair::local_qp_info() const {
     if (!created())
-        return unexpected(ErrorCode::kInvalidArgument, "QP has not been created");
+        return Error{ErrorCode::kInvalidArgument, "QP has not been created"};
     nds::transport::QpInfo info{};
     info.qp_num = local_attributes_.qpn;
     info.psn = local_attributes_.psn;
@@ -226,15 +242,15 @@ Result<nds::transport::QpInfo> QueuePair::local_qp_info() const {
 
 Result<void> QueuePair::connect(const nds::transport::QpInfo &peer) {
     if (!created() || connected_)
-        return unexpected(ErrorCode::kInvalidArgument, "QP must be created and disconnected before connect");
+        return Error{ErrorCode::kInvalidArgument, "QP must be created and disconnected before connect"};
     if (peer.qp_num == 0U || peer.qp_num > kQpnMask || peer.psn > kPsnMask || peer.port_num == 0U ||
         peer.path_mtu == 0U) {
-        return unexpected(ErrorCode::kInvalidArgument, "peer endpoint has invalid QP metadata");
+        return Error{ErrorCode::kInvalidArgument, "peer endpoint has invalid QP metadata"};
     }
     auto local = build_typical_qp(local_attributes_, config_.traffic_class, config_.service_level, config_.retry_count,
                                   config_.retry_timeout);
     if (!local)
-        return unexpected(local.error());
+        return Error{local.error()};
     NdsRaQpAttr peer_attributes{};
     peer_attributes.qpn = peer.qp_num;
     peer_attributes.psn = peer.psn;
@@ -243,115 +259,54 @@ Result<void> QueuePair::connect(const nds::transport::QpInfo &peer) {
     auto remote =
         build_typical_qp(peer_attributes, peer.traffic_class, peer.service_level, peer.retry_count, peer.retry_timeout);
     if (!remote)
-        return unexpected(remote.error());
+        return Error{remote.error()};
     const int result = endpoint_->api_.ra_typical_qp_modify(handle_, &*local, &*remote);
     if (result != 0)
-        return unexpected(ErrorCode::kRa, "RaTypicalQpModify failed: " + std::to_string(result));
+        return Error{ErrorCode::kRa, "RaTypicalQpModify failed: " + std::to_string(result)};
     connected_ = true;
     return {};
 }
 
 Result<int> QueuePair::query_port_status() {
     if (!created() || endpoint_->api_.ra_rdev_get_port_status == nullptr)
-        return unexpected(ErrorCode::kInvalidArgument, "port-status query requires a created QP");
+        return Error{ErrorCode::kInvalidArgument, "port-status query requires a created QP"};
     int status{};
     const int result = endpoint_->api_.ra_rdev_get_port_status(endpoint_->rdev_handle_, &status);
     if (result != 0 || status < NDS_RA_PORT_STATUS_DOWN || status > NDS_RA_PORT_STATUS_ACTIVE)
-        return unexpected(ErrorCode::kRa, "RaRdevGetPortStatus failed or returned invalid status");
+        return Error{ErrorCode::kRa, "RaRdevGetPortStatus failed or returned invalid status"};
     return status;
 }
 
 Result<int> QueuePair::query_support_lite() {
     if (!created() || endpoint_->api_.ra_rdev_get_support_lite == nullptr)
-        return unexpected(ErrorCode::kInvalidArgument, "RDMA-lite query requires a created QP");
+        return Error{ErrorCode::kInvalidArgument, "RDMA-lite query requires a created QP"};
     int support_lite{};
     const int result = endpoint_->api_.ra_rdev_get_support_lite(endpoint_->rdev_handle_, &support_lite);
     if (result != 0 || support_lite < NDS_RA_LITE_NOT_SUPPORTED || support_lite > NDS_RA_LITE_ALIGN_2M)
-        return unexpected(ErrorCode::kRa, "RaRdevGetSupportLite failed or returned invalid status");
+        return Error{ErrorCode::kRa, "RaRdevGetSupportLite failed or returned invalid status"};
     return support_lite;
 }
 
 Result<int> QueuePair::query_status() {
     if (!created() || endpoint_->api_.ra_get_qp_status == nullptr)
-        return unexpected(ErrorCode::kInvalidArgument, "QP-status query requires a created QP");
+        return Error{ErrorCode::kInvalidArgument, "QP-status query requires a created QP"};
     int status{};
     const int result = endpoint_->api_.ra_get_qp_status(handle_, &status);
     if (result != 0 || status < NDS_RA_QP_STATUS_NOT_CONNECTED || status > NDS_RA_QP_STATUS_CONNECTING)
-        return unexpected(ErrorCode::kRa, "RaGetQpStatus failed or returned invalid status");
+        return Error{ErrorCode::kRa, "RaGetQpStatus failed or returned invalid status"};
     return status;
 }
 
 Result<std::vector<NdsRaCqeError>> QueuePair::query_cqe_errors() {
     if (!created() || endpoint_->api_.ra_rdev_get_cqe_error_list == nullptr)
-        return unexpected(ErrorCode::kInvalidArgument, "CQE-error query requires a created QP");
+        return Error{ErrorCode::kInvalidArgument, "CQE-error query requires a created QP"};
     std::vector<NdsRaCqeError> errors(kMaxCqeErrors);
     unsigned int count = static_cast<unsigned int>(errors.size());
     const int result = endpoint_->api_.ra_rdev_get_cqe_error_list(endpoint_->rdev_handle_, errors.data(), &count);
     if (result != 0 || count > errors.size())
-        return unexpected(ErrorCode::kRa, "RaRdevGetCqeErrInfoList failed or exceeded error capacity");
+        return Error{ErrorCode::kRa, "RaRdevGetCqeErrInfoList failed or exceeded error capacity"};
     errors.resize(count);
     return errors;
-}
-
-Result<void> QueuePair::set_device_wr_id_storage(std::uint64_t send_address, std::uint64_t receive_address) {
-    if (ai_qp_info_.ai_qp_address == 0U || send_address == 0U || receive_address == 0U)
-        return unexpected(ErrorCode::kInvalidArgument, "device WR-ID storage requires an AI QP and two addresses");
-    send_wr_ids_ = send_address;
-    receive_wr_ids_ = receive_address;
-    return {};
-}
-
-Result<NdsDeviceTransport> QueuePair::make_device_transport() const {
-    if (ai_qp_info_.ai_qp_address == 0U || send_wr_ids_ == 0U || receive_wr_ids_ == 0U)
-        return unexpected(ErrorCode::kInvalidArgument, "device transport requires an AI QP and WR-ID storage");
-    const auto *source = reinterpret_cast<const NdsRaAiDataPlaneInfo *>(ai_qp_info_.data_plane_info);
-    if (source->send_wq.buffer_address == 0U || source->receive_wq.buffer_address == 0U)
-        return unexpected(ErrorCode::kRa, "HCCP did not return SQ/RQ dataplane information");
-    if ((config_.control_flags & QueuePairCallerPollsCq) != 0U &&
-        (source->send_cq.buffer_address == 0U || source->receive_cq.buffer_address == 0U ||
-         ai_qp_info_.ai_scq_address == 0U || ai_qp_info_.ai_rcq_address == 0U)) {
-        return unexpected(ErrorCode::kRa, "HCCP did not return caller-owned CQ dataplane information");
-    }
-    const auto copy_wq = [](const NdsRaAiDataPlaneWq &input, std::uint64_t wr_ids, bool send) {
-        NdsDeviceWorkQueue output{};
-        output.number = input.wqn;
-        output.depth = input.depth;
-        output.entry_size = input.wqebb_size;
-        output.buffer_address = input.buffer_address;
-        output.head_address = input.head_address;
-        output.tail_address = input.tail_address;
-        output.wr_id_address = wr_ids;
-        output.doorbell_mode = send ? NDS_DEVICE_DOORBELL_MMIO : NDS_DEVICE_DOORBELL_RECORD;
-        output.doorbell_address = send ? input.doorbell_register_address : input.software_doorbell_address;
-        return output;
-    };
-    const auto copy_cq = [](const NdsRaAiDataPlaneCq &input) {
-        NdsDeviceCq output{};
-        output.number = input.cqn;
-        output.depth = input.depth;
-        output.entry_size = input.cqe_size;
-        output.buffer_address = input.buffer_address;
-        output.consumer_address = input.tail_address;
-        output.doorbell_mode = NDS_DEVICE_DOORBELL_RECORD;
-        output.doorbell_address = input.software_doorbell_address;
-        return output;
-    };
-    NdsDeviceTransport output{};
-    output.control_qp.flags = (config_.control_flags & QueuePairCallerPollsCq) != 0U
-                                  ? static_cast<std::uint32_t>(NDS_DEVICE_QP_CALLER_POLLS_CQ)
-                                  : 0U;
-    output.control_qp.qp_mode = config_.ai_qp_mode;
-    output.control_qp.service_level = config_.service_level;
-    output.control_qp.provider_qp_address = ai_qp_info_.ai_qp_address;
-    output.control_qp.provider_send_cq_address = ai_qp_info_.ai_scq_address;
-    output.control_qp.provider_receive_cq_address = ai_qp_info_.ai_rcq_address;
-    output.control_qp.host_runtime_address = reinterpret_cast<std::uint64_t>(endpoint_->runtime_);
-    output.control_qp.host_qp_address = reinterpret_cast<std::uint64_t>(this);
-    output.control_qp.send_queue = copy_wq(source->send_wq, send_wr_ids_, true);
-    output.control_qp.receive_queue = copy_wq(source->receive_wq, receive_wr_ids_, false);
-    output.control_qp.send_cq = copy_cq(source->send_cq);
-    output.control_qp.receive_cq = copy_cq(source->receive_cq);
-    return output;
 }
 
 void QueuePair::reset() noexcept {
@@ -361,8 +316,6 @@ void QueuePair::reset() noexcept {
     handle_ = nullptr;
     local_attributes_ = {};
     ai_qp_info_ = {};
-    send_wr_ids_ = 0U;
-    receive_wr_ids_ = 0U;
     posted_send_sge_ = {};
     connected_ = false;
 }
@@ -401,7 +354,7 @@ Endpoint::~Endpoint() {
 
 Result<void> Endpoint::open(Runtime *runtime, const EndpointConfig &config) {
     if (opened() || runtime == nullptr || !runtime->initialized() || config.ra_library.empty()) {
-        return unexpected(ErrorCode::kInvalidArgument, "endpoint open requires one runtime and RA library");
+        return Error{ErrorCode::kInvalidArgument, "endpoint open requires one runtime and RA library"};
     }
     runtime_ = runtime;
     config_ = config;
@@ -409,14 +362,14 @@ Result<void> Endpoint::open(Runtime *runtime, const EndpointConfig &config) {
     std::int32_t physical_device = -1;
     if (aclrtGetPhyDevIdByLogicDevId(logical_device, &physical_device) != ACL_SUCCESS || physical_device < 0) {
         reset();
-        return unexpected(ErrorCode::kRuntime,
-                          "CANN cannot map logical device " + std::to_string(logical_device) + " to a physical device");
+        return Error{ErrorCode::kRuntime,
+                     "CANN cannot map logical device " + std::to_string(logical_device) + " to a physical device"};
     }
     physical_device_id_ = static_cast<std::uint32_t>(physical_device);
     const auto api = nds_ra_open(config_.ra_library);
     if (!api) {
         reset();
-        return unexpected(api.error());
+        return Error{api.error()};
     }
     api_ = *api;
     NdsRaInitConfig init_config{};
@@ -427,7 +380,7 @@ Result<void> Endpoint::open(Runtime *runtime, const EndpointConfig &config) {
     int result = api_.ra_init(&init_config);
     if (result != 0) {
         reset();
-        return unexpected(ErrorCode::kRa, "RaInit failed: " + std::to_string(result));
+        return Error{ErrorCode::kRa, "RaInit failed: " + std::to_string(result)};
     }
     ra_initialized_ = true;
 
@@ -437,11 +390,11 @@ Result<void> Endpoint::open(Runtime *runtime, const EndpointConfig &config) {
     const auto ipv4 = dsmi_ipv4(physical_device_id_);
     if (!ipv4) {
         reset();
-        return unexpected(ipv4.error());
+        return Error{ipv4.error()};
     }
     if (inet_pton(AF_INET, ipv4->c_str(), &rdev.local_ip.ipv4) != 1) {
         reset();
-        return unexpected(ErrorCode::kInvalidArgument, "endpoint local IPv4 address is invalid");
+        return Error{ErrorCode::kInvalidArgument, "endpoint local IPv4 address is invalid"};
     }
     NdsRaRdevInitInfo rdev_init{};
     rdev_init.mode = NDS_RA_NETWORK_OFFLINE;
@@ -450,7 +403,7 @@ Result<void> Endpoint::open(Runtime *runtime, const EndpointConfig &config) {
     result = api_.ra_rdev_init_v2(rdev_init, rdev, &rdev_handle_);
     if (result != 0 || rdev_handle_ == nullptr) {
         reset();
-        return unexpected(ErrorCode::kRa, "RaRdevInitV2 failed for " + *ipv4 + ": " + std::to_string(result));
+        return Error{ErrorCode::kRa, "RaRdevInitV2 failed for " + *ipv4 + ": " + std::to_string(result)};
     }
     return {};
 }
@@ -458,20 +411,20 @@ Result<void> Endpoint::open(Runtime *runtime, const EndpointConfig &config) {
 Result<QueuePair> Endpoint::create_qp(const QueuePairConfig &config, NpuBackend backend) {
     QueuePair qp(this, config, backend);
     if (const auto initialized = qp.initialize(); !initialized)
-        return unexpected(initialized.error());
+        return Error{initialized.error()};
     return qp;
 }
 
 Result<MemoryRegion> Endpoint::reg_mr(const MemoryBuffer &buffer, MemoryAccess access) {
     if (!opened() || buffer.rdma_data() == nullptr || buffer.size() == 0U || api_.ra_register_mr == nullptr)
-        return unexpected(ErrorCode::kInvalidArgument, "MR registration requires an open endpoint and buffer");
+        return Error{ErrorCode::kInvalidArgument, "MR registration requires an open endpoint and buffer"};
     MemoryRegion region;
     region.info_.address = buffer.rdma_data();
     region.info_.size = buffer.size();
     region.info_.access = static_cast<int>(access);
     const int result = api_.ra_register_mr(rdev_handle_, &region.info_, &region.handle_);
     if (result != 0 || region.handle_ == nullptr || region.info_.local_key == 0U || region.info_.remote_key == 0U)
-        return unexpected(ErrorCode::kRa, "RaRegisterMr failed or returned invalid keys: " + std::to_string(result));
+        return Error{ErrorCode::kRa, "RaRegisterMr failed or returned invalid keys: " + std::to_string(result)};
     region.endpoint_ = this;
     region.buffer_ = &buffer;
     return region;
@@ -479,10 +432,10 @@ Result<MemoryRegion> Endpoint::reg_mr(const MemoryBuffer &buffer, MemoryAccess a
 
 Result<void> Endpoint::deregister(void *handle) {
     if (!opened() || handle == nullptr || api_.ra_deregister_mr == nullptr)
-        return unexpected(ErrorCode::kInvalidArgument, "MR deregistration requires an open endpoint and handle");
+        return Error{ErrorCode::kInvalidArgument, "MR deregistration requires an open endpoint and handle"};
     const int result = api_.ra_deregister_mr(rdev_handle_, handle);
     if (result != 0)
-        return unexpected(ErrorCode::kRa, "RaDeregisterMr failed: " + std::to_string(result));
+        return Error{ErrorCode::kRa, "RaDeregisterMr failed: " + std::to_string(result)};
     return {};
 }
 

@@ -1,4 +1,4 @@
-#include "../examples/verbs/direct.hh"
+#include "wire.hh"
 #include "verbs_wire.hh"
 #include "backend.hh"
 #include "logging.hh"
@@ -26,17 +26,8 @@ int main(int argc, char **argv) {
     const auto address = nds::parse_tcp_address(listen);
     if (!address)
         return EXIT_FAILURE;
-    const auto listener = nds::TcpListener::listen(address->ipv4, address->port, 1);
-    if (!listener)
-        return EXIT_FAILURE;
-    const auto channel = listener->accept();
-    if (!channel)
-        return EXIT_FAILURE;
     nds::server::VerbsBackend backend;
     if (!backend.open(config, 1U))
-        return EXIT_FAILURE;
-    const auto peer = nds::examples::verbs::exchange_qp(&*channel, backend.local_qp_infos().front(), false);
-    if (!peer || !backend.connect({*peer}))
         return EXIT_FAILURE;
 
     // Arm one receive against the benchmark's single CPU MR before notifying the client.
@@ -44,7 +35,18 @@ int main(int argc, char **argv) {
     const auto region = backend.register_memory(payload.data(), payload.size(), IBV_ACCESS_LOCAL_WRITE);
     if (!region || !backend.post_receive(0U, *region))
         return EXIT_FAILURE;
-    if (!nds::examples::verbs::send_ready(&*channel))
+
+    // TCP starts only after the local QP, MR, and receive WR are ready.
+    const auto listener = nds::TcpListener::listen(address->ipv4, address->port, 1);
+    if (!listener)
+        return EXIT_FAILURE;
+    const auto channel = listener->accept();
+    if (!channel)
+        return EXIT_FAILURE;
+    const auto peer = nds::examples::verbs::exchange_server_qp(*channel, backend.local_qp_infos().front());
+    if (!peer || !backend.connect({*peer}))
+        return EXIT_FAILURE;
+    if (!nds::examples::verbs::send_ready(*channel))
         return EXIT_FAILURE;
     if (const auto completed = backend.wait_receive(0U, 5000U); !completed)
         return EXIT_FAILURE;

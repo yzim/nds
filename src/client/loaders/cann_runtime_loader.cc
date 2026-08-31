@@ -8,7 +8,7 @@ static_assert(sizeof(NdsRtNetServiceOpenArgs) == 16, "unexpected rtNetServiceOpe
 nds::Result<NdsCannRuntimeApi> nds_cann_runtime_open(std::string_view library_path) {
     auto library = nds::client::SharedLibrary::open(library_path);
     if (!library)
-        return nds::unexpected(library.error());
+        return Error{library.error()};
     NdsCannRuntimeApi api{};
     NDS_RETURN_IF_ERROR(library->resolve_required("rtSetDevice", &api.set_device));
     NDS_RETURN_IF_ERROR(library->resolve_required("rtOpenNetService", &api.open_net_service));
