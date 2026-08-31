@@ -233,11 +233,11 @@ Result<void> Transport::build_device_transport() {
             return Error{ErrorCode::kRuntime, "AIV QP is missing private WR-ID storage"};
         }
 
-        const auto *source = reinterpret_cast<const NdsRaAiDataPlaneInfo *>(qp.ai_qp_info_.data_plane_info);
+        const auto *source = reinterpret_cast<const Libra::AiDataPlaneInfo *>(qp.ai_qp_info_.data_plane_info);
         if (source->send_wq.buffer_address == 0U || source->receive_wq.buffer_address == 0U)
             return Error{ErrorCode::kRa, "HCCP did not return SQ/RQ dataplane information"};
 
-        const auto copy_wq = [](const NdsRaAiDataPlaneWq &input, std::uint64_t wr_id_address, bool is_send) {
+        const auto copy_wq = [](const Libra::AiDataPlaneWq &input, std::uint64_t wr_id_address, bool is_send) {
             NdsDeviceWorkQueue output{};
             output.number = input.wqn;
             output.depth = input.depth;
@@ -250,7 +250,7 @@ Result<void> Transport::build_device_transport() {
             output.doorbell_address = is_send ? input.doorbell_register_address : input.software_doorbell_address;
             return output;
         };
-        const auto copy_cq = [](const NdsRaAiDataPlaneCq &input) {
+        const auto copy_cq = [](const Libra::AiDataPlaneCq &input) {
             NdsDeviceCq output{};
             output.number = input.cqn;
             output.depth = input.depth;
@@ -287,7 +287,7 @@ Result<void> Transport::build_device_transport() {
     if (device_qps_.empty())
         return Error{ErrorCode::kInvalidArgument, "device transport requires at least one QP"};
 
-    auto descriptor_storage = runtime_->allocate(device_qps_.size() * sizeof(NdsDeviceQp));
+    auto descriptor_storage = runtime_->allocate(device_qps_.size() * sizeof(NdsDeviceQp), MemoryLocation::Device);
     if (!descriptor_storage.ok())
         return descriptor_storage.error();
     if (const Result<void> copied = runtime_->copy_to(&descriptor_storage.value(), device_qps_.data(),
@@ -461,8 +461,8 @@ Result<void> Transport::ready() {
         const auto lite = qp.query_support_lite();
         if (!lite)
             return Error{lite.error()};
-        if (*port != NDS_RA_PORT_STATUS_ACTIVE || *qp_status != NDS_RA_QP_STATUS_CONNECTED ||
-            *lite == NDS_RA_LITE_NOT_SUPPORTED) {
+        if (*port != Libra::PORT_STATUS_ACTIVE || *qp_status != Libra::QP_STATUS_CONNECTED ||
+            *lite == Libra::LITE_NOT_SUPPORTED) {
             return Error{ErrorCode::kRa, "client transport is not ready"};
         }
     }
@@ -471,7 +471,7 @@ Result<void> Transport::ready() {
 
 Result<void> Transport::initialize_launcher() {
     backend_launcher_ = std::make_unique<BackendLauncher>();
-    if (const auto loaded = backend_launcher_->open(runtime_, backend_.mode, backend_.artifact); !loaded)
+    if (const auto loaded = backend_launcher_->open(runtime_, backend_.mode, backend_.artifact_path); !loaded)
         return Error{loaded.error()};
     return {};
 }

@@ -31,14 +31,10 @@ Result<void> Runtime::open(const RuntimeConfig &config) {
 
 Result<void> Runtime::initialize(const RuntimeConfig &config) {
     const std::string hdc_type_argument = "--hdcType=" + std::to_string(config.hdc_type);
-    NdsRtProcExtParam parameter{};
-    NdsRtNetServiceOpenArgs open_args{};
+    Libruntime::ProcExtParam parameter{};
+    Libruntime::NetServiceOpenArgs open_args{};
 
-    if (!config.adopt_existing_context && config.cann_runtime_library.empty())
-        return Error{ErrorCode::kInvalidArgument, "NPU runtime requires an explicit CANN runtime library path"};
     config_ = config;
-    if (config_.cann_runtime_library.empty())
-        config_.cann_runtime_library = "libruntime.so";
     parameter.param_info = hdc_type_argument.c_str();
     parameter.param_len = hdc_type_argument.size();
     open_args.ext_param_list = &parameter;
@@ -57,13 +53,19 @@ Result<void> Runtime::initialize(const RuntimeConfig &config) {
             return Error{ErrorCode::kRuntime, error};
         }
     }
-    const auto cann_runtime = nds_cann_runtime_open(config_.cann_runtime_library);
-    if (!cann_runtime) {
+    Result<Libruntime> libruntime_result = Libruntime::open();
+    if (!libruntime_result.ok()) {
         reset();
-        return Error{cann_runtime.error()};
+        return Error{libruntime_result.error()};
     }
-    cann_runtime_ = *cann_runtime;
-    if (const int result = cann_runtime_.open_net_service(&open_args); result != 0) {
+    libruntime_ = std::move(libruntime_result).value();
+    Result<Libdsmi> libdsmi_result = Libdsmi::open();
+    if (!libdsmi_result.ok()) {
+        reset();
+        return Error{libdsmi_result.error()};
+    }
+    libdsmi_ = std::move(libdsmi_result).value();
+    if (const int result = libruntime_.open_net_service(&open_args); result != 0) {
         const std::string error = "rtOpenNetService failed: " + std::to_string(result);
         reset();
         return Error{ErrorCode::kRuntime, error};
@@ -75,10 +77,9 @@ Result<void> Runtime::initialize(const RuntimeConfig &config) {
 
 void Runtime::reset() noexcept {
     if (net_service_open_) {
-        (void)cann_runtime_.close_net_service();
+        (void)libruntime_.close_net_service();
         net_service_open_ = false;
     }
-    nds_cann_runtime_close(&cann_runtime_);
     if (acl_initialized_) {
         (void)aclFinalize();
         acl_initialized_ = false;
@@ -126,10 +127,10 @@ Result<HostPinnedAllocation> Runtime::allocate_host_pinned_memory(std::size_t si
     if (!rounded_size)
         return Error{rounded_size.error()};
     void *host_ptr = nullptr;
-    if (posix_memalign(&host_ptr, kHostPageSize, *rounded_size) != 0 || host_ptr == nullptr)
+    if (posix_memalign(&host_ptr, kHostPageSize, rounded_size.value()) != 0 || host_ptr == nullptr)
         return Error{ErrorCode::kRuntime, "host memory allocation failed"};
     void *device_ptr = nullptr;
-    const int result = aclrtHostRegister(host_ptr, *rounded_size, ACL_HOST_REGISTER_MAPPED, &device_ptr);
+    const int result = aclrtHostRegister(host_ptr, rounded_size.value(), ACL_HOST_REGISTER_MAPPED, &device_ptr);
     if (result != ACL_SUCCESS || device_ptr == nullptr) {
         std::free(host_ptr);
         return Error{ErrorCode::kRuntime, "aclrtHostRegister failed: " + std::to_string(result)};
@@ -168,8 +169,12 @@ Result<void> Runtime::copy_device_to_host(void *host_ptr, const void *device_ptr
     return {};
 }
 
-NdsCannRuntimeApi &Runtime::cann_runtime_api() noexcept {
-    return cann_runtime_;
+Libruntime &Runtime::libruntime() noexcept {
+    return libruntime_;
+}
+
+Libdsmi &Runtime::libdsmi() noexcept {
+    return libdsmi_;
 }
 
 MemoryBuffer::~MemoryBuffer() {
@@ -227,10 +232,6 @@ MemoryLocation MemoryBuffer::location() const noexcept {
     return location_;
 }
 
-Result<MemoryBuffer> Runtime::allocate(std::size_t size) {
-    return allocate(size, MemoryLocation::Device);
-}
-
 Result<MemoryBuffer> Runtime::allocate(std::size_t size, MemoryLocation location) {
     if (!initialized_ || size == 0U)
         return Error{ErrorCode::kInvalidArgument, "memory allocation requires an open runtime and nonzero size"};
@@ -239,15 +240,15 @@ Result<MemoryBuffer> Runtime::allocate(std::size_t size, MemoryLocation location
         auto allocated = allocate_device_memory(size);
         if (!allocated)
             return Error{allocated.error()};
-        buffer.data_ = *allocated;
-        buffer.rdma_data_ = *allocated;
+        buffer.data_ = allocated.value();
+        buffer.rdma_data_ = allocated.value();
         buffer.runtime_ = this;
     } else if (location == MemoryLocation::HostPinned) {
         auto allocated = allocate_host_pinned_memory(size);
         if (!allocated)
             return Error{allocated.error()};
-        buffer.data_ = allocated->host_address;
-        buffer.rdma_data_ = allocated->device_address;
+        buffer.data_ = allocated.value().host_address;
+        buffer.rdma_data_ = allocated.value().device_address;
         buffer.runtime_ = this;
     } else {
         buffer.data_ = new (std::nothrow) std::byte[size];

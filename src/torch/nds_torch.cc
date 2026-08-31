@@ -43,7 +43,7 @@ client::BackendMode backend_mode(const std::string &backend_name) {
 
 class Session : public std::enable_shared_from_this<Session> {
 public:
-    Session(std::string server, std::string backend_name, std::string backend_artifact) {
+    Session(std::string server, std::string backend_name, std::string backend_artifact_path) {
         TORCH_CHECK(parse_tcp_address(server), "server must be IPv4:port");
         const auto device = c10_npu::current_device();
         TORCH_CHECK(device >= 0, "torch_npu has no active NPU device");
@@ -53,13 +53,12 @@ public:
         runtime_config.adopt_existing_context = true;
         check(runtime_.open(runtime_config));
         client::TransportConfig transport_config;
-        transport_config.endpoint.ra_library = "libra.so";
         transport_config.server_address = std::move(server);
 
         client::BackendConfig backend;
         backend.mode = backend_mode(backend_name);
-        backend.artifact = std::move(backend_artifact);
-        TORCH_CHECK(!backend.artifact.empty(), "NDS backend requires an artifact");
+        backend.artifact_path = std::move(backend_artifact_path);
+        TORCH_CHECK(!backend.artifact_path.empty(), "NDS backend requires an artifact");
         check(transport_.open(&runtime_, transport_config, backend));
         check(storage_.open(&runtime_, &transport_));
     }
@@ -77,7 +76,7 @@ private:
 void Session::read_(const ::torch::Tensor &output, std::int64_t offset) {
     check_tensor(output);
     TORCH_CHECK(offset >= 0, "storage offset must be nonnegative");
-    auto buffer = value_or_throw(runtime_.allocate(output.nbytes()));
+    auto buffer = value_or_throw(runtime_.allocate(output.nbytes(), client::MemoryLocation::Device));
     const auto completion = value_or_throw(
         storage_.read(static_cast<std::uint64_t>(offset), &buffer, static_cast<std::uint32_t>(output.nbytes())));
     check(storage_.wait(completion, 5000U));
@@ -87,7 +86,7 @@ void Session::read_(const ::torch::Tensor &output, std::int64_t offset) {
 void Session::write(const ::torch::Tensor &input, std::int64_t offset) {
     check_tensor(input);
     TORCH_CHECK(offset >= 0, "storage offset must be nonnegative");
-    auto buffer = value_or_throw(runtime_.allocate(input.nbytes()));
+    auto buffer = value_or_throw(runtime_.allocate(input.nbytes(), client::MemoryLocation::Device));
     check(runtime_.copy_to(&buffer, input.data_ptr(), input.nbytes()));
     const auto completion = value_or_throw(
         storage_.write(static_cast<std::uint64_t>(offset), &buffer, static_cast<std::uint32_t>(input.nbytes())));
@@ -105,7 +104,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, module) {
     namespace nds_torch = nds::torch;
     pybind11::class_<nds_torch::Session, std::shared_ptr<nds_torch::Session>>(module, "Session")
         .def(pybind11::init<std::string, std::string, std::string>(), pybind11::arg("server"),
-             pybind11::arg("backend") = "ra", pybind11::arg("backend_artifact") = "")
+             pybind11::arg("backend") = "ra", pybind11::arg("backend_artifact_path") = "")
         .def("read_", &nds_torch::Session::read_)
         .def("write", &nds_torch::Session::write)
         .def_property_readonly("capacity", &nds_torch::Session::capacity);

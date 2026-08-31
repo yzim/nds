@@ -20,15 +20,13 @@ struct Config {
     nds::client::EndpointConfig endpoint;
     std::string server;
     nds::client::BackendMode backend{nds::client::BackendMode::Ra};
-    std::string backend_artifact;
+    std::string backend_artifact_path;
 };
 
 nds::Result<Config> parse(int argc, char **argv) {
     Config config;
     CLI::App app{"Run the direct one-QP, one-MR NPU verbs benchmark."};
-    app.add_option("--cann-runtime", config.runtime.cann_runtime_library)->required();
-    app.add_option("--ra", config.endpoint.ra_library)->required();
-    app.add_option("--backend-artifact", config.backend_artifact);
+    app.add_option("--backend-artifact-path", config.backend_artifact_path);
     app.add_option("--logical-device", config.runtime.logical_device_id)->required();
     app.add_option("--server", config.server)->required();
     std::string backend_mode_name{"ra"};
@@ -46,8 +44,8 @@ nds::Result<Config> parse(int argc, char **argv) {
         config.backend = nds::client::BackendMode::Aicpu;
     else
         return Error{nds::ErrorCode::kInvalidArgument, "--backend-mode must be ra, aiv, or aicpu"};
-    if (config.backend_artifact.empty())
-        return Error{nds::ErrorCode::kInvalidArgument, "--backend-artifact is required"};
+    if (config.backend_artifact_path.empty())
+        return Error{nds::ErrorCode::kInvalidArgument, "--backend-artifact-path is required"};
     return config;
 }
 
@@ -77,13 +75,14 @@ int main(int argc, char **argv) {
         .control_flags = 0U,
     };
     const nds::client::TransportConfig transport_config{config.endpoint, qp_config, 1U, config.server, 5000U};
-    const nds::client::BackendConfig backend_config{config.backend, config.backend_artifact};
+    const nds::client::BackendConfig backend_config{config.backend, config.backend_artifact_path};
     nds::client::Transport transport;
     if (!transport.open(&runtime, transport_config, backend_config).ok())
         return EXIT_FAILURE;
     // Register one device buffer; setup is outside the operation itself.
     std::array<std::byte, 64U> payload{};
-    const nds::Result<nds::client::MemoryBuffer> payload_buffer_result = runtime.allocate(payload.size());
+    const nds::Result<nds::client::MemoryBuffer> payload_buffer_result =
+        runtime.allocate(payload.size(), nds::client::MemoryLocation::Device);
     if (!payload_buffer_result.ok())
         return EXIT_FAILURE;
     const nds::Result<nds::client::MemoryRegion> payload_region_result =

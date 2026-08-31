@@ -3,8 +3,9 @@
 
 #include "transport_protocol.hh"
 #include "device_transport.h"
-#include "loaders/ra_loader.hh"
+#include "loaders/libra.hh"
 #include "result.hh"
+#include "runtime.hh"
 
 #include <cstdint>
 #include <string>
@@ -12,8 +13,6 @@
 
 namespace nds::client {
 
-class Runtime;
-class MemoryBuffer;
 struct EndpointTestAccess;
 enum class BackendMode;
 
@@ -22,15 +21,14 @@ enum QueuePairControlFlag : std::uint32_t {
 };
 
 enum class MemoryAccess : int {
-    LocalWrite = NDS_RA_ACCESS_LOCAL_WRITE,
-    RemoteWrite = NDS_RA_ACCESS_REMOTE_WRITE,
-    RemoteRead = NDS_RA_ACCESS_REMOTE_READ,
-    DirectNpu = NDS_RA_ACCESS_DIRECT_NPU,
+    LocalWrite = Libra::ACCESS_LOCAL_WRITE,
+    RemoteWrite = Libra::ACCESS_REMOTE_WRITE,
+    RemoteRead = Libra::ACCESS_REMOTE_READ,
+    DirectNpu = Libra::ACCESS_DIRECT_NPU,
 };
 
 struct EndpointConfig {
-    std::string ra_library;
-    std::int32_t hdc_type{NDS_RA_HDC_SERVICE_TYPE_RDMA_V2};
+    std::int32_t hdc_type{Libra::HDC_SERVICE_TYPE_RDMA_V2};
 };
 
 struct QueuePairConfig {
@@ -71,7 +69,7 @@ private:
 
     Endpoint *endpoint_{};
     const MemoryBuffer *buffer_{};
-    NdsRaMrInfo info_{};
+    Libra::MrInfo info_{};
     void *handle_{};
 };
 
@@ -89,43 +87,43 @@ public:
     Result<int> query_port_status();
     Result<int> query_support_lite();
     Result<int> query_status();
-    Result<std::vector<NdsRaCqeError>> query_cqe_errors();
+    Result<std::vector<Libra::CqeError>> query_cqe_errors();
+    Result<NdsDeviceQp> device_qp() const;
 
     bool created() const noexcept;
     bool connected() const noexcept;
-    const NdsRaQpAttr &local_attributes() const noexcept;
+    const Libra::QpAttr &local_attributes() const noexcept;
     BackendMode backend_mode() const noexcept;
 
     /* RA provider state remains owned by the endpoint and is accessed by the RA backend layer. */
-    NdsRaApi *ra_api() const noexcept;
+    Libra *libra() const noexcept;
     void *handle() const noexcept;
-    NdsRaSge *posted_send_sge() noexcept;
+    Libra::Sge *posted_send_sge() noexcept;
 
 private:
     friend class Endpoint;
     friend class Transport;
-    friend class BackendLauncher;
     QueuePair(Endpoint *endpoint, const QueuePairConfig &config, BackendMode mode);
     Result<void> initialize();
     void reset() noexcept;
-    Result<NdsRaTypicalQp> build_typical_qp(const NdsRaQpAttr &attributes, std::uint32_t traffic_class,
-                                            std::uint32_t service_level, std::uint32_t retry_count,
-                                            std::uint32_t retry_timeout) const;
+    Result<Libra::TypicalQp> build_typical_qp(const Libra::QpAttr &attributes, std::uint32_t traffic_class,
+                                              std::uint32_t service_level, std::uint32_t retry_count,
+                                              std::uint32_t retry_timeout) const;
 
     Endpoint *endpoint_{};
     QueuePairConfig config_{};
     // Records the backend mode that selected this QP's creation and dataplane layout.
     BackendMode mode_;
     void *handle_{};
-    NdsRaQpAttr local_attributes_{};
-    NdsRaAiQpInfo ai_qp_info_{};
+    Libra::QpAttr local_attributes_{};
+    Libra::AiQpInfo ai_qp_info_{};
     // Raw AIV CQEs identify a queue slot, not the submitted work request.
     // These device-visible tables recover the request ID at completion time.
     // They are deliberately private: provider-backed RA and AICPU own their
     // corresponding bookkeeping internally.
     MemoryBuffer send_wr_ids_;
     MemoryBuffer receive_wr_ids_;
-    NdsRaSge posted_send_sge_{};
+    Libra::Sge posted_send_sge_{};
     bool connected_{};
 };
 
@@ -154,7 +152,7 @@ private:
     Runtime *runtime_{};
     EndpointConfig config_{};
     std::uint32_t physical_device_id_{};
-    NdsRaApi api_{};
+    Libra libra_{};
     void *rdev_handle_{};
     bool ra_initialized_{};
 };

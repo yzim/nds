@@ -24,16 +24,14 @@ struct Config {
     nds::client::RuntimeConfig runtime;
     nds::client::EndpointConfig endpoint;
     nds::client::BackendMode backend{nds::client::BackendMode::Ra};
-    std::string backend_artifact;
+    std::string backend_artifact_path;
     std::string server;
 };
 
 nds::Result<Config> parse(int argc, char **argv) {
     Config config;
     CLI::App app{"Exercise direct NPU verbs with a TCP QP bootstrap."};
-    app.add_option("--cann-runtime", config.runtime.cann_runtime_library)->required();
-    app.add_option("--ra", config.endpoint.ra_library)->required();
-    app.add_option("--backend-artifact", config.backend_artifact,
+    app.add_option("--backend-artifact-path", config.backend_artifact_path,
                    "RA backend shared artifact, AIV kernel object, or AICPU package descriptor");
     app.add_option("--logical-device", config.runtime.logical_device_id)->required();
     app.add_option("--server", config.server)->required();
@@ -53,8 +51,8 @@ nds::Result<Config> parse(int argc, char **argv) {
         config.backend = nds::client::BackendMode::Aicpu;
     else
         return nds::Error{nds::ErrorCode::kInvalidArgument, "--backend-mode must be ra, aiv, or aicpu"};
-    if (config.backend_artifact.empty())
-        return nds::Error{nds::ErrorCode::kInvalidArgument, "--backend-artifact is required"};
+    if (config.backend_artifact_path.empty())
+        return nds::Error{nds::ErrorCode::kInvalidArgument, "--backend-artifact-path is required"};
     return config;
 }
 
@@ -83,13 +81,14 @@ nds::Result<void> run(int argc, char **argv) {
 
     // Register exactly one device MR and use it for the Send WR.
     std::array<std::byte, 64U> payload{};
-    NDS_ASSIGN_OR_RETURN(nds::client::MemoryBuffer payload_buffer, runtime.allocate(payload.size()));
+    NDS_ASSIGN_OR_RETURN(nds::client::MemoryBuffer payload_buffer,
+                         runtime.allocate(payload.size(), nds::client::MemoryLocation::Device));
     NDS_ASSIGN_OR_RETURN(nds::client::MemoryRegion payload_region,
                          endpoint.reg_mr(payload_buffer, nds::client::MemoryAccess::DirectNpu));
 
     // The launcher owns backend launch details; the example keeps only the QP.
     nds::client::BackendLauncher launcher;
-    NDS_RETURN_IF_ERROR(launcher.open(&runtime, config.backend, config.backend_artifact));
+    NDS_RETURN_IF_ERROR(launcher.open(&runtime, config.backend, config.backend_artifact_path));
 
     aclrtStream stream{};
     const int stream_result = aclrtCreateStream(&stream);
@@ -103,7 +102,7 @@ nds::Result<void> run(int argc, char **argv) {
         }
     } stream_guard{stream};
     const nds::client::LaunchConfig launch_config{1U, nullptr, stream, nullptr, 0U};
-    NDS_ASSIGN_OR_RETURN(NdsDeviceQp device_qp, launcher.describe_qp(queue_pair));
+    NDS_ASSIGN_OR_RETURN(NdsDeviceQp device_qp, queue_pair.device_qp());
 
     // TCP starts only after the local RoCE runtime, endpoint, QP, and MR exist.
     NDS_ASSIGN_OR_RETURN(nds::TcpConnection connection, nds::TcpConnection::connect(address.ipv4, address.port, 5000U));
@@ -114,13 +113,16 @@ nds::Result<void> run(int argc, char **argv) {
     NDS_RETURN_IF_ERROR(nds::examples::verbs::wait_ready(connection));
 
     const NdsDeviceSendWr send_wr{
-        1U,
-        NDS_DEVICE_WR_SEND,
-        NDS_DEVICE_SEND_SIGNALED,
-        {payload_region.address(), static_cast<std::uint32_t>(payload.size()), payload_region.local_key()},
-        0U,
-        0U,
-        0U};
+        .wr_id = 1U,
+        .opcode = NDS_DEVICE_WR_SEND,
+        .flags = NDS_DEVICE_SEND_SIGNALED,
+        .local = {.address = payload_region.address(),
+                  .length = static_cast<std::uint32_t>(payload.size()),
+                  .local_key = payload_region.local_key()},
+        .remote_address = 0U,
+        .remote_key = 0U,
+        .reserved = 0U,
+    };
     NDS_RETURN_IF_ERROR(launcher.post_send(launch_config, device_qp, send_wr, 5000));
 
     const std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);

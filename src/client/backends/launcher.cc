@@ -26,22 +26,14 @@ struct AivPollArguments {
     std::uint64_t return_value_address;
 };
 
-struct AivBatchArguments {
-    std::uint64_t qp_address;
-    std::uint64_t wrs_address;
-    std::uint32_t wr_count;
-    std::uint32_t reserved;
-    std::uint64_t bad_wr_address;
-    std::uint64_t return_value_address;
-};
-
 template <typename Request>
 Result<void> launch_aicpu(Runtime *runtime, AicpuLauncher *launcher, const LaunchConfig &launch_config,
                           const char *entry, Request request, std::int32_t timeout_ms) {
     if (runtime == nullptr || launcher == nullptr)
         return Error{ErrorCode::kInvalidArgument, "AICPU launch requires a runtime and launcher"};
     std::int32_t return_value = std::numeric_limits<std::int32_t>::min();
-    NDS_ASSIGN_OR_RETURN(MemoryBuffer device_return_value, runtime->allocate(sizeof(return_value)));
+    NDS_ASSIGN_OR_RETURN(MemoryBuffer device_return_value,
+                         runtime->allocate(sizeof(return_value), MemoryLocation::Device));
     NDS_RETURN_IF_ERROR(runtime->copy_to(&device_return_value, &return_value, sizeof(return_value)));
     NdsAicpuLaunchArgs<Request> arguments{request, reinterpret_cast<std::uint64_t>(device_return_value.data())};
     const int launch_result = launcher->launch(entry, launch_config, &arguments, sizeof(arguments));
@@ -62,7 +54,7 @@ Result<void> launch_aiv(Runtime *runtime, AivLauncher *launcher, const LaunchCon
                         std::int32_t timeout_ms) {
     if (runtime == nullptr || launcher == nullptr)
         return Error{ErrorCode::kInvalidArgument, "AIV launch requires a runtime and launcher"};
-    NDS_ASSIGN_OR_RETURN(MemoryBuffer device_request, runtime->allocate(sizeof(request)));
+    NDS_ASSIGN_OR_RETURN(MemoryBuffer device_request, runtime->allocate(sizeof(request), MemoryLocation::Device));
     NDS_RETURN_IF_ERROR(runtime->copy_to(&device_request, &request, sizeof(request)));
     const std::uint64_t address = reinterpret_cast<std::uint64_t>(device_request.data());
     AivThreeAddressArguments arguments{address + first_offset, address + second_offset,
@@ -82,71 +74,6 @@ Result<void> launch_aiv(Runtime *runtime, AivLauncher *launcher, const LaunchCon
 }  // namespace
 
 BackendLauncher::~BackendLauncher() = default;
-
-Result<NdsDeviceQp> BackendLauncher::describe_qp(const QueuePair &qp) const {
-    if (!qp.created())
-        return Error{ErrorCode::kInvalidArgument, "backend dispatch requires a created QP"};
-
-    NdsDeviceQp descriptor{};
-    descriptor.host_runtime_address = reinterpret_cast<std::uint64_t>(qp.endpoint_->runtime_);
-    descriptor.host_qp_address = reinterpret_cast<std::uint64_t>(&qp);
-    if (qp.backend_mode() != mode_)
-        return Error{ErrorCode::kInvalidArgument, "QP backend mode does not match the backend dispatcher"};
-    if (qp.backend_mode() == BackendMode::Ra)
-        return descriptor;
-
-    if (qp.ai_qp_info_.ai_qp_address == 0U)
-        return Error{ErrorCode::kRa, "AI QP is missing provider metadata"};
-    if (qp.backend_mode() == BackendMode::Aiv &&
-        (qp.send_wr_ids_.data() == nullptr || qp.receive_wr_ids_.data() == nullptr)) {
-        return Error{ErrorCode::kRuntime, "AIV QP is missing private WR-ID storage"};
-    }
-    const auto *source = reinterpret_cast<const NdsRaAiDataPlaneInfo *>(qp.ai_qp_info_.data_plane_info);
-    if (source->send_wq.buffer_address == 0U || source->receive_wq.buffer_address == 0U)
-        return Error{ErrorCode::kRa, "AI QP is missing SQ/RQ metadata"};
-
-    const auto copy_wq = [](const NdsRaAiDataPlaneWq &input, std::uint64_t wr_id_address, bool is_send) {
-        NdsDeviceWorkQueue output{};
-        output.number = input.wqn;
-        output.depth = input.depth;
-        output.entry_size = input.wqebb_size;
-        output.buffer_address = input.buffer_address;
-        output.head_address = input.head_address;
-        output.tail_address = input.tail_address;
-        output.wr_id_address = wr_id_address;
-        output.doorbell_mode = is_send ? NDS_DEVICE_DOORBELL_MMIO : NDS_DEVICE_DOORBELL_RECORD;
-        output.doorbell_address = is_send ? input.doorbell_register_address : input.software_doorbell_address;
-        return output;
-    };
-    const auto copy_cq = [](const NdsRaAiDataPlaneCq &input) {
-        NdsDeviceCq output{};
-        output.number = input.cqn;
-        output.depth = input.depth;
-        output.entry_size = input.cqe_size;
-        output.buffer_address = input.buffer_address;
-        output.consumer_address = input.tail_address;
-        output.doorbell_mode = NDS_DEVICE_DOORBELL_RECORD;
-        output.doorbell_address = input.software_doorbell_address;
-        return output;
-    };
-    descriptor.flags = (qp.config_.control_flags & QueuePairCallerPollsCq) != 0U
-                           ? static_cast<std::uint32_t>(NDS_DEVICE_QP_CALLER_POLLS_CQ)
-                           : 0U;
-    descriptor.qp_mode = qp.config_.ai_qp_mode;
-    descriptor.service_level = qp.config_.service_level;
-    descriptor.provider_qp_address = qp.ai_qp_info_.ai_qp_address;
-    descriptor.provider_send_cq_address = qp.ai_qp_info_.ai_scq_address;
-    descriptor.provider_receive_cq_address = qp.ai_qp_info_.ai_rcq_address;
-    const std::uint64_t send_wr_ids =
-        qp.backend_mode() == BackendMode::Aiv ? reinterpret_cast<std::uint64_t>(qp.send_wr_ids_.data()) : 0U;
-    const std::uint64_t receive_wr_ids =
-        qp.backend_mode() == BackendMode::Aiv ? reinterpret_cast<std::uint64_t>(qp.receive_wr_ids_.data()) : 0U;
-    descriptor.send_queue = copy_wq(source->send_wq, send_wr_ids, true);
-    descriptor.receive_queue = copy_wq(source->receive_wq, receive_wr_ids, false);
-    descriptor.send_cq = copy_cq(source->send_cq);
-    descriptor.receive_cq = copy_cq(source->receive_cq);
-    return descriptor;
-}
 
 Result<void> BackendLauncher::open(Runtime *runtime, BackendMode mode, const std::string &artifact) {
     if (runtime == nullptr || !runtime->initialized() || ra_ != nullptr || aiv_ != nullptr || aicpu_ != nullptr ||
@@ -209,34 +136,6 @@ Result<void> BackendLauncher::post_recv(const LaunchConfig &launch_config, const
     return Error{ErrorCode::kRuntime, "backend dispatcher is not open"};
 }
 
-Result<void> BackendLauncher::post_send_batch(Runtime *runtime, const NdsDeviceQp &qp,
-                                              std::span<const NdsDeviceSendWr> wrs, std::int32_t timeout_ms) {
-    if (runtime == nullptr)
-        return Error{ErrorCode::kInvalidArgument, "AIV send batching requires a runtime"};
-    if (wrs.empty())
-        return Error{ErrorCode::kInvalidArgument, "AI send batch requires work requests"};
-    if (aicpu_ != nullptr)
-        return Error{ErrorCode::kUnsupported, "AICPU send batching is not implemented"};
-    if (aiv_ == nullptr)
-        return Error{ErrorCode::kUnsupported, "RA send batching is not implemented"};
-    NDS_ASSIGN_OR_RETURN(MemoryBuffer device_wrs, runtime->allocate(wrs.size_bytes()));
-    NDS_RETURN_IF_ERROR(runtime->copy_to(&device_wrs, wrs.data(), wrs.size_bytes()));
-    NdsDevicePostSendBatchArgs request{qp, reinterpret_cast<std::uint64_t>(device_wrs.data()),
-                                       static_cast<std::uint32_t>(wrs.size()), std::numeric_limits<std::int32_t>::min(),
-                                       0U};
-    NDS_ASSIGN_OR_RETURN(MemoryBuffer device_request, runtime->allocate(sizeof(request)));
-    NDS_RETURN_IF_ERROR(runtime->copy_to(&device_request, &request, sizeof(request)));
-    const std::uint64_t address = reinterpret_cast<std::uint64_t>(device_request.data());
-    AivBatchArguments arguments{address + offsetof(NdsDevicePostSendBatchArgs, qp),
-                                request.wrs_address,
-                                request.wr_count,
-                                0U,
-                                address + offsetof(NdsDevicePostSendBatchArgs, bad_wr_address),
-                                address + offsetof(NdsDevicePostSendBatchArgs, return_value)};
-    (void)timeout_ms;
-    return Error{ErrorCode::kUnsupported, "AIV send batching requires an explicit LaunchConfig"};
-}
-
 Result<std::uint32_t> BackendLauncher::poll_cq(const LaunchConfig &launch_config, const NdsDeviceQp &qp, bool send_cq,
                                                std::uint32_t max_completions, NdsDeviceWc *completions,
                                                std::int32_t timeout_ms) {
@@ -246,12 +145,14 @@ Result<std::uint32_t> BackendLauncher::poll_cq(const LaunchConfig &launch_config
         return ra_->poll_cq(qp, send_cq ? 1U : 0U, max_completions, completions);
     if (runtime_ == nullptr)
         return Error{ErrorCode::kRuntime, "backend launcher has no runtime"};
-    NDS_ASSIGN_OR_RETURN(MemoryBuffer device_completions, runtime_->allocate(max_completions * sizeof(*completions)));
+    NDS_ASSIGN_OR_RETURN(MemoryBuffer device_completions,
+                         runtime_->allocate(max_completions * sizeof(*completions), MemoryLocation::Device));
     NdsDevicePollCqArgs request{qp, send_cq ? 1U : 0U, max_completions,
                                 reinterpret_cast<std::uint64_t>(device_completions.data()),
                                 std::numeric_limits<std::int32_t>::min()};
     if (aicpu_ != nullptr) {
-        NDS_ASSIGN_OR_RETURN(MemoryBuffer device_return_value, runtime_->allocate(sizeof(request.return_value)));
+        NDS_ASSIGN_OR_RETURN(MemoryBuffer device_return_value,
+                             runtime_->allocate(sizeof(request.return_value), MemoryLocation::Device));
         NDS_RETURN_IF_ERROR(
             runtime_->copy_to(&device_return_value, &request.return_value, sizeof(request.return_value)));
         NdsAicpuLaunchArgs<NdsDevicePollCqArgs> arguments{request,
@@ -276,7 +177,7 @@ Result<std::uint32_t> BackendLauncher::poll_cq(const LaunchConfig &launch_config
     if (aiv_ == nullptr)
         return Error{ErrorCode::kRuntime, "backend dispatcher is not open"};
 
-    NDS_ASSIGN_OR_RETURN(MemoryBuffer device_request, runtime_->allocate(sizeof(request)));
+    NDS_ASSIGN_OR_RETURN(MemoryBuffer device_request, runtime_->allocate(sizeof(request), MemoryLocation::Device));
     NDS_RETURN_IF_ERROR(runtime_->copy_to(&device_request, &request, sizeof(request)));
     const std::uint64_t address = reinterpret_cast<std::uint64_t>(device_request.data());
     AivPollArguments arguments{address + offsetof(NdsDevicePollCqArgs, qp), send_cq ? 1U : 0U, max_completions,
@@ -296,42 +197,6 @@ Result<std::uint32_t> BackendLauncher::poll_cq(const LaunchConfig &launch_config
         NDS_RETURN_IF_ERROR(runtime_->copy_from(completions, device_completions, count * sizeof(*completions)));
     }
     return count;
-}
-
-Result<void> BackendLauncher::storage_read(Runtime *runtime, const NdsDeviceStorageContext &context,
-                                           const StorageReadCommand &command, std::int32_t timeout_ms) {
-    (void)runtime;
-    (void)context;
-    (void)command;
-    (void)timeout_ms;
-    return Error{ErrorCode::kUnsupported, "storage requires its own explicit stream-aware launcher API"};
-}
-
-Result<void> BackendLauncher::storage_write(Runtime *runtime, const NdsDeviceStorageContext &context,
-                                            const StorageWriteCommand &command, std::int32_t timeout_ms) {
-    (void)runtime;
-    (void)context;
-    (void)command;
-    (void)timeout_ms;
-    return Error{ErrorCode::kUnsupported, "storage requires its own explicit stream-aware launcher API"};
-}
-
-Result<void> BackendLauncher::storage_batch_read(Runtime *runtime, const NdsDeviceStorageContext &context,
-                                                 const StorageBatchReadCommand &command, std::int32_t timeout_ms) {
-    (void)runtime;
-    (void)context;
-    (void)command;
-    (void)timeout_ms;
-    return Error{ErrorCode::kUnsupported, "storage requires its own explicit stream-aware launcher API"};
-}
-
-Result<void> BackendLauncher::storage_batch_write(Runtime *runtime, const NdsDeviceStorageContext &context,
-                                                  const StorageBatchWriteCommand &command, std::int32_t timeout_ms) {
-    (void)runtime;
-    (void)context;
-    (void)command;
-    (void)timeout_ms;
-    return Error{ErrorCode::kUnsupported, "storage requires its own explicit stream-aware launcher API"};
 }
 
 }  // namespace nds::client

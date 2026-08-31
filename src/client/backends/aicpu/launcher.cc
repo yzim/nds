@@ -48,8 +48,9 @@ int AicpuLauncher::launch(const char *kernel_name, const client::LaunchConfig &l
     aclrtLaunchKernelCfg default_config{&default_attribute, 1U};
     aclrtLaunchKernelCfg *kernel_config =
         launch_config.kernel_config == nullptr ? &default_config : launch_config.kernel_config;
-    return aclrtLaunchKernelWithHostArgs(entry->second, launch_config.block_dim, launch_config.stream, kernel_config,
-                                         arguments, argument_size, launch_config.l2ctrl, launch_config.flags);
+    return aclrtLaunchKernelWithHostArgs(
+        entry->second, launch_config.block_dim, launch_config.stream, kernel_config, arguments, argument_size,
+        reinterpret_cast<aclrtPlaceHolderInfo *>(launch_config.l2ctrl), launch_config.flags);
 }
 
 void AicpuLauncher::reset() noexcept {

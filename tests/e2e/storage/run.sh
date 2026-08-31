@@ -46,27 +46,25 @@ run_client() {
     local client_log="$4"
     local -a client=("${build}/bin/nds_storage_client" --backend-mode "${backend}"
         --ascendcl "${cann}/aarch64-linux/lib64/libascendcl.so"
-        --cann-runtime "${cann}/aarch64-linux/lib64/libruntime.so"
-        --ra "${cann}/aarch64-linux/lib64/libra.so"
         --logical-device 0
         --server "${NDS_E2E_SERVER_ADDRESS}"
         --operation "${operation}" --offset 0 --bytes "${bytes}" --log-level info)
 
     case "${backend}" in
         ra)
-            client+=(--backend-artifact "${build}/libnds_ra_backend.so")
+            client+=(--backend-artifact-path "${build}/libnds_ra_backend.so")
             timeout "${case_timeout}" sudo -n env "PATH=${PATH}" bash -lc \
                 'source "$1/set_env.sh"; shift; exec "$@"' bash "${cann}" "${client[@]}" >"${client_log}" 2>&1
             ;;
         aiv)
-            client+=(--backend-artifact "${build}/aiv/nds_aiv_kernel.o")
+            client+=(--backend-artifact-path "${build}/aiv/nds_aiv_kernel.o")
             timeout "${case_timeout}" sudo -n env "PATH=${PATH}" bash -lc \
                 'source "$1/set_env.sh"; shift; exec "$@"' bash "${cann}" "${client[@]}" >"${client_log}" 2>&1
             ;;
         aicpu)
             local overlay
             overlay="$(nds_prepare_aicpu_overlay "${case_dir}" "${cann}" "${build}")"
-            client+=(--backend-artifact "${overlay}/opp/vendors/nds/aicpu/config/nds_aicpu_standard.json")
+            client+=(--backend-artifact-path "${overlay}/opp/vendors/nds/aicpu/config/nds_aicpu_standard.json")
             timeout "${case_timeout}" sudo -n unshare -m "${support_dir}/run_with_aicpu_package.sh" \
                 "${overlay}" "${cann}" "${client[@]}" >"${client_log}" 2>&1
             ;;

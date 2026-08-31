@@ -45,7 +45,7 @@ public:
     Result<void> allocate(std::size_t size) {
         if (runtime_ == nullptr || buffer_.data() != nullptr)
             return Error{ErrorCode::kInvalidArgument, "device allocation requires one runtime and empty storage"};
-        auto allocated = runtime_->allocate(size);
+        auto allocated = runtime_->allocate(size, MemoryLocation::Device);
         if (!allocated)
             return Error{allocated.error()};
         buffer_ = std::move(*allocated);
@@ -127,7 +127,7 @@ Result<void> submit_device_storage(Runtime *runtime, Transport *transport, const
         args.command = command;
         args.return_value = std::numeric_limits<std::int32_t>::min();
         AicpuLauncher launcher;
-        if (const auto loaded = launcher.load(backend.artifact); !loaded)
+        if (const auto loaded = launcher.load(backend.artifact_path); !loaded)
             return Error{loaded.error()};
         const char *kernel_name = aicpu_storage_kernel(operation);
         if (kernel_name == nullptr)
@@ -156,7 +156,7 @@ Result<void> submit_device_storage(Runtime *runtime, Transport *transport, const
             !copied)
             return Error{copied.error()};
         AivLauncher launcher;
-        if (const auto loaded = launcher.load(backend.artifact); !loaded)
+        if (const auto loaded = launcher.load(backend.artifact_path); !loaded)
             return Error{loaded.error()};
         const char *kernel_name = aiv_storage_kernel(operation);
         if (kernel_name == nullptr)
@@ -201,7 +201,7 @@ Result<DeviceStorageWaitResult> wait_device_storage(Runtime *runtime, Transport 
         args.expected_bytes = expected_bytes;
         args.return_value = return_value;
         AicpuLauncher launcher;
-        if (const auto loaded = launcher.load(backend.artifact); !loaded)
+        if (const auto loaded = launcher.load(backend.artifact_path); !loaded)
             return Error{loaded.error()};
         if (const auto launched = launch_aicpu(runtime, &launcher, "nds_aicpu_storage_wait_kernel", &args, timeout_ms);
             !launched)
@@ -221,7 +221,7 @@ Result<DeviceStorageWaitResult> wait_device_storage(Runtime *runtime, Transport 
             !copied)
             return Error{copied.error()};
         AivLauncher launcher;
-        if (const auto loaded = launcher.load(backend.artifact); !loaded)
+        if (const auto loaded = launcher.load(backend.artifact_path); !loaded)
             return Error{loaded.error()};
         AivStorageWaitArguments arguments{reinterpret_cast<std::uint64_t>(device_context.get()), command_id,
                                           expected_bytes, reinterpret_cast<std::uint64_t>(device_return_value.get())};
@@ -254,15 +254,15 @@ Result<void> StorageClient::open(Runtime *runtime, Transport *transport) {
         return Error{ErrorCode::kInvalidArgument, "storage client requires one open runtime and transport"};
     runtime_ = runtime;
     transport_ = transport;
-    auto command_buffer = runtime_->allocate(kStorageCommandBytes);
+    auto command_buffer = runtime_->allocate(kStorageCommandBytes, MemoryLocation::Device);
     if (!command_buffer)
         return Error{command_buffer.error()};
     command_buffer_ = std::move(*command_buffer);
-    auto completion_buffer = runtime_->allocate(kStorageCompletionBytes);
+    auto completion_buffer = runtime_->allocate(kStorageCompletionBytes, MemoryLocation::Device);
     if (!completion_buffer)
         return Error{completion_buffer.error()};
     completion_buffer_ = std::move(*completion_buffer);
-    auto namespace_buffer = runtime_->allocate(kStorageNamespaceBytes);
+    auto namespace_buffer = runtime_->allocate(kStorageNamespaceBytes, MemoryLocation::Device);
     if (!namespace_buffer)
         return Error{namespace_buffer.error()};
     namespace_buffer_ = std::move(*namespace_buffer);
@@ -365,7 +365,7 @@ Result<StorageCompletionHandle> StorageClient::read_batch(std::span<const Storag
                                                kStorageBatchEntryBytes) != StorageSerdeResult::Ok)
             return Error{ErrorCode::kProtocol, "invalid storage batch-read entry"};
     }
-    auto descriptor_buffer = runtime_->allocate(bytes.size());
+    auto descriptor_buffer = runtime_->allocate(bytes.size(), MemoryLocation::Device);
     if (!descriptor_buffer)
         return Error{descriptor_buffer.error()};
     if (const auto copied = runtime_->copy_to(&*descriptor_buffer, bytes.data(), bytes.size()); !copied)
@@ -417,7 +417,7 @@ Result<StorageCompletionHandle> StorageClient::write_batch(std::span<const Stora
                                                 kStorageBatchEntryBytes) != StorageSerdeResult::Ok)
             return Error{ErrorCode::kProtocol, "invalid storage batch-write entry"};
     }
-    auto descriptor_buffer = runtime_->allocate(bytes.size());
+    auto descriptor_buffer = runtime_->allocate(bytes.size(), MemoryLocation::Device);
     if (!descriptor_buffer)
         return Error{descriptor_buffer.error()};
     if (const auto copied = runtime_->copy_to(&*descriptor_buffer, bytes.data(), bytes.size()); !copied)

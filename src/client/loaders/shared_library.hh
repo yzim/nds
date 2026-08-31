@@ -31,7 +31,7 @@ public:
         if (!symbol)
             return Error{symbol.error()};
         Function function{};
-        std::memcpy(&function, &*symbol, sizeof(function));
+        std::memcpy(&function, &symbol.value(), sizeof(function));
         return function;
     }
 
@@ -42,7 +42,7 @@ public:
         const auto function = resolve_required<Function>(name);
         if (!function)
             return Error{function.error()};
-        *destination = *function;
+        *destination = function.value();
         return {};
     }
 

@@ -32,11 +32,9 @@ nds::Result<int> parse_args(int argc, char **argv, ClientConfig *config, bool *e
     if (config == nullptr || exit_requested == nullptr)
         return Error{nds::ErrorCode::kInvalidArgument, "client configuration and exit state are required"};
     CLI::App app{"Send one NDS storage command from an NPU to a CPU memory namespace."};
-    app.add_option("--cann-runtime", config->runtime.cann_runtime_library, "CANN runtime shared library")->required();
-    app.add_option("--ra", config->transport.endpoint.ra_library, "CANN RA shared library")->required();
     std::string backend{"ra"};
     app.add_option("--backend-mode", backend, "Storage backend mode")->check(CLI::IsMember({"ra", "aicpu", "aiv"}));
-    app.add_option("--backend-artifact", config->backend.artifact,
+    app.add_option("--backend-artifact-path", config->backend.artifact_path,
                    "RA backend shared artifact, AIV kernel object, or AICPU package descriptor");
     app.add_option("--operation", config->operation, "Storage operation")
         ->check(CLI::IsMember({"read", "write", "batch-read", "batch-write"}));
@@ -73,7 +71,7 @@ nds::Result<int> parse_args(int argc, char **argv, ClientConfig *config, bool *e
         config->backend.mode = nds::client::BackendMode::Aicpu;
     if (backend == "aiv")
         config->backend.mode = nds::client::BackendMode::Aiv;
-    if (config->backend.artifact.empty()) {
+    if (config->backend.artifact_path.empty()) {
         return Error{nds::ErrorCode::kInvalidArgument, "invalid option combination"};
     }
     return 0;
@@ -128,7 +126,7 @@ int main(int argc, char **argv) {
     requests.reserve(operation_count);
     for (std::uint32_t operation_index = 0U; operation_index < operation_count; ++operation_index) {
         const std::uint64_t operation_offset = config.offset + operation_index * config.bytes;
-        auto allocated = runtime.allocate(config.bytes);
+        auto allocated = runtime.allocate(config.bytes, nds::client::MemoryLocation::Device);
         if (!allocated) {
             NDS_LOG_ERROR("npu-client", "client application buffer allocation failed: {}", allocated.error().message);
             return EXIT_FAILURE;

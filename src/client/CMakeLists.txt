@@ -1,7 +1,7 @@
 add_library(nds_client_loaders STATIC
-    loaders/dsmi_loader.cc
-    loaders/ra_loader.cc
-    loaders/cann_runtime_loader.cc
+    loaders/libdsmi.cc
+    loaders/libra.cc
+    loaders/libruntime.cc
     loaders/shared_library.cc)
 target_include_directories(nds_client_loaders
     PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${PROJECT_SOURCE_DIR}/src/include

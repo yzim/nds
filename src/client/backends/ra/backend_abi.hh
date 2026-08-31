@@ -2,8 +2,6 @@
 #define NDS_CLIENT_RA_BACKEND_ABI_HH
 
 #include "device_verbs.h"
-#include "device_storage.h"
-#include "device_transport.h"
 
 #include <cstdint>
 
@@ -11,11 +9,5 @@
 using NdsRaBackendPostSend = int (*)(const NdsDeviceQp *, const NdsDeviceSendWr *, void *stream);
 using NdsRaBackendPostRecv = int (*)(const NdsDeviceQp *, const NdsDeviceRecvWr *);
 using NdsRaBackendPollCq = int (*)(const NdsDeviceQp *, std::uint32_t, std::uint32_t, NdsDeviceWc *);
-using NdsRaBackendRdmaSend = int (*)(const NdsDeviceTransport *, const NdsDeviceSendWr *);
-using NdsRaBackendRdmaRecv = int (*)(const NdsDeviceTransport *, const NdsDeviceRecvWr *);
-using NdsRaBackendStorage = int (*)(const NdsDeviceStorageContext *, const nds::StorageReadCommand *);
-using NdsRaBackendStorageWrite = int (*)(const NdsDeviceStorageContext *, const nds::StorageWriteCommand *);
-using NdsRaBackendStorageBatchRead = int (*)(const NdsDeviceStorageContext *, const nds::StorageBatchReadCommand *);
-using NdsRaBackendStorageBatchWrite = int (*)(const NdsDeviceStorageContext *, const nds::StorageBatchWriteCommand *);
 
 #endif

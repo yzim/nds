@@ -20,16 +20,16 @@ struct RaConnection {
 struct RaStorageContext {
     RaConnection connection{};
     void *command_device{};
-    NdsRaSge command_buffer{};
+    Libra::Sge command_buffer{};
     void *completion_device{};
-    NdsRaSge completion{};
+    Libra::Sge completion{};
     std::uint64_t capacity{};
 };
 
 /* Verbs layer. A caller that owns a bounded verbs window may prepare several
  * WQEs and ring the final response once; PostSend remains the one-WR helper. */
-Result<NdsRaSendResponse> NdsRaPrepareSend(client::QueuePair *qp, const NdsDeviceSendWr &wr, NdsRaSge *sge);
-Result<void> NdsRaRingSend(client::Runtime *runtime, const NdsRaSendResponse &response, void *stream);
+Result<Libra::SendResponse> NdsRaPrepareSend(client::QueuePair *qp, const NdsDeviceSendWr &wr, Libra::Sge *sge);
+Result<void> NdsRaRingSend(client::Runtime *runtime, const Libra::SendResponse &response, void *stream);
 Result<void> NdsRaPostSend(client::Runtime *runtime, client::QueuePair *qp, const NdsDeviceSendWr &wr, void *stream);
 Result<void> NdsRaPostRecv(client::QueuePair *qp, const NdsDeviceRecvWr &wr);
 Result<std::uint32_t> NdsRaPollCq(client::QueuePair *qp, bool is_send_cq, std::uint32_t max_completions,

@@ -31,9 +31,7 @@ nds::Result<Config> parse(int argc, char **argv) {
     CLI::App app{"Exercise NDS transport requests."};
     app.add_option("--backend-mode", backend)->required()->check(CLI::IsMember({"ra", "aiv", "aicpu"}));
     app.add_option("--operation", operation)->check(CLI::IsMember({"send", "recv", "read", "write"}));
-    app.add_option("--cann-runtime", config.runtime.cann_runtime_library)->required();
-    app.add_option("--ra", config.transport.endpoint.ra_library)->required();
-    app.add_option("--backend-artifact", config.backend.artifact);
+    app.add_option("--backend-artifact-path", config.backend.artifact_path);
     app.add_option("--logical-device", config.runtime.logical_device_id)->required();
     app.add_option("--server", config.transport.server_address)->required();
     app.add_option("--qp-count", config.transport.qp_count)->check(CLI::Range(1U, nds::wire::kMaxQpInfoBatch));
@@ -46,8 +44,8 @@ nds::Result<Config> parse(int argc, char **argv) {
         config.backend.mode = nds::client::BackendMode::Aiv;
     else if (backend == "aicpu")
         config.backend.mode = nds::client::BackendMode::Aicpu;
-    if (config.backend.artifact.empty())
-        return Error{nds::ErrorCode::kInvalidArgument, "--backend-artifact is required"};
+    if (config.backend.artifact_path.empty())
+        return Error{nds::ErrorCode::kInvalidArgument, "--backend-artifact-path is required"};
     if (operation == "recv")
         config.operation = Operation::Recv;
     else if (operation == "read")
@@ -76,7 +74,7 @@ nds::Result<nds::client::RemoteMemory> remote_memory(nds::client::Transport *tra
 
 nds::Result<void> run(nds::client::Runtime *runtime, nds::client::Transport *transport, nds::client::QueueHandle queue,
                       Operation operation) {
-    auto buffer = runtime->allocate(kBytes);
+    auto buffer = runtime->allocate(kBytes, nds::client::MemoryLocation::Device);
     if (!buffer)
         return Error{buffer.error()};
     if (operation == Operation::Send || operation == Operation::Write) {

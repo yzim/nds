@@ -37,7 +37,7 @@ struct BackendConfig {
     BackendMode mode{BackendMode::Ra};
     // The selected backend interprets this as its shared artifact, AIV object,
     // or installed AICPU package descriptor.
-    std::string artifact;
+    std::string artifact_path;
 };
 
 /* An opaque reference to one connected transport queue. */

@@ -48,8 +48,6 @@ sleep 1
 
 client=("${nds_e2e_build}/bin/nds_verbs_client" --backend-mode "${backend}"
     --ascendcl "${nds_e2e_cann}/aarch64-linux/lib64/libascendcl.so"
-    --cann-runtime "${nds_e2e_cann}/aarch64-linux/lib64/libruntime.so"
-    --ra "${nds_e2e_cann}/aarch64-linux/lib64/libra.so"
     --logical-device 0 --server "${NDS_E2E_SERVER_ADDRESS}" --operation "${operation}")
 if [[ "${backend}" == aiv ]]; then
     client+=(--caller-polls-cq)
