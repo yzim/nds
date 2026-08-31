@@ -58,18 +58,19 @@ nds_e2e_run_client() {
     local -a client=("$@")
     case "${backend}" in
         ra)
+            client+=(--backend-artifact "${nds_e2e_build}/libnds_ra_backend.so")
             timeout "${nds_e2e_timeout}" sudo -n env "PATH=${PATH}" bash -lc \
                 'source "$1/set_env.sh"; shift; exec "$@"' bash "${nds_e2e_cann}" "${client[@]}" >"${log}" 2>&1
             ;;
         aiv)
-            client+=(--aiv-kernel "${nds_e2e_build}/aiv/nds_aiv_kernel.o")
+            client+=(--backend-artifact "${nds_e2e_build}/aiv/nds_aiv_kernel.o")
             timeout "${nds_e2e_timeout}" sudo -n env "PATH=${PATH}" bash -lc \
                 'source "$1/set_env.sh"; shift; exec "$@"' bash "${nds_e2e_cann}" "${client[@]}" >"${log}" 2>&1
             ;;
         aicpu)
             local overlay
             overlay="$(nds_prepare_aicpu_overlay "${case_dir}" "${nds_e2e_cann}" "${nds_e2e_build}")"
-            client+=(--aicpu-kernel "${overlay}/opp/vendors/nds/aicpu/config/nds_aicpu_standard.json")
+            client+=(--backend-artifact "${overlay}/opp/vendors/nds/aicpu/config/nds_aicpu_standard.json")
             timeout "${nds_e2e_timeout}" sudo -n unshare -m "${NDS_E2E_SUPPORT_DIR}/run_with_aicpu_package.sh" \
                 "${overlay}" "${nds_e2e_cann}" "${client[@]}" >"${log}" 2>&1
             ;;

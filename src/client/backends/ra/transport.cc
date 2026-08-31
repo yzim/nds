@@ -4,7 +4,7 @@ namespace nds {
 
 namespace {
 Result<void> post(client::Runtime *runtime, client::QueuePair *qp, const NdsDeviceSendWr &request) {
-    return NdsRaPostSend(runtime, qp, request);
+    return NdsRaPostSend(runtime, qp, request, nullptr);
 }
 }  // namespace
 

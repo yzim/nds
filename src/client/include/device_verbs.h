@@ -82,6 +82,12 @@ enum NdsDeviceSendFlags {
     NDS_DEVICE_SEND_SIGNALED = 1U << 0,
 };
 
+/* Completion statuses exposed by the backend-neutral device WC record.
+ * Backend adapters translate their provider status into this representation. */
+enum NdsDeviceWcStatus {
+    NDS_DEVICE_WC_SUCCESS = 0,
+};
+
 typedef struct NdsDeviceSge {
     uint64_t address;
     uint32_t length;

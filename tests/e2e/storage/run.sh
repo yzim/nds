@@ -9,7 +9,7 @@ source "${support_dir}/aicpu_overlay.sh"
 usage() {
     cat <<'EOF'
 Usage:
-  run_storage.sh --backend <ra|aiv|aicpu> --operation <read|write|batch-read|batch-write>
+  run_storage.sh --backend-mode <ra|aiv|aicpu> --operation <read|write|batch-read|batch-write>
   run_storage.sh --sweep
 
 Run one payload-verified NDS storage case, or sweep every backend and operation.
@@ -44,7 +44,7 @@ run_client() {
     local operation="$2"
     local case_dir="$3"
     local client_log="$4"
-    local -a client=("${build}/bin/nds_storage_client" --backend "${backend}"
+    local -a client=("${build}/bin/nds_storage_client" --backend-mode "${backend}"
         --ascendcl "${cann}/aarch64-linux/lib64/libascendcl.so"
         --cann-runtime "${cann}/aarch64-linux/lib64/libruntime.so"
         --ra "${cann}/aarch64-linux/lib64/libra.so"
@@ -54,18 +54,19 @@ run_client() {
 
     case "${backend}" in
         ra)
+            client+=(--backend-artifact "${build}/libnds_ra_backend.so")
             timeout "${case_timeout}" sudo -n env "PATH=${PATH}" bash -lc \
                 'source "$1/set_env.sh"; shift; exec "$@"' bash "${cann}" "${client[@]}" >"${client_log}" 2>&1
             ;;
         aiv)
-            client+=(--aiv-kernel "${build}/aiv/nds_aiv_kernel.o")
+            client+=(--backend-artifact "${build}/aiv/nds_aiv_kernel.o")
             timeout "${case_timeout}" sudo -n env "PATH=${PATH}" bash -lc \
                 'source "$1/set_env.sh"; shift; exec "$@"' bash "${cann}" "${client[@]}" >"${client_log}" 2>&1
             ;;
         aicpu)
             local overlay
             overlay="$(nds_prepare_aicpu_overlay "${case_dir}" "${cann}" "${build}")"
-            client+=(--aicpu-kernel "${overlay}/opp/vendors/nds/aicpu/config/nds_aicpu_standard.json")
+            client+=(--backend-artifact "${overlay}/opp/vendors/nds/aicpu/config/nds_aicpu_standard.json")
             timeout "${case_timeout}" sudo -n unshare -m "${support_dir}/run_with_aicpu_package.sh" \
                 "${overlay}" "${cann}" "${client[@]}" >"${client_log}" 2>&1
             ;;
@@ -117,7 +118,7 @@ operation=""
 sweep=false
 while [[ "$#" -gt 0 ]]; do
     case "$1" in
-        --backend) backend="${2:-}"; shift 2 ;;
+        --backend-mode) backend="${2:-}"; shift 2 ;;
         --operation) operation="${2:-}"; shift 2 ;;
         --sweep) sweep=true; shift ;;
         --help|-h) usage; exit 0 ;;
@@ -137,7 +138,7 @@ trap cleanup EXIT
 
 if [[ "${sweep}" == true ]]; then
     if [[ -n "${backend}" || -n "${operation}" ]]; then
-        printf '%s\n' '--sweep cannot be combined with --backend or --operation' >&2
+        printf '%s\n' '--sweep cannot be combined with --backend-mode or --operation' >&2
         exit 2
     fi
     for backend in ra aiv aicpu; do

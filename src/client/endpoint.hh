@@ -5,7 +5,6 @@
 #include "device_transport.h"
 #include "loaders/ra_loader.hh"
 #include "result.hh"
-#include "runtime.hh"
 
 #include <cstdint>
 #include <string>
@@ -14,13 +13,9 @@
 namespace nds::client {
 
 class Runtime;
+class MemoryBuffer;
 struct EndpointTestAccess;
-
-enum class NpuBackend {
-    Ra,
-    Aicpu,
-    Aiv,
-};
+enum class BackendMode;
 
 enum QueuePairControlFlag : std::uint32_t {
     QueuePairCallerPollsCq = 1U << 0,
@@ -99,7 +94,7 @@ public:
     bool created() const noexcept;
     bool connected() const noexcept;
     const NdsRaQpAttr &local_attributes() const noexcept;
-    NpuBackend backend_mode() const noexcept;
+    BackendMode backend_mode() const noexcept;
 
     /* RA provider state remains owned by the endpoint and is accessed by the RA backend layer. */
     NdsRaApi *ra_api() const noexcept;
@@ -109,7 +104,8 @@ public:
 private:
     friend class Endpoint;
     friend class Transport;
-    QueuePair(Endpoint *endpoint, const QueuePairConfig &config, NpuBackend backend);
+    friend class BackendLauncher;
+    QueuePair(Endpoint *endpoint, const QueuePairConfig &config, BackendMode mode);
     Result<void> initialize();
     void reset() noexcept;
     Result<NdsRaTypicalQp> build_typical_qp(const NdsRaQpAttr &attributes, std::uint32_t traffic_class,
@@ -118,7 +114,8 @@ private:
 
     Endpoint *endpoint_{};
     QueuePairConfig config_{};
-    NpuBackend backend_{NpuBackend::Ra};
+    // Records the backend mode that selected this QP's creation and dataplane layout.
+    BackendMode mode_;
     void *handle_{};
     NdsRaQpAttr local_attributes_{};
     NdsRaAiQpInfo ai_qp_info_{};
@@ -138,16 +135,19 @@ public:
     ~Endpoint();
     Endpoint(const Endpoint &) = delete;
     Endpoint &operator=(const Endpoint &) = delete;
+    Endpoint(Endpoint &&other) noexcept;
+    Endpoint &operator=(Endpoint &&other) noexcept;
 
-    Result<void> open(Runtime *runtime, const EndpointConfig &config);
-    Result<QueuePair> create_qp(const QueuePairConfig &config, NpuBackend backend = NpuBackend::Ra);
+    Result<QueuePair> create_qp(const QueuePairConfig &config, BackendMode backend);
     Result<MemoryRegion> reg_mr(const MemoryBuffer &buffer, MemoryAccess access);
     bool opened() const noexcept;
 
 private:
+    friend class Runtime;
     friend class MemoryRegion;
     friend class QueuePair;
     friend struct EndpointTestAccess;
+    Result<void> open(Runtime *runtime, const EndpointConfig &config);
     Result<void> deregister(void *handle);
     void reset() noexcept;
 

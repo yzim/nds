@@ -8,7 +8,8 @@
 #include <cstdint>
 
 /* The RA artifact consumes the same envelopes used by AIV/AICPU kernels. */
-using NdsRaBackendPostSend = int (*)(const NdsDeviceQp *, const NdsDeviceSendWr *);
+using NdsRaBackendPostSend = int (*)(const NdsDeviceQp *, const NdsDeviceSendWr *, void *stream);
+using NdsRaBackendPostRecv = int (*)(const NdsDeviceQp *, const NdsDeviceRecvWr *);
 using NdsRaBackendPollCq = int (*)(const NdsDeviceQp *, std::uint32_t, std::uint32_t, NdsDeviceWc *);
 using NdsRaBackendRdmaSend = int (*)(const NdsDeviceTransport *, const NdsDeviceSendWr *);
 using NdsRaBackendRdmaRecv = int (*)(const NdsDeviceTransport *, const NdsDeviceRecvWr *);

@@ -36,8 +36,7 @@ enum {
     NDS_RA_WR_SEND = 2,
     NDS_RA_WR_RDMA_READ = 4,
     NDS_RA_SEND_SIGNALED = 1 << 1,
-    /* rdma_lite_wc_status values returned through RaPollCq for an OPBASE Lite QP. */
-    NDS_RA_WC_SUCCESS = 0,
+    /* Provider-specific rdma_lite_wc_status value returned for retry exhaustion. */
     NDS_RA_WC_RETRY_EXCEEDED = 12,
     NDS_RA_QP_STATUS_NOT_CONNECTED = 0,
     NDS_RA_QP_STATUS_CONNECTED = 1,

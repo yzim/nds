@@ -2,6 +2,7 @@
 #define NDS_CLIENT_TRANSPORT_HH
 
 #include "endpoint.hh"
+#include "backends/backend_mode.hh"
 #include "runtime.hh"
 
 #include "tcp_socket.hh"
@@ -16,7 +17,7 @@
 
 namespace nds {
 namespace client {
-class BackendDispatcher;
+class BackendLauncher;
 }
 }  // namespace nds
 
@@ -33,10 +34,10 @@ struct TransportConfig {
 };
 
 struct BackendConfig {
-    NpuBackend mode{NpuBackend::Ra};
-    std::string ra_backend;
-    std::string aicpu_kernel;
-    std::string aiv_kernel;
+    BackendMode mode{BackendMode::Ra};
+    // The selected backend interprets this as its shared artifact, AIV object,
+    // or installed AICPU package descriptor.
+    std::string artifact;
 };
 
 /* An opaque reference to one connected transport queue. */
@@ -155,7 +156,7 @@ private:
     MemoryBuffer device_qp_storage_;
     NdsDeviceTransport device_transport_{};
     std::vector<std::uint64_t> next_wr_ids_;
-    std::unique_ptr<BackendDispatcher> backend_dispatcher_;
+    std::unique_ptr<BackendLauncher> backend_launcher_;
     TcpConnection exchange_channel_;
     std::vector<nds::transport::QpInfo> local_qps_;
 };

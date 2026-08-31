@@ -107,4 +107,21 @@ private:
             return nds_result.error();                        \
     } while (false)
 
+#define NDS_RESULT_CONCAT_INNER(left, right) left##right
+#define NDS_RESULT_CONCAT(left, right) NDS_RESULT_CONCAT_INNER(left, right)
+
+/* Assigns the successful value directly to lhs and propagates Error otherwise.
+ * lhs may be either an existing variable or a declaration, for example:
+ * NDS_ASSIGN_OR_RETURN(QueuePair qp, endpoint.create_qp(config, backend));
+ * Use as a standalone statement; like Abseil's counterpart, this macro expands
+ * to multiple statements so a surrounding unbraced if is not supported. */
+#define NDS_ASSIGN_OR_RETURN(lhs, expression) \
+    NDS_ASSIGN_OR_RETURN_IMPL(NDS_RESULT_CONCAT(nds_result_, __LINE__), lhs, expression)
+
+#define NDS_ASSIGN_OR_RETURN_IMPL(result_name, lhs, expression) \
+    auto result_name = (expression);                            \
+    if (!result_name.ok())                                      \
+        return result_name.error();                             \
+    lhs = std::move(result_name).value()
+
 #endif

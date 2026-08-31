@@ -1,4 +1,5 @@
 #include "endpoint.hh"
+#include "backends/backend_mode.hh"
 #include "ra.hh"
 #include "runtime.hh"
 
@@ -249,7 +250,7 @@ TEST(EndpointTest, CreatesAdvertisesAndConnectsQueuePair) {
     config.traffic_class = 7U;
     config.service_level = 2U;
 
-    auto created = endpoint.create_qp(config);
+    auto created = endpoint.create_qp(config, nds::client::BackendMode::Ra);
     ASSERT_TRUE(created);
     auto qp = std::move(*created);
     const auto local = qp.local_qp_info();
@@ -318,7 +319,7 @@ TEST(EndpointTest, RaVerbsUseQueuePairExecutionView) {
     fake_state = &fake;
     nds::client::Endpoint endpoint;
     nds::client::EndpointTestAccess::adopt(&endpoint, make_api(), &fake_rdev);
-    auto created = endpoint.create_qp({});
+    auto created = endpoint.create_qp({}, nds::client::BackendMode::Ra);
     ASSERT_TRUE(created);
     auto qp = std::move(*created);
     ASSERT_TRUE(qp.connect(peer_info()));
@@ -353,9 +354,9 @@ TEST(EndpointTest, RejectsInvalidQueueDepthAndPeer) {
     nds::client::EndpointTestAccess::adopt(&endpoint, make_api(), &fake_rdev);
     nds::client::QueuePairConfig config{};
     config.send_queue_depth = 3U;
-    EXPECT_FALSE(endpoint.create_qp(config));
+    EXPECT_FALSE(endpoint.create_qp(config, nds::client::BackendMode::Ra));
     config.send_queue_depth = 64U;
-    auto created = endpoint.create_qp(config);
+    auto created = endpoint.create_qp(config, nds::client::BackendMode::Ra);
     ASSERT_TRUE(created);
     auto qp = std::move(*created);
     EXPECT_FALSE(qp.connect({}));

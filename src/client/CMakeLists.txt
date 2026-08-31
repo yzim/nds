@@ -60,7 +60,7 @@ target_link_libraries(nds_ra_backend PRIVATE nds_client_runtime nds_client_endpo
 target_compile_options(nds_ra_backend PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 add_library(nds_backend_launchers STATIC
-    backends/dispatcher.cc
+    backends/launcher.cc
     backends/ra/launcher.cc
     backends/aiv/launcher.cc
     backends/aicpu/launcher.cc)
@@ -181,6 +181,7 @@ if(NDS_BUILD_AICPU_KERNEL)
             "${NDS_AICPU_DEVICE_DIR}/storage.cc"
             "${NDS_AICPU_DEVICE_DIR}/api.h"
             "${NDS_AICPU_DEVICE_DIR}/internal.h"
+            "${NDS_AICPU_DEVICE_DIR}/launch_args.hh"
             "${NDS_AICPU_DEVICE_DIR}/hns.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/include/device_transport.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/include/device_verbs.h"

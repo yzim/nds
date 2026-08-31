@@ -2,9 +2,11 @@
 #define NDS_CLIENT_BACKEND_AICPU_LAUNCHER_HH
 
 #include "result.hh"
+#include "backends/launch_config.hh"
 
 #include <acl/acl_rt.h>
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <unordered_map>
@@ -20,16 +22,17 @@ public:
     AicpuLauncher &operator=(const AicpuLauncher &) = delete;
 
     Result<void> load(const std::string &kernel_path);
-    Result<void> launch(const char *kernel_name, std::uint64_t args_gm_addr);
-    Result<void> synchronize(std::int32_t completion_timeout_ms);
-    Result<void> launch_and_wait(const char *kernel_name, std::uint64_t args_gm_addr,
-                                 std::int32_t completion_timeout_ms);
+    /*
+     * AscendCL copies these host argument bytes during submission.  The
+     * request therefore needs no intermediate allocation in global memory.
+     */
+    /* Returns the raw ACL status. The caller owns stream ordering and waits. */
+    int launch(const char *kernel_name, const client::LaunchConfig &config, void *arguments, std::size_t argument_size);
     void reset() noexcept;
     bool loaded() const noexcept;
 
 private:
     aclrtBinHandle binary_{};
-    aclrtStream stream_{};
     std::unordered_map<std::string, aclrtFuncHandle> functions_;
 };
 

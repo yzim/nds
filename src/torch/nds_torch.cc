@@ -31,19 +31,19 @@ void check_tensor(const ::torch::Tensor &tensor) {
     TORCH_CHECK(tensor.nbytes() <= std::numeric_limits<std::uint32_t>::max(), "NDS tensor is too large");
 }
 
-client::NpuBackend backend_mode(const std::string &backend_name) {
+client::BackendMode backend_mode(const std::string &backend_name) {
     if (backend_name == "ra")
-        return client::NpuBackend::Ra;
+        return client::BackendMode::Ra;
     if (backend_name == "aiv")
-        return client::NpuBackend::Aiv;
+        return client::BackendMode::Aiv;
     if (backend_name == "aicpu")
-        return client::NpuBackend::Aicpu;
+        return client::BackendMode::Aicpu;
     TORCH_CHECK(false, "unsupported NDS backend: ", backend_name);
 }
 
 class Session : public std::enable_shared_from_this<Session> {
 public:
-    Session(std::string server, std::string backend_name, std::string aiv_kernel, std::string aicpu_kernel) {
+    Session(std::string server, std::string backend_name, std::string backend_artifact) {
         TORCH_CHECK(parse_tcp_address(server), "server must be IPv4:port");
         const auto device = c10_npu::current_device();
         TORCH_CHECK(device >= 0, "torch_npu has no active NPU device");
@@ -58,12 +58,8 @@ public:
 
         client::BackendConfig backend;
         backend.mode = backend_mode(backend_name);
-        backend.aiv_kernel = std::move(aiv_kernel);
-        backend.aicpu_kernel = std::move(aicpu_kernel);
-        if (backend.mode == client::NpuBackend::Aiv)
-            TORCH_CHECK(!backend.aiv_kernel.empty(), "AIV requires an NDS kernel binary");
-        if (backend.mode == client::NpuBackend::Aicpu)
-            TORCH_CHECK(!backend.aicpu_kernel.empty(), "AICPU requires an NDS package");
+        backend.artifact = std::move(backend_artifact);
+        TORCH_CHECK(!backend.artifact.empty(), "NDS backend requires an artifact");
         check(transport_.open(&runtime_, transport_config, backend));
         check(storage_.open(&runtime_, &transport_));
     }
@@ -108,8 +104,8 @@ std::int64_t Session::capacity() const {
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, module) {
     namespace nds_torch = nds::torch;
     pybind11::class_<nds_torch::Session, std::shared_ptr<nds_torch::Session>>(module, "Session")
-        .def(pybind11::init<std::string, std::string, std::string, std::string>(), pybind11::arg("server"),
-             pybind11::arg("backend") = "ra", pybind11::arg("aiv_kernel") = "", pybind11::arg("aicpu_kernel") = "")
+        .def(pybind11::init<std::string, std::string, std::string>(), pybind11::arg("server"),
+             pybind11::arg("backend") = "ra", pybind11::arg("backend_artifact") = "")
         .def("read_", &nds_torch::Session::read_)
         .def("write", &nds_torch::Session::write)
         .def_property_readonly("capacity", &nds_torch::Session::capacity);

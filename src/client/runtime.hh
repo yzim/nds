@@ -3,6 +3,7 @@
 
 #include "result.hh"
 #include "loaders/cann_runtime_loader.hh"
+#include "endpoint.hh"
 
 #include <acl/acl_rt.h>
 
@@ -70,6 +71,7 @@ public:
     Runtime &operator=(const Runtime &) = delete;
 
     Result<void> open(const RuntimeConfig &config);
+    Result<Endpoint> create_endpoint(const EndpointConfig &config);
 
     const RuntimeConfig &config() const noexcept;
     bool initialized() const noexcept;

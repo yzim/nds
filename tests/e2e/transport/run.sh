@@ -9,7 +9,7 @@ source "${NDS_E2E_SUPPORT_DIR}/common.sh"
 source "${NDS_E2E_SUPPORT_DIR}/aicpu_overlay.sh"
 
 usage() {
-    printf '%s\n' 'Usage: run.sh --backend <ra|aiv|aicpu> --operation <send|recv|read|write>' >&2
+    printf '%s\n' 'Usage: run.sh --backend-mode <ra|aiv|aicpu> --operation <send|recv|read|write>' >&2
 }
 
 validate_operation() {
@@ -23,7 +23,7 @@ backend=""
 operation=""
 while [[ "$#" -gt 0 ]]; do
     case "$1" in
-        --backend) backend="${2:-}"; shift 2 ;;
+        --backend-mode) backend="${2:-}"; shift 2 ;;
         --operation) operation="${2:-}"; shift 2 ;;
         --help|-h) usage; exit 0 ;;
         *) printf 'unknown option: %s\n' "$1" >&2; usage; exit 2 ;;
@@ -43,7 +43,7 @@ server=("${nds_e2e_build}/bin/nds_transport_server"
 nds_e2e_start_server "${nds_e2e_server_log}" "${server[@]}"
 sleep 1
 
-client=("${nds_e2e_build}/bin/nds_transport_client" --backend "${backend}"
+client=("${nds_e2e_build}/bin/nds_transport_client" --backend-mode "${backend}"
     --ascendcl "${nds_e2e_cann}/aarch64-linux/lib64/libascendcl.so"
     --cann-runtime "${nds_e2e_cann}/aarch64-linux/lib64/libruntime.so"
     --ra "${nds_e2e_cann}/aarch64-linux/lib64/libra.so"

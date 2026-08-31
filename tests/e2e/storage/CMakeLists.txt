@@ -5,7 +5,7 @@ endif()
 function(nds_add_storage_e2e backend operation)
     add_test(NAME e2e.storage.${backend}.${operation}
         COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/run.sh
-            --backend ${backend} --operation ${operation})
+            --backend-mode ${backend} --operation ${operation})
     set_tests_properties(e2e.storage.${backend}.${operation} PROPERTIES
         LABELS "e2e;requires-ascend-npu;requires-rdma;layer-storage;mode-${backend};operation-${operation}"
         TIMEOUT 120
@@ -29,7 +29,7 @@ endif()
 if(TARGET _nds_torch)
     function(nds_add_torch_storage_e2e backend)
         add_test(NAME e2e.storage.${backend}.torch-session
-            COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/run_torch.sh --backend ${backend})
+            COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/run_torch.sh --backend-mode ${backend})
         set_tests_properties(e2e.storage.${backend}.torch-session PROPERTIES
             LABELS "e2e;requires-ascend-npu;requires-rdma;layer-storage;torch;mode-${backend}"
             TIMEOUT 120

@@ -11,9 +11,9 @@ Storage benchmarks should reuse one persistent NDS session. Reconnecting for
 each operation measures setup cost rather than storage performance.
 
 `nds_verbs_benchmark_client` and `nds_verbs_benchmark_server` run the direct
-Send verbs workload from `examples/verbs`. The client accepts `--backend ra`,
-`--backend aiv`, or `--backend aicpu` and the matching `--aiv-kernel` or
-`--aicpu-kernel` artifact option. RA additionally takes `--ra-backend`, the
+Send verbs workload from `examples/verbs`. The client accepts `--backend-mode ra`,
+`--backend-mode aiv`, or `--backend-mode aicpu`, plus `--backend-artifact`. The selected
+backend interprets the artifact as its kernel object, package descriptor, or
 NDS-built RA backend shared library containing verbs, transport, and storage.
 Each endpoint owns one QP and one MR. The common TCP socket exchanges versioned
 QP records; the workload uses the selected client backend and CPU

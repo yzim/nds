@@ -29,28 +29,25 @@ nds::Result<Config> parse(int argc, char **argv) {
     std::string backend{"ra"};
     std::string operation{"send"};
     CLI::App app{"Exercise NDS transport requests."};
-    app.add_option("--backend", backend)->required()->check(CLI::IsMember({"ra", "aiv", "aicpu"}));
+    app.add_option("--backend-mode", backend)->required()->check(CLI::IsMember({"ra", "aiv", "aicpu"}));
     app.add_option("--operation", operation)->check(CLI::IsMember({"send", "recv", "read", "write"}));
     app.add_option("--cann-runtime", config.runtime.cann_runtime_library)->required();
     app.add_option("--ra", config.transport.endpoint.ra_library)->required();
-    app.add_option("--aiv-kernel", config.backend.aiv_kernel);
-    app.add_option("--aicpu-kernel", config.backend.aicpu_kernel);
+    app.add_option("--backend-artifact", config.backend.artifact);
     app.add_option("--logical-device", config.runtime.logical_device_id)->required();
     app.add_option("--server", config.transport.server_address)->required();
     app.add_option("--qp-count", config.transport.qp_count)->check(CLI::Range(1U, nds::wire::kMaxQpInfoBatch));
     try {
         app.parse(argc, argv);
     } catch (const CLI::ParseError &error) {
-        return Error{nds::ErrorCode::kInvalidArgument,
-                               app.exit(error) == 0 ? "help requested" : "invalid options"};
+        return Error{nds::ErrorCode::kInvalidArgument, app.exit(error) == 0 ? "help requested" : "invalid options"};
     }
     if (backend == "aiv")
-        config.backend.mode = nds::client::NpuBackend::Aiv;
+        config.backend.mode = nds::client::BackendMode::Aiv;
     else if (backend == "aicpu")
-        config.backend.mode = nds::client::NpuBackend::Aicpu;
-    if ((config.backend.mode == nds::client::NpuBackend::Aiv && config.backend.aiv_kernel.empty()) ||
-        (config.backend.mode == nds::client::NpuBackend::Aicpu && config.backend.aicpu_kernel.empty()))
-        return Error{nds::ErrorCode::kInvalidArgument, "device backend requires its kernel artifact"};
+        config.backend.mode = nds::client::BackendMode::Aicpu;
+    if (config.backend.artifact.empty())
+        return Error{nds::ErrorCode::kInvalidArgument, "--backend-artifact is required"};
     if (operation == "recv")
         config.operation = Operation::Recv;
     else if (operation == "read")

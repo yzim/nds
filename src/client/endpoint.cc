@@ -1,5 +1,6 @@
 #include "endpoint.hh"
 
+#include "backends/backend_mode.hh"
 #include "loaders/dsmi_loader.hh"
 #include "runtime.hh"
 
@@ -25,6 +26,14 @@ bool is_valid_psn(std::uint32_t value) {
 }
 
 }  // namespace
+
+Result<Endpoint> Runtime::create_endpoint(const EndpointConfig &config) {
+    if (!initialized())
+        return Error{ErrorCode::kInvalidArgument, "endpoint creation requires an open runtime"};
+    Endpoint endpoint;
+    NDS_RETURN_IF_ERROR(endpoint.open(this, config));
+    return endpoint;
+}
 
 MemoryRegion::~MemoryRegion() {
     reset();
@@ -76,8 +85,8 @@ bool MemoryRegion::belongs_to(const Endpoint *endpoint) const noexcept {
     return endpoint_ == endpoint && handle_ != nullptr;
 }
 
-QueuePair::QueuePair(Endpoint *endpoint, const QueuePairConfig &config, NpuBackend backend)
-    : endpoint_(endpoint), config_(config), backend_(backend) {}
+QueuePair::QueuePair(Endpoint *endpoint, const QueuePairConfig &config, BackendMode mode)
+    : endpoint_(endpoint), config_(config), mode_(mode) {}
 
 QueuePair::~QueuePair() {
     reset();
@@ -86,7 +95,7 @@ QueuePair::~QueuePair() {
 QueuePair::QueuePair(QueuePair &&other) noexcept
     : endpoint_(std::exchange(other.endpoint_, nullptr)),
       config_(std::move(other.config_)),
-      backend_(other.backend_),
+      mode_(other.mode_),
       handle_(std::exchange(other.handle_, nullptr)),
       local_attributes_(std::exchange(other.local_attributes_, {})),
       ai_qp_info_(std::exchange(other.ai_qp_info_, {})),
@@ -100,7 +109,7 @@ QueuePair &QueuePair::operator=(QueuePair &&other) noexcept {
         reset();
         endpoint_ = std::exchange(other.endpoint_, nullptr);
         config_ = std::move(other.config_);
-        backend_ = other.backend_;
+        mode_ = other.mode_;
         handle_ = std::exchange(other.handle_, nullptr);
         local_attributes_ = std::exchange(other.local_attributes_, {});
         ai_qp_info_ = std::exchange(other.ai_qp_info_, {});
@@ -138,18 +147,18 @@ Result<void> QueuePair::initialize() {
         return Error{ErrorCode::kInvalidArgument,
                      "QP creation requires valid transport settings and power-of-two queue depths"};
     }
-    if (backend_ != NpuBackend::Ra && backend_ != NpuBackend::Aicpu && backend_ != NpuBackend::Aiv) {
+    if (mode_ != BackendMode::Ra && mode_ != BackendMode::Aicpu && mode_ != BackendMode::Aiv) {
         return Error{ErrorCode::kInvalidArgument, "QP backend mode is invalid"};
     }
-    if (backend_ == NpuBackend::Aicpu && config_.ai_qp_mode >= 0 && config_.ai_qp_mode != NDS_RA_QP_MODE_NORMAL) {
+    if (mode_ == BackendMode::Aicpu && config_.ai_qp_mode >= 0 && config_.ai_qp_mode != NDS_RA_QP_MODE_NORMAL) {
         return Error{ErrorCode::kInvalidArgument,
                      "AICPU backend requires a NORMAL AI QP so the provider owns Send doorbells"};
     }
 
     auto *api = &endpoint_->api_;
     if (api->ra_qp_destroy == nullptr || api->ra_get_qp_attr == nullptr || api->ra_typical_qp_modify == nullptr ||
-        (backend_ == NpuBackend::Ra && api->ra_typical_qp_create == nullptr) ||
-        ((backend_ == NpuBackend::Aicpu || backend_ == NpuBackend::Aiv) &&
+        (mode_ == BackendMode::Ra && api->ra_typical_qp_create == nullptr) ||
+        ((mode_ == BackendMode::Aicpu || mode_ == BackendMode::Aiv) &&
          (api->ra_ai_qp_create == nullptr || api->ra_set_qp_attr_qos == nullptr ||
           api->ra_set_qp_attr_timeout == nullptr || api->ra_set_qp_attr_retry_count == nullptr))) {
         return Error{ErrorCode::kRa, "RA API is missing a required QP operation"};
@@ -157,8 +166,8 @@ Result<void> QueuePair::initialize() {
 
     int result{};
     if (config_.ai_qp_mode < 0)
-        config_.ai_qp_mode = backend_ == NpuBackend::Aicpu ? NDS_RA_QP_MODE_NORMAL : NDS_RA_QP_MODE_OPBASE_EXT;
-    if (backend_ == NpuBackend::Ra) {
+        config_.ai_qp_mode = mode_ == BackendMode::Aicpu ? NDS_RA_QP_MODE_NORMAL : NDS_RA_QP_MODE_OPBASE_EXT;
+    if (mode_ == BackendMode::Ra) {
         NdsRaTypicalQp initial_qp{};
         result = api->ra_typical_qp_create(endpoint_->rdev_handle_, NDS_RA_QP_FLAG_RC, NDS_RA_QP_MODE_OPBASE,
                                            &initial_qp, &handle_);
@@ -198,7 +207,7 @@ Result<void> QueuePair::initialize() {
             return Error{ErrorCode::kRa, "setting AI QP attributes failed: " + std::to_string(result)};
         }
 
-        if (backend_ == NpuBackend::Aiv) {
+        if (mode_ == BackendMode::Aiv) {
             // AIV writes WQEs and reads CQEs directly. Unlike the provider
             // paths, it therefore needs an NDS-owned slot-to-WR-ID mapping.
             auto send_wr_ids = endpoint_->runtime_->allocate(config_.send_queue_depth * sizeof(std::uint64_t));
@@ -332,8 +341,8 @@ const NdsRaQpAttr &QueuePair::local_attributes() const noexcept {
     return local_attributes_;
 }
 
-NpuBackend QueuePair::backend_mode() const noexcept {
-    return backend_;
+BackendMode QueuePair::backend_mode() const noexcept {
+    return mode_;
 }
 
 NdsRaApi *QueuePair::ra_api() const noexcept {
@@ -350,6 +359,27 @@ NdsRaSge *QueuePair::posted_send_sge() noexcept {
 
 Endpoint::~Endpoint() {
     reset();
+}
+
+Endpoint::Endpoint(Endpoint &&other) noexcept
+    : runtime_(std::exchange(other.runtime_, nullptr)),
+      config_(std::move(other.config_)),
+      physical_device_id_(std::exchange(other.physical_device_id_, 0U)),
+      api_(std::exchange(other.api_, {})),
+      rdev_handle_(std::exchange(other.rdev_handle_, nullptr)),
+      ra_initialized_(std::exchange(other.ra_initialized_, false)) {}
+
+Endpoint &Endpoint::operator=(Endpoint &&other) noexcept {
+    if (this != &other) {
+        reset();
+        runtime_ = std::exchange(other.runtime_, nullptr);
+        config_ = std::move(other.config_);
+        physical_device_id_ = std::exchange(other.physical_device_id_, 0U);
+        api_ = std::exchange(other.api_, {});
+        rdev_handle_ = std::exchange(other.rdev_handle_, nullptr);
+        ra_initialized_ = std::exchange(other.ra_initialized_, false);
+    }
+    return *this;
 }
 
 Result<void> Endpoint::open(Runtime *runtime, const EndpointConfig &config) {
@@ -408,7 +438,7 @@ Result<void> Endpoint::open(Runtime *runtime, const EndpointConfig &config) {
     return {};
 }
 
-Result<QueuePair> Endpoint::create_qp(const QueuePairConfig &config, NpuBackend backend) {
+Result<QueuePair> Endpoint::create_qp(const QueuePairConfig &config, BackendMode backend) {
     QueuePair qp(this, config, backend);
     if (const auto initialized = qp.initialize(); !initialized)
         return Error{initialized.error()};

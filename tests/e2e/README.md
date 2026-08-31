@@ -58,7 +58,7 @@ accepts the backend (`ra`, `aiv`, or `aicpu`) and operation (`read`, `write`,
 
 ```sh
 env <NDS_E2E_* assignments> \
-  tests/e2e/storage/run.sh --backend aicpu --operation read
+  tests/e2e/storage/run.sh --backend-mode aicpu --operation read
 ```
 
 Use `--sweep` to run all backend/operation combinations sequentially; the

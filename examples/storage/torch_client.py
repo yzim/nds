@@ -12,16 +12,15 @@ import _nds_torch
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("server", help="CPU storage server as IPv4:port")
-    parser.add_argument("--backend", choices=("ra", "aiv", "aicpu"), default="ra")
-    parser.add_argument("--aiv-kernel", default="")
-    parser.add_argument("--aicpu-kernel", default="")
+    parser.add_argument("--backend-mode", choices=("ra", "aiv", "aicpu"), default="ra")
+    parser.add_argument("--backend-artifact", required=True)
     parser.add_argument("--bytes", type=int, default=4096)
     args = parser.parse_args()
     if args.bytes <= 0:
         parser.error("--bytes must be positive")
 
     torch.npu.set_device(0)
-    session = _nds_torch.Session(args.server, args.backend, args.aiv_kernel, args.aicpu_kernel)
+    session = _nds_torch.Session(args.server, args.backend_mode, args.backend_artifact)
     payload = torch.arange(args.bytes, dtype=torch.int64).remainder(256).to(torch.uint8)
     session.write(payload, 0)
     output = torch.empty_like(payload)

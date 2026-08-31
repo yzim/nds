@@ -1,6 +1,7 @@
 #include "storage.hh"
 
 #include "backends/aicpu/launcher.hh"
+#include "backends/aicpu/launch_args.hh"
 #include "backends/aiv/launcher.hh"
 #include "ra/ra.hh"
 
@@ -60,20 +61,22 @@ private:
     MemoryBuffer buffer_;
 };
 
-Result<void> launch_aicpu(AicpuLauncher *launcher, std::uint64_t args_address, NdsDeviceStorageReadArgs *) {
-    return launcher->launch_and_wait("nds_aicpu_storage_read_kernel", args_address, kCompletionTimeoutMs);
-}
+template <typename Args>
+Result<void> launch_aicpu(Runtime *runtime, AicpuLauncher *launcher, const char *entry, Args *request,
+                          std::int32_t timeout_ms) {
+    if (runtime == nullptr || launcher == nullptr || request == nullptr)
+        return Error{ErrorCode::kInvalidArgument, "AICPU launch requires runtime, launcher, and request"};
 
-Result<void> launch_aicpu(AicpuLauncher *launcher, std::uint64_t args_address, NdsDeviceStorageWriteArgs *) {
-    return launcher->launch_and_wait("nds_aicpu_storage_write_kernel", args_address, kCompletionTimeoutMs);
-}
+    std::int32_t return_value = std::numeric_limits<std::int32_t>::min();
+    DeviceAllocation device_return_value(runtime);
+    NDS_RETURN_IF_ERROR(device_return_value.allocate(sizeof(return_value)));
+    NDS_RETURN_IF_ERROR(runtime->copy_host_to_device(device_return_value.get(), &return_value, sizeof(return_value)));
 
-Result<void> launch_aicpu(AicpuLauncher *launcher, std::uint64_t args_address, NdsDeviceStorageBatchReadArgs *) {
-    return launcher->launch_and_wait("nds_aicpu_storage_batch_read_kernel", args_address, kCompletionTimeoutMs);
-}
-
-Result<void> launch_aicpu(AicpuLauncher *launcher, std::uint64_t args_address, NdsDeviceStorageBatchWriteArgs *) {
-    return launcher->launch_and_wait("nds_aicpu_storage_batch_write_kernel", args_address, kCompletionTimeoutMs);
+    NdsAicpuLaunchArgs<Args> arguments{*request, reinterpret_cast<std::uint64_t>(device_return_value.get())};
+    NDS_RETURN_IF_ERROR(launcher->launch_and_wait(entry, &arguments, sizeof(arguments), timeout_ms));
+    NDS_RETURN_IF_ERROR(
+        runtime->copy_device_to_host(&request->return_value, device_return_value.get(), sizeof(request->return_value)));
+    return {};
 }
 
 const char *aiv_storage_kernel(StorageOperation operation) {
@@ -86,6 +89,20 @@ const char *aiv_storage_kernel(StorageOperation operation) {
             return "nds_aiv_storage_batch_read_kernel";
         case StorageOperation::BatchWrite:
             return "nds_aiv_storage_batch_write_kernel";
+    }
+    return nullptr;
+}
+
+const char *aicpu_storage_kernel(StorageOperation operation) {
+    switch (operation) {
+        case StorageOperation::Read:
+            return "nds_aicpu_storage_read_kernel";
+        case StorageOperation::Write:
+            return "nds_aicpu_storage_write_kernel";
+        case StorageOperation::BatchRead:
+            return "nds_aicpu_storage_batch_read_kernel";
+        case StorageOperation::BatchWrite:
+            return "nds_aicpu_storage_batch_write_kernel";
     }
     return nullptr;
 }
@@ -104,24 +121,19 @@ Result<void> submit_device_storage(Runtime *runtime, Transport *transport, const
                           completion.local_key()};
     context.capacity = capacity;
 
-    if (backend.mode == NpuBackend::Aicpu) {
+    if (backend.mode == BackendMode::Aicpu) {
         Args args{};
         args.context = context;
         args.command = command;
         args.return_value = std::numeric_limits<std::int32_t>::min();
-        DeviceAllocation device_args(runtime);
-        if (const auto allocated = device_args.allocate(sizeof(args)); !allocated)
-            return Error{allocated.error()};
-        if (const auto copied = runtime->copy_host_to_device(device_args.get(), &args, sizeof(args)); !copied)
-            return Error{copied.error()};
         AicpuLauncher launcher;
-        if (const auto loaded = launcher.load(backend.aicpu_kernel); !loaded)
+        if (const auto loaded = launcher.load(backend.artifact); !loaded)
             return Error{loaded.error()};
-        if (const auto launched = launch_aicpu(&launcher, reinterpret_cast<std::uint64_t>(device_args.get()), &args);
-            !launched)
+        const char *kernel_name = aicpu_storage_kernel(operation);
+        if (kernel_name == nullptr)
+            return Error{ErrorCode::kInvalidArgument, "device storage operation is invalid"};
+        if (const auto launched = launch_aicpu(runtime, &launcher, kernel_name, &args, kCompletionTimeoutMs); !launched)
             return Error{launched.error()};
-        if (const auto copied = runtime->copy_device_to_host(&args, device_args.get(), sizeof(args)); !copied)
-            return Error{copied.error()};
         if (args.return_value != 0)
             return Error{ErrorCode::kRuntime, "device storage operation failed: " + std::to_string(args.return_value)};
     } else {
@@ -144,7 +156,7 @@ Result<void> submit_device_storage(Runtime *runtime, Transport *transport, const
             !copied)
             return Error{copied.error()};
         AivLauncher launcher;
-        if (const auto loaded = launcher.load(backend.aiv_kernel); !loaded)
+        if (const auto loaded = launcher.load(backend.artifact); !loaded)
             return Error{loaded.error()};
         const char *kernel_name = aiv_storage_kernel(operation);
         if (kernel_name == nullptr)
@@ -182,26 +194,18 @@ Result<DeviceStorageWaitResult> wait_device_storage(Runtime *runtime, Transport 
     context.capacity = capacity;
     std::int32_t return_value = std::numeric_limits<std::int32_t>::min();
 
-    if (backend.mode == NpuBackend::Aicpu) {
+    if (backend.mode == BackendMode::Aicpu) {
         NdsDeviceStorageWaitArgs args{};
         args.context = context;
         args.command_id = command_id;
         args.expected_bytes = expected_bytes;
         args.return_value = return_value;
-        DeviceAllocation device_args(runtime);
-        if (const auto allocated = device_args.allocate(sizeof(args)); !allocated)
-            return Error{allocated.error()};
-        if (const auto copied = runtime->copy_host_to_device(device_args.get(), &args, sizeof(args)); !copied)
-            return Error{copied.error()};
         AicpuLauncher launcher;
-        if (const auto loaded = launcher.load(backend.aicpu_kernel); !loaded)
+        if (const auto loaded = launcher.load(backend.artifact); !loaded)
             return Error{loaded.error()};
-        if (const auto launched = launcher.launch_and_wait(
-                "nds_aicpu_storage_wait_kernel", reinterpret_cast<std::uint64_t>(device_args.get()), timeout_ms);
+        if (const auto launched = launch_aicpu(runtime, &launcher, "nds_aicpu_storage_wait_kernel", &args, timeout_ms);
             !launched)
             return Error{launched.error()};
-        if (const auto copied = runtime->copy_device_to_host(&args, device_args.get(), sizeof(args)); !copied)
-            return Error{copied.error()};
         return_value = args.return_value;
     } else {
         DeviceAllocation device_context(runtime);
@@ -217,7 +221,7 @@ Result<DeviceStorageWaitResult> wait_device_storage(Runtime *runtime, Transport 
             !copied)
             return Error{copied.error()};
         AivLauncher launcher;
-        if (const auto loaded = launcher.load(backend.aiv_kernel); !loaded)
+        if (const auto loaded = launcher.load(backend.artifact); !loaded)
             return Error{loaded.error()};
         AivStorageWaitArguments arguments{reinterpret_cast<std::uint64_t>(device_context.get()), command_id,
                                           expected_bytes, reinterpret_cast<std::uint64_t>(device_return_value.get())};
@@ -457,7 +461,7 @@ Result<void> StorageClient::wait(StorageCompletionHandle handle, std::uint32_t t
         return Error{ErrorCode::kInvalidArgument, "storage wait requires the current completion handle"};
     if (timeout_ms == 0U || timeout_ms > static_cast<std::uint32_t>(std::numeric_limits<std::int32_t>::max()))
         return Error{ErrorCode::kInvalidArgument, "storage wait requires a positive timeout"};
-    if (transport_->backend().mode == NpuBackend::Ra) {
+    if (transport_->backend().mode == BackendMode::Ra) {
         const auto completion = observe_completion(handle.command_id, pending_->expected_bytes, timeout_ms);
         if (!completion)
             return Error{completion.error()};
@@ -509,7 +513,7 @@ std::uint64_t StorageClient::allocate_command_id() noexcept {
 Result<void> StorageClient::execute_storage_read(const StorageReadCommand &command) {
     if (const auto ready = transport_->ready(); !ready)
         return Error{ready.error()};
-    if (transport_->backend().mode == NpuBackend::Ra) {
+    if (transport_->backend().mode == BackendMode::Ra) {
         const RaStorageContext context{
             {runtime_, transport_->qp()},
             command_buffer_.data(),
@@ -529,7 +533,7 @@ Result<void> StorageClient::execute_storage_read(const StorageReadCommand &comma
 Result<void> StorageClient::execute_storage_write(const StorageWriteCommand &command) {
     if (const auto ready = transport_->ready(); !ready)
         return Error{ready.error()};
-    if (transport_->backend().mode == NpuBackend::Ra) {
+    if (transport_->backend().mode == BackendMode::Ra) {
         const RaStorageContext context{
             {runtime_, transport_->qp()},
             command_buffer_.data(),
@@ -549,7 +553,7 @@ Result<void> StorageClient::execute_storage_write(const StorageWriteCommand &com
 Result<void> StorageClient::execute_storage_batch_read(const StorageBatchReadCommand &command) {
     if (const auto ready = transport_->ready(); !ready)
         return Error{ready.error()};
-    if (transport_->backend().mode == NpuBackend::Ra) {
+    if (transport_->backend().mode == BackendMode::Ra) {
         const RaStorageContext context{
             {runtime_, transport_->qp()},
             command_buffer_.data(),
@@ -569,7 +573,7 @@ Result<void> StorageClient::execute_storage_batch_read(const StorageBatchReadCom
 Result<void> StorageClient::execute_storage_batch_write(const StorageBatchWriteCommand &command) {
     if (const auto ready = transport_->ready(); !ready)
         return Error{ready.error()};
-    if (transport_->backend().mode == NpuBackend::Ra) {
+    if (transport_->backend().mode == BackendMode::Ra) {
         const RaStorageContext context{
             {runtime_, transport_->qp()},
             command_buffer_.data(),

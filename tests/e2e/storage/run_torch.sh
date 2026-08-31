@@ -7,7 +7,7 @@ support_dir="${runner_dir}/../support"
 source "${support_dir}/aicpu_overlay.sh"
 
 usage() {
-    printf '%s\n' 'Usage: run_torch_storage.sh --backend <ra|aiv|aicpu>' >&2
+    printf '%s\n' 'Usage: run_torch_storage.sh --backend-mode <ra|aiv|aicpu>' >&2
 }
 
 require_environment() {
@@ -41,22 +41,23 @@ run_client() {
     local case_dir="$2"
     local client_log="$3"
     local -a client=("${NDS_E2E_TORCH_PYTHON}" "${NDS_E2E_SOURCE_DIR}/examples/storage/torch_client.py"
-        "${NDS_E2E_SERVER_ADDRESS}" --backend "${backend}" --bytes "${bytes}")
+        "${NDS_E2E_SERVER_ADDRESS}" --backend-mode "${backend}" --bytes "${bytes}")
 
     case "${backend}" in
         ra)
+            client+=(--backend-artifact "${build}/libnds_ra_backend.so")
             timeout "${case_timeout}" sudo -n env "PATH=${PATH}" "PYTHONPATH=${build}/bin" \
                 bash -lc 'source "$1/set_env.sh"; shift; exec "$@"' bash "${cann}" "${client[@]}" >"${client_log}" 2>&1
             ;;
         aiv)
-            client+=(--aiv-kernel "${build}/aiv/nds_aiv_kernel.o")
+            client+=(--backend-artifact "${build}/aiv/nds_aiv_kernel.o")
             timeout "${case_timeout}" sudo -n env "PATH=${PATH}" "PYTHONPATH=${build}/bin" \
                 bash -lc 'source "$1/set_env.sh"; shift; exec "$@"' bash "${cann}" "${client[@]}" >"${client_log}" 2>&1
             ;;
         aicpu)
             local overlay
             overlay="$(nds_prepare_aicpu_overlay "${case_dir}" "${cann}" "${build}")"
-            client+=(--aicpu-kernel "${overlay}/opp/vendors/nds/aicpu/config/nds_aicpu_standard.json")
+            client+=(--backend-artifact "${overlay}/opp/vendors/nds/aicpu/config/nds_aicpu_standard.json")
             timeout "${case_timeout}" sudo -n env "PATH=${PATH}" "PYTHONPATH=${build}/bin" \
                 unshare -m "${support_dir}/run_with_aicpu_package.sh" "${overlay}" "${cann}" "${client[@]}" \
                 >"${client_log}" 2>&1
@@ -67,7 +68,7 @@ run_client() {
 backend=""
 while [[ "$#" -gt 0 ]]; do
     case "$1" in
-        --backend) backend="${2:-}"; shift 2 ;;
+        --backend-mode) backend="${2:-}"; shift 2 ;;
         --help|-h) usage; exit 0 ;;
         *) printf 'unknown option: %s\n' "$1" >&2; usage; exit 2 ;;
     esac

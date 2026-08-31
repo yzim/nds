@@ -49,11 +49,18 @@ int storage_operation(const NdsDeviceStorageContext *context, const Command *com
 
 }  // namespace
 
-extern "C" int nds_ra_backend_post_send(const NdsDeviceQp *qp, const NdsDeviceSendWr *wr) {
+extern "C" int nds_ra_backend_post_send(const NdsDeviceQp *qp, const NdsDeviceSendWr *wr, void *stream) {
     if (qp == nullptr || wr == nullptr)
         return -1;
     const auto connection = host_connection(*qp);
-    return connection && nds::NdsRaPostSend(connection->runtime, connection->qp, *wr) ? 0 : -1;
+    return connection && nds::NdsRaPostSend(connection->runtime, connection->qp, *wr, stream) ? 0 : -1;
+}
+
+extern "C" int nds_ra_backend_post_recv(const NdsDeviceQp *qp, const NdsDeviceRecvWr *wr) {
+    if (qp == nullptr || wr == nullptr)
+        return -1;
+    const auto connection = host_connection(*qp);
+    return connection && nds::NdsRaPostRecv(connection->qp, *wr) ? 0 : -1;
 }
 
 extern "C" int nds_ra_backend_poll_cq(const NdsDeviceQp *qp, std::uint32_t send_cq, std::uint32_t max_completions,

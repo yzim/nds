@@ -2,9 +2,7 @@
 
 #include "transport_protocol.hh"
 
-#include "backends/dispatcher.hh"
-#include "ra/ra.hh"
-
+#include "backends/launcher.hh"
 #include <cstddef>
 #include <chrono>
 #include <algorithm>
@@ -18,6 +16,7 @@ namespace nds::client {
 namespace {
 
 constexpr std::uint32_t kTransportLaunchTimeoutMs = 5000U;
+const LaunchConfig kLegacyTransportLaunchConfig{};
 
 enum class SendOperation { Send, Read, Write };
 
@@ -42,48 +41,47 @@ Result<nds::transport::TransportInfo> receive_transport_info(TcpConnection *chan
     return info;
 }
 
-Result<void> launch_send(Runtime *runtime, const BackendConfig &backend, BackendDispatcher *dispatcher,
-                         const NdsDeviceQp &device_qp, const NdsDeviceSendWr &wr, SendOperation operation) {
-    if (runtime == nullptr || dispatcher == nullptr || backend.mode == NpuBackend::Ra)
-        return Error{ErrorCode::kInvalidArgument, "RA transport submissions require an RA queue"};
+Result<void> launch_send(Runtime *runtime, BackendLauncher *launcher, const NdsDeviceQp &device_qp,
+                         const NdsDeviceSendWr &wr, SendOperation operation) {
+    if (runtime == nullptr || launcher == nullptr)
+        return Error{ErrorCode::kInvalidArgument, "transport requires a runtime and backend launcher"};
     switch (operation) {
         case SendOperation::Send:
-            return dispatcher->post_send(*runtime, device_qp, wr, kTransportLaunchTimeoutMs);
+            return launcher->post_send(kLegacyTransportLaunchConfig, device_qp, wr, kTransportLaunchTimeoutMs);
         case SendOperation::Read:
-            return dispatcher->post_send(*runtime, device_qp, wr, kTransportLaunchTimeoutMs);
+            return launcher->post_send(kLegacyTransportLaunchConfig, device_qp, wr, kTransportLaunchTimeoutMs);
         case SendOperation::Write:
-            return dispatcher->post_send(*runtime, device_qp, wr, kTransportLaunchTimeoutMs);
+            return launcher->post_send(kLegacyTransportLaunchConfig, device_qp, wr, kTransportLaunchTimeoutMs);
     }
     return Error{ErrorCode::kInvalidArgument, "invalid transport send operation"};
 }
 
-Result<void> launch_receive(Runtime *runtime, const BackendConfig &backend, BackendDispatcher *dispatcher,
-                            const NdsDeviceQp &device_qp, const NdsDeviceRecvWr &wr) {
-    if (runtime == nullptr || dispatcher == nullptr || backend.mode == NpuBackend::Ra)
-        return Error{ErrorCode::kInvalidArgument, "RA transport receives require an RA queue"};
-    return dispatcher->post_recv(*runtime, device_qp, wr, kTransportLaunchTimeoutMs);
+Result<void> launch_receive(Runtime *runtime, BackendLauncher *launcher, const NdsDeviceQp &device_qp,
+                            const NdsDeviceRecvWr &wr) {
+    if (runtime == nullptr || launcher == nullptr)
+        return Error{ErrorCode::kInvalidArgument, "transport requires a runtime and backend launcher"};
+    return launcher->post_recv(kLegacyTransportLaunchConfig, device_qp, wr, kTransportLaunchTimeoutMs);
 }
 
-Result<void> launch_send_batch(Runtime *runtime, BackendDispatcher *dispatcher, const NdsDeviceQp &device_qp,
+Result<void> launch_send_batch(Runtime *runtime, BackendLauncher *launcher, const NdsDeviceQp &device_qp,
                                std::span<const NdsDeviceSendWr> wrs) {
-    if (runtime == nullptr || dispatcher == nullptr || wrs.empty())
+    if (runtime == nullptr || launcher == nullptr || wrs.empty())
         return Error{ErrorCode::kInvalidArgument, "AIV transport batch requires work requests"};
-    return dispatcher->post_send_batch(*runtime, device_qp, wrs, kTransportLaunchTimeoutMs);
+    return launcher->post_send_batch(runtime, device_qp, wrs, kTransportLaunchTimeoutMs);
 }
 
-Result<void> launch_poll(Runtime *runtime, const BackendConfig &backend, BackendDispatcher *dispatcher,
-                         const NdsDeviceQp &device_qp, bool send_cq) {
-    if (runtime == nullptr || dispatcher == nullptr || backend.mode == NpuBackend::Ra)
-        return Error{ErrorCode::kInvalidArgument, "RA CQ polling does not use the AI backend dispatcher"};
+Result<void> launch_poll(Runtime *runtime, BackendLauncher *launcher, const NdsDeviceQp &device_qp, bool send_cq) {
+    if (runtime == nullptr || launcher == nullptr)
+        return Error{ErrorCode::kInvalidArgument, "transport requires a runtime and backend launcher"};
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(kTransportLaunchTimeoutMs);
     while (std::chrono::steady_clock::now() < deadline) {
         NdsDeviceWc completion{};
-        const auto polled =
-            dispatcher->poll_cq(*runtime, device_qp, send_cq, 1U, &completion, kTransportLaunchTimeoutMs);
-        if (!polled)
-            return Error{polled.error()};
-        if (*polled != 0U)
-            return {};
+        NDS_ASSIGN_OR_RETURN(std::uint32_t completion_count,
+                             launcher->poll_cq(kLegacyTransportLaunchConfig, device_qp, send_cq, 1U, &completion,
+                                               kTransportLaunchTimeoutMs));
+        if (completion_count != 0U)
+            return completion.status == NDS_DEVICE_WC_SUCCESS ? Result<void>{}
+                                                              : Error{ErrorCode::kRa, "transport completion failed"};
         std::this_thread::yield();
     }
     return Error{ErrorCode::kRuntime, "timed out waiting for transport CQ completion"};
@@ -107,12 +105,11 @@ Result<void> Transport::open(Runtime *runtime, const TransportConfig &config, co
     runtime_ = runtime;
     config_ = config;
     backend_ = backend;
-    if (backend_.mode != NpuBackend::Ra)
+    if (backend_.mode != BackendMode::Ra)
         config_.qp.control_flags |= QueuePairCallerPollsCq;
     if (const auto launcher = initialize_launcher(); !launcher)
         return Error{launcher.error()};
-    if (const auto opened = endpoint_.open(runtime_, config_.endpoint); !opened)
-        return Error{opened.error()};
+    NDS_ASSIGN_OR_RETURN(endpoint_, runtime_->create_endpoint(config_.endpoint));
 
     const auto server = parse_tcp_address(config_.server_address);
     if (!server)
@@ -220,7 +217,9 @@ Result<void> Transport::build_device_transport() {
     device_qps_.reserve(qps_.size());
 
     for (const QueuePair &qp : qps_) {
-        if (qp.backend_ == NpuBackend::Ra) {
+        if (qp.backend_mode() != backend_.mode)
+            return Error{ErrorCode::kRuntime, "transport QP backend mode does not match its dispatcher"};
+        if (qp.backend_mode() == BackendMode::Ra) {
             NdsDeviceQp descriptor{};
             descriptor.host_runtime_address = reinterpret_cast<std::uint64_t>(runtime_);
             descriptor.host_qp_address = reinterpret_cast<std::uint64_t>(&qp);
@@ -229,7 +228,7 @@ Result<void> Transport::build_device_transport() {
         }
         if (qp.ai_qp_info_.ai_qp_address == 0U)
             return Error{ErrorCode::kInvalidArgument, "AI transport requires AI QPs"};
-        if (qp.backend_ == NpuBackend::Aiv &&
+        if (qp.backend_mode() == BackendMode::Aiv &&
             (qp.send_wr_ids_.data() == nullptr || qp.receive_wr_ids_.data() == nullptr)) {
             return Error{ErrorCode::kRuntime, "AIV QP is missing private WR-ID storage"};
         }
@@ -275,9 +274,9 @@ Result<void> Transport::build_device_transport() {
         descriptor.host_runtime_address = reinterpret_cast<std::uint64_t>(runtime_);
         descriptor.host_qp_address = reinterpret_cast<std::uint64_t>(&qp);
         const std::uint64_t send_wr_ids =
-            qp.backend_ == NpuBackend::Aiv ? reinterpret_cast<std::uint64_t>(qp.send_wr_ids_.data()) : 0U;
+            qp.backend_mode() == BackendMode::Aiv ? reinterpret_cast<std::uint64_t>(qp.send_wr_ids_.data()) : 0U;
         const std::uint64_t receive_wr_ids =
-            qp.backend_ == NpuBackend::Aiv ? reinterpret_cast<std::uint64_t>(qp.receive_wr_ids_.data()) : 0U;
+            qp.backend_mode() == BackendMode::Aiv ? reinterpret_cast<std::uint64_t>(qp.receive_wr_ids_.data()) : 0U;
         descriptor.send_queue = copy_wq(source->send_wq, send_wr_ids, true);
         descriptor.receive_queue = copy_wq(source->receive_wq, receive_wr_ids, false);
         descriptor.send_cq = copy_cq(source->send_cq);
@@ -393,33 +392,19 @@ Result<void> Transport::submit_sends(QueueHandle queue, std::span<const SendRequ
         if (next_wr_ids_[index] == 0U)
             ++next_wr_ids_[index];
     }
-    if (backend_.mode == NpuBackend::Ra) {
-        std::vector<NdsRaSge> sges(wrs.size());
-        NdsRaSendResponse last{};
-        for (std::size_t request_index = 0U; request_index < wrs.size(); ++request_index) {
-            const auto prepared = NdsRaPrepareSend(qp, wrs[request_index], &sges[request_index]);
-            if (!prepared)
-                return Error{prepared.error()};
-            last = *prepared;
-        }
-        if (const auto rung = NdsRaRingSend(runtime_, last); !rung)
-            return Error{rung.error()};
-        return complete(qp, true);
-    }
-    if (backend_.mode == NpuBackend::Aicpu && wrs.size() != 1U)
-        return Error{ErrorCode::kUnsupported, "AICPU transport batches require a linked-provider implementation"};
+    if (backend_.mode != BackendMode::Aiv && wrs.size() != 1U)
+        return Error{ErrorCode::kUnsupported, "only the AIV backend currently supports transport send batches"};
     const NdsDeviceQp *const descriptor = device_qp(queue);
     if (descriptor == nullptr)
         return Error{ErrorCode::kRuntime, "transport is missing its device QP descriptor"};
-    if (backend_.mode == NpuBackend::Aiv) {
-        if (const auto submitted = launch_send_batch(runtime_, backend_dispatcher_.get(), *descriptor, wrs); !submitted)
+    if (backend_.mode == BackendMode::Aiv) {
+        if (const auto submitted = launch_send_batch(runtime_, backend_launcher_.get(), *descriptor, wrs); !submitted)
             return Error{submitted.error()};
     } else {
         const SendOperation operation = opcode == NDS_DEVICE_WR_SEND        ? SendOperation::Send
                                         : opcode == NDS_DEVICE_WR_RDMA_READ ? SendOperation::Read
                                                                             : SendOperation::Write;
-        if (const auto submitted =
-                launch_send(runtime_, backend_, backend_dispatcher_.get(), *descriptor, wrs.front(), operation);
+        if (const auto submitted = launch_send(runtime_, backend_launcher_.get(), *descriptor, wrs.front(), operation);
             !submitted) {
             return Error{submitted.error()};
         }
@@ -439,36 +424,20 @@ Result<void> Transport::submit_receive(QueueHandle queue, const TransportReceive
                          {request.local->address() + request.local_offset, request.length, request.local->local_key()}};
     if (next_wr_ids_[index] == 0U)
         ++next_wr_ids_[index];
-    if (backend_.mode == NpuBackend::Ra)
-        return NdsRaPostRecv(qp, recv);
     const NdsDeviceQp *const descriptor = device_qp(queue);
     if (descriptor == nullptr)
         return Error{ErrorCode::kRuntime, "transport is missing its device QP descriptor"};
-    return launch_receive(runtime_, backend_, backend_dispatcher_.get(), *descriptor, recv);
+    return launch_receive(runtime_, backend_launcher_.get(), *descriptor, recv);
 }
 
 Result<void> Transport::complete(QueuePair *qp, bool send_cq) {
     if (qp == nullptr)
         return Error{ErrorCode::kInvalidArgument, "transport completion requires a queue"};
-    if (backend_.mode == NpuBackend::Ra) {
-        NdsDeviceWc completion{};
-        const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(kTransportLaunchTimeoutMs);
-        while (std::chrono::steady_clock::now() < deadline) {
-            const auto polled = NdsRaPollCq(qp, send_cq, 1U, &completion);
-            if (!polled)
-                return Error{polled.error()};
-            if (*polled != 0U)
-                return completion.status == NDS_RA_WC_SUCCESS ? Result<void>{}
-                                                              : Error{ErrorCode::kRa, "RA transport completion failed"};
-            std::this_thread::yield();
-        }
-        return Error{ErrorCode::kRa, "timed out waiting for RA transport completion"};
-    }
     const std::size_t index = static_cast<std::size_t>(qp - qps_.data());
     const NdsDeviceQp *const descriptor = index < device_qps_.size() ? &device_qps_[index] : nullptr;
     if (descriptor == nullptr)
         return Error{ErrorCode::kRuntime, "transport is missing its device QP descriptor"};
-    return launch_poll(runtime_, backend_, backend_dispatcher_.get(), *descriptor, send_cq);
+    return launch_poll(runtime_, backend_launcher_.get(), *descriptor, send_cq);
 }
 
 std::size_t Transport::qp_count() const noexcept {
@@ -501,12 +470,8 @@ Result<void> Transport::ready() {
 }
 
 Result<void> Transport::initialize_launcher() {
-    if (backend_.mode == NpuBackend::Ra)
-        return {};
-    backend_dispatcher_ = std::make_unique<BackendDispatcher>();
-    if (const auto loaded =
-            backend_dispatcher_->open(backend_.mode, backend_.ra_backend, backend_.aiv_kernel, backend_.aicpu_kernel);
-        !loaded)
+    backend_launcher_ = std::make_unique<BackendLauncher>();
+    if (const auto loaded = backend_launcher_->open(runtime_, backend_.mode, backend_.artifact); !loaded)
         return Error{loaded.error()};
     return {};
 }

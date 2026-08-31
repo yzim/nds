@@ -5,11 +5,11 @@ namespace {
 
 Result<void> validate_context(const RaStorageContext &context) {
     if (context.connection.runtime == nullptr || context.connection.qp == nullptr ||
-        context.connection.qp->backend_mode() != client::NpuBackend::Ra || context.command_device == nullptr ||
-        context.completion_device == nullptr || context.command_buffer.address == 0U ||
-        context.command_buffer.local_key == 0U || context.command_buffer.length < kStorageCommandBytes ||
-        context.completion.address == 0U || context.completion.local_key == 0U ||
-        context.completion.length < kStorageCompletionBytes || context.capacity == 0U)
+        context.command_device == nullptr || context.completion_device == nullptr ||
+        context.command_buffer.address == 0U || context.command_buffer.local_key == 0U ||
+        context.command_buffer.length < kStorageCommandBytes || context.completion.address == 0U ||
+        context.completion.local_key == 0U || context.completion.length < kStorageCompletionBytes ||
+        context.capacity == 0U)
         return Error{ErrorCode::kInvalidArgument, "invalid RA storage context"};
     return {};
 }

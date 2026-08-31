@@ -19,10 +19,8 @@ struct Config {
     nds::client::RuntimeConfig runtime;
     nds::client::EndpointConfig endpoint;
     std::string server;
-    nds::client::NpuBackend backend{nds::client::NpuBackend::Ra};
-    std::string ra_backend;
-    std::string aiv_kernel;
-    std::string aicpu_kernel;
+    nds::client::BackendMode backend{nds::client::BackendMode::Ra};
+    std::string backend_artifact;
 };
 
 nds::Result<Config> parse(int argc, char **argv) {
@@ -30,32 +28,26 @@ nds::Result<Config> parse(int argc, char **argv) {
     CLI::App app{"Run the direct one-QP, one-MR NPU verbs benchmark."};
     app.add_option("--cann-runtime", config.runtime.cann_runtime_library)->required();
     app.add_option("--ra", config.endpoint.ra_library)->required();
-    app.add_option("--ra-backend", config.ra_backend);
+    app.add_option("--backend-artifact", config.backend_artifact);
     app.add_option("--logical-device", config.runtime.logical_device_id)->required();
     app.add_option("--server", config.server)->required();
-    std::string backend_name{"ra"};
-    app.add_option("--backend", backend_name, "Backend: ra, aiv, or aicpu");
-    app.add_option("--aiv-kernel", config.aiv_kernel);
-    app.add_option("--aicpu-kernel", config.aicpu_kernel);
+    std::string backend_mode_name{"ra"};
+    app.add_option("--backend-mode", backend_mode_name, "Backend: ra, aiv, or aicpu");
     try {
         app.parse(argc, argv);
     } catch (const CLI::ParseError &error) {
         return Error{nds::ErrorCode::kInvalidArgument, app.exit(error) == 0 ? "help requested" : "invalid options"};
     }
-    if (backend_name == "ra")
-        config.backend = nds::client::NpuBackend::Ra;
-    else if (backend_name == "aiv")
-        config.backend = nds::client::NpuBackend::Aiv;
-    else if (backend_name == "aicpu")
-        config.backend = nds::client::NpuBackend::Aicpu;
+    if (backend_mode_name == "ra")
+        config.backend = nds::client::BackendMode::Ra;
+    else if (backend_mode_name == "aiv")
+        config.backend = nds::client::BackendMode::Aiv;
+    else if (backend_mode_name == "aicpu")
+        config.backend = nds::client::BackendMode::Aicpu;
     else
-        return Error{nds::ErrorCode::kInvalidArgument, "--backend must be ra, aiv, or aicpu"};
-    if (config.backend == nds::client::NpuBackend::Aiv && config.aiv_kernel.empty())
-        return Error{nds::ErrorCode::kInvalidArgument, "--aiv-kernel is required for AIV"};
-    if (config.backend == nds::client::NpuBackend::Aicpu && config.aicpu_kernel.empty())
-        return Error{nds::ErrorCode::kInvalidArgument, "--aicpu-kernel is required for AICPU"};
-    if (config.backend == nds::client::NpuBackend::Ra && config.ra_backend.empty())
-        return Error{nds::ErrorCode::kInvalidArgument, "--ra-backend is required for RA"};
+        return Error{nds::ErrorCode::kInvalidArgument, "--backend-mode must be ra, aiv, or aicpu"};
+    if (config.backend_artifact.empty())
+        return Error{nds::ErrorCode::kInvalidArgument, "--backend-artifact is required"};
     return config;
 }
 
@@ -85,8 +77,7 @@ int main(int argc, char **argv) {
         .control_flags = 0U,
     };
     const nds::client::TransportConfig transport_config{config.endpoint, qp_config, 1U, config.server, 5000U};
-    const nds::client::BackendConfig backend_config{config.backend, config.ra_backend, config.aicpu_kernel,
-                                                    config.aiv_kernel};
+    const nds::client::BackendConfig backend_config{config.backend, config.backend_artifact};
     nds::client::Transport transport;
     if (!transport.open(&runtime, transport_config, backend_config).ok())
         return EXIT_FAILURE;

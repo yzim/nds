@@ -38,6 +38,7 @@ class RaLauncher::Impl {
 public:
     client::SharedLibrary library;
     NdsRaBackendPostSend post_send{};
+    NdsRaBackendPostRecv post_recv{};
     NdsRaBackendPollCq poll_cq{};
     NdsRaBackendRdmaSend rdma_send{}, rdma_read{}, rdma_write{};
     NdsRaBackendRdmaRecv rdma_recv{};
@@ -54,64 +55,55 @@ Result<void> RaLauncher::load(const std::string &backend_path) {
         return Error{ErrorCode::kInvalidArgument, impl_ != nullptr ? "NDS RA launcher is already loaded"
                                                                    : "NDS RA requires an NDS backend artifact path"};
 
-    auto library = client::SharedLibrary::open(backend_path);
-    if (!library)
-        return Error{library.error()};
-    auto post_send = library->resolve_required<NdsRaBackendPostSend>("nds_ra_backend_post_send");
-    if (!post_send)
-        return Error{post_send.error()};
-    auto poll_cq = library->resolve_required<NdsRaBackendPollCq>("nds_ra_backend_poll_cq");
-    if (!poll_cq)
-        return Error{poll_cq.error()};
-    auto rdma_send = library->resolve_required<NdsRaBackendRdmaSend>("nds_ra_backend_rdma_send");
-    if (!rdma_send)
-        return Error{rdma_send.error()};
-    auto rdma_recv = library->resolve_required<NdsRaBackendRdmaRecv>("nds_ra_backend_rdma_recv");
-    if (!rdma_recv)
-        return Error{rdma_recv.error()};
-    auto rdma_read = library->resolve_required<NdsRaBackendRdmaSend>("nds_ra_backend_rdma_read");
-    if (!rdma_read)
-        return Error{rdma_read.error()};
-    auto rdma_write = library->resolve_required<NdsRaBackendRdmaSend>("nds_ra_backend_rdma_write");
-    if (!rdma_write)
-        return Error{rdma_write.error()};
-    auto storage_read = library->resolve_required<NdsRaBackendStorage>("nds_ra_backend_storage_read");
-    if (!storage_read)
-        return Error{storage_read.error()};
-    auto storage_write = library->resolve_required<NdsRaBackendStorageWrite>("nds_ra_backend_storage_write");
-    if (!storage_write)
-        return Error{storage_write.error()};
-    auto storage_batch_read =
-        library->resolve_required<NdsRaBackendStorageBatchRead>("nds_ra_backend_storage_batch_read");
-    if (!storage_batch_read)
-        return Error{storage_batch_read.error()};
-    auto storage_batch_write =
-        library->resolve_required<NdsRaBackendStorageBatchWrite>("nds_ra_backend_storage_batch_write");
-    if (!storage_batch_write)
-        return Error{storage_batch_write.error()};
+    NDS_ASSIGN_OR_RETURN(client::SharedLibrary library, client::SharedLibrary::open(backend_path));
+    NDS_ASSIGN_OR_RETURN(NdsRaBackendPostSend post_send,
+                         library.resolve_required<NdsRaBackendPostSend>("nds_ra_backend_post_send"));
+    NDS_ASSIGN_OR_RETURN(NdsRaBackendPostRecv post_recv,
+                         library.resolve_required<NdsRaBackendPostRecv>("nds_ra_backend_post_recv"));
+    NDS_ASSIGN_OR_RETURN(NdsRaBackendPollCq poll_cq,
+                         library.resolve_required<NdsRaBackendPollCq>("nds_ra_backend_poll_cq"));
+    NDS_ASSIGN_OR_RETURN(NdsRaBackendRdmaSend rdma_send,
+                         library.resolve_required<NdsRaBackendRdmaSend>("nds_ra_backend_rdma_send"));
+    NDS_ASSIGN_OR_RETURN(NdsRaBackendRdmaRecv rdma_recv,
+                         library.resolve_required<NdsRaBackendRdmaRecv>("nds_ra_backend_rdma_recv"));
+    NDS_ASSIGN_OR_RETURN(NdsRaBackendRdmaSend rdma_read,
+                         library.resolve_required<NdsRaBackendRdmaSend>("nds_ra_backend_rdma_read"));
+    NDS_ASSIGN_OR_RETURN(NdsRaBackendRdmaSend rdma_write,
+                         library.resolve_required<NdsRaBackendRdmaSend>("nds_ra_backend_rdma_write"));
+    NDS_ASSIGN_OR_RETURN(NdsRaBackendStorage storage_read,
+                         library.resolve_required<NdsRaBackendStorage>("nds_ra_backend_storage_read"));
+    NDS_ASSIGN_OR_RETURN(NdsRaBackendStorageWrite storage_write,
+                         library.resolve_required<NdsRaBackendStorageWrite>("nds_ra_backend_storage_write"));
+    NDS_ASSIGN_OR_RETURN(NdsRaBackendStorageBatchRead storage_batch_read,
+                         library.resolve_required<NdsRaBackendStorageBatchRead>("nds_ra_backend_storage_batch_read"));
+    NDS_ASSIGN_OR_RETURN(NdsRaBackendStorageBatchWrite storage_batch_write,
+                         library.resolve_required<NdsRaBackendStorageBatchWrite>("nds_ra_backend_storage_batch_write"));
     impl_ = std::make_unique<Impl>();
-    impl_->library = std::move(*library);
-    impl_->post_send = *post_send;
-    impl_->poll_cq = *poll_cq;
-    impl_->rdma_send = *rdma_send;
-    impl_->rdma_recv = *rdma_recv;
-    impl_->rdma_read = *rdma_read;
-    impl_->rdma_write = *rdma_write;
-    impl_->storage_read = *storage_read;
-    impl_->storage_write = *storage_write;
-    impl_->storage_batch_read = *storage_batch_read;
-    impl_->storage_batch_write = *storage_batch_write;
+    impl_->library = std::move(library);
+    impl_->post_send = post_send;
+    impl_->post_recv = post_recv;
+    impl_->poll_cq = poll_cq;
+    impl_->rdma_send = rdma_send;
+    impl_->rdma_recv = rdma_recv;
+    impl_->rdma_read = rdma_read;
+    impl_->rdma_write = rdma_write;
+    impl_->storage_read = storage_read;
+    impl_->storage_write = storage_write;
+    impl_->storage_batch_read = storage_batch_read;
+    impl_->storage_batch_write = storage_batch_write;
     return {};
 }
 
-Result<void> RaLauncher::post_send(const NdsDeviceQp &qp, const NdsDeviceSendWr &wr) {
+Result<void> RaLauncher::post_send(const NdsDeviceQp &qp, const NdsDeviceSendWr &wr, void *stream) {
     if (impl_ == nullptr || impl_->post_send == nullptr)
         return Error{ErrorCode::kRuntime, "RA backend is not loaded"};
-    return impl_->post_send(&qp, &wr) == 0 ? Result<void>{} : Error{ErrorCode::kRa, "RA backend Send failed"};
+    return impl_->post_send(&qp, &wr, stream) == 0 ? Result<void>{} : Error{ErrorCode::kRa, "RA backend Send failed"};
 }
 
-Result<void> RaLauncher::post_send(client::Runtime *runtime, client::QueuePair *qp, const NdsDeviceSendWr &wr) {
-    return post_send(host_qp_view(runtime, qp), wr);
+Result<void> RaLauncher::post_recv(const NdsDeviceQp &qp, const NdsDeviceRecvWr &wr) {
+    if (impl_ == nullptr || impl_->post_recv == nullptr)
+        return Error{ErrorCode::kRuntime, "RA backend is not loaded"};
+    return impl_->post_recv(&qp, &wr) == 0 ? Result<void>{} : Error{ErrorCode::kRa, "RA backend receive failed"};
 }
 
 Result<std::uint32_t> RaLauncher::poll_cq(const NdsDeviceQp &qp, std::uint32_t send_cq, std::uint32_t max_completions,
@@ -121,11 +113,6 @@ Result<std::uint32_t> RaLauncher::poll_cq(const NdsDeviceQp &qp, std::uint32_t s
     const int result = impl_->poll_cq(&qp, send_cq, max_completions, wc);
     return result < 0 ? Result<std::uint32_t>(Error{ErrorCode::kRa, "RA backend CQ poll failed"})
                       : Result<std::uint32_t>(static_cast<std::uint32_t>(result));
-}
-
-Result<std::uint32_t> RaLauncher::poll_cq(client::QueuePair *qp, bool send_cq, std::uint32_t max_completions,
-                                          NdsDeviceWc *wc) {
-    return poll_cq(host_qp_view(nullptr, qp), send_cq, max_completions, wc);
 }
 
 Result<void> RaLauncher::rdma_send(const NdsDeviceTransport &transport, const NdsDeviceSendWr &wr) {
