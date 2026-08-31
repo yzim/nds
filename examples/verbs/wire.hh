@@ -10,7 +10,7 @@
 
 namespace nds::examples::verbs {
 
-inline Result<transport::QpInfo> exchange_client_qp(TcpConnection &channel, const transport::QpInfo &local) {
+inline Result<QpInfo> exchange_client_qp(TcpConnection &channel, const QpInfo &local) {
     wire::QpInfo local_record{};
     wire::QpInfo peer_record{};
     if (transport::encode(&local, &local_record) != transport::CodecResult::Ok)
@@ -19,13 +19,13 @@ inline Result<transport::QpInfo> exchange_client_qp(TcpConnection &channel, cons
         return Error{sent.error()};
     if (const auto received = channel.receive(std::as_writable_bytes(std::span{&peer_record, 1U})); !received)
         return Error{received.error()};
-    transport::QpInfo peer{};
+    QpInfo peer{};
     if (transport::decode(&peer_record, &peer) != transport::CodecResult::Ok)
         return Error{ErrorCode::kTransport, "peer sent invalid QP information"};
     return peer;
 }
 
-inline Result<transport::QpInfo> exchange_server_qp(TcpConnection &channel, const transport::QpInfo &local) {
+inline Result<QpInfo> exchange_server_qp(TcpConnection &channel, const QpInfo &local) {
     wire::QpInfo local_record{};
     wire::QpInfo peer_record{};
     if (const auto received = channel.receive(std::as_writable_bytes(std::span{&peer_record, 1U})); !received)
@@ -34,7 +34,7 @@ inline Result<transport::QpInfo> exchange_server_qp(TcpConnection &channel, cons
         return Error{ErrorCode::kTransport, "cannot encode QP information"};
     if (const auto sent = channel.send(std::as_bytes(std::span{&local_record, 1U})); !sent)
         return Error{sent.error()};
-    transport::QpInfo peer{};
+    QpInfo peer{};
     if (transport::decode(&peer_record, &peer) != transport::CodecResult::Ok)
         return Error{ErrorCode::kTransport, "peer sent invalid QP information"};
     return peer;

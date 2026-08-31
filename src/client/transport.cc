@@ -41,44 +41,44 @@ Result<nds::transport::TransportInfo> receive_transport_info(TcpConnection *chan
     return info;
 }
 
-Result<void> launch_send(Runtime *runtime, BackendLauncher *launcher, const NdsDeviceQp &device_qp,
-                         const NdsDeviceSendWr &wr, SendOperation operation) {
+Result<void> launch_send(Runtime *runtime, Launcher *launcher, const NdsDeviceQp &device_qp, const NdsDeviceSendWr &wr,
+                         SendOperation operation) {
     if (runtime == nullptr || launcher == nullptr)
         return Error{ErrorCode::kInvalidArgument, "transport requires a runtime and backend launcher"};
     switch (operation) {
         case SendOperation::Send:
-            return launcher->post_send(kLegacyTransportLaunchConfig, device_qp, wr, kTransportLaunchTimeoutMs);
+            return launcher->with_config(kLegacyTransportLaunchConfig).post_send(device_qp, wr);
         case SendOperation::Read:
-            return launcher->post_send(kLegacyTransportLaunchConfig, device_qp, wr, kTransportLaunchTimeoutMs);
+            return launcher->with_config(kLegacyTransportLaunchConfig).post_send(device_qp, wr);
         case SendOperation::Write:
-            return launcher->post_send(kLegacyTransportLaunchConfig, device_qp, wr, kTransportLaunchTimeoutMs);
+            return launcher->with_config(kLegacyTransportLaunchConfig).post_send(device_qp, wr);
     }
     return Error{ErrorCode::kInvalidArgument, "invalid transport send operation"};
 }
 
-Result<void> launch_receive(Runtime *runtime, BackendLauncher *launcher, const NdsDeviceQp &device_qp,
+Result<void> launch_receive(Runtime *runtime, Launcher *launcher, const NdsDeviceQp &device_qp,
                             const NdsDeviceRecvWr &wr) {
     if (runtime == nullptr || launcher == nullptr)
         return Error{ErrorCode::kInvalidArgument, "transport requires a runtime and backend launcher"};
-    return launcher->post_recv(kLegacyTransportLaunchConfig, device_qp, wr, kTransportLaunchTimeoutMs);
+    return launcher->with_config(kLegacyTransportLaunchConfig).post_recv(device_qp, wr);
 }
 
-Result<void> launch_send_batch(Runtime *runtime, BackendLauncher *launcher, const NdsDeviceQp &device_qp,
+Result<void> launch_send_batch(Runtime *runtime, Launcher *launcher, const NdsDeviceQp &device_qp,
                                std::span<const NdsDeviceSendWr> wrs) {
     if (runtime == nullptr || launcher == nullptr || wrs.empty())
         return Error{ErrorCode::kInvalidArgument, "AIV transport batch requires work requests"};
     return launcher->post_send_batch(runtime, device_qp, wrs, kTransportLaunchTimeoutMs);
 }
 
-Result<void> launch_poll(Runtime *runtime, BackendLauncher *launcher, const NdsDeviceQp &device_qp, bool send_cq) {
+Result<void> launch_poll(Runtime *runtime, Launcher *launcher, const NdsDeviceQp &device_qp, bool send_cq) {
     if (runtime == nullptr || launcher == nullptr)
         return Error{ErrorCode::kInvalidArgument, "transport requires a runtime and backend launcher"};
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(kTransportLaunchTimeoutMs);
     while (std::chrono::steady_clock::now() < deadline) {
         NdsDeviceWc completion{};
-        NDS_ASSIGN_OR_RETURN(std::uint32_t completion_count,
-                             launcher->poll_cq(kLegacyTransportLaunchConfig, device_qp, send_cq, 1U, &completion,
-                                               kTransportLaunchTimeoutMs));
+        NDS_ASSIGN_OR_RETURN(
+            std::uint32_t completion_count,
+            launcher->with_config(kLegacyTransportLaunchConfig).poll_cq(device_qp, send_cq, 1U, &completion));
         if (completion_count != 0U)
             return completion.status == NDS_DEVICE_WC_SUCCESS ? Result<void>{}
                                                               : Error{ErrorCode::kRa, "transport completion failed"};
@@ -165,12 +165,12 @@ TcpConnection *Transport::exchange_channel() noexcept {
     return &exchange_channel_;
 }
 
-const nds::transport::QpInfo &Transport::local_qp_info() const noexcept {
-    static const nds::transport::QpInfo empty{};
+const nds::QpInfo &Transport::local_qp_info() const noexcept {
+    static const nds::QpInfo empty{};
     return local_qps_.empty() ? empty : local_qps_.front();
 }
 
-const std::vector<nds::transport::QpInfo> &Transport::local_qp_infos() const noexcept {
+const std::vector<nds::QpInfo> &Transport::local_qp_infos() const noexcept {
     return local_qps_;
 }
 
@@ -470,9 +470,7 @@ Result<void> Transport::ready() {
 }
 
 Result<void> Transport::initialize_launcher() {
-    backend_launcher_ = std::make_unique<BackendLauncher>();
-    if (const auto loaded = backend_launcher_->open(runtime_, backend_.mode, backend_.artifact_path); !loaded)
-        return Error{loaded.error()};
+    NDS_ASSIGN_OR_RETURN(backend_launcher_, Launcher::open(runtime_, backend_.mode, backend_.artifact_path));
     return {};
 }
 

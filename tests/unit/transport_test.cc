@@ -9,8 +9,8 @@
 
 namespace {
 
-nds::transport::QpInfo endpoint() {
-    nds::transport::QpInfo value{};
+nds::QpInfo endpoint() {
+    nds::QpInfo value{};
     value.qp_num = 0x00abcdU;
     value.psn = 0x00123456U;
     value.port_num = 1U;
@@ -39,8 +39,8 @@ TEST(TransportCodecTest, ParsesTcpExchangeAddress) {
 }
 
 TEST(TransportCodecTest, RoundTripsTransportRecord) {
-    const nds::transport::QpInfo source = endpoint();
-    nds::transport::QpInfo decoded{};
+    const nds::QpInfo source = endpoint();
+    nds::QpInfo decoded{};
     nds::wire::QpInfo wire{};
     ASSERT_EQ(nds::transport::encode(&source, &wire), nds::transport::CodecResult::Ok);
     EXPECT_EQ(ntohl(wire.magic), nds::wire::kQpInfoMagic);

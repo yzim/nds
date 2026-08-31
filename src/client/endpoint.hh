@@ -82,8 +82,8 @@ public:
     QueuePair(QueuePair &&other) noexcept;
     QueuePair &operator=(QueuePair &&other) noexcept;
 
-    Result<nds::transport::QpInfo> local_qp_info() const;
-    Result<void> connect(const nds::transport::QpInfo &peer);
+    Result<nds::QpInfo> local_qp_info() const;
+    Result<void> connect(const nds::QpInfo &peer);
     Result<int> query_port_status();
     Result<int> query_support_lite();
     Result<int> query_status();

@@ -282,7 +282,7 @@ Result<void> StorageClient::open(Runtime *runtime, Transport *transport) {
     if (!capacity)
         return Error{capacity.error()};
     capacity_ = *capacity;
-    const nds::transport::QpInfo &local = transport_->local_qp_info();
+    const nds::QpInfo &local = transport_->local_qp_info();
     next_command_id_ = (static_cast<std::uint64_t>(local.qp_num) << 32U) | local.psn;
     if (next_command_id_ == 0U)
         next_command_id_ = 1U;

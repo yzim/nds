@@ -62,8 +62,9 @@ static_assert(sizeof(RemoteMemory) == 32, "NDS remote-memory record must remain 
 
 }  // namespace nds::wire
 
-namespace nds::transport {
+namespace nds {
 
+/* Peer RC QP identity exchanged during the TCP bootstrap. */
 struct QpInfo {
     uint32_t qp_num;
     uint32_t psn;
@@ -77,6 +78,10 @@ struct QpInfo {
     uint8_t gid[wire::kGidBytes];
 };
 
+}  // namespace nds
+
+namespace nds::transport {
+
 enum class TransportInfoKind : uint16_t {
     QpCountRequest = 1U,
     QpCountResponse = 2U,
@@ -86,7 +91,7 @@ enum class TransportInfoKind : uint16_t {
 struct TransportInfo {
     TransportInfoKind kind{};
     uint32_t qp_count{};
-    std::array<QpInfo, wire::kMaxQpInfoBatch> qps{};
+    std::array<nds::QpInfo, wire::kMaxQpInfoBatch> qps{};
 };
 
 struct RemoteMemory {
@@ -101,8 +106,8 @@ enum class CodecResult {
     InvalidRecord,
 };
 
-CodecResult encode(const QpInfo *info, wire::QpInfo *encoded);
-CodecResult decode(const wire::QpInfo *encoded, QpInfo *info);
+CodecResult encode(const nds::QpInfo *info, wire::QpInfo *encoded);
+CodecResult decode(const wire::QpInfo *encoded, nds::QpInfo *info);
 CodecResult encode(const RemoteMemory *memory, wire::RemoteMemory *encoded);
 CodecResult decode(const wire::RemoteMemory *encoded, RemoteMemory *memory);
 CodecResult encode(const TransportInfo *info, wire::TransportInfo *encoded);

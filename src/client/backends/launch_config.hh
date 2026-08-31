@@ -11,8 +11,7 @@ namespace nds::client {
  * The host-side equivalent of a kernel <<< >>> launch configuration.
  *
  * The caller owns `stream` and uses normal ACL event or stream APIs for
- * ordering and completion.  A backend launcher neither creates nor waits on
- * this stream.
+ * ordering. A backend launcher neither creates nor destroys this stream.
  */
 struct LaunchConfig {
     std::uint32_t block_dim{1U};
@@ -20,6 +19,8 @@ struct LaunchConfig {
     aclrtStream stream{};
     aclrtLaunchKernelCfg *kernel_config{};
     std::uint32_t flags{};
+    bool sync{true};
+    std::int32_t sync_timeout_ms{5000};
 };
 
 }  // namespace nds::client

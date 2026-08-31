@@ -12,8 +12,8 @@
 
 namespace {
 
-nds::transport::QpInfo make_endpoint(std::uint32_t qpn, std::uint32_t psn) {
-    nds::transport::QpInfo endpoint{};
+nds::QpInfo make_endpoint(std::uint32_t qpn, std::uint32_t psn) {
+    nds::QpInfo endpoint{};
     endpoint.qp_num = qpn;
     endpoint.psn = psn;
     endpoint.port_num = 1U;
@@ -26,8 +26,7 @@ nds::transport::QpInfo make_endpoint(std::uint32_t qpn, std::uint32_t psn) {
     return endpoint;
 }
 
-nds::transport::TransportInfo endpoint_info(std::uint32_t count, nds::transport::QpInfo first,
-                                            nds::transport::QpInfo second = {}) {
+nds::transport::TransportInfo endpoint_info(std::uint32_t count, nds::QpInfo first, nds::QpInfo second = {}) {
     nds::transport::TransportInfo info{nds::transport::TransportInfoKind::QpEndpoints, count, {}};
     info.qps[0] = first;
     if (count > 1U)

@@ -246,8 +246,8 @@ Libra make_api() {
     return api;
 }
 
-nds::transport::QpInfo peer_info() {
-    nds::transport::QpInfo peer{};
+nds::QpInfo peer_info() {
+    nds::QpInfo peer{};
     peer.qp_num = 0x2000U;
     peer.psn = 0x3000U;
     peer.port_num = 1U;

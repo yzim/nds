@@ -72,7 +72,7 @@ Result<void> Transport::open(TcpConnection exchange_channel, const TransportConf
         return Error{ErrorCode::kInvalidArgument, "invalid negotiated QP count"};
     if (const auto opened = backend_.open(config.backend, qp_count); !opened)
         return Error{opened.error()};
-    const std::vector<nds::transport::QpInfo> &local = backend_.local_qp_infos();
+    const std::vector<nds::QpInfo> &local = backend_.local_qp_infos();
     exchange_channel_ = std::move(exchange_channel);
     const auto peer_info = receive_transport_info(&exchange_channel_);
     if (!peer_info)
@@ -82,7 +82,7 @@ Result<void> Transport::open(TcpConnection exchange_channel, const TransportConf
     nds::transport::TransportInfo local_info{nds::transport::TransportInfoKind::QpEndpoints, qp_count, {}};
     std::copy(local.begin(), local.end(), local_info.qps.begin());
     NDS_RETURN_IF_ERROR(send_transport_info(&exchange_channel_, local_info));
-    std::vector<nds::transport::QpInfo> peers(peer_info->qps.begin(), peer_info->qps.begin() + qp_count);
+    std::vector<nds::QpInfo> peers(peer_info->qps.begin(), peer_info->qps.begin() + qp_count);
     if (const auto connected = backend_.connect(peers); !connected)
         return Error{connected.error()};
     return {};

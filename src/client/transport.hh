@@ -17,7 +17,7 @@
 
 namespace nds {
 namespace client {
-class BackendLauncher;
+class Launcher;
 }
 }  // namespace nds
 
@@ -99,8 +99,8 @@ public:
     Result<void> open(Runtime *runtime, const TransportConfig &config, const BackendConfig &backend);
 
     TcpConnection *exchange_channel() noexcept;
-    const nds::transport::QpInfo &local_qp_info() const noexcept;
-    const std::vector<nds::transport::QpInfo> &local_qp_infos() const noexcept;
+    const nds::QpInfo &local_qp_info() const noexcept;
+    const std::vector<nds::QpInfo> &local_qp_infos() const noexcept;
     Result<void> ready();
 
     Runtime *runtime() noexcept;
@@ -156,9 +156,9 @@ private:
     MemoryBuffer device_qp_storage_;
     NdsDeviceTransport device_transport_{};
     std::vector<std::uint64_t> next_wr_ids_;
-    std::unique_ptr<BackendLauncher> backend_launcher_;
+    std::unique_ptr<Launcher> backend_launcher_;
     TcpConnection exchange_channel_;
-    std::vector<nds::transport::QpInfo> local_qps_;
+    std::vector<nds::QpInfo> local_qps_;
 };
 
 }  // namespace nds::client

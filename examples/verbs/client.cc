@@ -87,28 +87,15 @@ nds::Result<void> run(int argc, char **argv) {
                          endpoint.reg_mr(payload_buffer, nds::client::MemoryAccess::DirectNpu));
 
     // The launcher owns backend launch details; the example keeps only the QP.
-    nds::client::BackendLauncher launcher;
-    NDS_RETURN_IF_ERROR(launcher.open(&runtime, config.backend, config.backend_artifact_path));
+    NDS_ASSIGN_OR_RETURN(std::unique_ptr<nds::client::Launcher> launcher,
+                         nds::client::Launcher::open(&runtime, config.backend, config.backend_artifact_path));
 
-    aclrtStream stream{};
-    const int stream_result = aclrtCreateStream(&stream);
-    if (stream_result != ACL_SUCCESS || stream == nullptr)
-        return nds::Error{nds::ErrorCode::kRuntime, "aclrtCreateStream failed: " + std::to_string(stream_result)};
-    struct StreamGuard {
-        aclrtStream stream{};
-        ~StreamGuard() {
-            if (stream != nullptr)
-                (void)aclrtDestroyStream(stream);
-        }
-    } stream_guard{stream};
-    const nds::client::LaunchConfig launch_config{1U, nullptr, stream, nullptr, 0U};
     NDS_ASSIGN_OR_RETURN(NdsDeviceQp device_qp, queue_pair.device_qp());
 
     // TCP starts only after the local RoCE runtime, endpoint, QP, and MR exist.
     NDS_ASSIGN_OR_RETURN(nds::TcpConnection connection, nds::TcpConnection::connect(address.ipv4, address.port, 5000U));
-    NDS_ASSIGN_OR_RETURN(nds::transport::QpInfo local_qp_info, queue_pair.local_qp_info());
-    NDS_ASSIGN_OR_RETURN(nds::transport::QpInfo peer_qp_info,
-                         nds::examples::verbs::exchange_client_qp(connection, local_qp_info));
+    NDS_ASSIGN_OR_RETURN(nds::QpInfo local_qp_info, queue_pair.local_qp_info());
+    NDS_ASSIGN_OR_RETURN(nds::QpInfo peer_qp_info, nds::examples::verbs::exchange_client_qp(connection, local_qp_info));
     NDS_RETURN_IF_ERROR(queue_pair.connect(peer_qp_info));
     NDS_RETURN_IF_ERROR(nds::examples::verbs::wait_ready(connection));
 
@@ -123,13 +110,12 @@ nds::Result<void> run(int argc, char **argv) {
         .remote_key = 0U,
         .reserved = 0U,
     };
-    NDS_RETURN_IF_ERROR(launcher.post_send(launch_config, device_qp, send_wr, 5000));
+    NDS_RETURN_IF_ERROR(launcher->post_send(device_qp, send_wr));
 
     const std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
     while (std::chrono::steady_clock::now() < deadline) {
         NdsDeviceWc completion{};
-        NDS_ASSIGN_OR_RETURN(std::uint32_t completion_count,
-                             launcher.poll_cq(launch_config, device_qp, true, 1U, &completion, 5000));
+        NDS_ASSIGN_OR_RETURN(std::uint32_t completion_count, launcher->poll_cq(device_qp, true, 1U, &completion));
         if (completion_count != 0U) {
             if (completion.status != NDS_DEVICE_WC_SUCCESS)
                 return nds::Error{nds::ErrorCode::kRa, "Send completion failed"};

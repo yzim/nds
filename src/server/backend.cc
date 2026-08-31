@@ -174,11 +174,11 @@ Result<void> VerbsBackend::open(const BackendConfig &config, std::uint32_t qp_co
     return {};
 }
 
-Result<void> VerbsBackend::connect(const std::vector<nds::transport::QpInfo> &peers) {
+Result<void> VerbsBackend::connect(const std::vector<nds::QpInfo> &peers) {
     if (peers.size() != qps_.size())
         return Error{ErrorCode::kTransport, "peer returned a different QP count"};
     for (std::size_t index = 0U; index < qps_.size(); ++index) {
-        const nds::transport::QpInfo &peer = peers[index];
+        const nds::QpInfo &peer = peers[index];
         QueuePair &qp = qps_[index];
         ibv_mtu mtu{};
         if (!mtu_value(nds::transport::select_mtu(qp.local.path_mtu, peer.path_mtu), &mtu))
@@ -315,7 +315,7 @@ Result<void> VerbsBackend::write(std::size_t qp_index, const RegisteredRegion &l
     return transfer(qp_index, IBV_WR_RDMA_WRITE, local, remote_address, remote_key, length);
 }
 
-const std::vector<nds::transport::QpInfo> &VerbsBackend::local_qp_infos() const noexcept {
+const std::vector<nds::QpInfo> &VerbsBackend::local_qp_infos() const noexcept {
     return local_qps_;
 }
 

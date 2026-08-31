@@ -3,7 +3,7 @@
 
 namespace nds::client {
 
-/* Selects the implementation used by BackendLauncher. */
+/* Selects the implementation used by Launcher. */
 enum class BackendMode {
     Ra,
     Aicpu,

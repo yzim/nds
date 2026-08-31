@@ -233,10 +233,10 @@ Result<void> QueuePair::initialize() {
     return {};
 }
 
-Result<nds::transport::QpInfo> QueuePair::local_qp_info() const {
+Result<nds::QpInfo> QueuePair::local_qp_info() const {
     if (!created())
         return Error{ErrorCode::kInvalidArgument, "QP has not been created"};
-    nds::transport::QpInfo info{};
+    nds::QpInfo info{};
     info.qp_num = local_attributes_.qpn;
     info.psn = local_attributes_.psn;
     info.port_num = config_.port_num;
@@ -250,7 +250,7 @@ Result<nds::transport::QpInfo> QueuePair::local_qp_info() const {
     return info;
 }
 
-Result<void> QueuePair::connect(const nds::transport::QpInfo &peer) {
+Result<void> QueuePair::connect(const nds::QpInfo &peer) {
     if (!created() || connected_)
         return Error{ErrorCode::kInvalidArgument, "QP must be created and disconnected before connect"};
     if (peer.qp_num == 0U || peer.qp_num > kQpnMask || peer.psn > kPsnMask || peer.port_num == 0U ||

@@ -82,7 +82,7 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
     nds::TcpConnection channel = std::move(channel_result).value();
-    const nds::Result<nds::transport::QpInfo> peer_result =
+    const nds::Result<nds::QpInfo> peer_result =
         nds::examples::verbs::exchange_server_qp(channel, backend.local_qp_infos().front());
     if (!peer_result.ok()) {
         NDS_LOG_ERROR("verbs-server", "QP exchange failed: {}", peer_result.error().message);

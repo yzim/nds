@@ -1,9 +1,64 @@
 #include "launcher.hh"
 
-namespace nds {
+#include "runtime.hh"
+
+#include <cstddef>
+#include <limits>
+
+namespace nds::client {
+
+namespace {
+
+struct ThreeAddressArguments {
+    std::uint64_t first_address;
+    std::uint64_t second_address;
+    std::uint64_t return_value_address;
+};
+
+struct PollArguments {
+    std::uint64_t qp_address;
+    std::uint32_t is_send_cq;
+    std::uint32_t max_completions;
+    std::uint64_t wc_address;
+    std::uint64_t return_value_address;
+};
+
+template <typename Request>
+Result<void> launch_and_wait(Runtime *runtime, const AivLauncher *launcher, const LaunchConfig &config,
+                             const char *entry, Request request, std::uint64_t first_offset,
+                             std::uint64_t second_offset) {
+    if (runtime == nullptr || launcher == nullptr)
+        return Error{ErrorCode::kRuntime, "AIV backend is not loaded"};
+    NDS_ASSIGN_OR_RETURN(MemoryBuffer device_request, runtime->allocate(sizeof(request), MemoryLocation::Device));
+    NDS_RETURN_IF_ERROR(runtime->copy_to(&device_request, &request, sizeof(request)));
+    const std::uint64_t address = reinterpret_cast<std::uint64_t>(device_request.data());
+    ThreeAddressArguments arguments{address + first_offset, address + second_offset,
+                                    address + offsetof(Request, return_value)};
+    const int launch_result = launcher->launch(entry, config, &arguments, sizeof(arguments));
+    if (launch_result != ACL_SUCCESS)
+        return Error{ErrorCode::kRuntime, "AIV kernel launch failed: " + std::to_string(launch_result)};
+    const int sync_result = aclrtSynchronizeStreamWithTimeout(config.stream, config.sync_timeout_ms);
+    if (sync_result != ACL_SUCCESS)
+        return Error{ErrorCode::kRuntime, "AIV kernel synchronization failed: " + std::to_string(sync_result)};
+    NDS_RETURN_IF_ERROR(runtime->copy_from(&request, device_request, sizeof(request)));
+    return request.return_value == 0
+               ? Result<void>{}
+               : Error{ErrorCode::kRuntime, "AIV device operation failed: " + std::to_string(request.return_value)};
+}
+
+}  // namespace
 
 AivLauncher::~AivLauncher() {
     reset();
+}
+
+Result<std::unique_ptr<Launcher>> AivLauncher::open(Runtime *runtime, const std::string &kernel_path) {
+    if (runtime == nullptr)
+        return Error{ErrorCode::kInvalidArgument, "AIV launcher requires a runtime"};
+    std::unique_ptr<AivLauncher> launcher = std::make_unique<AivLauncher>();
+    launcher->runtime_ = runtime;
+    NDS_RETURN_IF_ERROR(launcher->load(kernel_path));
+    return std::unique_ptr<Launcher>(std::move(launcher));
 }
 
 Result<void> AivLauncher::load(const std::string &kernel_path) {
@@ -27,8 +82,8 @@ Result<void> AivLauncher::load(const std::string &kernel_path) {
     return {};
 }
 
-int AivLauncher::launch(const char *kernel_name, const client::LaunchConfig &launch_config, void *arguments,
-                        std::size_t argument_size) {
+int AivLauncher::launch(const char *kernel_name, const LaunchConfig &launch_config, void *arguments,
+                        std::size_t argument_size) const {
     if (!loaded() || kernel_name == nullptr || arguments == nullptr || argument_size == 0U ||
         launch_config.stream == nullptr || launch_config.block_dim == 0U)
         return -1;
@@ -66,4 +121,48 @@ bool AivLauncher::loaded() const noexcept {
     return binary_ != nullptr;
 }
 
-}  // namespace nds
+Result<void> AivLauncher::post_send_with_config(const LaunchConfig &config, const NdsDeviceQp &qp,
+                                                const NdsDeviceSendWr &wr) const {
+    const NdsDevicePostSendArgs request{qp, wr, std::numeric_limits<std::int32_t>::min()};
+    return launch_and_wait(runtime_, this, config, "nds_aiv_post_send_kernel", request,
+                           offsetof(NdsDevicePostSendArgs, qp), offsetof(NdsDevicePostSendArgs, wr));
+}
+
+Result<void> AivLauncher::post_recv_with_config(const LaunchConfig &config, const NdsDeviceQp &qp,
+                                                const NdsDeviceRecvWr &wr) const {
+    const NdsDevicePostRecvArgs request{qp, wr, std::numeric_limits<std::int32_t>::min()};
+    return launch_and_wait(runtime_, this, config, "nds_aiv_post_recv_kernel", request,
+                           offsetof(NdsDevicePostRecvArgs, qp), offsetof(NdsDevicePostRecvArgs, wr));
+}
+
+Result<std::uint32_t> AivLauncher::poll_cq_with_config(const LaunchConfig &config, const NdsDeviceQp &qp, bool send_cq,
+                                                       std::uint32_t max_completions, NdsDeviceWc *completions) const {
+    if (runtime_ == nullptr || completions == nullptr || max_completions == 0U)
+        return Error{ErrorCode::kInvalidArgument, "invalid AIV CQ poll arguments"};
+    NDS_ASSIGN_OR_RETURN(MemoryBuffer device_completions,
+                         runtime_->allocate(max_completions * sizeof(*completions), MemoryLocation::Device));
+    NdsDevicePollCqArgs request{qp, send_cq ? 1U : 0U, max_completions,
+                                reinterpret_cast<std::uint64_t>(device_completions.data()),
+                                std::numeric_limits<std::int32_t>::min()};
+    NDS_ASSIGN_OR_RETURN(MemoryBuffer device_request, runtime_->allocate(sizeof(request), MemoryLocation::Device));
+    NDS_RETURN_IF_ERROR(runtime_->copy_to(&device_request, &request, sizeof(request)));
+    const std::uint64_t address = reinterpret_cast<std::uint64_t>(device_request.data());
+    PollArguments arguments{address + offsetof(NdsDevicePollCqArgs, qp), send_cq ? 1U : 0U, max_completions,
+                            reinterpret_cast<std::uint64_t>(device_completions.data()),
+                            address + offsetof(NdsDevicePollCqArgs, return_value)};
+    const int launch_result = this->launch("nds_aiv_poll_cq_kernel", config, &arguments, sizeof(arguments));
+    if (launch_result != ACL_SUCCESS)
+        return Error{ErrorCode::kRuntime, "AIV CQ poll launch failed: " + std::to_string(launch_result)};
+    const int sync_result = aclrtSynchronizeStreamWithTimeout(config.stream, config.sync_timeout_ms);
+    if (sync_result != ACL_SUCCESS)
+        return Error{ErrorCode::kRuntime, "AIV CQ poll synchronization failed: " + std::to_string(sync_result)};
+    NDS_RETURN_IF_ERROR(runtime_->copy_from(&request, device_request, sizeof(request)));
+    if (request.return_value < 0)
+        return Error{ErrorCode::kRuntime, "AIV CQ poll failed: " + std::to_string(request.return_value)};
+    const std::uint32_t count = static_cast<std::uint32_t>(request.return_value);
+    if (count != 0U)
+        NDS_RETURN_IF_ERROR(runtime_->copy_from(completions, device_completions, count * sizeof(*completions)));
+    return count;
+}
+
+}  // namespace nds::client

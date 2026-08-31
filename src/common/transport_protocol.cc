@@ -6,7 +6,7 @@
 namespace nds::transport {
 namespace {
 
-CodecResult validate_qp_info(const QpInfo *info) {
+CodecResult validate_qp_info(const nds::QpInfo *info) {
     if (info == nullptr) {
         return CodecResult::InvalidRecord;
     }
@@ -71,7 +71,7 @@ CodecResult validate_transport_info(const TransportInfo *info) {
 
 }  // namespace
 
-CodecResult encode(const QpInfo *info, wire::QpInfo *encoded) {
+CodecResult encode(const nds::QpInfo *info, wire::QpInfo *encoded) {
     if (encoded == nullptr) {
         return CodecResult::InvalidArgument;
     }
@@ -150,8 +150,8 @@ uint32_t select_mtu(uint32_t local_active_mtu, uint32_t peer_reported_mtu) {
 
 namespace nds::transport {
 
-CodecResult decode(const wire::QpInfo *encoded, QpInfo *info) {
-    QpInfo decoded;
+CodecResult decode(const wire::QpInfo *encoded, nds::QpInfo *info) {
+    nds::QpInfo decoded;
 
     if (encoded == nullptr || info == nullptr) {
         return CodecResult::InvalidArgument;
