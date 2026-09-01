@@ -29,6 +29,10 @@ current architecture and protocol contract.
   parallel per-QP state export, explicit launcher data-path entrypoints, and
   fixed per-QP signal/credit accounting. Concurrent multi-request scheduling
   remains out of scope.
+- Transport backends own fixed-interval signaling, internal CQ reclamation, and
+  per-QP send/receive credit updates. Signal scheduling is independent of public
+  call and batch boundaries; callers do not poll transport CQs or set signal
+  flags.
 
 ## Delivered Work
 

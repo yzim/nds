@@ -91,6 +91,8 @@ benchmarking are not covered by this runner.
 The transport cases are the current layer focus. They validate the bounded
 launcher `RdmaSend`, `RdmaRecv`, `RdmaRead`, and `RdmaWrite` paths for each
 available backend using the complete transport descriptor and an explicit queue
-index. These tests do not claim queue-credit scheduling, concurrent requests, or
-transport throughput. The transport layer negotiates its QP count and MTU
-internally; the runner exposes only the backend and operation selection.
+index. The selected backend owns fixed-interval signaling, CQ reclamation, and
+transport queue credits; batch boundaries do not change the signal schedule.
+These tests do not claim concurrent storage requests or transport throughput.
+The transport layer negotiates its QP count and MTU internally; the runner
+exposes only the backend and operation selection.
