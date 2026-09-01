@@ -102,10 +102,12 @@ __aicore__ inline uint32_t ReclaimTransportCq(__gm__ const NdsQpDescriptor *qp, 
         StoreU32(cq->consumer_address, consumer);
         StoreU32(wq->tail_address, tail);
         StoreU32(cq->doorbell_address, consumer & 0x00ffffffU);
+        NdsTransportQpState next = LoadState(state);
         if (send_cq != 0U)
-            nds_transport_reclaim_send(state, count);
+            next.send_credits += count * next.signal_interval;
         else
-            nds_transport_reclaim_receive(state, count);
+            next.receive_credits += count;
+        StoreState(state, next);
     }
     *reclaimed = count;
     return status;

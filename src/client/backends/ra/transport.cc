@@ -14,14 +14,15 @@ Result<std::uint32_t> reclaim(client::QueuePair *qp, NdsTransportQpState *state,
         return Error{ErrorCode::kInvalidArgument, "RA transport completion state is missing"};
     NdsWc completions[kTransportPollBatch]{};
     NDS_ASSIGN_OR_RETURN(const std::uint32_t count, NdsRaPollCq(qp, send_cq, kTransportPollBatch, completions));
-    for (std::uint32_t index = 0U; index < count; ++index) {
-        if (completions[index].status != NDS_WC_SUCCESS)
-            return Error{ErrorCode::kRa, "RA transport completion failed"};
-    }
+    bool completion_failed = false;
+    for (std::uint32_t index = 0U; index < count; ++index)
+        completion_failed = completion_failed || completions[index].status != NDS_WC_SUCCESS;
     if (send_cq)
         nds_transport_reclaim_send(state, count);
     else
         nds_transport_reclaim_receive(state, count);
+    if (completion_failed)
+        return Error{ErrorCode::kRa, "RA transport completion failed"};
     return count;
 }
 

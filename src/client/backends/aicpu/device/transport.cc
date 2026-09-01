@@ -15,15 +15,14 @@ uint32_t reclaim(const NdsQpDescriptor *qp, NdsTransportQpState *state, bool sen
         return poll_result < 0 ? static_cast<uint32_t>(-poll_result)
                                : static_cast<uint32_t>(NDS_OPERATION_PROVIDER_FAILED);
     const uint32_t count = static_cast<uint32_t>(poll_result);
-    for (uint32_t index = 0U; index < count; ++index) {
-        if (completions[index].status != NDS_WC_SUCCESS)
-            return NDS_OPERATION_PROVIDER_FAILED;
-    }
+    bool completion_failed = false;
+    for (uint32_t index = 0U; index < count; ++index)
+        completion_failed = completion_failed || completions[index].status != NDS_WC_SUCCESS;
     if (send_cq)
         nds_transport_reclaim_send(state, count);
     else
         nds_transport_reclaim_receive(state, count);
-    return NDS_OPERATION_SUCCESS;
+    return completion_failed != false ? NDS_OPERATION_PROVIDER_FAILED : NDS_OPERATION_SUCCESS;
 }
 
 uint32_t reclaim_if_needed(const NdsQpDescriptor *qp, NdsTransportQpState *state, bool send_cq) {
