@@ -19,6 +19,7 @@ struct RaConnection {
 
 struct RaStorageContext {
     RaConnection connection{};
+    NdsTransportQpState *state{};
     void *command_device{};
     Libra::Sge command_buffer{};
     void *completion_device{};
@@ -35,10 +36,10 @@ Result<void> NdsRaPostRecv(client::QueuePair *qp, const NdsRecvWr &wr);
 Result<std::uint32_t> NdsRaPollCq(client::QueuePair *qp, bool is_send_cq, std::uint32_t max_completions, NdsWc *wc);
 
 /* Connection layer. Send/Read/Write build a work request and submit it. */
-Result<void> NdsRaRdmaSend(const RaConnection &connection, const NdsSendWr &wr);
-Result<void> NdsRaRdmaRecv(const RaConnection &connection, const NdsRecvWr &wr);
-Result<void> NdsRaRdmaRead(const RaConnection &connection, const NdsSendWr &wr);
-Result<void> NdsRaRdmaWrite(const RaConnection &connection, const NdsSendWr &wr);
+Result<void> NdsRaRdmaSend(const RaConnection &connection, NdsTransportQpState *state, const NdsSendWr &wr);
+Result<void> NdsRaRdmaRecv(const RaConnection &connection, NdsTransportQpState *state, const NdsRecvWr &wr);
+Result<void> NdsRaRdmaRead(const RaConnection &connection, NdsTransportQpState *state, const NdsSendWr &wr);
+Result<void> NdsRaRdmaWrite(const RaConnection &connection, NdsTransportQpState *state, const NdsSendWr &wr);
 
 /* Storage layer. Completion is the CPU-written NDS protocol record. */
 Result<void> NdsRaStorageRead(const RaStorageContext &context, const StorageReadCommand &command);

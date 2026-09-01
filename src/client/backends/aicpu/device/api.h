@@ -15,12 +15,15 @@ uint32_t nds_aicpu_post_recv(const NdsQpDescriptor *qp, const NdsRecvWr *wr, int
 uint32_t nds_aicpu_poll_cq(const NdsQpDescriptor *qp, uint32_t is_send_cq, uint32_t max_completions, NdsWc *wc,
                            int32_t *return_value);
 
+/* Transport owns signaling through NdsTransportQpState. Callers, including
+ * direct device-operator users, must leave NDS_SEND_SIGNALED clear. */
 uint32_t nds_aicpu_rdma_send(const NdsTransportDescriptor *transport, uint32_t queue_index, const NdsSendWr *wr,
                              int32_t *return_value);
 uint32_t nds_aicpu_rdma_recv(const NdsTransportDescriptor *transport, uint32_t queue_index, const NdsRecvWr *wr,
                              int32_t *return_value);
 uint32_t nds_aicpu_rdma_read(const NdsTransportDescriptor *transport, uint32_t queue_index, const NdsSendWr *wr,
                              int32_t *return_value);
+/* The transport applies its signal interval; leave NDS_SEND_SIGNALED clear. */
 uint32_t nds_aicpu_rdma_write(const NdsTransportDescriptor *transport, uint32_t queue_index, const NdsSendWr *wr,
                               int32_t *return_value);
 

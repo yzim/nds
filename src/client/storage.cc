@@ -124,8 +124,6 @@ Result<void> submit_transport_bootstrap(Runtime *runtime, Transport *transport, 
         return Error{ErrorCode::kInvalidArgument, "storage bootstrap requires a runtime and transport"};
     NDS_ASSIGN_OR_RETURN(std::unique_ptr<Launcher> launcher,
                          Launcher::open(runtime, transport->backend().mode, transport->backend().artifact_path));
-    NDS_ASSIGN_OR_RETURN(NdsQpDescriptor host_qp, transport->host_qp_descriptor(0U));
-
     StreamOwner stream;
     if (transport->backend().mode != BackendMode::Ra) {
         const int result = aclrtCreateStream(&stream.stream);
@@ -133,23 +131,9 @@ Result<void> submit_transport_bootstrap(Runtime *runtime, Transport *transport, 
             return Error{ErrorCode::kRuntime, "storage bootstrap stream creation failed: " + std::to_string(result)};
     }
     const LaunchConfig config{.stream = stream.stream, .sync = true, .sync_timeout_ms = kCompletionTimeoutMs};
-    const NdsSendWr wr{1U, NDS_WR_SEND, NDS_SEND_SIGNALED, {region.address(), length, region.local_key()}, 0U, 0U, 0U};
+    const NdsSendWr wr{1U, NDS_WR_SEND, 0U, {region.address(), length, region.local_key()}, 0U, 0U, 0U};
     NDS_RETURN_IF_ERROR(launcher->rdma_send(config, transport->device_transport(), 0U, wr));
-
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(kCompletionTimeoutMs);
-    while (std::chrono::steady_clock::now() < deadline) {
-        NdsWc completion{};
-        NDS_ASSIGN_OR_RETURN(std::uint32_t count,
-                             launcher->with_config(config).poll_cq(host_qp, true, 1U, &completion));
-        if (count == 0U) {
-            std::this_thread::yield();
-            continue;
-        }
-        if (completion.wr_id != wr.wr_id || completion.status != NDS_WC_SUCCESS)
-            return Error{ErrorCode::kTransport, "storage bootstrap send completion failed"};
-        return {};
-    }
-    return Error{ErrorCode::kRuntime, "timed out waiting for storage bootstrap send completion"};
+    return {};
 }
 
 template <typename Args, typename Command>
@@ -581,6 +565,7 @@ Result<void> StorageClient::execute_storage_read(const StorageReadCommand &comma
     if (transport_->backend().mode == BackendMode::Ra) {
         const RaStorageContext context{
             {runtime_, transport_->qp()},
+            reinterpret_cast<NdsTransportQpState *>(transport_->device_transport().qp_states_address),
             command_buffer_.data(),
             {command_region_.address(), static_cast<std::uint32_t>(command_region_.length()),
              command_region_.local_key()},
@@ -600,6 +585,7 @@ Result<void> StorageClient::execute_storage_write(const StorageWriteCommand &com
     if (transport_->backend().mode == BackendMode::Ra) {
         const RaStorageContext context{
             {runtime_, transport_->qp()},
+            reinterpret_cast<NdsTransportQpState *>(transport_->device_transport().qp_states_address),
             command_buffer_.data(),
             {command_region_.address(), static_cast<std::uint32_t>(command_region_.length()),
              command_region_.local_key()},
@@ -619,6 +605,7 @@ Result<void> StorageClient::execute_storage_batch_read(const StorageBatchReadCom
     if (transport_->backend().mode == BackendMode::Ra) {
         const RaStorageContext context{
             {runtime_, transport_->qp()},
+            reinterpret_cast<NdsTransportQpState *>(transport_->device_transport().qp_states_address),
             command_buffer_.data(),
             {command_region_.address(), static_cast<std::uint32_t>(command_region_.length()),
              command_region_.local_key()},
@@ -639,6 +626,7 @@ Result<void> StorageClient::execute_storage_batch_write(const StorageBatchWriteC
     if (transport_->backend().mode == BackendMode::Ra) {
         const RaStorageContext context{
             {runtime_, transport_->qp()},
+            reinterpret_cast<NdsTransportQpState *>(transport_->device_transport().qp_states_address),
             command_buffer_.data(),
             {command_region_.address(), static_cast<std::uint32_t>(command_region_.length()),
              command_region_.local_key()},

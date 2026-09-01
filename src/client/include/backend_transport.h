@@ -45,6 +45,41 @@ NDS_TRANSPORT_INLINE NdsTransportQpState *nds_transport_qp_state(
     return (NdsTransportQpState *)(uintptr_t)(transport->qp_states_address) + queue_index;
 }
 
+NDS_TRANSPORT_INLINE uint32_t nds_transport_should_signal(NDS_TRANSPORT_GLOBAL const NdsTransportQpState *state) {
+    if (state == 0 || state->signal_interval == 0U)
+        return 0U;
+    return state->unsignaled_count + 1U >= state->signal_interval ? 1U : 0U;
+}
+
+NDS_TRANSPORT_INLINE uint32_t nds_transport_record_send(NDS_TRANSPORT_GLOBAL NdsTransportQpState *state,
+                                                        uint32_t signaled) {
+    if (state == 0 || state->send_credits == 0U)
+        return 0U;
+    --state->send_credits;
+    state->unsignaled_count = signaled != 0U ? 0U : state->unsignaled_count + 1U;
+    return 1U;
+}
+
+NDS_TRANSPORT_INLINE uint32_t nds_transport_record_receive(NDS_TRANSPORT_GLOBAL NdsTransportQpState *state) {
+    if (state == 0 || state->receive_credits == 0U)
+        return 0U;
+    --state->receive_credits;
+    return 1U;
+}
+
+NDS_TRANSPORT_INLINE void nds_transport_reclaim_send(NDS_TRANSPORT_GLOBAL NdsTransportQpState *state,
+                                                     uint32_t completion_count) {
+    if (state == 0 || state->signal_interval == 0U)
+        return;
+    state->send_credits += completion_count * state->signal_interval;
+}
+
+NDS_TRANSPORT_INLINE void nds_transport_reclaim_receive(NDS_TRANSPORT_GLOBAL NdsTransportQpState *state,
+                                                        uint32_t completion_count) {
+    if (state != 0)
+        state->receive_credits += completion_count;
+}
+
 #if defined(__CCE_AICORE__)
 __aicore__ __gm__ inline const NdsQpDescriptor *nds_transport_qp_global(__gm__ const NdsTransportDescriptor *transport,
                                                                         uint32_t queue_index) {

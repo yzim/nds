@@ -77,3 +77,24 @@ TEST(DeviceConnectionTest, IndexesTransportDescriptorsAndStatesTogether) {
     EXPECT_EQ(nds_transport_qp(&transport, 2U), nullptr);
     EXPECT_EQ(nds_transport_qp_state(&transport, 2U), nullptr);
 }
+
+TEST(DeviceConnectionTest, KeepsSignalScheduleAcrossCallsAndReclaimsCredits) {
+    NdsTransportQpState state{4U, 0U, 8U, 4U};
+
+    EXPECT_EQ(nds_transport_should_signal(&state), 0U);
+    ASSERT_EQ(nds_transport_record_send(&state, 0U), 1U);
+    EXPECT_EQ(state.unsignaled_count, 1U);
+    EXPECT_EQ(state.send_credits, 7U);
+
+    ASSERT_EQ(nds_transport_record_send(&state, 0U), 1U);
+    ASSERT_EQ(nds_transport_record_send(&state, 0U), 1U);
+    EXPECT_EQ(nds_transport_should_signal(&state), 1U);
+    ASSERT_EQ(nds_transport_record_send(&state, 1U), 1U);
+    EXPECT_EQ(state.unsignaled_count, 0U);
+    EXPECT_EQ(state.send_credits, 4U);
+
+    nds_transport_reclaim_send(&state, 1U);
+    EXPECT_EQ(state.send_credits, 8U);
+    nds_transport_reclaim_receive(&state, 2U);
+    EXPECT_EQ(state.receive_credits, 6U);
+}

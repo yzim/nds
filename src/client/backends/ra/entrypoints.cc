@@ -14,16 +14,18 @@ nds::Result<nds::RaConnection> host_connection(const NdsQpDescriptor &qp) {
 
 template <typename WorkRequest>
 int rdma_operation(const NdsTransportDescriptor *transport, std::uint32_t queue_index, const WorkRequest *wr,
-                   nds::Result<void> (*operation)(const nds::RaConnection &, const WorkRequest &)) {
+                   nds::Result<void> (*operation)(const nds::RaConnection &, NdsTransportQpState *,
+                                                  const WorkRequest &)) {
     if (transport == nullptr || wr == nullptr)
         return -1;
     const NdsQpDescriptor *qp = nds_transport_qp(transport, queue_index);
-    if (qp == nullptr)
+    NdsTransportQpState *state = nds_transport_qp_state(transport, queue_index);
+    if (qp == nullptr || state == nullptr)
         return -1;
     const auto connection = host_connection(*qp);
     if (!connection.ok())
         return -1;
-    return operation(connection.value(), *wr).ok() ? 0 : -1;
+    return operation(connection.value(), state, *wr).ok() ? 0 : -1;
 }
 
 template <typename Command>
@@ -32,13 +34,15 @@ int storage_operation(const NdsStorageContext *context, const Command *command,
     if (context == nullptr || command == nullptr)
         return -1;
     const NdsQpDescriptor *qp = nds_transport_qp(&context->transport, 0U);
-    if (qp == nullptr)
+    NdsTransportQpState *state = nds_transport_qp_state(&context->transport, 0U);
+    if (qp == nullptr || state == nullptr)
         return -1;
     const auto connection = host_connection(*qp);
     if (!connection.ok())
         return -1;
     const nds::RaStorageContext host_context{
         {connection.value().runtime, connection.value().qp},
+        state,
         reinterpret_cast<void *>(context->command_buffer.address),
         {context->command_buffer.address, context->command_buffer.length, context->command_buffer.local_key},
         reinterpret_cast<void *>(context->completion.address),

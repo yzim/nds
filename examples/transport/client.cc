@@ -7,13 +7,11 @@
 #include <CLI/CLI.hpp>
 
 #include <cstddef>
-#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <memory>
 #include <span>
 #include <string>
-#include <thread>
 #include <vector>
 
 namespace {
@@ -93,6 +91,16 @@ nds::Result<void> send_control_signal(nds::TcpConnection *channel) {
     return channel->send(std::as_bytes(std::span{&ready, 1U}));
 }
 
+nds::Result<void> wait_control_signal(nds::TcpConnection *channel) {
+    if (channel == nullptr)
+        return nds::Error{nds::ErrorCode::kInvalidArgument, "TCP exchange channel is required"};
+    std::uint8_t value{};
+    if (const auto received = channel->receive(std::as_writable_bytes(std::span{&value, 1U})); !received.ok())
+        return nds::Error{received.error()};
+    return value == 1U ? nds::Result<void>{}
+                       : nds::Error{nds::ErrorCode::kTransport, "invalid transport control signal"};
+}
+
 nds::Result<nds::client::MemoryBuffer> prepare_payload(nds::client::Runtime *runtime, bool initialize) {
     if (runtime == nullptr)
         return nds::Error{nds::ErrorCode::kInvalidArgument, "runtime is required"};
@@ -115,96 +123,72 @@ nds::Result<void> verify_payload(nds::client::Runtime *runtime, const nds::clien
                : nds::Error{nds::ErrorCode::kRuntime, "transport payload mismatch"};
 }
 
-nds::Result<void> wait_completion(nds::client::Launcher *launcher, const nds::client::LaunchConfig &launch_config,
-                                  const NdsQpDescriptor &qp, bool send_cq) {
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(5000U);
-    while (std::chrono::steady_clock::now() < deadline) {
-        NdsWc completion{};
-        NDS_ASSIGN_OR_RETURN(std::uint32_t count,
-                             launcher->with_config(launch_config).poll_cq(qp, send_cq, 1U, &completion));
-        if (count == 0U) {
-            std::this_thread::yield();
-            continue;
-        }
-        return completion.status == NDS_WC_SUCCESS
-                   ? nds::Result<void>{}
-                   : nds::Error{nds::ErrorCode::kTransport, "transport completion failed"};
-    }
-    return nds::Error{nds::ErrorCode::kRuntime, "transport completion timed out"};
-}
-
 nds::Result<void> run_send(nds::client::Transport *transport, nds::client::Launcher *launcher,
-                           const nds::client::LaunchConfig &launch_config, const NdsQpDescriptor &host_qp,
-                           std::uint32_t queue_index, const nds::client::MemoryRegion &region) {
-    const NdsSendWr send_wr{1U, NDS_WR_SEND, NDS_SEND_SIGNALED, {region.address(), kBytes, region.local_key()}, 0U,
-                            0U, 0U};
+                           const nds::client::LaunchConfig &launch_config, std::uint32_t queue_index,
+                           const nds::client::MemoryRegion &region) {
+    const NdsSendWr send_wr{1U, NDS_WR_SEND, 0U, {region.address(), kBytes, region.local_key()}, 0U, 0U, 0U};
     NDS_RETURN_IF_ERROR(launcher->rdma_send(launch_config, transport->device_transport(), queue_index, send_wr));
-    NDS_RETURN_IF_ERROR(wait_completion(launcher, launch_config, host_qp, true));
-    return {};
+    return wait_control_signal(transport->exchange_channel());
 }
 
 nds::Result<void> run_receive(nds::client::Runtime *runtime, nds::client::Transport *transport,
                               nds::client::Launcher *launcher, const nds::client::LaunchConfig &launch_config,
-                              const NdsQpDescriptor &host_qp, std::uint32_t queue_index,
-                              const nds::client::MemoryRegion &region, const nds::client::MemoryBuffer &buffer) {
+                              std::uint32_t queue_index, const nds::client::MemoryRegion &region,
+                              const nds::client::MemoryBuffer &buffer) {
     const NdsRecvWr receive_wr{1U, {region.address(), kBytes, region.local_key()}};
     NDS_RETURN_IF_ERROR(launcher->rdma_recv(launch_config, transport->device_transport(), queue_index, receive_wr));
     // The server sends only after this TCP acknowledgement, so the receive is armed first.
     NDS_RETURN_IF_ERROR(send_control_signal(transport->exchange_channel()));
-    NDS_RETURN_IF_ERROR(wait_completion(launcher, launch_config, host_qp, false));
+    NDS_RETURN_IF_ERROR(wait_control_signal(transport->exchange_channel()));
     return verify_payload(runtime, buffer);
 }
 
 nds::Result<void> run_read(nds::client::Runtime *runtime, nds::client::Transport *transport,
                            nds::client::Launcher *launcher, const nds::client::LaunchConfig &launch_config,
-                           const NdsQpDescriptor &host_qp, std::uint32_t queue_index,
-                           const nds::client::MemoryRegion &region, const nds::client::MemoryBuffer &buffer) {
+                           std::uint32_t queue_index, const nds::client::MemoryRegion &region,
+                           const nds::client::MemoryBuffer &buffer) {
     NDS_ASSIGN_OR_RETURN(nds::RemoteMemory remote, receive_remote_memory(transport->exchange_channel()));
     const NdsSendWr read_wr{1U,
                             NDS_WR_RDMA_READ,
-                            NDS_SEND_SIGNALED,
+                            0U,
                             {region.address(), kBytes, region.local_key()},
                             remote.address,
                             remote.remote_key,
                             0U};
     NDS_RETURN_IF_ERROR(launcher->rdma_read(launch_config, transport->device_transport(), queue_index, read_wr));
-    NDS_RETURN_IF_ERROR(wait_completion(launcher, launch_config, host_qp, true));
     NDS_RETURN_IF_ERROR(send_control_signal(transport->exchange_channel()));
     return verify_payload(runtime, buffer);
 }
 
 nds::Result<void> run_write(nds::client::Transport *transport, nds::client::Launcher *launcher,
-                            const nds::client::LaunchConfig &launch_config, const NdsQpDescriptor &host_qp,
-                            std::uint32_t queue_index, const nds::client::MemoryRegion &region) {
+                            const nds::client::LaunchConfig &launch_config, std::uint32_t queue_index,
+                            const nds::client::MemoryRegion &region) {
     NDS_ASSIGN_OR_RETURN(nds::RemoteMemory remote, receive_remote_memory(transport->exchange_channel()));
     const NdsSendWr write_wr{1U,
                              NDS_WR_RDMA_WRITE,
-                             NDS_SEND_SIGNALED,
+                             0U,
                              {region.address(), kBytes, region.local_key()},
                              remote.address,
                              remote.remote_key,
                              0U};
     NDS_RETURN_IF_ERROR(launcher->rdma_write(launch_config, transport->device_transport(), queue_index, write_wr));
-    NDS_RETURN_IF_ERROR(wait_completion(launcher, launch_config, host_qp, true));
-    const NdsSendWr signal_wr{2U, NDS_WR_SEND, NDS_SEND_SIGNALED, {region.address(), 1U, region.local_key()}, 0U,
-                              0U, 0U};
-    NDS_RETURN_IF_ERROR(launcher->rdma_send(launch_config, transport->device_transport(), queue_index, signal_wr));
-    return wait_completion(launcher, launch_config, host_qp, true);
+    const NdsSendWr signal_wr{2U, NDS_WR_SEND, 0U, {region.address(), 1U, region.local_key()}, 0U, 0U, 0U};
+    return launcher->rdma_send(launch_config, transport->device_transport(), queue_index, signal_wr);
 }
 
 nds::Result<void> run_operation(Operation operation, nds::client::Runtime *runtime, nds::client::Transport *transport,
                                 nds::client::Launcher *launcher, const nds::client::LaunchConfig &launch_config,
-                                const NdsQpDescriptor &host_qp, std::uint32_t queue_index,
-                                const nds::client::MemoryRegion &region, const nds::client::MemoryBuffer &buffer) {
+                                std::uint32_t queue_index, const nds::client::MemoryRegion &region,
+                                const nds::client::MemoryBuffer &buffer) {
     switch (operation) {
         case Operation::Send:
-            return run_send(transport, launcher, launch_config, host_qp, queue_index, region);
+            return run_send(transport, launcher, launch_config, queue_index, region);
         case Operation::Recv:
-            return run_receive(runtime, transport, launcher, launch_config, host_qp, queue_index, region, buffer);
+            return run_receive(runtime, transport, launcher, launch_config, queue_index, region, buffer);
         case Operation::Read:
-            return run_read(runtime, transport, launcher, launch_config, host_qp, queue_index, region, buffer);
+            return run_read(runtime, transport, launcher, launch_config, queue_index, region, buffer);
         case Operation::Write:
-            return run_write(transport, launcher, launch_config, host_qp, queue_index, region);
+            return run_write(transport, launcher, launch_config, queue_index, region);
     }
     return nds::Error{nds::ErrorCode::kInvalidArgument, "unsupported transport operation"};
 }
@@ -217,7 +201,6 @@ nds::Result<void> run(int argc, char **argv) {
 
     nds::client::Transport transport;
     NDS_RETURN_IF_ERROR(transport.open(&runtime, config.transport, config.backend));
-    NDS_ASSIGN_OR_RETURN(NdsQpDescriptor host_qp, transport.host_qp_descriptor(0U));
     NDS_ASSIGN_OR_RETURN(std::unique_ptr<nds::client::Launcher> launcher,
                          nds::client::Launcher::open(&runtime, config.backend.mode, config.backend.artifact_path));
 
@@ -245,8 +228,8 @@ nds::Result<void> run(int argc, char **argv) {
 
     const nds::client::LaunchConfig launch_config{
         .block_dim = 1U, .stream = stream, .sync = true, .sync_timeout_ms = 5000};
-    NDS_RETURN_IF_ERROR(run_operation(config.operation, &runtime, &transport, launcher.get(), launch_config, host_qp,
-                                      0U, region, buffer));
+    NDS_RETURN_IF_ERROR(run_operation(config.operation, &runtime, &transport, launcher.get(), launch_config, 0U,
+                                      region, buffer));
     return {};
 }
 }  // namespace

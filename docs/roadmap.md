@@ -26,8 +26,9 @@ current architecture and protocol contract.
   mode.
 - The transport baseline is a bounded indexed QP set with QP-count negotiation,
   endpoint metadata exchange, complete `NdsTransportDescriptor` descriptor and
-  parallel per-QP state export, and explicit launcher data-path entrypoints.
-  There is no general queue-credit or multi-request scheduling contract.
+  parallel per-QP state export, explicit launcher data-path entrypoints, and
+  fixed per-QP signal/credit accounting. Concurrent multi-request scheduling
+  remains out of scope.
 
 ## Delivered Work
 
@@ -60,15 +61,11 @@ current architecture and protocol contract.
 
 ### Transport Layer
 
-- Refine the launcher request and completion contract, including ownership of
-  posted work and CQ observation outside the control-path `Transport`.
-- Define queue depth, credits, receive-WR replenishment, and ownership for
-  indexed QPs before exposing concurrent requests or claiming throughput gains.
-- Specify backend-consistent batch behavior and partial-post error reporting;
-  the current AIV multi-request path is an implementation capability, not yet a
-  portable batching contract.
-- Add transport-focused correctness and performance measurements that separate
-  TCP/QP bootstrap, device posting, CQ retirement, and peer data movement.
+- Measure transport behavior while separating TCP/QP bootstrap, device posting,
+  fixed-interval signaling, CQ retirement, and peer data movement.
+- Extend the fixed per-QP credit and signaling policy to concurrent storage
+  requests only with command IDs, completion demultiplexing, and explicit
+  resource-lifetime rules.
 
 ### Bootstrap Configuration
 

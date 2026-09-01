@@ -26,7 +26,7 @@ uint32_t execute(const NdsStorageContext *context, const Request *command, Seria
     const NdsSendWr transfer{
         command->command_id,
         NDS_WR_SEND,
-        NDS_SEND_SIGNALED,
+        0U,
         {context->command_buffer.address, nds::kStorageCommandBytes, context->command_buffer.local_key},
         0U,
         0U,

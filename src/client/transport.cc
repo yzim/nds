@@ -11,6 +11,8 @@
 namespace nds::client {
 namespace {
 
+constexpr std::uint32_t kTransportSignalInterval = 1U;
+
 Result<void> send_transport_info(TcpConnection *channel, const nds::transport::TransportInfo &info) {
     if (channel == nullptr)
         return Error{ErrorCode::kInvalidArgument, "TCP connection is required"};
@@ -234,7 +236,7 @@ Result<void> Transport::build_device_transport() {
             descriptor.receive_queue.depth != 0U ? descriptor.receive_queue.depth : config_.qp.receive_queue_depth;
         if (send_depth == 0U || receive_depth == 0U)
             return Error{ErrorCode::kInvalidArgument, "transport QP state requires nonzero queue capacities"};
-        initial_states.push_back({1U, 0U, send_depth, receive_depth});
+        initial_states.push_back({kTransportSignalInterval, 0U, send_depth, receive_depth});
     }
     const auto state_location = backend_.mode == BackendMode::Ra ? MemoryLocation::Host : MemoryLocation::Device;
     auto state_storage = runtime_->allocate(initial_states.size() * sizeof(NdsTransportQpState), state_location);

@@ -15,6 +15,14 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#if defined(__CCE_AICORE__)
+#define NDS_HNS_HW_GLOBAL __gm__
+#define NDS_HNS_HW_INLINE __aicore__ inline
+#else
+#define NDS_HNS_HW_GLOBAL
+#define NDS_HNS_HW_INLINE inline
+#endif
+
 typedef struct NdsHnsHwWqeDataSeg {
     uint32_t length;
     uint32_t local_key;
@@ -50,28 +58,32 @@ enum NdsHnsHwSqFlag {
                 ? NDS_HNS_HW_SQ_RDMA_WRITE       \
                 : ((opcode) == NDS_WR_RDMA_READ ? NDS_HNS_HW_SQ_RDMA_READ : NDS_HNS_HW_SQ_INVALID)))
 
-static inline int nds_hns_hw_queue_has_space(uint32_t head, uint32_t tail, uint32_t depth, uint32_t reserved_entries) {
+NDS_HNS_HW_INLINE int nds_hns_hw_queue_has_space(uint32_t head, uint32_t tail, uint32_t depth,
+                                                 uint32_t reserved_entries) {
     return depth > reserved_entries && head - tail < depth - reserved_entries;
 }
 
-static inline void nds_hns_hw_encode_wqe_data_seg(NdsHnsHwWqeDataSeg *segment, uint64_t address, uint32_t length,
-                                                  uint32_t local_key) {
+NDS_HNS_HW_INLINE void nds_hns_hw_encode_wqe_data_seg(NDS_HNS_HW_GLOBAL NdsHnsHwWqeDataSeg *segment, uint64_t address,
+                                                      uint32_t length, uint32_t local_key) {
     segment->length = length;
     segment->local_key = local_key;
     segment->address = address;
 }
 
-static inline int nds_hns_hw_cqe_is_ready(const NdsHnsHwCqe *cqe, uint32_t consumer, uint32_t depth) {
+NDS_HNS_HW_INLINE int nds_hns_hw_cqe_is_ready(NDS_HNS_HW_GLOBAL const NdsHnsHwCqe *cqe, uint32_t consumer,
+                                              uint32_t depth) {
     const uint32_t owner = (cqe->byte_4 >> 7U) & 1U;
     return depth != 0U && (owner ^ !!(consumer & depth)) != 0U;
 }
 
-static inline uint32_t nds_hns_hw_send_tail_for_cqe(uint32_t tail, uint32_t depth, const NdsHnsHwCqe *cqe) {
+NDS_HNS_HW_INLINE uint32_t nds_hns_hw_send_tail_for_cqe(uint32_t tail, uint32_t depth,
+                                                        NDS_HNS_HW_GLOBAL const NdsHnsHwCqe *cqe) {
     const uint32_t wqe_index = cqe->byte_4 >> 16U;
     return tail + ((wqe_index - tail) & (depth - 1U));
 }
 
-static inline void nds_hns_hw_decode_cqe(const NdsHnsHwCqe *cqe, uint64_t wr_id, NdsWc *completion) {
+NDS_HNS_HW_INLINE void nds_hns_hw_decode_cqe(NDS_HNS_HW_GLOBAL const NdsHnsHwCqe *cqe, uint64_t wr_id,
+                                             NDS_HNS_HW_GLOBAL NdsWc *completion) {
     completion->wr_id = wr_id;
     completion->status = (int32_t)((cqe->byte_4 >> 8U) & 0xffU);
     completion->opcode = (int32_t)(cqe->byte_4 & 0x1fU);
@@ -96,5 +108,8 @@ _Static_assert(offsetof(NdsHnsHwWqeDataSeg, local_key) == 4, "HNS receive local-
 _Static_assert(offsetof(NdsHnsHwWqeDataSeg, address) == 8, "HNS receive address offset changed");
 _Static_assert(sizeof(NdsHnsHwCqe) == 32, "HNS CQE ABI changed");
 #endif
+
+#undef NDS_HNS_HW_GLOBAL
+#undef NDS_HNS_HW_INLINE
 
 #endif

@@ -80,6 +80,13 @@ nds::Result<void> wait_control_signal(nds::TcpConnection *channel) {
     return {};
 }
 
+nds::Result<void> send_control_signal(nds::TcpConnection *channel) {
+    if (channel == nullptr)
+        return nds::Error{nds::ErrorCode::kInvalidArgument, "TCP exchange channel is required"};
+    const std::uint8_t value{1U};
+    return channel->send(std::as_bytes(std::span{&value, 1U}));
+}
+
 nds::Result<void> publish_memory(nds::TcpConnection *channel, const nds::server::MemoryRegion &region) {
     if (channel == nullptr || region.address() == nullptr || region.length() == 0U ||
         region.length() > std::numeric_limits<std::uint32_t>::max() || region.remote_key() == 0U)
@@ -105,7 +112,7 @@ nds::Result<void> run_send(nds::server::Transport *transport, std::uint32_t comp
     NDS_RETURN_IF_ERROR(transport->wait_receive(completion_timeout_ms));
     if (!verify(buffer))
         return nds::Error{nds::ErrorCode::kRuntime, "RdmaSend payload mismatch"};
-    return {};
+    return send_control_signal(transport->exchange_channel());
 }
 
 nds::Result<void> run_receive(nds::server::Transport *transport) {
@@ -114,7 +121,8 @@ nds::Result<void> run_receive(nds::server::Transport *transport) {
         nds::server::MemoryRegion region,
         transport->register_memory(buffer.data(), buffer.size(), nds::server::MemoryAccess::LocalRead));
     NDS_RETURN_IF_ERROR(wait_control_signal(transport->exchange_channel()));
-    return transport->send(region, static_cast<std::uint32_t>(buffer.size()));
+    NDS_RETURN_IF_ERROR(transport->send(region, static_cast<std::uint32_t>(buffer.size())));
+    return send_control_signal(transport->exchange_channel());
 }
 
 nds::Result<void> run_read(nds::server::Transport *transport) {

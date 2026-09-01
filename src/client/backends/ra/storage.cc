@@ -4,7 +4,7 @@ namespace nds {
 namespace {
 
 Result<void> validate_context(const RaStorageContext &context) {
-    if (context.connection.runtime == nullptr || context.connection.qp == nullptr ||
+    if (context.connection.runtime == nullptr || context.connection.qp == nullptr || context.state == nullptr ||
         context.command_device == nullptr || context.completion_device == nullptr ||
         context.command_buffer.address == 0U || context.command_buffer.local_key == 0U ||
         context.command_buffer.length < kStorageCommandBytes || context.completion.address == 0U ||
@@ -38,12 +38,12 @@ Result<void> execute(const RaStorageContext &context, const Request &command, Se
 
     const NdsSendWr transfer{command.command_id,
                              NDS_WR_SEND,
-                             NDS_SEND_SIGNALED,
+                             0U,
                              {context.command_buffer.address, kStorageCommandBytes, context.command_buffer.local_key},
                              0U,
                              0U,
                              0U};
-    return NdsRaRdmaSend(context.connection, transfer);
+    return NdsRaRdmaSend(context.connection, context.state, transfer);
 }
 
 }  // namespace

@@ -130,17 +130,17 @@ alive until the storage completion record is observed and its MR is
 deregistered. `aclrtMallocHost` is not suitable because Ascend documents that
 its result cannot be used in the device.
 
-AI-QPs omit `NDS_RA_AI_CALLER_POLLS_CQ` by default. With that flag set,
-`RaAiQpCreate` returns caller-visible send and receive CQ metadata and the
-selected launcher owns CQ polling. Without it, HCCP owns CQ consumption; NDS
-does not interpret HCCP CQ activity as storage completion.
-The client `Transport` layer does not expose CQ polling as storage completion.
+AI-QPs are created with `NDS_RA_AI_CALLER_POLLS_CQ` when the client transport
+backend owns CQ reclamation. Without that flag, HCCP owns CQ consumption; NDS
+does not interpret HCCP CQ activity as storage completion. The client
+`Transport` layer does not expose CQ polling to transport callers: its backend
+polls internally when transport credit reclamation requires it.
 The current serial storage path uses QP zero and waits for the CPU-written
 protocol completion record. A listener may serve multiple sessions serially,
 with each session's QPs and verbs resources torn down before the next is
-accepted. Transport multiplicity does not add command scheduling, CQ ownership,
-concurrent storage requests, or concurrent client sessions; those remain later
-design work.
+accepted. Transport multiplicity does not add command scheduling, concurrent
+storage requests, or concurrent client sessions; those remain later design
+work.
 The explicit NDS `PollCq(is_send_cq)` operation is available when the caller
 opts an AI-QP into caller-owned CQ mode with that RA flag. Its selector
 matches CANN RA `RaPollCq`: `true` selects the send CQ and `false` the receive CQ.
@@ -156,11 +156,11 @@ verbs API; a future extended or debug interface may define them separately.
 arrays, and a queue index selects the corresponding entries in both arrays.
 `NdsQpDescriptor` remains the hardware-facing descriptor; `NdsTransportQpState`
 contains transport-owned scheduling fields that do not belong to a QP, namely
-the signal interval, unsignaled count, and send/receive credit values. The
-arrays are owned by `Transport` through `MemoryBuffer`: RA uses host buffers,
-while AIV and AICPU use device buffers. The initial credit values mirror the
-negotiated/configured queue capacities. Credit accounting and signal policy are
-not yet a submission contract, so current launchers do not mutate these fields.
+the fixed signal interval, unsignaled count, and send/receive credit values.
+The arrays are owned by `Transport` through `MemoryBuffer`: RA uses host
+buffers, while AIV and AICPU use device buffers. The initial credit values
+mirror the negotiated/configured queue capacities. Transport backends update
+these fields as they accept WQEs and reclaim CQEs.
 
 Resources remain valid through the selected local CQ completion path, the CPU
 data movement and terminal completion Write, and NPU observation of the
@@ -234,8 +234,8 @@ execution.
 | Mode | RDMA-post site | Host launch role | Local completion |
 |---|---|---|---|
 | `ra` | Host CPU: `NdsRaPostSend` calls `RaTypicalSendWr`, then `rtRDMADBSend` | Executes the post and submission | RA CQ available |
-| `aiv` | NPU AIV writes WQEs and rings a doorbell | Creates and launches the operation-specific device args | HCCP-owned SCQ/RCQ by default; caller-owned polling is opt-in |
-| `aicpu` | AICPU provider posts Send; shared metadata posts Recv | Creates and launches the operation-specific device args | HCCP-owned SCQ/RCQ by default; caller-owned polling is opt-in |
+| `aiv` | NPU AIV writes WQEs and rings a doorbell | Creates and launches the operation-specific device args | Transport-owned SCQ/RCQ reclamation |
+| `aicpu` | AICPU provider posts Send; shared metadata posts Recv | Creates and launches the operation-specific device args | Transport-owned SCQ/RCQ reclamation |
 
 ### Submission
 
@@ -246,24 +246,27 @@ stateless `Launcher::rdma_send`, `rdma_recv`, `rdma_read`, or `rdma_write`
 operation with an explicit `LaunchConfig`, the complete `NdsTransportDescriptor`,
 and a queue index. Storage records and backend/device WR layouts are not part
 of the transport control API. The caller owns its buffers, registered regions,
-WR IDs, and completion handling.
+and WR IDs. The transport ignores the caller's `NDS_SEND_SIGNALED` bit and
+applies its per-QP signal interval; transport callers must leave that bit clear.
 
 The launcher also has an operation-specific send-batch API, but batching is still
 a bounded transport capability rather than a general asynchronous scheduler.
 The AIV path currently accepts multi-request send/read/write batches; RA and
 AICPU accept only one request for those operations. A one-request batch is
 therefore portable, while multi-request batches are explicitly AIV-only.
-Receive batches are not part of the client control API. There is no general
-queue-credit policy, request
-demultiplexing, or multi-request receive replenishment yet, so callers must not
-assume that a batch provides pipelining or a single device doorbell.
+Receive batches are not part of the client control API. The AIV batch path
+applies signaling independently of the batch boundary and rings once after its
+successfully posted prefix. A signal interval can therefore span multiple
+public calls and batches; a batch boundary has no completion meaning.
 
-The direct verbs launcher API provides CQ polling over a host QP descriptor;
-transport callers own the polling sequence and completion interpretation. For
-AI QPs, the transport exports a contiguous device descriptor array and leaves
-host-only opaque handles unset in that device copy. The RA path instead exports
-the host descriptor array and does not allocate a device descriptor buffer.
-Storage completion remains a separate protocol-visible completion-slot state.
+The direct verbs launcher API still provides explicit CQ polling over a host QP
+descriptor for verbs-layer users. Transport callers use only the stateless
+RDMA APIs; the selected backend polls and interprets CQEs internally to
+replenish transport credits. For AI QPs, the transport exports a contiguous
+device descriptor array and leaves host-only opaque handles unset in that
+device copy. The RA path instead exports the host descriptor array and does not
+allocate a device descriptor buffer. Storage completion remains a separate
+protocol-visible completion-slot state.
 
 The CPU verbs transport applies the same receive lifecycle: each successful
 post consumes one per-QP receive credit and assigns a transport-owned WR ID;
@@ -275,19 +278,22 @@ credit accounting is separate from storage-command scheduling.
 
 `LaunchConfig::sync_timeout_ms` bounds backend launch synchronization. Its
 default remains five seconds and it is an internal launch setting; it is not a
-CLI option. CQ wait policy belongs to the caller of the verbs launcher.
+CLI option. CQ reclamation policy belongs to the selected transport backend.
 
-Transport submission is a post operation. It does not imply local CQ
-retirement or peer storage completion.
+Every accepted transport call rings its newly posted WQE or successfully
+posted prefix. Signaling is scheduled by the fixed per-QP interval independently
+of public-call and batch boundaries. When a signal is scheduled, the backend
+uses the corresponding CQE to reclaim the completed WQE window; callers do not
+poll the transport CQ. This local transport completion is still distinct from
+peer storage completion.
 
 The AIV path also accepts a contiguous device-global `NdsSendWr` array
 for a multi-request send/read/write batch. The launcher copies that array to
-device memory and invokes the AIV batch entrypoint, which rings one doorbell
-for the successfully posted prefix. The result reports the prefix length and
-the first unposted request. It has the same single-producer-per-QP
-requirement as a single post. Queue credits and the corresponding RA/AICPU
-batching contract remain transport work; do not infer a common deferred-
-submission API from this capability.
+device memory and invokes the AIV batch entrypoint, which applies the ongoing
+per-QP signal schedule and rings one doorbell for the successfully posted
+prefix. The result reports the prefix length and the first unposted request. It
+has the same single-producer-per-QP requirement as a single post. RA and AICPU
+currently retain single-request entrypoints.
 
 The client `register_memory` API creates a move-only `MemoryRegion`; the caller
 keeps that region alive through the selected launcher operation and its CQ

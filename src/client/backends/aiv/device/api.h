@@ -22,18 +22,22 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void nds_aiv_poll_cq(__gm__ const NdsQpDes
                                                            uint32_t max_completions, __gm__ NdsWc *wc,
                                                            __gm__ int32_t *return_value);
 
+/* Transport owns signaling through NdsTransportQpState. Callers, including
+ * direct device-operator users, must leave NDS_SEND_SIGNALED clear. */
 NDS_AIV_DEVICE_API_LINKAGE __aicore__ void nds_aiv_rdma_send(__gm__ const NdsTransportDescriptor *transport,
                                                              uint32_t queue_index, const NdsSendWr *wr,
                                                              __gm__ int32_t *return_value, AscendC::TBuf<> *scratch);
 NDS_AIV_DEVICE_API_LINKAGE __aicore__ void nds_aiv_rdma_recv(__gm__ const NdsTransportDescriptor *transport,
                                                              uint32_t queue_index, const NdsRecvWr *wr,
                                                              __gm__ int32_t *return_value);
+/* The transport applies its signal interval; leave NDS_SEND_SIGNALED clear. */
 NDS_AIV_DEVICE_API_LINKAGE __aicore__ void nds_aiv_rdma_read(__gm__ const NdsTransportDescriptor *transport,
                                                              uint32_t queue_index, const NdsSendWr *wr,
                                                              __gm__ int32_t *return_value, AscendC::TBuf<> *scratch);
 NDS_AIV_DEVICE_API_LINKAGE __aicore__ void nds_aiv_rdma_write(__gm__ const NdsTransportDescriptor *transport,
                                                               uint32_t queue_index, const NdsSendWr *wr,
                                                               __gm__ int32_t *return_value, AscendC::TBuf<> *scratch);
+/* The transport applies its signal interval; leave NDS_SEND_SIGNALED clear. */
 NDS_AIV_DEVICE_API_LINKAGE __aicore__ void nds_aiv_rdma_send_batch(__gm__ const NdsTransportDescriptor *transport,
                                                                    uint32_t queue_index, __gm__ const NdsSendWr *wrs,
                                                                    uint32_t wr_count, __gm__ int32_t *return_value,
