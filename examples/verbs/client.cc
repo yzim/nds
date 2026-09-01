@@ -28,6 +28,12 @@ struct Config {
     std::string server;
 };
 
+enum class Operation {
+    Send,
+    Receive,
+    Write,
+};
+
 nds::Result<Config> parse(int argc, char **argv) {
     Config config;
     CLI::App app{"Exercise direct NPU verbs with a TCP QP bootstrap."};
@@ -132,9 +138,9 @@ nds::Result<void> run_simple_receive(nds::client::Launcher *launcher, const NdsD
     return nds::examples::verbs::wait_barrier(*connection);
 }
 
-nds::Result<void> run_write_with_stream(nds::client::Launcher *launcher, const NdsDeviceQp &device_qp,
-                                        const nds::client::MemoryRegion &payload_region, std::uint32_t payload_length,
-                                        nds::TcpConnection *connection, aclrtStream stream) {
+nds::Result<void> run_write(nds::client::Launcher *launcher, const NdsDeviceQp &device_qp,
+                            const nds::client::MemoryRegion &payload_region, std::uint32_t payload_length,
+                            nds::TcpConnection *connection, aclrtStream stream) {
     NDS_ASSIGN_OR_RETURN(nds::RemoteMemory remote_memory, nds::examples::verbs::receive_remote_memory(*connection));
     const NdsDeviceSendWr write_wr{
         .wr_id = 3U,
@@ -161,6 +167,20 @@ nds::Result<void> run_write_with_stream(nds::client::Launcher *launcher, const N
                                         }),
                                         device_qp, true));
     return nds::examples::verbs::send_barrier(*connection);
+}
+
+nds::Result<void> run_operation(Operation operation, nds::client::Launcher *launcher, const NdsDeviceQp &device_qp,
+                                const nds::client::MemoryRegion &payload_region, std::uint32_t payload_length,
+                                nds::TcpConnection *connection, aclrtStream stream) {
+    switch (operation) {
+        case Operation::Send:
+            return run_simple_send(launcher, device_qp, payload_region, payload_length, connection, stream);
+        case Operation::Receive:
+            return run_simple_receive(launcher, device_qp, payload_region, payload_length, connection, stream);
+        case Operation::Write:
+            return run_write(launcher, device_qp, payload_region, payload_length, connection, stream);
+    }
+    return nds::Error{nds::ErrorCode::kInvalidArgument, "unsupported verbs operation"};
 }
 
 nds::Result<void> run(int argc, char **argv) {
@@ -228,13 +248,11 @@ nds::Result<void> run(int argc, char **argv) {
         }
     } stream_guard{stream};
 
-    // Exercise Send and Recv, then the configured Write call.
-    NDS_RETURN_IF_ERROR(run_simple_send(launcher.get(), device_qp, payload_region,
-                                        static_cast<std::uint32_t>(payload.size()), &connection, stream));
-    NDS_RETURN_IF_ERROR(run_simple_receive(launcher.get(), device_qp, payload_region,
-                                           static_cast<std::uint32_t>(payload.size()), &connection, stream));
-    return run_write_with_stream(launcher.get(), device_qp, payload_region, static_cast<std::uint32_t>(payload.size()),
-                                 &connection, stream);
+    const std::uint32_t payload_length = static_cast<std::uint32_t>(payload.size());
+    for (const Operation operation : {Operation::Send, Operation::Receive, Operation::Write})
+        NDS_RETURN_IF_ERROR(
+            run_operation(operation, launcher.get(), device_qp, payload_region, payload_length, &connection, stream));
+    return {};
 }
 
 }  // namespace
