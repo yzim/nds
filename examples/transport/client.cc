@@ -10,6 +10,7 @@
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
+#include <memory>
 #include <span>
 #include <string>
 #include <thread>
@@ -132,107 +133,133 @@ nds::Result<void> wait_completion(nds::client::Launcher *launcher, const nds::cl
     return nds::Error{nds::ErrorCode::kRuntime, "transport completion timed out"};
 }
 
-nds::Result<void> run(nds::client::Runtime *runtime, nds::client::Transport *transport,
-                      nds::client::Launcher *launcher, const nds::client::LaunchConfig &launch_config,
-                      const NdsQpDescriptor &host_qp, std::uint32_t queue_index, Operation operation) {
-    const bool initialize = operation == Operation::Send || operation == Operation::Write;
-    NDS_ASSIGN_OR_RETURN(nds::client::MemoryBuffer buffer, prepare_payload(runtime, initialize));
-    NDS_ASSIGN_OR_RETURN(nds::client::MemoryRegion region,
-                         transport->register_memory(buffer, nds::client::MemoryAccess::LocalWrite |
-                                                                nds::client::MemoryAccess::RemoteWrite |
-                                                                nds::client::MemoryAccess::RemoteRead));
-    if (operation == Operation::Recv) {
-        const NdsRecvWr receive_wr{1U, {region.address(), kBytes, region.local_key()}};
-        NDS_RETURN_IF_ERROR(launcher->rdma_recv(launch_config, transport->device_transport(), queue_index, receive_wr));
-        NDS_RETURN_IF_ERROR(send_control_signal(transport->exchange_channel()));
-        NDS_RETURN_IF_ERROR(wait_completion(launcher, launch_config, host_qp, false));
-    } else if (operation == Operation::Send) {
-        const NdsSendWr send_wr{1U, NDS_WR_SEND, NDS_SEND_SIGNALED,
-                                      {region.address(), kBytes, region.local_key()}, 0U, 0U, 0U};
-        NDS_RETURN_IF_ERROR(launcher->rdma_send(launch_config, transport->device_transport(), queue_index, send_wr));
-        NDS_RETURN_IF_ERROR(wait_completion(launcher, launch_config, host_qp, true));
-    } else {
-        NDS_ASSIGN_OR_RETURN(nds::RemoteMemory remote, receive_remote_memory(transport->exchange_channel()));
-        const NdsSendWr data_wr{
-            1U,
-            operation == Operation::Read ? NDS_WR_RDMA_READ : NDS_WR_RDMA_WRITE,
-            NDS_SEND_SIGNALED,
-            {region.address(), kBytes, region.local_key()},
-            remote.address,
-            remote.remote_key,
-            0U};
-        if (operation == Operation::Read) {
-            NDS_RETURN_IF_ERROR(launcher->rdma_read(launch_config, transport->device_transport(), queue_index, data_wr));
-        } else {
-            NDS_RETURN_IF_ERROR(launcher->rdma_write(launch_config, transport->device_transport(), queue_index, data_wr));
-        }
-        NDS_RETURN_IF_ERROR(wait_completion(launcher, launch_config, host_qp, true));
-        if (operation == Operation::Write) {
-            const NdsSendWr signal_wr{2U, NDS_WR_SEND, NDS_SEND_SIGNALED,
-                                            {region.address(), 1U, region.local_key()}, 0U, 0U, 0U};
-            NDS_RETURN_IF_ERROR(
-                launcher->rdma_send(launch_config, transport->device_transport(), queue_index, signal_wr));
-            NDS_RETURN_IF_ERROR(wait_completion(launcher, launch_config, host_qp, true));
-        } else {
-            NDS_RETURN_IF_ERROR(send_control_signal(transport->exchange_channel()));
-        }
+nds::Result<void> run_send(nds::client::Transport *transport, nds::client::Launcher *launcher,
+                           const nds::client::LaunchConfig &launch_config, const NdsQpDescriptor &host_qp,
+                           std::uint32_t queue_index, const nds::client::MemoryRegion &region) {
+    const NdsSendWr send_wr{1U, NDS_WR_SEND, NDS_SEND_SIGNALED, {region.address(), kBytes, region.local_key()}, 0U,
+                            0U, 0U};
+    NDS_RETURN_IF_ERROR(launcher->rdma_send(launch_config, transport->device_transport(), queue_index, send_wr));
+    NDS_RETURN_IF_ERROR(wait_completion(launcher, launch_config, host_qp, true));
+    return {};
+}
+
+nds::Result<void> run_receive(nds::client::Runtime *runtime, nds::client::Transport *transport,
+                              nds::client::Launcher *launcher, const nds::client::LaunchConfig &launch_config,
+                              const NdsQpDescriptor &host_qp, std::uint32_t queue_index,
+                              const nds::client::MemoryRegion &region, const nds::client::MemoryBuffer &buffer) {
+    const NdsRecvWr receive_wr{1U, {region.address(), kBytes, region.local_key()}};
+    NDS_RETURN_IF_ERROR(launcher->rdma_recv(launch_config, transport->device_transport(), queue_index, receive_wr));
+    // The server sends only after this TCP acknowledgement, so the receive is armed first.
+    NDS_RETURN_IF_ERROR(send_control_signal(transport->exchange_channel()));
+    NDS_RETURN_IF_ERROR(wait_completion(launcher, launch_config, host_qp, false));
+    return verify_payload(runtime, buffer);
+}
+
+nds::Result<void> run_read(nds::client::Runtime *runtime, nds::client::Transport *transport,
+                           nds::client::Launcher *launcher, const nds::client::LaunchConfig &launch_config,
+                           const NdsQpDescriptor &host_qp, std::uint32_t queue_index,
+                           const nds::client::MemoryRegion &region, const nds::client::MemoryBuffer &buffer) {
+    NDS_ASSIGN_OR_RETURN(nds::RemoteMemory remote, receive_remote_memory(transport->exchange_channel()));
+    const NdsSendWr read_wr{1U,
+                            NDS_WR_RDMA_READ,
+                            NDS_SEND_SIGNALED,
+                            {region.address(), kBytes, region.local_key()},
+                            remote.address,
+                            remote.remote_key,
+                            0U};
+    NDS_RETURN_IF_ERROR(launcher->rdma_read(launch_config, transport->device_transport(), queue_index, read_wr));
+    NDS_RETURN_IF_ERROR(wait_completion(launcher, launch_config, host_qp, true));
+    NDS_RETURN_IF_ERROR(send_control_signal(transport->exchange_channel()));
+    return verify_payload(runtime, buffer);
+}
+
+nds::Result<void> run_write(nds::client::Transport *transport, nds::client::Launcher *launcher,
+                            const nds::client::LaunchConfig &launch_config, const NdsQpDescriptor &host_qp,
+                            std::uint32_t queue_index, const nds::client::MemoryRegion &region) {
+    NDS_ASSIGN_OR_RETURN(nds::RemoteMemory remote, receive_remote_memory(transport->exchange_channel()));
+    const NdsSendWr write_wr{1U,
+                             NDS_WR_RDMA_WRITE,
+                             NDS_SEND_SIGNALED,
+                             {region.address(), kBytes, region.local_key()},
+                             remote.address,
+                             remote.remote_key,
+                             0U};
+    NDS_RETURN_IF_ERROR(launcher->rdma_write(launch_config, transport->device_transport(), queue_index, write_wr));
+    NDS_RETURN_IF_ERROR(wait_completion(launcher, launch_config, host_qp, true));
+    const NdsSendWr signal_wr{2U, NDS_WR_SEND, NDS_SEND_SIGNALED, {region.address(), 1U, region.local_key()}, 0U,
+                              0U, 0U};
+    NDS_RETURN_IF_ERROR(launcher->rdma_send(launch_config, transport->device_transport(), queue_index, signal_wr));
+    return wait_completion(launcher, launch_config, host_qp, true);
+}
+
+nds::Result<void> run_operation(Operation operation, nds::client::Runtime *runtime, nds::client::Transport *transport,
+                                nds::client::Launcher *launcher, const nds::client::LaunchConfig &launch_config,
+                                const NdsQpDescriptor &host_qp, std::uint32_t queue_index,
+                                const nds::client::MemoryRegion &region, const nds::client::MemoryBuffer &buffer) {
+    switch (operation) {
+        case Operation::Send:
+            return run_send(transport, launcher, launch_config, host_qp, queue_index, region);
+        case Operation::Recv:
+            return run_receive(runtime, transport, launcher, launch_config, host_qp, queue_index, region, buffer);
+        case Operation::Read:
+            return run_read(runtime, transport, launcher, launch_config, host_qp, queue_index, region, buffer);
+        case Operation::Write:
+            return run_write(transport, launcher, launch_config, host_qp, queue_index, region);
     }
-    if (operation == Operation::Recv || operation == Operation::Read)
-        NDS_RETURN_IF_ERROR(verify_payload(runtime, buffer));
+    return nds::Error{nds::ErrorCode::kInvalidArgument, "unsupported transport operation"};
+}
+
+nds::Result<void> run(int argc, char **argv) {
+    NDS_ASSIGN_OR_RETURN(Config config, parse(argc, argv));
+
+    nds::client::Runtime runtime;
+    NDS_RETURN_IF_ERROR(runtime.open(config.runtime));
+
+    nds::client::Transport transport;
+    NDS_RETURN_IF_ERROR(transport.open(&runtime, config.transport, config.backend));
+    NDS_ASSIGN_OR_RETURN(NdsQpDescriptor host_qp, transport.host_qp_descriptor(0U));
+    NDS_ASSIGN_OR_RETURN(std::unique_ptr<nds::client::Launcher> launcher,
+                         nds::client::Launcher::open(&runtime, config.backend.mode, config.backend.artifact_path));
+
+    const bool initialize = config.operation == Operation::Send || config.operation == Operation::Write;
+    NDS_ASSIGN_OR_RETURN(nds::client::MemoryBuffer buffer, prepare_payload(&runtime, initialize));
+    NDS_ASSIGN_OR_RETURN(nds::client::MemoryRegion region,
+                         transport.register_memory(buffer, nds::client::MemoryAccess::LocalWrite |
+                                                               nds::client::MemoryAccess::RemoteWrite |
+                                                               nds::client::MemoryAccess::RemoteRead));
+
+    aclrtStream stream{};
+    if (config.backend.mode != nds::client::BackendMode::Ra) {
+        const int result = aclrtCreateStream(&stream);
+        if (result != ACL_SUCCESS || stream == nullptr)
+            return nds::Error{nds::ErrorCode::kRuntime, "aclrtCreateStream failed: " + std::to_string(result)};
+    }
+    struct StreamGuard {
+        aclrtStream stream{};
+
+        ~StreamGuard() {
+            if (stream != nullptr)
+                (void)aclrtDestroyStream(stream);
+        }
+    } stream_guard{stream};
+
+    const nds::client::LaunchConfig launch_config{
+        .block_dim = 1U, .stream = stream, .sync = true, .sync_timeout_ms = 5000};
+    NDS_RETURN_IF_ERROR(run_operation(config.operation, &runtime, &transport, launcher.get(), launch_config, host_qp,
+                                      0U, region, buffer));
     return {};
 }
 }  // namespace
 
 int main(int argc, char **argv) {
     (void)nds::log::configure("transport-client", "stderr", "info");
-    const auto config = parse(argc, argv);
-    if (!config.ok()) {
-        if (config.error().message == kHelpRequested)
+    const nds::Result<void> run_result = run(argc, argv);
+    if (!run_result.ok()) {
+        if (run_result.error().message == kHelpRequested)
             return EXIT_SUCCESS;
-        NDS_LOG_ERROR("transport-client", "options failed: {}", config.error().message);
+        NDS_LOG_ERROR("transport-client", "transport example failed: {}", run_result.error().message);
         return EXIT_FAILURE;
     }
-    nds::client::Runtime runtime;
-    nds::client::Transport transport;
-    if (const auto opened = runtime.open(config.value().runtime); !opened.ok()) {
-        NDS_LOG_ERROR("transport-client", "runtime open failed: {}", opened.error().message);
-        return EXIT_FAILURE;
-    }
-    if (const auto opened = transport.open(&runtime, config.value().transport, config.value().backend); !opened.ok()) {
-        NDS_LOG_ERROR("transport-client", "transport open failed: {}", opened.error().message);
-        return EXIT_FAILURE;
-    }
-    const auto host_qp = transport.host_qp_descriptor(0U);
-    if (!host_qp.ok()) {
-        NDS_LOG_ERROR("transport-client", "transport QP descriptor unavailable: {}", host_qp.error().message);
-        return EXIT_FAILURE;
-    }
-    const auto launcher = nds::client::Launcher::open(&runtime, config.value().backend.mode,
-                                                      config.value().backend.artifact_path);
-    if (!launcher.ok()) {
-        NDS_LOG_ERROR("transport-client", "backend launcher open failed: {}", launcher.error().message);
-        return EXIT_FAILURE;
-    }
-    aclrtStream stream{};
-    if (config.value().backend.mode != nds::client::BackendMode::Ra) {
-        const int result = aclrtCreateStream(&stream);
-        if (result != ACL_SUCCESS || stream == nullptr) {
-            NDS_LOG_ERROR("transport-client", "ACL stream creation failed: {}", result);
-            return EXIT_FAILURE;
-        }
-    }
-    const nds::client::LaunchConfig launch_config{
-        .block_dim = 1U, .stream = stream, .sync = true, .sync_timeout_ms = 5000};
-    if (const auto result = run(&runtime, &transport, launcher.value().get(), launch_config, host_qp.value(), 0U,
-                                config.value().operation);
-        !result.ok()) {
-        NDS_LOG_ERROR("transport-client", "transport operation failed: {}", result.error().message);
-        if (stream != nullptr)
-            (void)aclrtDestroyStream(stream);
-        return EXIT_FAILURE;
-    }
-    if (stream != nullptr)
-        (void)aclrtDestroyStream(stream);
     NDS_LOG_INFO("transport-client", "completed NDS transport operation");
     return EXIT_SUCCESS;
 }
