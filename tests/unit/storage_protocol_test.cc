@@ -185,7 +185,8 @@ TEST(StorageProtocolTest, RejectsIncompleteBootstrapResponseDescriptor) {
     nds::StorageBootstrap decoded{};
     ASSERT_EQ(nds::serialize_storage_bootstrap(bootstrap, bytes.data(), bytes.size()), nds::StorageSerdeResult::Ok);
 
-    bytes[52U] = 0U;
+    // Access fields use the big-endian wire encoding; clear the low byte.
+    bytes[55U] = 0U;
     EXPECT_EQ(nds::deserialize_storage_bootstrap(bytes.data(), bytes.size(), &decoded),
               nds::StorageSerdeResult::InvalidRecord);
 

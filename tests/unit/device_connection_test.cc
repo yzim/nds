@@ -36,7 +36,7 @@ TEST(DeviceConnectionTest, DefinesBatchPostSendEnvelope) {
     EXPECT_EQ(args.wrs_address, UINT64_C(0x1000));
     EXPECT_EQ(args.wr_count, 64U);
     EXPECT_EQ(args.bad_wr_address, UINT64_C(0x1060));
-    EXPECT_EQ(sizeof(args), 256U);
+    EXPECT_EQ(sizeof(args), 272U);
 }
 
 TEST(DeviceConnectionTest, DefinesDirectOperatorResultEnvelopes) {
