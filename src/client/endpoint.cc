@@ -206,9 +206,9 @@ Result<void> QueuePair::initialize() {
             return Error{ErrorCode::kRa, "setting AI QP attributes failed: " + std::to_string(result)};
         }
 
-        if (mode_ == BackendMode::Aiv) {
-            // AIV writes WQEs and reads CQEs directly. Unlike the provider
-            // paths, it therefore needs an NDS-owned slot-to-WR-ID mapping.
+        if (mode_ == BackendMode::Aiv || mode_ == BackendMode::Aicpu) {
+            // AI caller polling reads CQEs by queue slot. Keep the caller WR
+            // identity in NDS-owned device memory for both AI implementations.
             auto send_wr_ids =
                 endpoint_->runtime_->allocate(config_.send_queue_depth * sizeof(std::uint64_t), MemoryLocation::Device);
             if (!send_wr_ids.ok()) {
@@ -342,8 +342,9 @@ Result<NdsDeviceQp> QueuePair::device_qp() const {
 
     if (ai_qp_info_.ai_qp_address == 0U || ai_qp_info_.data_plane_info == nullptr)
         return Error{ErrorCode::kRa, "AI QP is missing provider metadata"};
-    if (mode_ == BackendMode::Aiv && (send_wr_ids_.data() == nullptr || receive_wr_ids_.data() == nullptr))
-        return Error{ErrorCode::kRuntime, "AIV QP is missing private WR-ID storage"};
+    if ((mode_ == BackendMode::Aiv || mode_ == BackendMode::Aicpu) &&
+        (send_wr_ids_.data() == nullptr || receive_wr_ids_.data() == nullptr))
+        return Error{ErrorCode::kRuntime, "AI QP is missing private WR-ID storage"};
 
     const auto *source = reinterpret_cast<const Libra::AiDataPlaneInfo *>(ai_qp_info_.data_plane_info);
     if (source->send_wq.buffer_address == 0U || source->receive_wq.buffer_address == 0U)
@@ -378,10 +379,12 @@ Result<NdsDeviceQp> QueuePair::device_qp() const {
     descriptor.provider_qp_address = ai_qp_info_.ai_qp_address;
     descriptor.provider_send_cq_address = ai_qp_info_.ai_scq_address;
     descriptor.provider_receive_cq_address = ai_qp_info_.ai_rcq_address;
-    const std::uint64_t send_wr_ids =
-        mode_ == BackendMode::Aiv ? reinterpret_cast<std::uint64_t>(send_wr_ids_.data()) : 0U;
-    const std::uint64_t receive_wr_ids =
-        mode_ == BackendMode::Aiv ? reinterpret_cast<std::uint64_t>(receive_wr_ids_.data()) : 0U;
+    const std::uint64_t send_wr_ids = (mode_ == BackendMode::Aiv || mode_ == BackendMode::Aicpu)
+                                          ? reinterpret_cast<std::uint64_t>(send_wr_ids_.data())
+                                          : 0U;
+    const std::uint64_t receive_wr_ids = (mode_ == BackendMode::Aiv || mode_ == BackendMode::Aicpu)
+                                             ? reinterpret_cast<std::uint64_t>(receive_wr_ids_.data())
+                                             : 0U;
     descriptor.send_queue = copy_wq(source->send_wq, send_wr_ids, true);
     descriptor.receive_queue = copy_wq(source->receive_wq, receive_wr_ids, false);
     descriptor.send_cq = copy_cq(source->send_cq);

@@ -120,10 +120,9 @@ private:
     void *handle_{};
     Libra::QpAttr local_attributes_{};
     Libra::AiQpInfo ai_qp_info_{};
-    // Raw AIV CQEs identify a queue slot, not the submitted work request.
-    // These device-visible tables recover the request ID at completion time.
-    // They are deliberately private: provider-backed RA and AICPU own their
-    // corresponding bookkeeping internally.
+    // AI CQEs identify a queue slot, not the submitted work request. These
+    // device-visible tables recover the caller WR ID at completion time.
+    // They are deliberately private implementation state.
     MemoryBuffer send_wr_ids_;
     MemoryBuffer receive_wr_ids_;
     Libra::Sge posted_send_sge_{};

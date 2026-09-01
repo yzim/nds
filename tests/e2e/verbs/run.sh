@@ -5,9 +5,11 @@ runner_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export NDS_E2E_SUPPORT_DIR="${runner_dir}/../support"
 # shellcheck source=../support/common.sh
 source "${NDS_E2E_SUPPORT_DIR}/common.sh"
+# shellcheck source=../support/aicpu_overlay.sh
+source "${NDS_E2E_SUPPORT_DIR}/aicpu_overlay.sh"
 
 usage() {
-    printf '%s\n' 'Usage: run.sh --backend-mode <ra|aiv>' >&2
+    printf '%s\n' 'Usage: run.sh --backend-mode <ra|aiv|aicpu>' >&2
 }
 
 backend=""
@@ -23,7 +25,7 @@ if [[ -z "${backend}" ]]; then
     exit 2
 fi
 case "${backend}" in
-    ra|aiv) ;;
+    ra|aiv|aicpu) ;;
     *)
         printf 'unsupported direct-verbs backend: %s\n' "${backend}" >&2
         usage

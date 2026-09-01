@@ -46,9 +46,9 @@ current architecture and protocol contract.
 - Added native storage, paired lower-layer examples, persistent Torch storage,
   and opt-in bounded E2E coverage.
 - Settled the verbs example and E2E contract: direct one-QP Send/Recv/PollCq
-  and configured RDMA Write are tested for RA and AIV, while AICPU remains in
-  the storage E2E matrix because its CANN-root NORMAL package leaves receive
-  and CQ ownership in HCCP rather than exposing the synchronous verbs CQ path.
+  and configured RDMA Write are tested for RA, AIV, and AICPU. AI-QPs request
+  caller-owned CQ metadata; AICPU continues to use the CANN-root mode-0
+  package for its provider-backed Send path.
 
 ## Active Engineering Work
 

@@ -26,9 +26,9 @@ Result<void> launch_and_wait(Runtime *runtime, const AicpuLauncher *launcher, co
     if (sync_result != ACL_SUCCESS)
         return Error{ErrorCode::kRuntime, "AICPU kernel synchronization failed: " + std::to_string(sync_result)};
     NDS_RETURN_IF_ERROR(runtime->copy_from(&return_value, device_return_value, sizeof(return_value)));
-    return return_value == 0
-               ? Result<void>{}
-               : Error{ErrorCode::kRuntime, "AICPU device operation failed: " + std::to_string(return_value)};
+    return return_value == 0 ? Result<void>{}
+                             : Error{ErrorCode::kRuntime, "AICPU device operation failed (" + std::string(entry) +
+                                                              "): " + std::to_string(return_value)};
 }
 
 }  // namespace

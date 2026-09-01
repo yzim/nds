@@ -78,14 +78,10 @@ Install that package explicitly before running the test; the E2E runner itself
 does not modify the CANN installation.
 
 When `NDS_BUILD_HARDWARE_PROBES=ON` is configured, CTest registers one direct
-verbs case for each available RA and AIV backend. Each case launches the
+verbs case for each available RA, AIV, and AICPU backend. Each case launches the
 matching example client and server and exercises the complete lower-level
-workflow: the client posts Send, posts Recv, polls its CQ, and performs a
-configured stream-based RDMA Write. The server verifies the received and
-written payload.
-
-The direct verbs case deliberately does not register AICPU. The CANN-root
-NORMAL AICPU package keeps receive and CQ ownership in HCCP and does not expose
-the receive/poll operations required by this synchronous verbs example. AICPU
-completion is therefore covered by the storage E2E path, which uses its
-completion barriers.
+workflow: the client posts Send, posts Recv, polls its caller-owned CQ, and
+performs a configured stream-based RDMA Write. The server verifies the received
+and written payload. For AIV and AICPU, the client requests caller-owned CQ
+metadata when creating the AI-QP; AICPU still uses the installed CANN-root
+mode-0 package for its provider-backed Send path.

@@ -231,9 +231,9 @@ Result<void> Transport::build_device_transport() {
         }
         if (qp.ai_qp_info_.ai_qp_address == 0U)
             return Error{ErrorCode::kInvalidArgument, "AI transport requires AI QPs"};
-        if (qp.backend_mode() == BackendMode::Aiv &&
+        if ((qp.backend_mode() == BackendMode::Aiv || qp.backend_mode() == BackendMode::Aicpu) &&
             (qp.send_wr_ids_.data() == nullptr || qp.receive_wr_ids_.data() == nullptr)) {
-            return Error{ErrorCode::kRuntime, "AIV QP is missing private WR-ID storage"};
+            return Error{ErrorCode::kRuntime, "AI QP is missing private WR-ID storage"};
         }
 
         const auto *source = reinterpret_cast<const Libra::AiDataPlaneInfo *>(qp.ai_qp_info_.data_plane_info);
@@ -277,9 +277,13 @@ Result<void> Transport::build_device_transport() {
         descriptor.host_runtime_address = reinterpret_cast<std::uint64_t>(runtime_);
         descriptor.host_qp_address = reinterpret_cast<std::uint64_t>(&qp);
         const std::uint64_t send_wr_ids =
-            qp.backend_mode() == BackendMode::Aiv ? reinterpret_cast<std::uint64_t>(qp.send_wr_ids_.data()) : 0U;
+            (qp.backend_mode() == BackendMode::Aiv || qp.backend_mode() == BackendMode::Aicpu)
+                ? reinterpret_cast<std::uint64_t>(qp.send_wr_ids_.data())
+                : 0U;
         const std::uint64_t receive_wr_ids =
-            qp.backend_mode() == BackendMode::Aiv ? reinterpret_cast<std::uint64_t>(qp.receive_wr_ids_.data()) : 0U;
+            (qp.backend_mode() == BackendMode::Aiv || qp.backend_mode() == BackendMode::Aicpu)
+                ? reinterpret_cast<std::uint64_t>(qp.receive_wr_ids_.data())
+                : 0U;
         descriptor.send_queue = copy_wq(source->send_wq, send_wr_ids, true);
         descriptor.receive_queue = copy_wq(source->receive_wq, receive_wr_ids, false);
         descriptor.send_cq = copy_cq(source->send_cq);

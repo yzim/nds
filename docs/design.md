@@ -100,8 +100,8 @@ context. The selected backend mode determines QP creation:
 | Mode | Creation | QP mode | Purpose |
 |---|---|---|---|
 | `ra` | `RaTypicalQpCreate` | OPBASE (`2`) | RA returns doorbell information. |
-| `aiv` | `RaAiQpCreate` | OPBASE_EXT (`4`) by default | Caller-owned work queues; HCCP-owned CQs. |
-| `aicpu` | `RaAiQpCreate` | NORMAL (`0`) | AICPU provider-owned Send path; HCCP-owned CQs. |
+| `aiv` | `RaAiQpCreate` | OPBASE_EXT (`4`) by default | Caller-owned work queues; CQ ownership follows `QueuePairCallerPollsCq`. |
+| `aicpu` | `RaAiQpCreate` | NORMAL (`0`) | AICPU provider-owned Send path; CQ ownership follows `QueuePairCallerPollsCq`. |
 
 The CPU creates one independent RC QP for each NPU QP and moves each through
 `INIT`, `RTR`, and `RTS`. Its active-port MTU determines `IBV_QP_PATH_MTU`; the
@@ -120,17 +120,19 @@ alive until the storage completion record is observed and its MR is
 deregistered. `aclrtMallocHost` is not suitable because Ascend documents that
 its result cannot be used in the device.
 
-AI-QPs omit `NDS_RA_AI_CALLER_POLLS_CQ` by default. HCCP owns send and receive
-CQ consumption; NDS does not interpret HCCP CQ activity as storage completion.
-The client `Transport` layer does not poll a CQ or provide synchronous
-transport completion. The current serial storage path uses QP zero and waits
-for the CPU-written protocol completion record. A listener may serve multiple
-sessions serially, with each session's QPs and verbs resources torn down before
-the next is accepted. Transport multiplicity does not add command scheduling,
-CQ ownership, concurrent storage requests, or concurrent client sessions;
-those remain later design work.
-The explicit NDS `PollCq(is_send_cq)` operation remains available only for a
-future caller-owned-CQ configuration that opts into that RA flag. Its selector
+AI-QPs omit `NDS_RA_AI_CALLER_POLLS_CQ` by default. With that flag set,
+`RaAiQpCreate` returns caller-visible send and receive CQ metadata and the
+selected launcher owns CQ polling. Without it, HCCP owns CQ consumption; NDS
+does not interpret HCCP CQ activity as storage completion.
+The client `Transport` layer does not expose CQ polling as storage completion.
+The current serial storage path uses QP zero and waits for the CPU-written
+protocol completion record. A listener may serve multiple sessions serially,
+with each session's QPs and verbs resources torn down before the next is
+accepted. Transport multiplicity does not add command scheduling, CQ ownership,
+concurrent storage requests, or concurrent client sessions; those remain later
+design work.
+The explicit NDS `PollCq(is_send_cq)` operation is available when the caller
+opts an AI-QP into caller-owned CQ mode with that RA flag. Its selector
 matches CANN RA `RaPollCq`: `true` selects the send CQ and `false` the receive CQ.
 Its successful result is the number of completions copied to the supplied
 output, from zero through the requested limit. Device launch envelopes keep
@@ -139,7 +141,7 @@ zero or a negative normalized error, and PollCq reports its WC count or a
 negative normalized error. Provider diagnostics are not part of the device
 verbs API; a future extended or debug interface may define them separately.
 
-Resources remain valid through the HCCP-managed local completion path, the CPU
+Resources remain valid through the selected local CQ completion path, the CPU
 data movement and terminal completion Write, and NPU observation of the
 completion record. Teardown is reverse ownership order:
 
@@ -212,7 +214,7 @@ execution.
 |---|---|---|---|
 | `ra` | Host CPU: `NdsRaPostSend` calls `RaTypicalSendWr`, then `rtRDMADBSend` | Executes the post and submission | RA CQ available |
 | `aiv` | NPU AIV writes WQEs and rings a doorbell | Creates and launches the operation-specific device args | HCCP-owned SCQ/RCQ by default; caller-owned polling is opt-in |
-| `aicpu` | AICPU provider posts Send | Creates and launches the operation-specific device args | HCCP-owned SCQ/RCQ by default; caller-owned polling is opt-in |
+| `aicpu` | AICPU provider posts Send; shared metadata posts Recv | Creates and launches the operation-specific device args | HCCP-owned SCQ/RCQ by default; caller-owned polling is opt-in |
 
 ### Submission
 
@@ -232,9 +234,9 @@ ownership; until then the public batch APIs accept exactly one request.
 
 The transport will own local CQ processing and credit accounting. It will poll
 opportunistically from submission paths, with no dedicated polling thread, and
-callers will not poll local CQs. Storage completion remains a separate
-protocol-visible completion-slot state. The present implementation does not
-yet opt AI QPs into caller CQ polling or retire transport credits.
+callers will not poll local CQs through the transport API. The direct verbs
+example explicitly opts its AI-QP into caller CQ polling; storage completion
+remains a separate protocol-visible completion-slot state.
 
 Each current single-request submission is post-and-submit on every supported
 backend. It returns success only after the work request has been submitted to
@@ -259,10 +261,11 @@ normal OPBASE send path. HCOMM also batches several prepared WQEs before one
 runtime doorbell when its algorithm explicitly chooses that policy.
 
 AIV directly writes its WQE and doorbell in `PostSend`. AICPU uses the
-AICPU provider's `ibv_exp_post_send`, whose documented ABI has no
-deferred-doorbell control. Do not introduce a common deferred-submission API
-until a measured bottleneck justifies it and a documented AICPU mechanism can
-support its contract.
+AICPU provider's `ibv_exp_post_send` for Send, while its Recv and caller-owned
+CQ paths write the shared HNS queue metadata directly because `ibv_post_recv`
+and `ibv_poll_cq` are inline libibverbs wrappers rather than exported symbols.
+Do not introduce a common deferred-submission API until a measured bottleneck
+justifies it and a documented AICPU mechanism can support its contract.
 
 ### RA
 
