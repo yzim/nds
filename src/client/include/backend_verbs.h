@@ -1,5 +1,5 @@
-#ifndef NDS_DEVICE_VERBS_H
-#define NDS_DEVICE_VERBS_H
+#ifndef NDS_BACKEND_VERBS_H
+#define NDS_BACKEND_VERBS_H
 
 #include <stddef.h>
 #include <stdint.h>

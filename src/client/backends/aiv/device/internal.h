@@ -2,7 +2,7 @@
 #define NDS_AIV_DEVICE_INTERNAL_H
 
 #include "kernel_operator.h"
-#include "device_verbs.h"
+#include "backend_verbs.h"
 
 using namespace AscendC;
 

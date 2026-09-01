@@ -2,8 +2,8 @@
 #define NDS_AIV_DEVICE_API_H
 
 #include "kernel_operator.h"
-#include "device_transport.h"
-#include "device_storage.h"
+#include "backend_transport.h"
+#include "backend_storage.h"
 
 #ifndef NDS_AIV_DEVICE_API_LINKAGE
 #define NDS_AIV_DEVICE_API_LINKAGE extern "C"

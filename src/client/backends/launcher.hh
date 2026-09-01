@@ -5,8 +5,8 @@
 #include "launch_config.hh"
 
 #include "result.hh"
-#include "device_transport.h"
-#include "device_verbs.h"
+#include "backend_transport.h"
+#include "backend_verbs.h"
 
 #include <cstddef>
 #include <cstdint>

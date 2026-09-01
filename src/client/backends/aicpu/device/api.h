@@ -1,8 +1,8 @@
 #ifndef NDS_AICPU_DEVICE_API_H
 #define NDS_AICPU_DEVICE_API_H
 
-#include "device_transport.h"
-#include "device_storage.h"
+#include "backend_transport.h"
+#include "backend_storage.h"
 
 #include <stdint.h>
 

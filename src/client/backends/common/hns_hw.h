@@ -10,7 +10,7 @@
  * directly; AICPU uses them only when the provider symbols are unavailable.
  */
 
-#include "device_verbs.h"
+#include "backend_verbs.h"
 
 #include <stddef.h>
 #include <stdint.h>

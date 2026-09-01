@@ -1,7 +1,7 @@
-#ifndef NDS_DEVICE_STORAGE_H
-#define NDS_DEVICE_STORAGE_H
+#ifndef NDS_BACKEND_STORAGE_H
+#define NDS_BACKEND_STORAGE_H
 
-#include "device_transport.h"
+#include "backend_transport.h"
 #include "storage_protocol.hh"
 
 #include <stdint.h>

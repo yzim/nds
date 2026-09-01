@@ -1,7 +1,7 @@
-#ifndef NDS_DEVICE_TRANSPORT_H
-#define NDS_DEVICE_TRANSPORT_H
+#ifndef NDS_BACKEND_TRANSPORT_H
+#define NDS_BACKEND_TRANSPORT_H
 
-#include "device_verbs.h"
+#include "backend_verbs.h"
 
 #include <stdint.h>
 

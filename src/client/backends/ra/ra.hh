@@ -1,8 +1,8 @@
 #ifndef NDS_RA_HPP
 #define NDS_RA_HPP
 
-#include "device_transport.h"
-#include "device_storage.h"
+#include "backend_transport.h"
+#include "backend_storage.h"
 #include "storage_protocol.hh"
 #include "endpoint.hh"
 #include "runtime.hh"

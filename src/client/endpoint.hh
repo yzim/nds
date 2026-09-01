@@ -2,7 +2,7 @@
 #define NDS_CLIENT_ENDPOINT_HH
 
 #include "transport_protocol.hh"
-#include "device_transport.h"
+#include "backend_transport.h"
 #include "loaders/libra.hh"
 #include "result.hh"
 #include "runtime.hh"

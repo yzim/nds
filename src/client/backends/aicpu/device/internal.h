@@ -1,7 +1,7 @@
 #ifndef NDS_AICPU_DEVICE_INTERNAL_H
 #define NDS_AICPU_DEVICE_INTERNAL_H
 
-#include "device_verbs.h"
+#include "backend_verbs.h"
 
 #include <dlfcn.h>
 #include <stdint.h>
