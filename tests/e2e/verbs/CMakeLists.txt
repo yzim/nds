@@ -4,7 +4,7 @@ if(TARGET nds_verbs_client AND TARGET nds_verbs_server)
             COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/run.sh
                 --backend-mode ${backend})
         set_tests_properties(e2e.verbs.${backend} PROPERTIES
-            LABELS "e2e;requires-ascend-npu;requires-rdma;layer-verbs;mode-${backend};operation-send-recv-write"
+            LABELS "e2e;requires-ascend-npu;requires-rdma;layer-verbs;mode-${backend};operation-send-recv-read-write"
             TIMEOUT 120
             RESOURCE_LOCK ascend_npu0)
     endfunction()

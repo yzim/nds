@@ -45,7 +45,7 @@ current architecture and protocol contract.
   separate from client-server protocol data.
 - Added native storage, paired lower-layer examples, persistent Torch storage,
   and opt-in bounded E2E coverage.
-- Settled the verbs example and E2E contract: direct one-QP Send/Recv/PollCq
+- Settled the verbs example and E2E contract: direct one-QP Send/Recv/Read/PollCq
   and configured RDMA Write are tested for RA, AIV, and AICPU. AI-QPs request
   caller-owned CQ metadata; AICPU continues to use the CANN-root mode-0
   package for its provider-backed Send path.

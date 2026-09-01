@@ -74,8 +74,8 @@ int main(int argc, char **argv) {
     }
     // The CPU side owns one receive MR and one posted receive for the client's Send.
     std::array<std::byte, 64U> payload{};
-    const nds::Result<nds::server::RegisteredRegion> region_result =
-        backend.register_memory(payload.data(), payload.size(), IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
+    const nds::Result<nds::server::RegisteredRegion> region_result = backend.register_memory(
+        payload.data(), payload.size(), IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_READ);
     if (!region_result.ok()) {
         NDS_LOG_ERROR("verbs-server", "memory registration failed: {}", region_result.error().message);
         return EXIT_FAILURE;
@@ -142,15 +142,27 @@ int main(int argc, char **argv) {
     }
     const nds::Result<void> return_send_barrier = nds::examples::verbs::send_barrier(channel);
     if (!return_send_barrier.ok()) {
-        NDS_LOG_ERROR("verbs-server", "return Send completion barrier failed: {}",
-                      return_send_barrier.error().message);
+        NDS_LOG_ERROR("verbs-server", "return Send completion barrier failed: {}", return_send_barrier.error().message);
         return EXIT_FAILURE;
     }
     const nds::RemoteMemory remote_memory{reinterpret_cast<std::uint64_t>(region.address()),
                                           static_cast<std::uint32_t>(region.length()), region.remote_key()};
-    const nds::Result<void> remote_memory_result = nds::examples::verbs::send_remote_memory(channel, remote_memory);
-    if (!remote_memory_result.ok()) {
-        NDS_LOG_ERROR("verbs-server", "remote-memory exchange failed: {}", remote_memory_result.error().message);
+    const nds::Result<void> read_memory_result = nds::examples::verbs::send_remote_memory(channel, remote_memory);
+    if (!read_memory_result.ok()) {
+        NDS_LOG_ERROR("verbs-server", "RDMA Read remote-memory exchange failed: {}",
+                      read_memory_result.error().message);
+        return EXIT_FAILURE;
+    }
+    const nds::Result<void> read_complete_result = nds::examples::verbs::wait_barrier(channel);
+    if (!read_complete_result.ok()) {
+        NDS_LOG_ERROR("verbs-server", "RDMA Read completion acknowledgement failed: {}",
+                      read_complete_result.error().message);
+        return EXIT_FAILURE;
+    }
+    const nds::Result<void> write_memory_result = nds::examples::verbs::send_remote_memory(channel, remote_memory);
+    if (!write_memory_result.ok()) {
+        NDS_LOG_ERROR("verbs-server", "RDMA Write remote-memory exchange failed: {}",
+                      write_memory_result.error().message);
         return EXIT_FAILURE;
     }
     const nds::Result<void> write_complete_result = nds::examples::verbs::wait_barrier(channel);
@@ -163,6 +175,6 @@ int main(int argc, char **argv) {
         NDS_LOG_ERROR("verbs-server", "RDMA Write did not update the server payload");
         return EXIT_FAILURE;
     }
-    NDS_LOG_INFO("verbs-server", "completed direct verbs Send, Recv, and configured RDMA Write");
+    NDS_LOG_INFO("verbs-server", "completed direct verbs Send, Recv, Read, and configured RDMA Write");
     return EXIT_SUCCESS;
 }

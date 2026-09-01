@@ -31,6 +31,7 @@ struct Config {
 enum class Operation {
     Send,
     Receive,
+    Read,
     Write,
 };
 
@@ -169,6 +170,37 @@ nds::Result<void> run_write(nds::client::Launcher *launcher, const NdsDeviceQp &
     return nds::examples::verbs::send_barrier(*connection);
 }
 
+nds::Result<void> run_read(nds::client::Launcher *launcher, const NdsDeviceQp &device_qp,
+                           const nds::client::MemoryRegion &payload_region, std::uint32_t payload_length,
+                           nds::TcpConnection *connection, aclrtStream stream) {
+    NDS_ASSIGN_OR_RETURN(nds::RemoteMemory remote_memory, nds::examples::verbs::receive_remote_memory(*connection));
+    const NdsDeviceSendWr read_wr{
+        .wr_id = 4U,
+        .opcode = NDS_DEVICE_WR_RDMA_READ,
+        .flags = NDS_DEVICE_SEND_SIGNALED,
+        .local = {.address = payload_region.address(),
+                  .length = payload_length,
+                  .local_key = payload_region.local_key()},
+        .remote_address = remote_memory.address,
+        .remote_key = remote_memory.remote_key,
+        .reserved = 0U,
+    };
+    NDS_RETURN_IF_ERROR(launcher
+                            ->with_config({
+                                .block_dim = 1U,
+                                .stream = stream,
+                                .sync_timeout_ms = 5000,
+                            })
+                            .post_send(device_qp, read_wr));
+    NDS_RETURN_IF_ERROR(poll_completion(launcher->with_config({
+                                            .block_dim = 1U,
+                                            .stream = stream,
+                                            .sync_timeout_ms = 5000,
+                                        }),
+                                        device_qp, true));
+    return nds::examples::verbs::send_barrier(*connection);
+}
+
 nds::Result<void> run_operation(Operation operation, nds::client::Launcher *launcher, const NdsDeviceQp &device_qp,
                                 const nds::client::MemoryRegion &payload_region, std::uint32_t payload_length,
                                 nds::TcpConnection *connection, aclrtStream stream) {
@@ -177,6 +209,8 @@ nds::Result<void> run_operation(Operation operation, nds::client::Launcher *laun
             return run_simple_send(launcher, device_qp, payload_region, payload_length, connection, stream);
         case Operation::Receive:
             return run_simple_receive(launcher, device_qp, payload_region, payload_length, connection, stream);
+        case Operation::Read:
+            return run_read(launcher, device_qp, payload_region, payload_length, connection, stream);
         case Operation::Write:
             return run_write(launcher, device_qp, payload_region, payload_length, connection, stream);
     }
@@ -249,7 +283,7 @@ nds::Result<void> run(int argc, char **argv) {
     } stream_guard{stream};
 
     const std::uint32_t payload_length = static_cast<std::uint32_t>(payload.size());
-    for (const Operation operation : {Operation::Send, Operation::Receive, Operation::Write})
+    for (const Operation operation : {Operation::Send, Operation::Receive, Operation::Read, Operation::Write})
         NDS_RETURN_IF_ERROR(
             run_operation(operation, launcher.get(), device_qp, payload_region, payload_length, &connection, stream));
     return {};

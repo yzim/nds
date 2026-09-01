@@ -23,7 +23,7 @@ The E2E tree follows the public library layers:
 
 ```text
 tests/e2e/
-  verbs/       one-QP Send, Recv, PollCq, and configured RDMA Write case
+  verbs/       one-QP Send, Recv, Read, PollCq, and configured RDMA Write case
   transport/   RdmaSend, RdmaRecv, RdmaRead, and RdmaWrite cases
   storage/     native storage and Torch session cases
   support/     shared target runners and AICPU package setup
@@ -80,8 +80,8 @@ does not modify the CANN installation.
 When `NDS_BUILD_HARDWARE_PROBES=ON` is configured, CTest registers one direct
 verbs case for each available RA, AIV, and AICPU backend. Each case launches the
 matching example client and server and exercises the complete lower-level
-workflow: the client posts Send, posts Recv, polls its caller-owned CQ, and
-performs a configured stream-based RDMA Write. The server verifies the received
-and written payload. For AIV and AICPU, the client requests caller-owned CQ
+workflow: the client posts Send, posts Recv, performs an RDMA Read, polls its
+caller-owned CQ, and performs a configured stream-based RDMA Write. The server
+verifies the received and written payload. For AIV and AICPU, the client requests caller-owned CQ
 metadata when creating the AI-QP; AICPU still uses the installed CANN-root
 mode-0 package for its provider-backed Send path.

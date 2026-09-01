@@ -77,14 +77,14 @@ wait_for_case() {
     set -e
     nds_e2e_server_pid=""
 
-    printf 'layer=verbs operation=send-recv-write backend=%s client=%s server=%s client_rc=%s server_rc=%s\n' \
+    printf 'layer=verbs operation=send-recv-read-write backend=%s client=%s server=%s client_rc=%s server_rc=%s\n' \
         "${backend}" "${nds_e2e_client_log}" "${nds_e2e_server_log}" "${client_rc}" "${server_rc}"
     [[ "${client_rc}" -eq 0 && "${server_rc}" -eq 0 ]]
 }
 
 main() {
     parse_args "$@"
-    nds_e2e_initialize_case verbs send-recv-write "${backend}"
+    nds_e2e_initialize_case verbs send-recv-read-write "${backend}"
     trap nds_e2e_cleanup EXIT
 
     start_server
