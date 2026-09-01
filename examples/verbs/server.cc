@@ -1,5 +1,5 @@
 #include "wire.hh"
-#include "backend.hh"
+#include "endpoint.hh"
 #include "logging.hh"
 
 #include <CLI/CLI.hpp>
@@ -15,7 +15,7 @@
 namespace {
 
 struct Config {
-    nds::server::BackendConfig backend;
+    nds::server::EndpointConfig endpoint;
     std::string listen{"0.0.0.0:18515"};
 };
 
@@ -37,10 +37,10 @@ bool wait_for_payload(const std::array<std::byte, 64U> &payload, std::byte expec
 nds::Result<Config> parse(int argc, char **argv) {
     Config config;
     CLI::App app{"Receive a direct RA verbs Send with a TCP QP bootstrap."};
-    app.add_option("--device", config.backend.device_name)->required();
-    app.add_option("--gid-index", config.backend.gid_index)->required();
+    app.add_option("--device", config.endpoint.device_name)->required();
+    app.add_option("--gid-index", config.endpoint.gid_index)->required();
     app.add_option("--listen", config.listen);
-    app.add_option("--ib-port", config.backend.port);
+    app.add_option("--ib-port", config.endpoint.port);
     try {
         app.parse(argc, argv);
     } catch (const CLI::ParseError &error) {
@@ -66,22 +66,28 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
     const nds::TcpAddress &address = address_result.value();
-    nds::server::VerbsBackend backend;
-    const nds::Result<void> open_result = backend.open(config.backend, 1U);
+    nds::server::Endpoint endpoint;
+    const nds::Result<void> open_result = endpoint.open(config.endpoint);
     if (!open_result.ok()) {
-        NDS_LOG_ERROR("verbs-server", "verbs backend open failed: {}", open_result.error().message);
+        NDS_LOG_ERROR("verbs-server", "verbs endpoint open failed: {}", open_result.error().message);
         return EXIT_FAILURE;
     }
+    auto qp_result = endpoint.create_qp();
+    if (!qp_result.ok()) {
+        NDS_LOG_ERROR("verbs-server", "QP creation failed: {}", qp_result.error().message);
+        return EXIT_FAILURE;
+    }
+    nds::server::QueuePair &qp = qp_result.value();
     // The CPU side owns one receive MR and one posted receive for the client's Send.
     std::array<std::byte, 64U> payload{};
-    const nds::Result<nds::server::RegisteredRegion> region_result = backend.register_memory(
+    const nds::Result<nds::server::MemoryRegion> region_result = endpoint.reg_mr(
         payload.data(), payload.size(), IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_READ);
     if (!region_result.ok()) {
         NDS_LOG_ERROR("verbs-server", "memory registration failed: {}", region_result.error().message);
         return EXIT_FAILURE;
     }
-    const nds::server::RegisteredRegion &region = region_result.value();
-    const nds::Result<void> post_result = backend.post_receive(0U, region);
+    const nds::server::MemoryRegion &region = region_result.value();
+    const nds::Result<void> post_result = qp.post_receive(region);
     if (!post_result.ok()) {
         NDS_LOG_ERROR("verbs-server", "receive post failed: {}", post_result.error().message);
         return EXIT_FAILURE;
@@ -101,12 +107,12 @@ int main(int argc, char **argv) {
     }
     nds::TcpConnection channel = std::move(channel_result).value();
     const nds::Result<nds::QpInfo> peer_result =
-        nds::examples::verbs::exchange_server_qp(channel, backend.local_qp_infos().front());
+        nds::examples::verbs::exchange_server_qp(channel, qp.local_qp_info());
     if (!peer_result.ok()) {
         NDS_LOG_ERROR("verbs-server", "QP exchange failed: {}", peer_result.error().message);
         return EXIT_FAILURE;
     }
-    const nds::Result<void> connect_result = backend.connect({peer_result.value()});
+    const nds::Result<void> connect_result = qp.connect(peer_result.value());
     if (!connect_result.ok()) {
         NDS_LOG_ERROR("verbs-server", "QP connection failed: {}", connect_result.error().message);
         return EXIT_FAILURE;
@@ -117,7 +123,7 @@ int main(int argc, char **argv) {
         NDS_LOG_ERROR("verbs-server", "client barrier failed: {}", barrier_result.error().message);
         return EXIT_FAILURE;
     }
-    const nds::Result<void> completion_result = backend.wait_receive(0U, 5000U);
+    const nds::Result<void> completion_result = qp.wait_receive(5000U);
     if (!completion_result.ok()) {
         NDS_LOG_ERROR("verbs-server", "receive completion failed: {}", completion_result.error().message);
         return EXIT_FAILURE;
@@ -135,7 +141,7 @@ int main(int argc, char **argv) {
     }
     // Use a distinct pattern so the final RDMA Write verifies a new payload.
     payload.fill(std::byte{0xa5});
-    const nds::Result<void> send_result = backend.send(0U, region, static_cast<std::uint32_t>(payload.size()));
+    const nds::Result<void> send_result = qp.send(region, static_cast<std::uint32_t>(payload.size()), 5000U);
     if (!send_result.ok()) {
         NDS_LOG_ERROR("verbs-server", "return Send failed: {}", send_result.error().message);
         return EXIT_FAILURE;

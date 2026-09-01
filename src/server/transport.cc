@@ -3,6 +3,7 @@
 #include "transport_protocol.hh"
 
 #include <algorithm>
+#include <limits>
 #include <span>
 #include <utility>
 
@@ -25,7 +26,7 @@ Result<nds::transport::TransportInfo> receive_transport_info(TcpConnection *chan
     if (channel == nullptr)
         return Error{ErrorCode::kInvalidArgument, "TCP connection is required"};
     nds::wire::TransportInfo encoded{};
-    if (const auto received = channel->receive(std::as_writable_bytes(std::span{&encoded, 1U})); !received)
+    if (const auto received = channel->receive(std::as_writable_bytes(std::span{&encoded, 1U})); !received.ok())
         return received.error();
     nds::transport::TransportInfo info{};
     if (nds::transport::decode(&encoded, &info) != nds::transport::CodecResult::Ok)
@@ -38,11 +39,14 @@ Result<nds::transport::TransportInfo> receive_transport_info(TcpConnection *chan
 Result<void> TransportListener::open(const TransportConfig &config) {
     if (tcp_listener_.is_open() || config.max_qp_count == 0U || config.max_qp_count > nds::wire::kMaxQpInfoBatch)
         return Error{ErrorCode::kInvalidArgument, "invalid server QP-count limit"};
+    if (config.completion_timeout_ms == 0U ||
+        config.completion_timeout_ms > static_cast<std::uint32_t>(std::numeric_limits<std::int32_t>::max()))
+        return Error{ErrorCode::kInvalidArgument, "invalid server completion-timeout limit"};
     const auto listen_address = parse_tcp_address(config.listen_address);
-    if (!listen_address)
+    if (!listen_address.ok())
         return listen_address.error();
     auto listener = TcpListener::listen(listen_address.value().ipv4, listen_address.value().port, kTcpListenBacklog);
-    if (!listener)
+    if (!listener.ok())
         return listener.error();
     tcp_listener_ = std::move(listener).value();
     config_ = config;
@@ -50,13 +54,13 @@ Result<void> TransportListener::open(const TransportConfig &config) {
 }
 
 Result<void> TransportListener::accept(Transport *transport) {
-    if (!tcp_listener_.is_open() || transport == nullptr)
+    if (!tcp_listener_.is_open() || transport == nullptr || transport->opened())
         return Error{ErrorCode::kInvalidArgument, "open listener and transport are required"};
     auto exchange_channel = tcp_listener_.accept();
-    if (!exchange_channel)
+    if (!exchange_channel.ok())
         return exchange_channel.error();
     const auto count_request = receive_transport_info(&exchange_channel.value());
-    if (!count_request)
+    if (!count_request.ok())
         return count_request.error();
     if (count_request.value().kind != nds::transport::TransportInfoKind::QpCountRequest)
         return Error{ErrorCode::kTransport, "expected a QP-count request"};
@@ -68,92 +72,130 @@ Result<void> TransportListener::accept(Transport *transport) {
 }
 
 Result<void> Transport::open(TcpConnection exchange_channel, const TransportConfig &config, std::uint32_t qp_count) {
+    if (!exchange_channel.is_open())
+        return Error{ErrorCode::kInvalidArgument, "an open CPU transport exchange channel is required"};
+    if (opened())
+        return Error{ErrorCode::kInvalidArgument, "CPU transport is already open"};
     if (qp_count == 0U || qp_count > config.max_qp_count || qp_count > nds::wire::kMaxQpInfoBatch)
         return Error{ErrorCode::kInvalidArgument, "invalid negotiated QP count"};
-    if (const auto opened = backend_.open(config.backend, qp_count); !opened)
+    if (config.completion_timeout_ms == 0U ||
+        config.completion_timeout_ms > static_cast<std::uint32_t>(std::numeric_limits<std::int32_t>::max()))
+        return Error{ErrorCode::kInvalidArgument, "invalid CPU transport completion timeout"};
+    if (const auto opened = endpoint_.open(config.endpoint); !opened.ok())
         return opened.error();
-    const std::vector<nds::QpInfo> &local = backend_.local_qp_infos();
+    completion_timeout_ms_ = config.completion_timeout_ms;
+
+    qps_.reserve(qp_count);
+    local_qps_.reserve(qp_count);
+    for (std::uint32_t index = 0U; index < qp_count; ++index) {
+        auto qp = endpoint_.create_qp();
+        if (!qp.ok())
+            return qp.error();
+        local_qps_.push_back(qp.value().local_qp_info());
+        qps_.push_back(std::move(qp).value());
+    }
+
     exchange_channel_ = std::move(exchange_channel);
     const auto peer_info = receive_transport_info(&exchange_channel_);
-    if (!peer_info)
+    if (!peer_info.ok())
         return peer_info.error();
     if (peer_info.value().kind != nds::transport::TransportInfoKind::QpEndpoints ||
         peer_info.value().qp_count != qp_count)
         return Error{ErrorCode::kTransport, "peer returned mismatched QP information"};
     nds::transport::TransportInfo local_info{nds::transport::TransportInfoKind::QpEndpoints, qp_count, {}};
-    std::copy(local.begin(), local.end(), local_info.qps.begin());
+    std::copy(local_qps_.begin(), local_qps_.end(), local_info.qps.begin());
     NDS_RETURN_IF_ERROR(send_transport_info(&exchange_channel_, local_info));
-    std::vector<nds::QpInfo> peers(peer_info.value().qps.begin(), peer_info.value().qps.begin() + qp_count);
-    if (const auto connected = backend_.connect(peers); !connected)
-        return connected.error();
+    for (std::size_t index = 0U; index < qps_.size(); ++index) {
+        if (const auto connected = qps_[index].connect(peer_info.value().qps[index]); !connected.ok())
+            return connected.error();
+    }
     return {};
 }
 
-Result<RegisteredRegion> Transport::prepare_receive(void *buffer, std::size_t length) {
-    return prepare_receive(0U, buffer, length);
+QueuePair *Transport::queue_pair(std::size_t qp_index) noexcept {
+    return qp_index < qps_.size() ? &qps_[qp_index] : nullptr;
 }
 
-Result<RegisteredRegion> Transport::prepare_receive(std::size_t qp_index, void *buffer, std::size_t length) {
-    auto registered = backend_.register_memory(buffer, length, IBV_ACCESS_LOCAL_WRITE);
-    if (!registered)
-        return registered.error();
-    if (const auto posted = backend_.post_receive(qp_index, registered.value()); !posted)
-        return posted.error();
-    return std::move(registered).value();
+Result<void> Transport::post_receive(const MemoryRegion &region) {
+    return post_receive(0U, region);
 }
 
-Result<void> Transport::receive(std::uint32_t timeout_ms) {
-    return receive(0U, timeout_ms);
+Result<void> Transport::post_receive(std::size_t qp_index, const MemoryRegion &region) {
+    QueuePair *qp = queue_pair(qp_index);
+    if (qp == nullptr)
+        return Error{ErrorCode::kInvalidArgument, "CPU transport QP index is out of range"};
+    return qp->post_receive(region);
 }
-Result<void> Transport::receive(std::size_t qp_index, std::uint32_t timeout_ms) {
-    if (const auto received = backend_.wait_receive(qp_index, timeout_ms); !received)
-        return received.error();
-    return {};
+
+Result<void> Transport::wait_receive(std::uint32_t timeout_ms) {
+    return wait_receive(0U, timeout_ms);
 }
-Result<void> Transport::send(const RegisteredRegion &local, std::uint32_t length) {
+
+Result<void> Transport::wait_receive(std::size_t qp_index, std::uint32_t timeout_ms) {
+    QueuePair *qp = queue_pair(qp_index);
+    if (qp == nullptr)
+        return Error{ErrorCode::kInvalidArgument, "CPU transport QP index is out of range"};
+    return qp->wait_receive(timeout_ms);
+}
+
+Result<void> Transport::send(const MemoryRegion &local, std::uint32_t length) {
     return send(0U, local, length);
 }
-Result<void> Transport::send(std::size_t qp_index, const RegisteredRegion &local, std::uint32_t length) {
-    if (const auto sent = backend_.send(qp_index, local, length); !sent)
-        return sent.error();
-    return {};
+
+Result<void> Transport::send(std::size_t qp_index, const MemoryRegion &local, std::uint32_t length) {
+    QueuePair *qp = queue_pair(qp_index);
+    if (qp == nullptr)
+        return Error{ErrorCode::kInvalidArgument, "CPU transport QP index is out of range"};
+    return qp->send(local, length, completion_timeout_ms_);
 }
-Result<RegisteredRegion> Transport::register_memory(void *buffer, std::size_t length, MemoryAccess access) {
-    int backend_access = 0;
+
+Result<MemoryRegion> Transport::register_memory(void *buffer, std::size_t length, MemoryAccess access) {
+    int verbs_access = 0;
     if (access == MemoryAccess::LocalWrite)
-        backend_access = IBV_ACCESS_LOCAL_WRITE;
+        verbs_access = IBV_ACCESS_LOCAL_WRITE;
     else if (access == MemoryAccess::RemoteRead)
-        backend_access = IBV_ACCESS_REMOTE_READ;
+        verbs_access = IBV_ACCESS_REMOTE_READ;
     else if (access == MemoryAccess::RemoteWrite)
-        backend_access = IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE;
-    auto registered = backend_.register_memory(buffer, length, backend_access);
-    if (!registered)
-        return registered.error();
-    return std::move(registered).value();
+        verbs_access = IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE;
+    else if (access != MemoryAccess::LocalRead)
+        return Error{ErrorCode::kInvalidArgument, "unsupported CPU memory access mode"};
+    return endpoint_.reg_mr(buffer, length, verbs_access);
 }
-Result<void> Transport::read(const RegisteredRegion &local, std::uint64_t address, std::uint32_t key,
+
+Result<void> Transport::read(const MemoryRegion &local, std::uint64_t address, std::uint32_t key,
                              std::uint32_t length) {
     return read(0U, local, address, key, length);
 }
-Result<void> Transport::read(std::size_t qp_index, const RegisteredRegion &local, std::uint64_t address,
-                             std::uint32_t key, std::uint32_t length) {
-    if (const auto read = backend_.read(qp_index, local, address, key, length); !read)
-        return read.error();
-    return {};
+
+Result<void> Transport::read(std::size_t qp_index, const MemoryRegion &local, std::uint64_t address, std::uint32_t key,
+                             std::uint32_t length) {
+    QueuePair *qp = queue_pair(qp_index);
+    if (qp == nullptr)
+        return Error{ErrorCode::kInvalidArgument, "CPU transport QP index is out of range"};
+    return qp->read(local, address, key, length, completion_timeout_ms_);
 }
-Result<void> Transport::write(const RegisteredRegion &local, std::uint64_t address, std::uint32_t key,
+
+Result<void> Transport::write(const MemoryRegion &local, std::uint64_t address, std::uint32_t key,
                               std::uint32_t length) {
     return write(0U, local, address, key, length);
 }
-Result<void> Transport::write(std::size_t qp_index, const RegisteredRegion &local, std::uint64_t address,
-                              std::uint32_t key, std::uint32_t length) {
-    if (const auto written = backend_.write(qp_index, local, address, key, length); !written)
-        return written.error();
-    return {};
+
+Result<void> Transport::write(std::size_t qp_index, const MemoryRegion &local, std::uint64_t address, std::uint32_t key,
+                              std::uint32_t length) {
+    QueuePair *qp = queue_pair(qp_index);
+    if (qp == nullptr)
+        return Error{ErrorCode::kInvalidArgument, "CPU transport QP index is out of range"};
+    return qp->write(local, address, key, length, completion_timeout_ms_);
 }
+
 std::size_t Transport::qp_count() const noexcept {
-    return backend_.qp_count();
+    return qps_.size();
 }
+
+bool Transport::opened() const noexcept {
+    return exchange_channel_.is_open() || endpoint_.opened();
+}
+
 TcpConnection *Transport::exchange_channel() noexcept {
     return &exchange_channel_;
 }

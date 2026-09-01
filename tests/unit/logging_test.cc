@@ -22,9 +22,9 @@ TEST(LoggingTest, UsesInjectedSinkAndRejectsInvalidConfiguration) {
     EXPECT_TRUE(output.str() == "message 7\nfailure 8\nformatted message\n");
 
     const auto invalid_sink = nds::log::configure("test", "invalid", "info");
-    EXPECT_TRUE(!invalid_sink);
+    EXPECT_FALSE(invalid_sink.ok());
     EXPECT_TRUE(invalid_sink.error().message == "unsupported log sink: invalid");
     const auto invalid_level = nds::log::configure("test", "none", "invalid");
-    EXPECT_TRUE(!invalid_level);
+    EXPECT_FALSE(invalid_level.ok());
     EXPECT_TRUE(invalid_level.error().message == "unsupported log level: invalid");
 }

@@ -23,7 +23,7 @@ The E2E tree follows the public library layers:
 
 ```text
 tests/e2e/
-  verbs/       one-QP Send, Recv, Read, PollCq, and configured RDMA Write case
+  verbs/       settled one-QP Send, Recv, Read, PollCq, and configured RDMA Write correctness case
   transport/   RdmaSend, RdmaRecv, RdmaRead, and RdmaWrite cases
   storage/     native storage and Torch session cases
   support/     shared target runners and AICPU package setup
@@ -85,3 +85,12 @@ caller-owned CQ, and performs a configured stream-based RDMA Write. The server
 verifies the received and written payload. For AIV and AICPU, the client requests caller-owned CQ
 metadata when creating the AI-QP; AICPU still uses the installed CANN-root
 mode-0 package for its provider-backed Send path.
+This is correctness coverage only. Verbs error propagation and performance
+benchmarking are not covered by this runner.
+
+The transport cases are the current layer focus. They validate the bounded
+launcher `RdmaSend`, `RdmaRecv`, `RdmaRead`, and `RdmaWrite` paths for each
+available backend using the complete transport descriptor and an explicit queue
+index. These tests do not claim queue-credit scheduling, concurrent requests, or
+transport throughput. The transport layer negotiates its QP count and MTU
+internally; the runner exposes only the backend and operation selection.

@@ -30,7 +30,7 @@ struct ClientConfig {
 
 nds::Result<int> parse_args(int argc, char **argv, ClientConfig *config, bool *exit_requested) {
     if (config == nullptr || exit_requested == nullptr)
-        return Error{nds::ErrorCode::kInvalidArgument, "client configuration and exit state are required"};
+        return nds::Error{nds::ErrorCode::kInvalidArgument, "client configuration and exit state are required"};
     CLI::App app{"Send one NDS storage command from an NPU to a CPU memory namespace."};
     std::string backend{"ra"};
     app.add_option("--backend-mode", backend, "Storage backend mode")->check(CLI::IsMember({"ra", "aicpu", "aiv"}));
@@ -44,16 +44,10 @@ nds::Result<int> parse_args(int argc, char **argv, ClientConfig *config, bool *e
     app.add_option("--batch-count", config->batch_count, "Number of entries in a batch storage command")
         ->check(CLI::Range(std::uint32_t{1}, nds::kStorageMaxBatchEntries));
     app.add_option("--logical-device", config->runtime.logical_device_id, "NPU logical device")->required();
-    app.add_option("--port", config->transport.qp.port_num, "NPU RoCE port")
-        ->check(CLI::Range(std::uint16_t{1}, std::numeric_limits<std::uint16_t>::max()));
-    app.add_option("--path-mtu", config->transport.qp.path_mtu, "Path MTU")
-        ->check(CLI::Range(std::uint16_t{1}, std::numeric_limits<std::uint16_t>::max()));
     app.add_option("--qp-count", config->transport.qp_count, "Connected QPs to create")
         ->check(CLI::Range(1U, nds::wire::kMaxQpInfoBatch));
     app.add_option("--server", config->transport.server_address, "Server TCP exchange address as IPv4:port")
         ->required();
-    app.add_option("--tcp-timeout-ms", config->transport.tcp_timeout_ms, "TCP server bootstrap timeout")
-        ->check(CLI::PositiveNumber);
     app.add_option("--log-sink", config->log_sink, "Log sink")
         ->check(CLI::IsMember({"stderr", "stdout", "syslog", "none"}));
     app.add_option("--log-level", config->log_level, "Log level")
@@ -72,7 +66,7 @@ nds::Result<int> parse_args(int argc, char **argv, ClientConfig *config, bool *e
     if (backend == "aiv")
         config->backend.mode = nds::client::BackendMode::Aiv;
     if (config->backend.artifact_path.empty()) {
-        return Error{nds::ErrorCode::kInvalidArgument, "invalid option combination"};
+        return nds::Error{nds::ErrorCode::kInvalidArgument, "invalid option combination"};
     }
     return 0;
 }
@@ -85,14 +79,15 @@ int main(int argc, char **argv) {
     config.transport.tcp_timeout_ms = 10000U;
     bool exit_requested = false;
     const auto parse_result = parse_args(argc, argv, &config, &exit_requested);
-    if (!parse_result) {
+    if (!parse_result.ok()) {
         NDS_LOG_ERROR("npu-client", "{}", parse_result.error().message);
         return EXIT_FAILURE;
     }
-    if (exit_requested || *parse_result != 0) {
-        return *parse_result;
+    if (exit_requested || parse_result.value() != 0) {
+        return parse_result.value();
     }
-    if (const auto configured = nds::log::configure("npu-client", config.log_sink, config.log_level); !configured) {
+    if (const auto configured = nds::log::configure("npu-client", config.log_sink, config.log_level);
+        !configured.ok()) {
         NDS_LOG_ERROR("npu-client", "invalid logger configuration: {}", configured.error().message);
         return EXIT_FAILURE;
     }
@@ -100,15 +95,15 @@ int main(int argc, char **argv) {
     nds::client::Runtime runtime;
     nds::client::Transport transport;
     nds::client::StorageClient client;
-    if (const auto result = runtime.open(config.runtime); !result) {
+    if (const auto result = runtime.open(config.runtime); !result.ok()) {
         NDS_LOG_ERROR("npu-client", "runtime open failed: {}", result.error().message);
         return EXIT_FAILURE;
     }
-    if (const auto result = transport.open(&runtime, config.transport, config.backend); !result) {
+    if (const auto result = transport.open(&runtime, config.transport, config.backend); !result.ok()) {
         NDS_LOG_ERROR("npu-client", "transport open failed: {}", result.error().message);
         return EXIT_FAILURE;
     }
-    if (const auto result = client.open(&runtime, &transport); !result) {
+    if (const auto result = client.open(&runtime, &transport); !result.ok()) {
         NDS_LOG_ERROR("npu-client", "storage client open failed: {}", result.error().message);
         return EXIT_FAILURE;
     }
@@ -127,41 +122,38 @@ int main(int argc, char **argv) {
     for (std::uint32_t operation_index = 0U; operation_index < operation_count; ++operation_index) {
         const std::uint64_t operation_offset = config.offset + operation_index * config.bytes;
         auto allocated = runtime.allocate(config.bytes, nds::client::MemoryLocation::Device);
-        if (!allocated) {
+        if (!allocated.ok()) {
             NDS_LOG_ERROR("npu-client", "client application buffer allocation failed: {}", allocated.error().message);
             return EXIT_FAILURE;
         }
-        buffers.push_back(std::move(*allocated));
+        buffers.push_back(std::move(allocated).value());
         requests.push_back({operation_offset, &buffers.back(), config.bytes});
         if (!read) {
             std::vector<std::uint8_t> payload(config.bytes);
             for (std::size_t index = 0U; index < payload.size(); ++index)
                 payload[index] = static_cast<std::uint8_t>((operation_offset + index) ^ 0x5aU);
-            if (const auto copied = runtime.copy_to(&buffers.back(), payload.data(), payload.size()); !copied) {
+            if (const auto copied = runtime.copy_to(&buffers.back(), payload.data(), payload.size()); !copied.ok()) {
                 NDS_LOG_ERROR("npu-client", "client application buffer copy failed: {}", copied.error().message);
                 return EXIT_FAILURE;
             }
         }
     }
 
-    nds::Result<nds::client::StorageCompletionHandle> result;
-    if (batch)
-        result = read ? client.read_batch(requests) : client.write_batch(requests);
-    else
-        result = read ? client.read(config.offset, &buffers.front(), config.bytes)
-                      : client.write(config.offset, &buffers.front(), config.bytes);
-    if (!result) {
+    const auto result = batch ? (read ? client.read_batch(requests) : client.write_batch(requests))
+                              : (read ? client.read(config.offset, &buffers.front(), config.bytes)
+                                      : client.write(config.offset, &buffers.front(), config.bytes));
+    if (!result.ok()) {
         NDS_LOG_ERROR("npu-client", "storage {} failed: {}", config.operation, result.error().message);
         return EXIT_FAILURE;
     }
-    if (const auto completed = client.wait(*result, kStorageCompletionTimeoutMs); !completed) {
+    if (const auto completed = client.wait(result.value(), kStorageCompletionTimeoutMs); !completed.ok()) {
         NDS_LOG_ERROR("npu-client", "storage {} completion failed: {}", config.operation, completed.error().message);
         return EXIT_FAILURE;
     }
     if (read) {
         for (const nds::client::StorageIo &request : requests) {
             std::vector<std::uint8_t> observed(request.length);
-            if (const auto copied = runtime.copy_from(observed.data(), *request.data, observed.size()); !copied) {
+            if (const auto copied = runtime.copy_from(observed.data(), *request.data, observed.size()); !copied.ok()) {
                 NDS_LOG_ERROR("npu-client", "client Read copy failed: {}", copied.error().message);
                 return EXIT_FAILURE;
             }

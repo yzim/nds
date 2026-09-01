@@ -23,10 +23,10 @@ struct Config {
 
 int parse(int argc, char **argv, Config *config, bool *exit_requested) {
     CLI::App app{"Serve NDS memory-backed storage commands."};
-    app.add_option("--device", config->transport.backend.device_name)->required();
-    app.add_option("--gid-index", config->transport.backend.gid_index)->required();
+    app.add_option("--device", config->transport.endpoint.device_name)->required();
+    app.add_option("--gid-index", config->transport.endpoint.gid_index)->required();
     app.add_option("--listen", config->transport.listen_address, "TCP exchange listen address as IPv4:port");
-    app.add_option("--ib-port", config->transport.backend.port);
+    app.add_option("--ib-port", config->transport.endpoint.port);
     app.add_option("--max-qp-count", config->transport.max_qp_count, "Maximum QPs accepted per client")
         ->check(CLI::Range(1U, nds::wire::kMaxQpInfoBatch));
     app.add_option("--clients", config->clients, "Number of serial client sessions to serve")
@@ -61,10 +61,10 @@ int main(int argc, char **argv) {
     const int result = parse(argc, argv, &config, &exit_requested);
     if (exit_requested || result != 0)
         return result;
-    if (!nds::log::configure("cpu-server", config.log_sink, config.log_level))
+    if (!nds::log::configure("cpu-server", config.log_sink, config.log_level).ok())
         return EXIT_FAILURE;
     nds::server::TransportListener listener;
-    if (const auto opened = listener.open(config.transport); !opened) {
+    if (const auto opened = listener.open(config.transport); !opened.ok()) {
         NDS_LOG_ERROR("cpu-server", "server listener failed: {}", opened.error().message);
         return EXIT_FAILURE;
     }
@@ -75,12 +75,13 @@ int main(int argc, char **argv) {
     }
     for (std::uint32_t client_index = 0U; client_index < config.clients; ++client_index) {
         nds::server::Transport transport;
-        if (const auto accepted = listener.accept(&transport); !accepted) {
+        if (const auto accepted = listener.accept(&transport); !accepted.ok()) {
             NDS_LOG_ERROR("cpu-server", "client {} transport failed: {}", client_index, accepted.error().message);
             return EXIT_FAILURE;
         }
-        if (const auto served = nds::server::serve_commands(&transport, &storage, config.storage_commands, 5000U);
-            !served) {
+        if (const auto served = nds::server::serve_commands(&transport, &storage, config.storage_commands,
+                                                             config.transport.completion_timeout_ms);
+            !served.ok()) {
             NDS_LOG_ERROR("cpu-server", "client {} protocol command failed: {}", client_index, served.error().message);
             return EXIT_FAILURE;
         }

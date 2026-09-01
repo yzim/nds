@@ -43,7 +43,7 @@ nds::Result<void> send_info(nds::TcpConnection *channel, const nds::transport::T
 
 nds::Result<nds::transport::TransportInfo> receive_info(nds::TcpConnection *channel) {
     nds::wire::TransportInfo encoded{};
-    if (const auto received = channel->receive(std::as_writable_bytes(std::span{&encoded, 1U})); !received)
+    if (const auto received = channel->receive(std::as_writable_bytes(std::span{&encoded, 1U})); !received.ok())
         return received.error();
     nds::transport::TransportInfo info{};
     if (nds::transport::decode(&encoded, &info) != nds::transport::CodecResult::Ok)
@@ -62,31 +62,31 @@ TEST(TransportExchangeIntegrationTest, NegotiatesQpCountThenExchangesEndpointInf
         std::async(std::launch::async, [fd = sockets[1], server]() -> nds::Result<nds::transport::TransportInfo> {
             nds::TcpConnection channel{fd};
             const auto request = receive_info(&channel);
-            if (!request || request.value().kind != nds::transport::TransportInfoKind::QpCountRequest)
+            if (!request.ok() || request.value().kind != nds::transport::TransportInfoKind::QpCountRequest)
                 return nds::Error{nds::ErrorCode::kTransport, "expected QP-count request"};
             const nds::transport::TransportInfo response{nds::transport::TransportInfoKind::QpCountResponse, 2U, {}};
-            if (const auto sent = send_info(&channel, response); !sent)
+            if (const auto sent = send_info(&channel, response); !sent.ok())
                 return sent.error();
             const auto peer = receive_info(&channel);
-            if (!peer)
+            if (!peer.ok())
                 return peer.error();
-            if (const auto sent = send_info(&channel, server); !sent)
+            if (const auto sent = send_info(&channel, server); !sent.ok())
                 return sent.error();
             return peer;
         });
     nds::TcpConnection channel{sockets[0]};
     const nds::transport::TransportInfo request{nds::transport::TransportInfoKind::QpCountRequest, 6U, {}};
-    ASSERT_TRUE(send_info(&channel, request));
+    ASSERT_TRUE(send_info(&channel, request).ok());
     const auto response = receive_info(&channel);
-    ASSERT_TRUE(response) << response.error().message;
+    ASSERT_TRUE(response.ok()) << response.error().message;
     ASSERT_EQ(response.value().kind, nds::transport::TransportInfoKind::QpCountResponse);
     ASSERT_EQ(response.value().qp_count, 2U);
-    ASSERT_TRUE(send_info(&channel, client));
+    ASSERT_TRUE(send_info(&channel, client).ok());
     const auto peer = receive_info(&channel);
     const auto remote = server_result.get();
 
-    ASSERT_TRUE(peer) << peer.error().message;
-    ASSERT_TRUE(remote) << remote.error().message;
+    ASSERT_TRUE(peer.ok()) << peer.error().message;
+    ASSERT_TRUE(remote.ok()) << remote.error().message;
     EXPECT_EQ(peer.value().qps[0].qp_num, server.qps[0].qp_num);
     EXPECT_EQ(peer.value().qps[1].qp_num, server.qps[1].qp_num);
     EXPECT_EQ(remote.value().qps[0].qp_num, client.qps[0].qp_num);
@@ -120,7 +120,7 @@ TEST(TransportExchangeIntegrationTest, TransfersExactRawBytesOverSocketPair) {
         return channel.receive(received);
     });
     nds::TcpConnection channel{sockets[0]};
-    ASSERT_TRUE(channel.send(sent));
-    ASSERT_TRUE(receiver.get());
+    ASSERT_TRUE(channel.send(sent).ok());
+    ASSERT_TRUE(receiver.get().ok());
     EXPECT_EQ(received, sent);
 }

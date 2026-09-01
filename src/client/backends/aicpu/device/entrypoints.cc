@@ -16,7 +16,7 @@ void entry_barrier() {
 }
 
 void set_invalid(int32_t *return_value) {
-    NdsAicpuSetReturnValue(return_value, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
+    NdsAicpuSetReturnValue(return_value, NDS_OPERATION_INVALID_ARGUMENT);
 }
 
 template <typename Request>
@@ -49,144 +49,142 @@ int32_t *launch_return_value(void *launch_args) {
 }  // namespace
 
 extern "C" __attribute__((visibility("default"))) uint32_t nds_aicpu_post_send_kernel(void *args) {
-    auto *request = device_args<NdsDevicePostSendArgs>(args);
+    auto *request = device_args<NdsPostSendArgs>(args);
     if (!valid_verbs_request(request)) {
-        set_invalid(launch_return_value<NdsDevicePostSendArgs>(args));
+        set_invalid(launch_return_value<NdsPostSendArgs>(args));
         return kEntryInvalidArgument;
     }
-    const uint32_t status =
-        nds_aicpu_post_send(&request->qp, &request->wr, launch_return_value<NdsDevicePostSendArgs>(args));
+    const uint32_t status = nds_aicpu_post_send(&request->qp, &request->wr, launch_return_value<NdsPostSendArgs>(args));
     entry_barrier();
     return status;
 }
 extern "C" __attribute__((visibility("default"))) uint32_t nds_aicpu_post_recv_kernel(void *args) {
-    auto *request = device_args<NdsDevicePostRecvArgs>(args);
+    auto *request = device_args<NdsPostRecvArgs>(args);
     if (!valid_verbs_request(request)) {
-        set_invalid(launch_return_value<NdsDevicePostRecvArgs>(args));
+        set_invalid(launch_return_value<NdsPostRecvArgs>(args));
         return kEntryInvalidArgument;
     }
-    const uint32_t status =
-        nds_aicpu_post_recv(&request->qp, &request->wr, launch_return_value<NdsDevicePostRecvArgs>(args));
+    const uint32_t status = nds_aicpu_post_recv(&request->qp, &request->wr, launch_return_value<NdsPostRecvArgs>(args));
     entry_barrier();
     return status;
 }
 extern "C" __attribute__((visibility("default"))) uint32_t nds_aicpu_poll_cq_kernel(void *args) {
-    auto *request = device_args<NdsDevicePollCqArgs>(args);
+    auto *request = device_args<NdsPollCqArgs>(args);
     if (!valid_verbs_request(request)) {
-        set_invalid(launch_return_value<NdsDevicePollCqArgs>(args));
+        set_invalid(launch_return_value<NdsPollCqArgs>(args));
         return kEntryInvalidArgument;
     }
-    const uint32_t status = nds_aicpu_poll_cq(&request->qp, request->is_send_cq, request->max_completions,
-                                              reinterpret_cast<NdsDeviceWc *>(request->wc_address),
-                                              launch_return_value<NdsDevicePollCqArgs>(args));
+    const uint32_t status =
+        nds_aicpu_poll_cq(&request->qp, request->is_send_cq, request->max_completions,
+                          reinterpret_cast<NdsWc *>(request->wc_address), launch_return_value<NdsPollCqArgs>(args));
     entry_barrier();
     return status;
 }
 extern "C" __attribute__((visibility("default"))) uint32_t nds_aicpu_rdma_send_kernel(void *args) {
-    auto *request = device_args<NdsDeviceRdmaSendArgs>(args);
+    auto *request = device_args<NdsRdmaSendArgs>(args);
     if (!valid_rdma_request(request)) {
-        set_invalid(launch_return_value<NdsDeviceRdmaSendArgs>(args));
+        set_invalid(launch_return_value<NdsRdmaSendArgs>(args));
         return kEntryInvalidArgument;
     }
-    const uint32_t status =
-        nds_aicpu_rdma_send(&request->transport, &request->wr, launch_return_value<NdsDeviceRdmaSendArgs>(args));
+    const uint32_t status = nds_aicpu_rdma_send(&request->transport, request->queue_index, &request->wr,
+                                                launch_return_value<NdsRdmaSendArgs>(args));
     entry_barrier();
     return status;
 }
 
 extern "C" __attribute__((visibility("default"))) uint32_t nds_aicpu_rdma_recv_kernel(void *args) {
-    auto *request = device_args<NdsDeviceRdmaRecvArgs>(args);
+    auto *request = device_args<NdsRdmaRecvArgs>(args);
     if (!valid_rdma_request(request)) {
-        set_invalid(launch_return_value<NdsDeviceRdmaRecvArgs>(args));
+        set_invalid(launch_return_value<NdsRdmaRecvArgs>(args));
         return kEntryInvalidArgument;
     }
-    const uint32_t status =
-        nds_aicpu_rdma_recv(&request->transport, &request->wr, launch_return_value<NdsDeviceRdmaRecvArgs>(args));
+    const uint32_t status = nds_aicpu_rdma_recv(&request->transport, request->queue_index, &request->wr,
+                                                launch_return_value<NdsRdmaRecvArgs>(args));
     entry_barrier();
     return status;
 }
 
 extern "C" __attribute__((visibility("default"))) uint32_t nds_aicpu_rdma_read_kernel(void *args) {
-    auto *request = device_args<NdsDeviceRdmaReadArgs>(args);
+    auto *request = device_args<NdsRdmaReadArgs>(args);
     if (!valid_rdma_request(request)) {
-        set_invalid(launch_return_value<NdsDeviceRdmaReadArgs>(args));
+        set_invalid(launch_return_value<NdsRdmaReadArgs>(args));
         return kEntryInvalidArgument;
     }
-    const uint32_t status =
-        nds_aicpu_rdma_read(&request->transport, &request->wr, launch_return_value<NdsDeviceRdmaReadArgs>(args));
+    const uint32_t status = nds_aicpu_rdma_read(&request->transport, request->queue_index, &request->wr,
+                                                launch_return_value<NdsRdmaReadArgs>(args));
     entry_barrier();
     return status;
 }
 
 extern "C" __attribute__((visibility("default"))) uint32_t nds_aicpu_rdma_write_kernel(void *args) {
-    auto *request = device_args<NdsDeviceRdmaWriteArgs>(args);
+    auto *request = device_args<NdsRdmaWriteArgs>(args);
     if (!valid_rdma_request(request)) {
-        set_invalid(launch_return_value<NdsDeviceRdmaWriteArgs>(args));
+        set_invalid(launch_return_value<NdsRdmaWriteArgs>(args));
         return kEntryInvalidArgument;
     }
-    const uint32_t status =
-        nds_aicpu_rdma_write(&request->transport, &request->wr, launch_return_value<NdsDeviceRdmaWriteArgs>(args));
+    const uint32_t status = nds_aicpu_rdma_write(&request->transport, request->queue_index, &request->wr,
+                                                 launch_return_value<NdsRdmaWriteArgs>(args));
     entry_barrier();
     return status;
 }
 
 extern "C" __attribute__((visibility("default"))) uint32_t nds_aicpu_storage_read_kernel(void *args) {
-    auto *request = device_args<NdsDeviceStorageReadArgs>(args);
+    auto *request = device_args<NdsStorageReadArgs>(args);
     if (!valid_storage_args(request)) {
-        set_invalid(launch_return_value<NdsDeviceStorageReadArgs>(args));
+        set_invalid(launch_return_value<NdsStorageReadArgs>(args));
         return kEntryInvalidArgument;
     }
-    const uint32_t status = nds_aicpu_storage_read(&request->context, &request->command,
-                                                   launch_return_value<NdsDeviceStorageReadArgs>(args));
+    const uint32_t status =
+        nds_aicpu_storage_read(&request->context, &request->command, launch_return_value<NdsStorageReadArgs>(args));
     entry_barrier();
     return status;
 }
 
 extern "C" __attribute__((visibility("default"))) uint32_t nds_aicpu_storage_write_kernel(void *args) {
-    auto *request = device_args<NdsDeviceStorageWriteArgs>(args);
+    auto *request = device_args<NdsStorageWriteArgs>(args);
     if (!valid_storage_args(request)) {
-        set_invalid(launch_return_value<NdsDeviceStorageWriteArgs>(args));
+        set_invalid(launch_return_value<NdsStorageWriteArgs>(args));
         return kEntryInvalidArgument;
     }
-    const uint32_t status = nds_aicpu_storage_write(&request->context, &request->command,
-                                                    launch_return_value<NdsDeviceStorageWriteArgs>(args));
+    const uint32_t status =
+        nds_aicpu_storage_write(&request->context, &request->command, launch_return_value<NdsStorageWriteArgs>(args));
     entry_barrier();
     return status;
 }
 
 extern "C" __attribute__((visibility("default"))) uint32_t nds_aicpu_storage_batch_read_kernel(void *args) {
-    auto *request = device_args<NdsDeviceStorageBatchReadArgs>(args);
+    auto *request = device_args<NdsStorageBatchReadArgs>(args);
     if (!valid_storage_args(request)) {
-        set_invalid(launch_return_value<NdsDeviceStorageBatchReadArgs>(args));
+        set_invalid(launch_return_value<NdsStorageBatchReadArgs>(args));
         return kEntryInvalidArgument;
     }
     const uint32_t status = nds_aicpu_storage_batch_read(&request->context, &request->command,
-                                                         launch_return_value<NdsDeviceStorageBatchReadArgs>(args));
+                                                         launch_return_value<NdsStorageBatchReadArgs>(args));
     entry_barrier();
     return status;
 }
 
 extern "C" __attribute__((visibility("default"))) uint32_t nds_aicpu_storage_batch_write_kernel(void *args) {
-    auto *request = device_args<NdsDeviceStorageBatchWriteArgs>(args);
+    auto *request = device_args<NdsStorageBatchWriteArgs>(args);
     if (!valid_storage_args(request)) {
-        set_invalid(launch_return_value<NdsDeviceStorageBatchWriteArgs>(args));
+        set_invalid(launch_return_value<NdsStorageBatchWriteArgs>(args));
         return kEntryInvalidArgument;
     }
     const uint32_t status = nds_aicpu_storage_batch_write(&request->context, &request->command,
-                                                          launch_return_value<NdsDeviceStorageBatchWriteArgs>(args));
+                                                          launch_return_value<NdsStorageBatchWriteArgs>(args));
     entry_barrier();
     return status;
 }
 
 extern "C" __attribute__((visibility("default"))) uint32_t nds_aicpu_storage_wait_kernel(void *args) {
-    auto *request = device_args<NdsDeviceStorageWaitArgs>(args);
+    auto *request = device_args<NdsStorageWaitArgs>(args);
     if (!valid_storage_args(request) ||
-        !nds_device_storage_wait_valid(&request->context, request->command_id, request->expected_bytes)) {
-        set_invalid(launch_return_value<NdsDeviceStorageWaitArgs>(args));
+        !nds_storage_wait_valid(&request->context, request->command_id, request->expected_bytes)) {
+        set_invalid(launch_return_value<NdsStorageWaitArgs>(args));
         return kEntryInvalidArgument;
     }
     const uint32_t status = nds_aicpu_storage_wait(&request->context, request->command_id, request->expected_bytes,
-                                                   launch_return_value<NdsDeviceStorageWaitArgs>(args));
+                                                   launch_return_value<NdsStorageWaitArgs>(args));
     entry_barrier();
     return status;
 }

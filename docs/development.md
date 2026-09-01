@@ -33,6 +33,17 @@ names. Format with the repository
   declaration and cross-option validation. Use `npu-client` and `cpu-server`
   component names unless an application replaces the logger.
 
+## Current layer focus
+
+The direct verbs implementation and example are the correctness baseline for
+one QP and one MR. Do not treat the verbs error-propagation contract or its
+benchmark scaffold as finished. New work is currently transport work and must
+preserve the transport boundary: QP-count negotiation, NDS-owned TCP bootstrap
+records, registered-memory ownership, and export of the complete
+`NdsTransportDescriptor`. Data-path work is submitted through explicit launcher
+APIs that take the descriptor and queue index. Storage semantics and
+backend/device WR layouts do not belong in transport control APIs.
+
 ## Formatting and local tests
 
 Formatting is pinned to clang-format 18 through `pre-commit`.
@@ -90,6 +101,9 @@ Keep hardware claims tied to recorded bounded target experiments.
 
 The paired lower-layer examples build with `-DNDS_BUILD_HARDWARE_PROBES=ON`.
 Storage remains the application-level test path under `examples/storage/`.
+The transport example and E2E runner are the current layer-focused workflow;
+their success validates the bounded request path only, not concurrency,
+throughput, or a complete transport error taxonomy.
 
 ## PyTorch wrapper
 

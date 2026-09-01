@@ -16,7 +16,7 @@ Result<void> validate_context(const RaStorageContext &context) {
 
 template <typename Request, typename Serialize>
 Result<void> execute(const RaStorageContext &context, const Request &command, Serialize serialize) {
-    if (const auto valid = validate_context(context); !valid)
+    if (const auto valid = validate_context(context); !valid.ok())
         return Error{valid.error()};
     uint8_t pending[kStorageCompletionBytes]{};
     const StorageCompletion pending_completion{command.command_id, StorageCompletionState::Pending,
@@ -25,7 +25,7 @@ Result<void> execute(const RaStorageContext &context, const Request &command, Se
         return Error{ErrorCode::kProtocol, "invalid RA pending completion record"};
     if (const auto copied =
             context.connection.runtime->copy_host_to_device(context.completion_device, pending, sizeof(pending));
-        !copied)
+        !copied.ok())
         return Error{copied.error()};
 
     uint8_t command_bytes[kStorageCommandBytes]{};
@@ -33,17 +33,16 @@ Result<void> execute(const RaStorageContext &context, const Request &command, Se
         return Error{ErrorCode::kProtocol, "invalid RA storage command"};
     if (const auto copied = context.connection.runtime->copy_host_to_device(context.command_device, command_bytes,
                                                                             sizeof(command_bytes));
-        !copied)
+        !copied.ok())
         return Error{copied.error()};
 
-    const NdsDeviceSendWr transfer{
-        command.command_id,
-        NDS_DEVICE_WR_SEND,
-        NDS_DEVICE_SEND_SIGNALED,
-        {context.command_buffer.address, kStorageCommandBytes, context.command_buffer.local_key},
-        0U,
-        0U,
-        0U};
+    const NdsSendWr transfer{command.command_id,
+                             NDS_WR_SEND,
+                             NDS_SEND_SIGNALED,
+                             {context.command_buffer.address, kStorageCommandBytes, context.command_buffer.local_key},
+                             0U,
+                             0U,
+                             0U};
     return NdsRaRdmaSend(context.connection, transfer);
 }
 

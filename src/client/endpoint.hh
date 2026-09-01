@@ -91,7 +91,7 @@ public:
     Result<int> query_support_lite();
     Result<int> query_status();
     Result<std::vector<Libra::CqeError>> query_cqe_errors();
-    Result<NdsDeviceQp> device_qp() const;
+    Result<NdsQpDescriptor> device_qp() const;
 
     bool created() const noexcept;
     bool connected() const noexcept;

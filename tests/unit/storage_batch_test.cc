@@ -21,8 +21,8 @@ TEST(StorageBatchTest, RejectsEmptyBatch) {
     nds::client::StorageClientTestAccess::mark_open(&client, 1024U);
     const std::span<const nds::client::StorageIo> requests;
 
-    EXPECT_FALSE(client.read_batch(requests));
-    EXPECT_FALSE(client.write_batch(requests));
+    EXPECT_FALSE(client.read_batch(requests).ok());
+    EXPECT_FALSE(client.write_batch(requests).ok());
 }
 
 TEST(StorageBatchTest, RejectsMalformedDescriptorBeforeSubmission) {
@@ -31,6 +31,6 @@ TEST(StorageBatchTest, RejectsMalformedDescriptorBeforeSubmission) {
     nds::client::MemoryBuffer buffer;
     const nds::client::StorageIo request{0U, &buffer, 1U};
 
-    EXPECT_FALSE(client.read_batch(std::span{&request, 1U}));
-    EXPECT_FALSE(client.write_batch(std::span{&request, 1U}));
+    EXPECT_FALSE(client.read_batch(std::span{&request, 1U}).ok());
+    EXPECT_FALSE(client.write_batch(std::span{&request, 1U}).ok());
 }

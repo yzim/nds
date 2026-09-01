@@ -25,12 +25,20 @@ public:
     static Result<std::unique_ptr<Launcher>> open(const std::string &backend_path);
 
 private:
-    Result<void> post_send_with_config(const LaunchConfig &config, const NdsDeviceQp &qp,
-                                       const NdsDeviceSendWr &wr) const override;
-    Result<void> post_recv_with_config(const LaunchConfig &config, const NdsDeviceQp &qp,
-                                       const NdsDeviceRecvWr &wr) const override;
-    Result<std::uint32_t> poll_cq_with_config(const LaunchConfig &config, const NdsDeviceQp &qp, bool send_cq,
-                                              std::uint32_t max_completions, NdsDeviceWc *wc) const override;
+    Result<void> post_send_with_config(const LaunchConfig &config, const NdsQpDescriptor &qp,
+                                       const NdsSendWr &wr) const override;
+    Result<void> post_recv_with_config(const LaunchConfig &config, const NdsQpDescriptor &qp,
+                                       const NdsRecvWr &wr) const override;
+    Result<std::uint32_t> poll_cq_with_config(const LaunchConfig &config, const NdsQpDescriptor &qp, bool send_cq,
+                                              std::uint32_t max_completions, NdsWc *wc) const override;
+    Result<void> rdma_send_with_config(const LaunchConfig &config, const NdsTransportDescriptor &transport,
+                                       std::uint32_t queue_index, const NdsSendWr &wr) const override;
+    Result<void> rdma_recv_with_config(const LaunchConfig &config, const NdsTransportDescriptor &transport,
+                                       std::uint32_t queue_index, const NdsRecvWr &wr) const override;
+    Result<void> rdma_read_with_config(const LaunchConfig &config, const NdsTransportDescriptor &transport,
+                                       std::uint32_t queue_index, const NdsSendWr &wr) const override;
+    Result<void> rdma_write_with_config(const LaunchConfig &config, const NdsTransportDescriptor &transport,
+                                        std::uint32_t queue_index, const NdsSendWr &wr) const override;
 
     Result<void> load(const std::string &backend_path);
     class Impl;

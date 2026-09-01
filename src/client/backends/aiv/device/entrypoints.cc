@@ -12,14 +12,13 @@ using namespace AscendC;
 
 namespace {
 __aicore__ inline void SetInvalid(__gm__ int32_t *return_value) {
-    NdsAivSetReturnValue(return_value, NDS_DEVICE_OPERATION_INVALID_ARGUMENT);
+    NdsAivSetReturnValue(return_value, NDS_OPERATION_INVALID_ARGUMENT);
 }
 
 }  // namespace
 
 /* Posts one send WR and stores the operation return value. */
-extern "C" __global__ __aicore__ void nds_aiv_post_send_kernel(NdsDeviceQp qp, NdsDeviceSendWr wr,
-                                                               GM_ADDR return_value) {
+extern "C" __global__ __aicore__ void nds_aiv_post_send_kernel(NdsQpDescriptor qp, NdsSendWr wr, GM_ADDR return_value) {
     __gm__ auto *return_value_ptr = reinterpret_cast<__gm__ int32_t *>(return_value);
     TPipe pipe;
     TBuf<> scratch;
@@ -31,8 +30,8 @@ extern "C" __global__ __aicore__ void nds_aiv_post_send_kernel(NdsDeviceQp qp, N
 extern "C" __global__ __aicore__ void nds_aiv_post_send_batch_kernel(GM_ADDR qp_address, GM_ADDR wrs_address,
                                                                      uint32_t wr_count, GM_ADDR bad_wr_address,
                                                                      GM_ADDR return_value) {
-    __gm__ const auto *qp = reinterpret_cast<__gm__ const NdsDeviceQp *>(qp_address);
-    __gm__ const auto *wrs = reinterpret_cast<__gm__ const NdsDeviceSendWr *>(wrs_address);
+    __gm__ const auto *qp = reinterpret_cast<__gm__ const NdsQpDescriptor *>(qp_address);
+    __gm__ const auto *wrs = reinterpret_cast<__gm__ const NdsSendWr *>(wrs_address);
     __gm__ auto *bad_wr = reinterpret_cast<__gm__ uint64_t *>(bad_wr_address);
     __gm__ auto *return_value_ptr = reinterpret_cast<__gm__ int32_t *>(return_value);
     TPipe pipe;
@@ -42,8 +41,7 @@ extern "C" __global__ __aicore__ void nds_aiv_post_send_batch_kernel(GM_ADDR qp_
 }
 
 /* Posts one receive WR and stores the operation return value. */
-extern "C" __global__ __aicore__ void nds_aiv_post_recv_kernel(NdsDeviceQp qp, NdsDeviceRecvWr wr,
-                                                               GM_ADDR return_value) {
+extern "C" __global__ __aicore__ void nds_aiv_post_recv_kernel(NdsQpDescriptor qp, NdsRecvWr wr, GM_ADDR return_value) {
     __gm__ auto *return_value_ptr = reinterpret_cast<__gm__ int32_t *>(return_value);
     nds_aiv_post_recv(&qp, &wr, return_value_ptr);
 }
@@ -52,77 +50,93 @@ extern "C" __global__ __aicore__ void nds_aiv_post_recv_kernel(NdsDeviceQp qp, N
 extern "C" __global__ __aicore__ void nds_aiv_poll_cq_kernel(GM_ADDR qp_address, uint32_t is_send_cq,
                                                              uint32_t max_completions, GM_ADDR wc_address,
                                                              GM_ADDR return_value) {
-    __gm__ const auto *qp = reinterpret_cast<__gm__ const NdsDeviceQp *>(qp_address);
-    __gm__ auto *wc = reinterpret_cast<__gm__ NdsDeviceWc *>(wc_address);
+    __gm__ const auto *qp = reinterpret_cast<__gm__ const NdsQpDescriptor *>(qp_address);
+    __gm__ auto *wc = reinterpret_cast<__gm__ NdsWc *>(wc_address);
     __gm__ auto *return_value_ptr = reinterpret_cast<__gm__ int32_t *>(return_value);
     nds_aiv_poll_cq(qp, is_send_cq, max_completions, wc, return_value_ptr);
 }
 
 /* Submits one transport send WR and stores the operation return value. */
 extern "C" __global__ __aicore__ void nds_aiv_rdma_send_kernel(GM_ADDR transport_address, GM_ADDR wr_address,
-                                                               GM_ADDR return_value) {
-    __gm__ const auto *transport = reinterpret_cast<__gm__ const NdsDeviceTransport *>(transport_address);
-    __gm__ const auto *wr = reinterpret_cast<__gm__ const NdsDeviceSendWr *>(wr_address);
+                                                               uint32_t queue_index, GM_ADDR return_value) {
+    __gm__ const auto *transport = reinterpret_cast<__gm__ const NdsTransportDescriptor *>(transport_address);
+    __gm__ const auto *wr = reinterpret_cast<__gm__ const NdsSendWr *>(wr_address);
     __gm__ auto *return_value_ptr = reinterpret_cast<__gm__ int32_t *>(return_value);
     if (transport == nullptr || wr == nullptr)
         return SetInvalid(return_value_ptr);
     TPipe pipe;
     TBuf<> scratch;
     pipe.InitBuffer(scratch, 64U);
-    NdsDeviceSendWr send_wr = LoadSendWr(wr);
-    nds_aiv_rdma_send(transport, &send_wr, return_value_ptr, &scratch);
+    NdsSendWr send_wr = LoadSendWr(wr);
+    nds_aiv_rdma_send(transport, queue_index, &send_wr, return_value_ptr, &scratch);
 }
 
 /* Submits one transport receive WR and stores the operation return value. */
 extern "C" __global__ __aicore__ void nds_aiv_rdma_recv_kernel(GM_ADDR transport_address, GM_ADDR wr_address,
-                                                               GM_ADDR return_value) {
-    __gm__ const auto *transport = reinterpret_cast<__gm__ const NdsDeviceTransport *>(transport_address);
-    __gm__ const auto *wr = reinterpret_cast<__gm__ const NdsDeviceRecvWr *>(wr_address);
+                                                               uint32_t queue_index, GM_ADDR return_value) {
+    __gm__ const auto *transport = reinterpret_cast<__gm__ const NdsTransportDescriptor *>(transport_address);
+    __gm__ const auto *wr = reinterpret_cast<__gm__ const NdsRecvWr *>(wr_address);
     __gm__ auto *return_value_ptr = reinterpret_cast<__gm__ int32_t *>(return_value);
     if (transport == nullptr || wr == nullptr)
         return SetInvalid(return_value_ptr);
-    NdsDeviceRecvWr recv{};
+    NdsRecvWr recv{};
     recv.wr_id = wr->wr_id;
     recv.local.address = wr->local.address;
     recv.local.length = wr->local.length;
     recv.local.local_key = wr->local.local_key;
-    nds_aiv_rdma_recv(transport, &recv, return_value_ptr);
+    nds_aiv_rdma_recv(transport, queue_index, &recv, return_value_ptr);
 }
 
 /* Submits one transport RDMA-read WR and stores the operation return value. */
 extern "C" __global__ __aicore__ void nds_aiv_rdma_read_kernel(GM_ADDR transport_address, GM_ADDR wr_address,
-                                                               GM_ADDR return_value) {
-    __gm__ const auto *transport = reinterpret_cast<__gm__ const NdsDeviceTransport *>(transport_address);
-    __gm__ const auto *wr = reinterpret_cast<__gm__ const NdsDeviceSendWr *>(wr_address);
+                                                               uint32_t queue_index, GM_ADDR return_value) {
+    __gm__ const auto *transport = reinterpret_cast<__gm__ const NdsTransportDescriptor *>(transport_address);
+    __gm__ const auto *wr = reinterpret_cast<__gm__ const NdsSendWr *>(wr_address);
     __gm__ auto *return_value_ptr = reinterpret_cast<__gm__ int32_t *>(return_value);
     if (transport == nullptr || wr == nullptr)
         return SetInvalid(return_value_ptr);
     TPipe pipe;
     TBuf<> scratch;
     pipe.InitBuffer(scratch, 64U);
-    NdsDeviceSendWr send_wr = LoadSendWr(wr);
-    nds_aiv_rdma_read(transport, &send_wr, return_value_ptr, &scratch);
+    NdsSendWr send_wr = LoadSendWr(wr);
+    nds_aiv_rdma_read(transport, queue_index, &send_wr, return_value_ptr, &scratch);
 }
 
 /* Submits one transport RDMA-write WR and stores the operation return value. */
 extern "C" __global__ __aicore__ void nds_aiv_rdma_write_kernel(GM_ADDR transport_address, GM_ADDR wr_address,
-                                                                GM_ADDR return_value) {
-    __gm__ const auto *transport = reinterpret_cast<__gm__ const NdsDeviceTransport *>(transport_address);
-    __gm__ const auto *wr = reinterpret_cast<__gm__ const NdsDeviceSendWr *>(wr_address);
+                                                                uint32_t queue_index, GM_ADDR return_value) {
+    __gm__ const auto *transport = reinterpret_cast<__gm__ const NdsTransportDescriptor *>(transport_address);
+    __gm__ const auto *wr = reinterpret_cast<__gm__ const NdsSendWr *>(wr_address);
     __gm__ auto *return_value_ptr = reinterpret_cast<__gm__ int32_t *>(return_value);
     if (transport == nullptr || wr == nullptr)
         return SetInvalid(return_value_ptr);
     TPipe pipe;
     TBuf<> scratch;
     pipe.InitBuffer(scratch, 64U);
-    NdsDeviceSendWr send_wr = LoadSendWr(wr);
-    nds_aiv_rdma_write(transport, &send_wr, return_value_ptr, &scratch);
+    NdsSendWr send_wr = LoadSendWr(wr);
+    nds_aiv_rdma_write(transport, queue_index, &send_wr, return_value_ptr, &scratch);
+}
+
+/* Submits a transport send batch against one queue in the complete descriptor. */
+extern "C" __global__ __aicore__ void nds_aiv_rdma_send_batch_kernel(GM_ADDR transport_address, GM_ADDR wrs_address,
+                                                                     uint32_t queue_index, uint32_t wr_count,
+                                                                     GM_ADDR bad_wr_address, GM_ADDR return_value) {
+    __gm__ const auto *transport = reinterpret_cast<__gm__ const NdsTransportDescriptor *>(transport_address);
+    __gm__ const auto *wrs = reinterpret_cast<__gm__ const NdsSendWr *>(wrs_address);
+    __gm__ auto *bad_wr = reinterpret_cast<__gm__ uint64_t *>(bad_wr_address);
+    __gm__ auto *return_value_ptr = reinterpret_cast<__gm__ int32_t *>(return_value);
+    if (transport == nullptr || wrs == nullptr || bad_wr == nullptr)
+        return SetInvalid(return_value_ptr);
+    TPipe pipe;
+    TBuf<> scratch;
+    pipe.InitBuffer(scratch, 64U);
+    nds_aiv_rdma_send_batch(transport, queue_index, wrs, wr_count, return_value_ptr, bad_wr, &scratch);
 }
 
 /* Executes one serialized storage read and stores the operation return value. */
 extern "C" __global__ __aicore__ void nds_aiv_storage_read_kernel(GM_ADDR context_address, GM_ADDR command_address,
                                                                   GM_ADDR return_value) {
-    __gm__ const auto *context = reinterpret_cast<__gm__ const NdsDeviceStorageContext *>(context_address);
+    __gm__ const auto *context = reinterpret_cast<__gm__ const NdsStorageContext *>(context_address);
     __gm__ const auto *command = reinterpret_cast<__gm__ const nds::StorageReadCommand *>(command_address);
     __gm__ auto *return_value_ptr = reinterpret_cast<__gm__ int32_t *>(return_value);
     TPipe pipe;
@@ -134,7 +148,7 @@ extern "C" __global__ __aicore__ void nds_aiv_storage_read_kernel(GM_ADDR contex
 /* Executes one serialized storage write and stores the operation return value. */
 extern "C" __global__ __aicore__ void nds_aiv_storage_write_kernel(GM_ADDR context_address, GM_ADDR command_address,
                                                                    GM_ADDR return_value) {
-    __gm__ const auto *context = reinterpret_cast<__gm__ const NdsDeviceStorageContext *>(context_address);
+    __gm__ const auto *context = reinterpret_cast<__gm__ const NdsStorageContext *>(context_address);
     __gm__ const auto *command = reinterpret_cast<__gm__ const nds::StorageWriteCommand *>(command_address);
     __gm__ auto *return_value_ptr = reinterpret_cast<__gm__ int32_t *>(return_value);
     TPipe pipe;
@@ -146,7 +160,7 @@ extern "C" __global__ __aicore__ void nds_aiv_storage_write_kernel(GM_ADDR conte
 /* Executes one serialized storage batch-read and stores the operation return value. */
 extern "C" __global__ __aicore__ void nds_aiv_storage_batch_read_kernel(GM_ADDR context_address,
                                                                         GM_ADDR command_address, GM_ADDR return_value) {
-    __gm__ const auto *context = reinterpret_cast<__gm__ const NdsDeviceStorageContext *>(context_address);
+    __gm__ const auto *context = reinterpret_cast<__gm__ const NdsStorageContext *>(context_address);
     __gm__ const auto *command = reinterpret_cast<__gm__ const nds::StorageBatchReadCommand *>(command_address);
     __gm__ auto *return_value_ptr = reinterpret_cast<__gm__ int32_t *>(return_value);
     TPipe pipe;
@@ -159,7 +173,7 @@ extern "C" __global__ __aicore__ void nds_aiv_storage_batch_read_kernel(GM_ADDR 
 extern "C" __global__ __aicore__ void nds_aiv_storage_batch_write_kernel(GM_ADDR context_address,
                                                                          GM_ADDR command_address,
                                                                          GM_ADDR return_value) {
-    __gm__ const auto *context = reinterpret_cast<__gm__ const NdsDeviceStorageContext *>(context_address);
+    __gm__ const auto *context = reinterpret_cast<__gm__ const NdsStorageContext *>(context_address);
     __gm__ const auto *command = reinterpret_cast<__gm__ const nds::StorageBatchWriteCommand *>(command_address);
     __gm__ auto *return_value_ptr = reinterpret_cast<__gm__ int32_t *>(return_value);
     TPipe pipe;
@@ -171,7 +185,7 @@ extern "C" __global__ __aicore__ void nds_aiv_storage_batch_write_kernel(GM_ADDR
 /* Waits for a storage completion and stores the operation return value. */
 extern "C" __global__ __aicore__ void nds_aiv_storage_wait_kernel(GM_ADDR context_address, uint64_t command_id,
                                                                   uint64_t expected_bytes, GM_ADDR return_value) {
-    __gm__ const auto *context = reinterpret_cast<__gm__ const NdsDeviceStorageContext *>(context_address);
+    __gm__ const auto *context = reinterpret_cast<__gm__ const NdsStorageContext *>(context_address);
     __gm__ auto *return_value_ptr = reinterpret_cast<__gm__ int32_t *>(return_value);
     nds_aiv_storage_wait(context, command_id, expected_bytes, return_value_ptr);
 }
@@ -192,6 +206,8 @@ static const struct FunLevelKType nds_aiv_rdma_read_kernel_type_section __attrib
     used, section(".ascend.meta.nds_aiv_rdma_read_kernel"))) = {{F_TYPE_KTYPE, sizeof(unsigned int), K_TYPE_AIV}};
 static const struct FunLevelKType nds_aiv_rdma_write_kernel_type_section __attribute__((
     used, section(".ascend.meta.nds_aiv_rdma_write_kernel"))) = {{F_TYPE_KTYPE, sizeof(unsigned int), K_TYPE_AIV}};
+static const struct FunLevelKType nds_aiv_rdma_send_batch_kernel_type_section __attribute__((
+    used, section(".ascend.meta.nds_aiv_rdma_send_batch_kernel"))) = {{F_TYPE_KTYPE, sizeof(unsigned int), K_TYPE_AIV}};
 static const struct FunLevelKType nds_aiv_storage_read_kernel_type_section __attribute__((
     used, section(".ascend.meta.nds_aiv_storage_read_kernel"))) = {{F_TYPE_KTYPE, sizeof(unsigned int), K_TYPE_AIV}};
 static const struct FunLevelKType nds_aiv_storage_write_kernel_type_section __attribute__((

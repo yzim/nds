@@ -5,66 +5,105 @@
 
 #include <stdint.h>
 
-/* Device-visible transport descriptor. The QP descriptor array belongs to the
- * host Transport; queue_index selects one QP for each launch. */
-typedef struct NdsDeviceTransport {
+/* Transport-owned scheduling state associated with one QP. It is separate
+ * from the hardware-facing NdsQpDescriptor descriptor. */
+typedef struct NdsTransportQpState {
+    uint32_t signal_interval;
+    uint32_t unsignaled_count;
+    uint32_t send_credits;
+    uint32_t receive_credits;
+} NdsTransportQpState;
+
+/* Complete transport descriptor. Both addresses point to contiguous arrays
+ * in the backend's execution domain. Queue selection indexes both arrays. */
+typedef struct NdsTransportDescriptor {
     uint64_t qp_descriptors_address;
+    uint64_t qp_states_address;
     uint32_t qp_count;
     uint32_t reserved;
-} NdsDeviceTransport;
+} NdsTransportDescriptor;
 
 #if defined(__CCE_AICORE__)
-#define NDS_DEVICE_TRANSPORT_INLINE __aicore__ inline
-#define NDS_DEVICE_TRANSPORT_GLOBAL __gm__
+#define NDS_TRANSPORT_INLINE __aicore__ inline
+#define NDS_TRANSPORT_GLOBAL __gm__
 #else
-#define NDS_DEVICE_TRANSPORT_INLINE inline
-#define NDS_DEVICE_TRANSPORT_GLOBAL
+#define NDS_TRANSPORT_INLINE inline
+#define NDS_TRANSPORT_GLOBAL
 #endif
 
-NDS_DEVICE_TRANSPORT_INLINE const NdsDeviceQp *nds_device_transport_qp(
-    NDS_DEVICE_TRANSPORT_GLOBAL const NdsDeviceTransport *transport, uint32_t queue_index) {
+NDS_TRANSPORT_INLINE const NdsQpDescriptor *nds_transport_qp(
+    NDS_TRANSPORT_GLOBAL const NdsTransportDescriptor *transport, uint32_t queue_index) {
     if (transport == 0 || queue_index >= transport->qp_count || transport->qp_descriptors_address == 0U)
         return 0;
-    return (const NdsDeviceQp *)(uintptr_t)(transport->qp_descriptors_address) + queue_index;
+    return (const NdsQpDescriptor *)(uintptr_t)(transport->qp_descriptors_address) + queue_index;
 }
 
-#undef NDS_DEVICE_TRANSPORT_INLINE
-#undef NDS_DEVICE_TRANSPORT_GLOBAL
+NDS_TRANSPORT_INLINE NdsTransportQpState *nds_transport_qp_state(
+    NDS_TRANSPORT_GLOBAL const NdsTransportDescriptor *transport, uint32_t queue_index) {
+    if (transport == 0 || queue_index >= transport->qp_count || transport->qp_states_address == 0U)
+        return 0;
+    return (NdsTransportQpState *)(uintptr_t)(transport->qp_states_address) + queue_index;
+}
 
-/* Legacy transport-operation envelopes select QP zero. New verbs submission
- * uses NdsDeviceQp directly after Transport selects the QueueHandle index. */
-typedef struct NdsDeviceRdmaSendArgs {
-    NdsDeviceTransport transport;
-    NdsDeviceSendWr wr;
-    int32_t return_value;
-} NdsDeviceRdmaSendArgs;
+#if defined(__CCE_AICORE__)
+__aicore__ __gm__ inline const NdsQpDescriptor *nds_transport_qp_global(__gm__ const NdsTransportDescriptor *transport,
+                                                                        uint32_t queue_index) {
+    if (transport == 0 || queue_index >= transport->qp_count || transport->qp_descriptors_address == 0U)
+        return 0;
+    return (__gm__ const NdsQpDescriptor *)(uintptr_t)(transport->qp_descriptors_address) + queue_index;
+}
 
-typedef struct NdsDeviceRdmaRecvArgs {
-    NdsDeviceTransport transport;
-    NdsDeviceRecvWr wr;
-    int32_t return_value;
-} NdsDeviceRdmaRecvArgs;
+__aicore__ __gm__ inline NdsTransportQpState *nds_transport_qp_state_global(
+    __gm__ const NdsTransportDescriptor *transport, uint32_t queue_index) {
+    if (transport == 0 || queue_index >= transport->qp_count || transport->qp_states_address == 0U)
+        return 0;
+    return (__gm__ NdsTransportQpState *)(uintptr_t)(transport->qp_states_address) + queue_index;
+}
+#endif
 
-typedef struct NdsDeviceRdmaReadArgs {
-    NdsDeviceTransport transport;
-    NdsDeviceSendWr wr;
-    int32_t return_value;
-} NdsDeviceRdmaReadArgs;
+#undef NDS_TRANSPORT_INLINE
+#undef NDS_TRANSPORT_GLOBAL
 
-typedef struct NdsDeviceRdmaWriteArgs {
-    NdsDeviceTransport transport;
-    NdsDeviceSendWr wr;
+/* Stateless transport-operation envelopes carry the complete transport and an
+ * explicit queue selection. */
+typedef struct NdsRdmaSendArgs {
+    NdsTransportDescriptor transport;
+    NdsSendWr wr;
+    uint32_t queue_index;
     int32_t return_value;
-} NdsDeviceRdmaWriteArgs;
+} NdsRdmaSendArgs;
+
+typedef struct NdsRdmaRecvArgs {
+    NdsTransportDescriptor transport;
+    NdsRecvWr wr;
+    uint32_t queue_index;
+    int32_t return_value;
+} NdsRdmaRecvArgs;
+
+typedef struct NdsRdmaReadArgs {
+    NdsTransportDescriptor transport;
+    NdsSendWr wr;
+    uint32_t queue_index;
+    int32_t return_value;
+} NdsRdmaReadArgs;
+
+typedef struct NdsRdmaWriteArgs {
+    NdsTransportDescriptor transport;
+    NdsSendWr wr;
+    uint32_t queue_index;
+    int32_t return_value;
+} NdsRdmaWriteArgs;
 
 #if defined(__cplusplus)
-static_assert(sizeof(NdsDeviceTransport) == 16, "device transport ABI changed");
-static_assert(sizeof(NdsDeviceRdmaSendArgs) == 72, "device RDMA send args ABI changed");
-static_assert(sizeof(NdsDeviceRdmaRecvArgs) == 48, "device RDMA recv args ABI changed");
+static_assert(sizeof(NdsTransportDescriptor) == 24, "device transport ABI changed");
+static_assert(sizeof(NdsTransportQpState) == 16, "transport QP state ABI changed");
+static_assert(sizeof(NdsRdmaSendArgs) == 80, "device RDMA send args ABI changed");
+static_assert(sizeof(NdsRdmaRecvArgs) == 56, "device RDMA recv args ABI changed");
 #else
-_Static_assert(sizeof(NdsDeviceTransport) == 16, "device transport ABI changed");
-_Static_assert(sizeof(NdsDeviceRdmaSendArgs) == 72, "device RDMA send args ABI changed");
-_Static_assert(sizeof(NdsDeviceRdmaRecvArgs) == 48, "device RDMA recv args ABI changed");
+_Static_assert(sizeof(NdsTransportDescriptor) == 24, "device transport ABI changed");
+_Static_assert(sizeof(NdsTransportQpState) == 16, "transport QP state ABI changed");
+_Static_assert(sizeof(NdsRdmaSendArgs) == 80, "device RDMA send args ABI changed");
+_Static_assert(sizeof(NdsRdmaRecvArgs) == 56, "device RDMA recv args ABI changed");
 #endif
 
 #endif

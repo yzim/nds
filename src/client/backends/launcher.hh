@@ -5,10 +5,13 @@
 #include "launch_config.hh"
 
 #include "result.hh"
+#include "device_transport.h"
 #include "device_verbs.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <span>
 #include <string>
 
 namespace nds::client {
@@ -16,13 +19,21 @@ namespace nds::client {
 class Runtime;
 class Launcher;
 
+struct PostSendBatchResult {
+    // `posted` is the prefix with a device-visible WQE. The transport retires
+    // its signaled tail before reporting a partial-post error.
+    std::size_t posted{};
+    std::int32_t status{};
+};
+
 /* Non-owning temporary launch view, analogous to <<< >>>. */
 class ConfiguredLauncherView {
 public:
-    Result<void> post_send(const NdsDeviceQp &qp, const NdsDeviceSendWr &wr) const;
-    Result<void> post_recv(const NdsDeviceQp &qp, const NdsDeviceRecvWr &wr) const;
-    Result<std::uint32_t> poll_cq(const NdsDeviceQp &qp, bool send_cq, std::uint32_t max_completions,
-                                  NdsDeviceWc *completions) const;
+    Result<void> post_send(const NdsQpDescriptor &qp, const NdsSendWr &wr) const;
+    Result<PostSendBatchResult> post_send_batch(const NdsQpDescriptor &qp, std::span<const NdsSendWr> wrs) const;
+    Result<void> post_recv(const NdsQpDescriptor &qp, const NdsRecvWr &wr) const;
+    Result<std::uint32_t> poll_cq(const NdsQpDescriptor &qp, bool send_cq, std::uint32_t max_completions,
+                                  NdsWc *completions) const;
 
 private:
     friend class Launcher;
@@ -41,22 +52,48 @@ public:
 
     static Result<std::unique_ptr<Launcher>> open(Runtime *runtime, BackendMode mode, const std::string &artifact);
 
-    Result<void> post_send(const NdsDeviceQp &qp, const NdsDeviceSendWr &wr) const;
-    Result<void> post_recv(const NdsDeviceQp &qp, const NdsDeviceRecvWr &wr) const;
-    Result<std::uint32_t> poll_cq(const NdsDeviceQp &qp, bool send_cq, std::uint32_t max_completions,
-                                  NdsDeviceWc *completions) const;
+    Result<void> post_send(const NdsQpDescriptor &qp, const NdsSendWr &wr) const;
+    Result<PostSendBatchResult> post_send_batch(const NdsQpDescriptor &qp, std::span<const NdsSendWr> wrs) const;
+    Result<void> post_recv(const NdsQpDescriptor &qp, const NdsRecvWr &wr) const;
+    Result<std::uint32_t> poll_cq(const NdsQpDescriptor &qp, bool send_cq, std::uint32_t max_completions,
+                                  NdsWc *completions) const;
+    Result<void> rdma_send(const LaunchConfig &config, const NdsTransportDescriptor &transport,
+                           std::uint32_t queue_index, const NdsSendWr &wr) const;
+    Result<void> rdma_recv(const LaunchConfig &config, const NdsTransportDescriptor &transport,
+                           std::uint32_t queue_index, const NdsRecvWr &wr) const;
+    Result<void> rdma_read(const LaunchConfig &config, const NdsTransportDescriptor &transport,
+                           std::uint32_t queue_index, const NdsSendWr &wr) const;
+    Result<void> rdma_write(const LaunchConfig &config, const NdsTransportDescriptor &transport,
+                            std::uint32_t queue_index, const NdsSendWr &wr) const;
+    Result<PostSendBatchResult> rdma_send_batch(const LaunchConfig &config, const NdsTransportDescriptor &transport,
+                                                std::uint32_t queue_index, std::span<const NdsSendWr> wrs) const;
     ConfiguredLauncherView with_config(const LaunchConfig &config) const;
 
 protected:
     Launcher() = default;
 
-    virtual Result<void> post_send_with_config(const LaunchConfig &config, const NdsDeviceQp &qp,
-                                               const NdsDeviceSendWr &wr) const = 0;
-    virtual Result<void> post_recv_with_config(const LaunchConfig &config, const NdsDeviceQp &qp,
-                                               const NdsDeviceRecvWr &wr) const = 0;
-    virtual Result<std::uint32_t> poll_cq_with_config(const LaunchConfig &config, const NdsDeviceQp &qp, bool send_cq,
-                                                      std::uint32_t max_completions,
-                                                      NdsDeviceWc *completions) const = 0;
+    virtual Result<void> post_send_with_config(const LaunchConfig &config, const NdsQpDescriptor &qp,
+                                               const NdsSendWr &wr) const = 0;
+    virtual Result<PostSendBatchResult> post_send_batch_with_config(const LaunchConfig &config,
+                                                                    const NdsQpDescriptor &qp,
+                                                                    std::span<const NdsSendWr> wrs) const;
+    virtual Result<void> post_recv_with_config(const LaunchConfig &config, const NdsQpDescriptor &qp,
+                                               const NdsRecvWr &wr) const = 0;
+    virtual Result<std::uint32_t> poll_cq_with_config(const LaunchConfig &config, const NdsQpDescriptor &qp,
+                                                      bool send_cq, std::uint32_t max_completions,
+                                                      NdsWc *completions) const = 0;
+    virtual Result<void> rdma_send_with_config(const LaunchConfig &config, const NdsTransportDescriptor &transport,
+                                               std::uint32_t queue_index, const NdsSendWr &wr) const = 0;
+    virtual Result<void> rdma_recv_with_config(const LaunchConfig &config, const NdsTransportDescriptor &transport,
+                                               std::uint32_t queue_index, const NdsRecvWr &wr) const = 0;
+    virtual Result<void> rdma_read_with_config(const LaunchConfig &config, const NdsTransportDescriptor &transport,
+                                               std::uint32_t queue_index, const NdsSendWr &wr) const = 0;
+    virtual Result<void> rdma_write_with_config(const LaunchConfig &config, const NdsTransportDescriptor &transport,
+                                                std::uint32_t queue_index, const NdsSendWr &wr) const = 0;
+    virtual Result<PostSendBatchResult> rdma_send_batch_with_config(const LaunchConfig &config,
+                                                                    const NdsTransportDescriptor &transport,
+                                                                    std::uint32_t queue_index,
+                                                                    std::span<const NdsSendWr> wrs) const;
 
 private:
     friend class ConfiguredLauncherView;

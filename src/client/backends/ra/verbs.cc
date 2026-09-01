@@ -7,23 +7,23 @@ namespace nds {
 namespace {
 int ra_opcode(std::uint32_t opcode) {
     switch (opcode) {
-        case NDS_DEVICE_WR_SEND:
+        case NDS_WR_SEND:
             return Libra::WR_SEND;
-        case NDS_DEVICE_WR_RDMA_READ:
+        case NDS_WR_RDMA_READ:
             return Libra::WR_RDMA_READ;
-        case NDS_DEVICE_WR_RDMA_WRITE:
+        case NDS_WR_RDMA_WRITE:
             return Libra::WR_RDMA_WRITE;
         default:
             return -1;
     }
 }
 
-Result<Libra::SendResponse> post_unrung(client::QueuePair *qp, const NdsDeviceSendWr &request, Libra::Sge *sge) {
+Result<Libra::SendResponse> post_unrung(client::QueuePair *qp, const NdsSendWr &request, Libra::Sge *sge) {
     const int opcode = ra_opcode(request.opcode);
     if (qp == nullptr || !qp->connected() || qp->libra() == nullptr || qp->handle() == nullptr ||
         request.local.address == 0U || request.local.length == 0U || request.local.local_key == 0U || opcode < 0 ||
-        (request.opcode != NDS_DEVICE_WR_SEND && (request.remote_address == 0U || request.remote_key == 0U)) ||
-        (request.opcode == NDS_DEVICE_WR_SEND && (request.remote_address != 0U || request.remote_key != 0U))) {
+        (request.opcode != NDS_WR_SEND && (request.remote_address == 0U || request.remote_key == 0U)) ||
+        (request.opcode == NDS_WR_SEND && (request.remote_address != 0U || request.remote_key != 0U))) {
         return Error{ErrorCode::kInvalidArgument,
                      "RA post requires a connected RA QP, valid local SGE, supported opcode, "
                      "and matching remote-memory metadata"};
@@ -36,7 +36,7 @@ Result<Libra::SendResponse> post_unrung(client::QueuePair *qp, const NdsDeviceSe
     wr.remote_address = request.remote_address;
     wr.remote_key = request.remote_key;
     wr.opcode = static_cast<std::uint32_t>(opcode);
-    wr.send_flags = (request.flags & NDS_DEVICE_SEND_SIGNALED) != 0U ? Libra::SEND_SIGNALED : 0;
+    wr.send_flags = (request.flags & NDS_SEND_SIGNALED) != 0U ? Libra::SEND_SIGNALED : 0;
     Libra::SendResponse response{};
     const int result = qp->libra()->typical_send_wr(qp->handle(), &wr, &response);
     if (result != 0)
@@ -45,15 +45,14 @@ Result<Libra::SendResponse> post_unrung(client::QueuePair *qp, const NdsDeviceSe
 }
 }  // namespace
 
-Result<void> NdsRaPostSend(client::Runtime *runtime, client::QueuePair *qp, const NdsDeviceSendWr &request,
-                           void *stream) {
+Result<void> NdsRaPostSend(client::Runtime *runtime, client::QueuePair *qp, const NdsSendWr &request, void *stream) {
     const auto posted = NdsRaPrepareSend(qp, request, nullptr);
-    if (!posted)
+    if (!posted.ok())
         return Error{posted.error()};
     return NdsRaRingSend(runtime, posted.value(), stream);
 }
 
-Result<Libra::SendResponse> NdsRaPrepareSend(client::QueuePair *qp, const NdsDeviceSendWr &request, Libra::Sge *sge) {
+Result<Libra::SendResponse> NdsRaPrepareSend(client::QueuePair *qp, const NdsSendWr &request, Libra::Sge *sge) {
     return post_unrung(qp, request, sge);
 }
 
@@ -72,7 +71,7 @@ Result<void> NdsRaRingSend(client::Runtime *runtime, const Libra::SendResponse &
     return {};
 }
 
-Result<void> NdsRaPostRecv(client::QueuePair *qp, const NdsDeviceRecvWr &request) {
+Result<void> NdsRaPostRecv(client::QueuePair *qp, const NdsRecvWr &request) {
     if (qp == nullptr || !qp->connected() || qp->libra() == nullptr || qp->libra()->recv_wrlist == nullptr ||
         qp->handle() == nullptr || request.local.address == 0U || request.local.length == 0U ||
         request.local.local_key == 0U) {
@@ -86,14 +85,13 @@ Result<void> NdsRaPostRecv(client::QueuePair *qp, const NdsDeviceRecvWr &request
     return {};
 }
 
-Result<std::uint32_t> NdsRaPollCq(client::QueuePair *qp, bool is_send_cq, std::uint32_t max_completions,
-                                  NdsDeviceWc *wc) {
-    if (qp == nullptr || wc == nullptr || max_completions == 0U || max_completions > NDS_DEVICE_MAX_COMPLETIONS ||
+Result<std::uint32_t> NdsRaPollCq(client::QueuePair *qp, bool is_send_cq, std::uint32_t max_completions, NdsWc *wc) {
+    if (qp == nullptr || wc == nullptr || max_completions == 0U || max_completions > NDS_MAX_COMPLETIONS ||
         !qp->created() || qp->libra() == nullptr || qp->handle() == nullptr) {
         return Error{ErrorCode::kInvalidArgument,
                      "RA completion poll requires an RA QP, output, and supported completion limit"};
     }
-    Libra::Completion completions[NDS_DEVICE_MAX_COMPLETIONS]{};
+    Libra::Completion completions[NDS_MAX_COMPLETIONS]{};
     const int result = qp->libra()->poll_cq(qp->handle(), is_send_cq, max_completions, completions);
     if (result < 0 || result > static_cast<int>(max_completions)) {
         return Error{ErrorCode::kRa, "RaPollCq returned an invalid result: " + std::to_string(result)};

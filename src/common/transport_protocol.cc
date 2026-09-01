@@ -45,7 +45,8 @@ uint64_t network_to_host_u64(uint64_t value) {
 }
 
 CodecResult validate_remote_memory(const nds::RemoteMemory *memory) {
-    if (memory == nullptr || memory->address == 0U || memory->length == 0U || memory->remote_key == 0U)
+    if (memory == nullptr || memory->address == 0U || memory->length == 0U || memory->remote_key == 0U ||
+        memory->address > UINT64_MAX - memory->length)
         return CodecResult::InvalidRecord;
     return CodecResult::Ok;
 }

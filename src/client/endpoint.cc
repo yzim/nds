@@ -141,10 +141,12 @@ Result<void> QueuePair::initialize() {
     if (endpoint_ == nullptr || !endpoint_->opened())
         return Error{ErrorCode::kInvalidArgument, "QP creation requires an open endpoint"};
     const auto is_power_of_two = [](std::uint32_t value) { return value >= 2U && (value & (value - 1U)) == 0U; };
-    if (config_.port_num == 0U || config_.path_mtu == 0U || !is_power_of_two(config_.send_queue_depth) ||
-        !is_power_of_two(config_.receive_queue_depth)) {
+    if (config_.port_num == 0U || config_.path_mtu == 0U ||
+        config_.send_queue_depth > static_cast<std::uint32_t>(std::numeric_limits<int>::max()) ||
+        config_.receive_queue_depth > static_cast<std::uint32_t>(std::numeric_limits<int>::max()) ||
+        !is_power_of_two(config_.send_queue_depth) || !is_power_of_two(config_.receive_queue_depth)) {
         return Error{ErrorCode::kInvalidArgument,
-                     "QP creation requires valid transport settings and power-of-two queue depths"};
+                     "QP creation requires power-of-two queue depths within the backend integer range"};
     }
     if (mode_ != BackendMode::Ra && mode_ != BackendMode::Aicpu && mode_ != BackendMode::Aiv) {
         return Error{ErrorCode::kInvalidArgument, "QP backend mode is invalid"};
@@ -259,7 +261,7 @@ Result<void> QueuePair::connect(const nds::QpInfo &peer) {
     }
     auto local = build_typical_qp(local_attributes_, config_.traffic_class, config_.service_level, config_.retry_count,
                                   config_.retry_timeout);
-    if (!local)
+    if (!local.ok())
         return Error{local.error()};
     Libra::QpAttr peer_attributes{};
     peer_attributes.qpn = peer.qp_num;
@@ -268,7 +270,7 @@ Result<void> QueuePair::connect(const nds::QpInfo &peer) {
     std::memcpy(peer_attributes.gid, peer.gid, sizeof(peer_attributes.gid));
     auto remote =
         build_typical_qp(peer_attributes, peer.traffic_class, peer.service_level, peer.retry_count, peer.retry_timeout);
-    if (!remote)
+    if (!remote.ok())
         return Error{remote.error()};
     const int result = endpoint_->libra_.typical_qp_modify(handle_, &local.value(), &remote.value());
     if (result != 0)
@@ -330,11 +332,11 @@ void QueuePair::reset() noexcept {
     connected_ = false;
 }
 
-Result<NdsDeviceQp> QueuePair::device_qp() const {
+Result<NdsQpDescriptor> QueuePair::device_qp() const {
     if (!created())
         return Error{ErrorCode::kInvalidArgument, "device QP requires a created QP"};
 
-    NdsDeviceQp descriptor{};
+    NdsQpDescriptor descriptor{};
     descriptor.host_runtime_address = reinterpret_cast<std::uint64_t>(endpoint_->runtime_);
     descriptor.host_qp_address = reinterpret_cast<std::uint64_t>(this);
     if (mode_ == BackendMode::Ra)
@@ -351,28 +353,28 @@ Result<NdsDeviceQp> QueuePair::device_qp() const {
         return Error{ErrorCode::kRa, "AI QP is missing SQ/RQ metadata"};
 
     const auto copy_wq = [](const Libra::AiDataPlaneWq &input, std::uint64_t wr_id_address, bool is_send) {
-        return NdsDeviceWorkQueue{input.wqn,
-                                  input.depth,
-                                  input.wqebb_size,
-                                  is_send ? NDS_DEVICE_DOORBELL_MMIO : NDS_DEVICE_DOORBELL_RECORD,
-                                  input.buffer_address,
-                                  input.head_address,
-                                  input.tail_address,
-                                  is_send ? input.doorbell_register_address : input.software_doorbell_address,
-                                  wr_id_address};
+        return NdsWorkQueueDescriptor{input.wqn,
+                                      input.depth,
+                                      input.wqebb_size,
+                                      is_send ? NDS_DOORBELL_MMIO : NDS_DOORBELL_RECORD,
+                                      input.buffer_address,
+                                      input.head_address,
+                                      input.tail_address,
+                                      is_send ? input.doorbell_register_address : input.software_doorbell_address,
+                                      wr_id_address};
     };
     const auto copy_cq = [](const Libra::AiDataPlaneCq &input) {
-        return NdsDeviceCq{input.cqn,
-                           input.depth,
-                           input.cqe_size,
-                           NDS_DEVICE_DOORBELL_RECORD,
-                           input.buffer_address,
-                           input.tail_address,
-                           input.software_doorbell_address};
+        return NdsCqDescriptor{input.cqn,
+                               input.depth,
+                               input.cqe_size,
+                               NDS_DOORBELL_RECORD,
+                               input.buffer_address,
+                               input.tail_address,
+                               input.software_doorbell_address};
     };
 
     descriptor.flags = (config_.control_flags & QueuePairCallerPollsCq) != 0U
-                           ? static_cast<std::uint32_t>(NDS_DEVICE_QP_CALLER_POLLS_CQ)
+                           ? static_cast<std::uint32_t>(NDS_QP_CALLER_POLLS_CQ)
                            : 0U;
     descriptor.qp_mode = config_.ai_qp_mode;
     descriptor.service_level = config_.service_level;
@@ -507,7 +509,7 @@ Result<void> Endpoint::open(Runtime *runtime, const EndpointConfig &config) {
 
 Result<QueuePair> Endpoint::create_qp(const QueuePairConfig &config, BackendMode backend) {
     QueuePair qp(this, config, backend);
-    if (const auto initialized = qp.initialize(); !initialized)
+    if (const auto initialized = qp.initialize(); !initialized.ok())
         return Error{initialized.error()};
     return qp;
 }

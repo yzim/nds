@@ -15,17 +15,17 @@ endforeach()
 if(NDS_DEVICE_KIND STREQUAL "aicpu")
     set(nm_args -D -g)
     set(symbols
-        NdsAicpuPostSend NdsAicpuPostRecv NdsAicpuPollCq
-        NdsAicpuRdmaSend NdsAicpuRdmaRecv NdsAicpuRdmaRead NdsAicpuRdmaWrite
-        NdsAicpuStorageRead NdsAicpuStorageWrite
-        NdsAicpuStorageBatchRead NdsAicpuStorageBatchWrite)
+        nds_aicpu_post_send_kernel nds_aicpu_post_recv_kernel nds_aicpu_poll_cq_kernel
+        nds_aicpu_rdma_send_kernel nds_aicpu_rdma_recv_kernel nds_aicpu_rdma_read_kernel nds_aicpu_rdma_write_kernel
+        nds_aicpu_storage_read_kernel nds_aicpu_storage_write_kernel
+        nds_aicpu_storage_batch_read_kernel nds_aicpu_storage_batch_write_kernel)
 elseif(NDS_DEVICE_KIND STREQUAL "aiv")
     set(nm_args -g)
     set(symbols
-        NdsAivPostSend NdsAivPostSendBatch NdsAivPostRecv NdsAivPollCq
-        NdsAivRdmaSend NdsAivRdmaRecv NdsAivRdmaRead NdsAivRdmaWrite
-        NdsAivStorageRead NdsAivStorageWrite
-        NdsAivStorageBatchRead NdsAivStorageBatchWrite)
+        nds_aiv_post_send_kernel nds_aiv_post_send_batch_kernel nds_aiv_post_recv_kernel nds_aiv_poll_cq_kernel
+        nds_aiv_rdma_send_kernel nds_aiv_rdma_recv_kernel nds_aiv_rdma_read_kernel nds_aiv_rdma_write_kernel
+        nds_aiv_storage_read_kernel nds_aiv_storage_write_kernel
+        nds_aiv_storage_batch_read_kernel nds_aiv_storage_batch_write_kernel)
 else()
     message(FATAL_ERROR "unknown device API kind: ${NDS_DEVICE_KIND}")
 endif()

@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <limits>
+#include <string>
 
 namespace nds::client {
 
@@ -11,7 +12,7 @@ namespace {
 
 template <typename WorkRequest>
 struct PostArguments {
-    NdsDeviceQp qp;
+    NdsQpDescriptor qp;
     WorkRequest work_request;
     std::uint64_t return_value_address;
 };
@@ -24,9 +25,34 @@ struct PollArguments {
     std::uint64_t return_value_address;
 };
 
+struct BatchArguments {
+    std::uint64_t qp_address;
+    std::uint64_t wrs_address;
+    std::uint32_t wr_count;
+    std::uint64_t bad_wr_address;
+    std::uint64_t return_value_address;
+};
+
+struct TransportBatchArguments {
+    std::uint64_t transport_address;
+    std::uint64_t wrs_address;
+    std::uint32_t queue_index;
+    std::uint32_t wr_count;
+    std::uint64_t bad_wr_address;
+    std::uint64_t return_value_address;
+};
+
+struct TransportArguments {
+    std::uint64_t transport_address;
+    std::uint64_t work_request_address;
+    std::uint32_t queue_index;
+    std::uint32_t reserved;
+    std::uint64_t return_value_address;
+};
+
 template <typename WorkRequest>
 Result<void> launch_post_and_wait(Runtime *runtime, const AivLauncher *launcher, const LaunchConfig &config,
-                                  const char *entry, const NdsDeviceQp &qp, const WorkRequest &work_request) {
+                                  const char *entry, const NdsQpDescriptor &qp, const WorkRequest &work_request) {
     if (runtime == nullptr || launcher == nullptr)
         return Error{ErrorCode::kRuntime, "AIV backend is not loaded"};
     std::int32_t return_value = std::numeric_limits<std::int32_t>::min();
@@ -44,6 +70,131 @@ Result<void> launch_post_and_wait(Runtime *runtime, const AivLauncher *launcher,
     return return_value == 0
                ? Result<void>{}
                : Error{ErrorCode::kRuntime, "AIV device operation failed: " + std::to_string(return_value)};
+}
+
+Result<PostSendBatchResult> launch_post_batch_and_wait(Runtime *runtime, const AivLauncher *launcher,
+                                                       const LaunchConfig &config, const NdsQpDescriptor &qp,
+                                                       std::span<const NdsSendWr> wrs) {
+    if (runtime == nullptr || launcher == nullptr)
+        return Error{ErrorCode::kRuntime, "AIV backend is not loaded"};
+    if (wrs.empty() || wrs.size() > std::numeric_limits<std::uint32_t>::max() ||
+        wrs.size() > std::numeric_limits<std::size_t>::max() / sizeof(NdsSendWr)) {
+        return Error{ErrorCode::kInvalidArgument, "invalid AIV transport send batch"};
+    }
+
+    NDS_ASSIGN_OR_RETURN(MemoryBuffer device_wrs,
+                         runtime->allocate(wrs.size() * sizeof(NdsSendWr), MemoryLocation::Device));
+    NDS_RETURN_IF_ERROR(runtime->copy_to(&device_wrs, wrs.data(), wrs.size() * sizeof(NdsSendWr)));
+
+    NdsPostSendBatchArgs request{qp, reinterpret_cast<std::uint64_t>(device_wrs.data()),
+                                 static_cast<std::uint32_t>(wrs.size()), std::numeric_limits<std::int32_t>::min(), 0U};
+    NDS_ASSIGN_OR_RETURN(MemoryBuffer device_request, runtime->allocate(sizeof(request), MemoryLocation::Device));
+    NDS_RETURN_IF_ERROR(runtime->copy_to(&device_request, &request, sizeof(request)));
+
+    const std::uint64_t request_address = reinterpret_cast<std::uint64_t>(device_request.data());
+    BatchArguments arguments{request_address + offsetof(NdsPostSendBatchArgs, qp), request.wrs_address,
+                             request.wr_count, request_address + offsetof(NdsPostSendBatchArgs, bad_wr_address),
+                             request_address + offsetof(NdsPostSendBatchArgs, return_value)};
+    const int launch_result = launcher->launch("nds_aiv_post_send_batch_kernel", config, &arguments, sizeof(arguments));
+    if (launch_result != ACL_SUCCESS)
+        return Error{ErrorCode::kRuntime, "AIV transport batch launch failed: " + std::to_string(launch_result)};
+    const int sync_result = aclrtSynchronizeStreamWithTimeout(config.stream, config.sync_timeout_ms);
+    if (sync_result != ACL_SUCCESS)
+        return Error{ErrorCode::kRuntime, "AIV transport batch synchronization failed: " + std::to_string(sync_result)};
+    NDS_RETURN_IF_ERROR(runtime->copy_from(&request, device_request, sizeof(request)));
+    std::size_t posted = wrs.size();
+    if (request.return_value != NDS_OPERATION_SUCCESS) {
+        std::size_t bad_index = 0U;
+        if (request.bad_wr_address >= request.wrs_address) {
+            const std::uint64_t delta = request.bad_wr_address - request.wrs_address;
+            if (delta % sizeof(NdsSendWr) == 0U && delta / sizeof(NdsSendWr) < wrs.size())
+                bad_index = static_cast<std::size_t>(delta / sizeof(NdsSendWr));
+        }
+        posted = bad_index;
+    }
+    return PostSendBatchResult{posted, request.return_value};
+}
+
+template <typename WorkRequest>
+Result<void> launch_transport_and_wait(Runtime *runtime, const AivLauncher *launcher, const LaunchConfig &config,
+                                       const char *entry, const NdsTransportDescriptor &transport,
+                                       std::uint32_t queue_index, const WorkRequest &work_request) {
+    if (runtime == nullptr || launcher == nullptr)
+        return Error{ErrorCode::kRuntime, "AIV backend is not loaded"};
+    if (transport.qp_descriptors_address == 0U || queue_index >= transport.qp_count)
+        return Error{ErrorCode::kInvalidArgument, "AIV transport operation requires a valid QP selection"};
+
+    struct Request {
+        NdsTransportDescriptor transport;
+        WorkRequest work_request;
+        std::int32_t return_value;
+    } request{transport, work_request, std::numeric_limits<std::int32_t>::min()};
+    NDS_ASSIGN_OR_RETURN(MemoryBuffer device_request, runtime->allocate(sizeof(request), MemoryLocation::Device));
+    NDS_RETURN_IF_ERROR(runtime->copy_to(&device_request, &request, sizeof(request)));
+    const std::uint64_t address = reinterpret_cast<std::uint64_t>(device_request.data());
+    const TransportArguments arguments{address + offsetof(Request, transport),
+                                       address + offsetof(Request, work_request), queue_index, 0U,
+                                       address + offsetof(Request, return_value)};
+    const int launch_result =
+        launcher->launch(entry, config, const_cast<TransportArguments *>(&arguments), sizeof(arguments));
+    if (launch_result != ACL_SUCCESS)
+        return Error{ErrorCode::kRuntime, "AIV transport launch failed: " + std::to_string(launch_result)};
+    const int sync_result = aclrtSynchronizeStreamWithTimeout(config.stream, config.sync_timeout_ms);
+    if (sync_result != ACL_SUCCESS)
+        return Error{ErrorCode::kRuntime, "AIV transport synchronization failed: " + std::to_string(sync_result)};
+    NDS_RETURN_IF_ERROR(runtime->copy_from(&request, device_request, sizeof(request)));
+    return request.return_value == 0
+               ? Result<void>{}
+               : Error{ErrorCode::kRuntime, "AIV transport operation failed: " + std::to_string(request.return_value)};
+}
+
+Result<PostSendBatchResult> launch_transport_batch_and_wait(Runtime *runtime, const AivLauncher *launcher,
+                                                            const LaunchConfig &config,
+                                                            const NdsTransportDescriptor &transport,
+                                                            std::uint32_t queue_index, std::span<const NdsSendWr> wrs) {
+    if (runtime == nullptr || launcher == nullptr)
+        return Error{ErrorCode::kRuntime, "AIV backend is not loaded"};
+    if (transport.qp_descriptors_address == 0U || queue_index >= transport.qp_count)
+        return Error{ErrorCode::kInvalidArgument, "AIV transport batch requires a valid QP selection"};
+    if (wrs.empty() || wrs.size() > std::numeric_limits<std::uint32_t>::max() ||
+        wrs.size() > std::numeric_limits<std::size_t>::max() / sizeof(NdsSendWr))
+        return Error{ErrorCode::kInvalidArgument, "invalid AIV transport send batch"};
+
+    NDS_ASSIGN_OR_RETURN(MemoryBuffer device_wrs,
+                         runtime->allocate(wrs.size() * sizeof(NdsSendWr), MemoryLocation::Device));
+    NDS_RETURN_IF_ERROR(runtime->copy_to(&device_wrs, wrs.data(), wrs.size() * sizeof(NdsSendWr)));
+    struct Request {
+        NdsTransportDescriptor transport;
+        std::uint64_t wrs_address;
+        std::uint32_t wr_count;
+        std::int32_t return_value;
+        std::uint64_t bad_wr_address;
+    } request{transport, reinterpret_cast<std::uint64_t>(device_wrs.data()), static_cast<std::uint32_t>(wrs.size()),
+              std::numeric_limits<std::int32_t>::min(), 0U};
+    NDS_ASSIGN_OR_RETURN(MemoryBuffer device_request, runtime->allocate(sizeof(request), MemoryLocation::Device));
+    NDS_RETURN_IF_ERROR(runtime->copy_to(&device_request, &request, sizeof(request)));
+    const std::uint64_t address = reinterpret_cast<std::uint64_t>(device_request.data());
+    const TransportBatchArguments arguments{address + offsetof(Request, transport),
+                                            request.wrs_address,
+                                            queue_index,
+                                            request.wr_count,
+                                            address + offsetof(Request, bad_wr_address),
+                                            address + offsetof(Request, return_value)};
+    const int launch_result = launcher->launch("nds_aiv_rdma_send_batch_kernel", config,
+                                               const_cast<TransportBatchArguments *>(&arguments), sizeof(arguments));
+    if (launch_result != ACL_SUCCESS)
+        return Error{ErrorCode::kRuntime, "AIV transport batch launch failed: " + std::to_string(launch_result)};
+    const int sync_result = aclrtSynchronizeStreamWithTimeout(config.stream, config.sync_timeout_ms);
+    if (sync_result != ACL_SUCCESS)
+        return Error{ErrorCode::kRuntime, "AIV transport batch synchronization failed: " + std::to_string(sync_result)};
+    NDS_RETURN_IF_ERROR(runtime->copy_from(&request, device_request, sizeof(request)));
+    std::size_t posted = wrs.size();
+    if (request.return_value != NDS_OPERATION_SUCCESS && request.bad_wr_address >= request.wrs_address) {
+        const std::uint64_t delta = request.bad_wr_address - request.wrs_address;
+        if (delta % sizeof(NdsSendWr) == 0U && delta / sizeof(NdsSendWr) < wrs.size())
+            posted = static_cast<std::size_t>(delta / sizeof(NdsSendWr));
+    }
+    return PostSendBatchResult{posted, request.return_value};
 }
 
 }  // namespace
@@ -110,6 +261,27 @@ int AivLauncher::launch(const char *kernel_name, const LaunchConfig &launch_conf
         reinterpret_cast<aclrtPlaceHolderInfo *>(launch_config.l2ctrl), launch_config.flags);
 }
 
+Result<void> AivLauncher::launch_and_wait(const char *kernel_name, void *arguments, std::size_t argument_size,
+                                          std::uint32_t timeout_ms) const {
+    if (timeout_ms == 0U || timeout_ms > static_cast<std::uint32_t>(std::numeric_limits<std::int32_t>::max()))
+        return Error{ErrorCode::kInvalidArgument, "AIV launch timeout is outside the supported range"};
+    aclrtStream stream{};
+    const int create_result = aclrtCreateStream(&stream);
+    if (create_result != ACL_SUCCESS || stream == nullptr)
+        return Error{ErrorCode::kRuntime, "AIV launch stream creation failed: " + std::to_string(create_result)};
+    const LaunchConfig config{.stream = stream, .sync = true, .sync_timeout_ms = static_cast<std::int32_t>(timeout_ms)};
+    const int launch_result = launch(kernel_name, config, arguments, argument_size);
+    if (launch_result != ACL_SUCCESS) {
+        (void)aclrtDestroyStream(stream);
+        return Error{ErrorCode::kRuntime, "AIV kernel launch failed: " + std::to_string(launch_result)};
+    }
+    const int sync_result = aclrtSynchronizeStreamWithTimeout(stream, config.sync_timeout_ms);
+    (void)aclrtDestroyStream(stream);
+    return sync_result == ACL_SUCCESS
+               ? Result<void>{}
+               : Error{ErrorCode::kRuntime, "AIV kernel synchronization failed: " + std::to_string(sync_result)};
+}
+
 void AivLauncher::reset() noexcept {
     functions_.clear();
     if (binary_ != nullptr)
@@ -121,31 +293,38 @@ bool AivLauncher::loaded() const noexcept {
     return binary_ != nullptr;
 }
 
-Result<void> AivLauncher::post_send_with_config(const LaunchConfig &config, const NdsDeviceQp &qp,
-                                                const NdsDeviceSendWr &wr) const {
+Result<void> AivLauncher::post_send_with_config(const LaunchConfig &config, const NdsQpDescriptor &qp,
+                                                const NdsSendWr &wr) const {
     return launch_post_and_wait(runtime_, this, config, "nds_aiv_post_send_kernel", qp, wr);
 }
 
-Result<void> AivLauncher::post_recv_with_config(const LaunchConfig &config, const NdsDeviceQp &qp,
-                                                const NdsDeviceRecvWr &wr) const {
+Result<PostSendBatchResult> AivLauncher::post_send_batch_with_config(const LaunchConfig &config,
+                                                                     const NdsQpDescriptor &qp,
+                                                                     std::span<const NdsSendWr> wrs) const {
+    return launch_post_batch_and_wait(runtime_, this, config, qp, wrs);
+}
+
+Result<void> AivLauncher::post_recv_with_config(const LaunchConfig &config, const NdsQpDescriptor &qp,
+                                                const NdsRecvWr &wr) const {
     return launch_post_and_wait(runtime_, this, config, "nds_aiv_post_recv_kernel", qp, wr);
 }
 
-Result<std::uint32_t> AivLauncher::poll_cq_with_config(const LaunchConfig &config, const NdsDeviceQp &qp, bool send_cq,
-                                                       std::uint32_t max_completions, NdsDeviceWc *completions) const {
+Result<std::uint32_t> AivLauncher::poll_cq_with_config(const LaunchConfig &config, const NdsQpDescriptor &qp,
+                                                       bool send_cq, std::uint32_t max_completions,
+                                                       NdsWc *completions) const {
     if (runtime_ == nullptr || completions == nullptr || max_completions == 0U)
         return Error{ErrorCode::kInvalidArgument, "invalid AIV CQ poll arguments"};
     NDS_ASSIGN_OR_RETURN(MemoryBuffer device_completions,
                          runtime_->allocate(max_completions * sizeof(*completions), MemoryLocation::Device));
-    NdsDevicePollCqArgs request{qp, send_cq ? 1U : 0U, max_completions,
-                                reinterpret_cast<std::uint64_t>(device_completions.data()),
-                                std::numeric_limits<std::int32_t>::min()};
+    NdsPollCqArgs request{qp, send_cq ? 1U : 0U, max_completions,
+                          reinterpret_cast<std::uint64_t>(device_completions.data()),
+                          std::numeric_limits<std::int32_t>::min()};
     NDS_ASSIGN_OR_RETURN(MemoryBuffer device_request, runtime_->allocate(sizeof(request), MemoryLocation::Device));
     NDS_RETURN_IF_ERROR(runtime_->copy_to(&device_request, &request, sizeof(request)));
     const std::uint64_t address = reinterpret_cast<std::uint64_t>(device_request.data());
-    PollArguments arguments{address + offsetof(NdsDevicePollCqArgs, qp), send_cq ? 1U : 0U, max_completions,
+    PollArguments arguments{address + offsetof(NdsPollCqArgs, qp), send_cq ? 1U : 0U, max_completions,
                             reinterpret_cast<std::uint64_t>(device_completions.data()),
-                            address + offsetof(NdsDevicePollCqArgs, return_value)};
+                            address + offsetof(NdsPollCqArgs, return_value)};
     const int launch_result = this->launch("nds_aiv_poll_cq_kernel", config, &arguments, sizeof(arguments));
     if (launch_result != ACL_SUCCESS)
         return Error{ErrorCode::kRuntime, "AIV CQ poll launch failed: " + std::to_string(launch_result)};
@@ -159,6 +338,33 @@ Result<std::uint32_t> AivLauncher::poll_cq_with_config(const LaunchConfig &confi
     if (count != 0U)
         NDS_RETURN_IF_ERROR(runtime_->copy_from(completions, device_completions, count * sizeof(*completions)));
     return count;
+}
+
+Result<void> AivLauncher::rdma_send_with_config(const LaunchConfig &config, const NdsTransportDescriptor &transport,
+                                                std::uint32_t queue_index, const NdsSendWr &wr) const {
+    return launch_transport_and_wait(runtime_, this, config, "nds_aiv_rdma_send_kernel", transport, queue_index, wr);
+}
+
+Result<void> AivLauncher::rdma_recv_with_config(const LaunchConfig &config, const NdsTransportDescriptor &transport,
+                                                std::uint32_t queue_index, const NdsRecvWr &wr) const {
+    return launch_transport_and_wait(runtime_, this, config, "nds_aiv_rdma_recv_kernel", transport, queue_index, wr);
+}
+
+Result<void> AivLauncher::rdma_read_with_config(const LaunchConfig &config, const NdsTransportDescriptor &transport,
+                                                std::uint32_t queue_index, const NdsSendWr &wr) const {
+    return launch_transport_and_wait(runtime_, this, config, "nds_aiv_rdma_read_kernel", transport, queue_index, wr);
+}
+
+Result<void> AivLauncher::rdma_write_with_config(const LaunchConfig &config, const NdsTransportDescriptor &transport,
+                                                 std::uint32_t queue_index, const NdsSendWr &wr) const {
+    return launch_transport_and_wait(runtime_, this, config, "nds_aiv_rdma_write_kernel", transport, queue_index, wr);
+}
+
+Result<PostSendBatchResult> AivLauncher::rdma_send_batch_with_config(const LaunchConfig &config,
+                                                                     const NdsTransportDescriptor &transport,
+                                                                     std::uint32_t queue_index,
+                                                                     std::span<const NdsSendWr> wrs) const {
+    return launch_transport_batch_and_wait(runtime_, this, config, transport, queue_index, wrs);
 }
 
 }  // namespace nds::client

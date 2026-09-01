@@ -1,13 +1,17 @@
 #ifndef NDS_CLIENT_RA_BACKEND_ABI_HH
 #define NDS_CLIENT_RA_BACKEND_ABI_HH
 
-#include "device_verbs.h"
+#include "device_transport.h"
 
 #include <cstdint>
 
 /* The RA artifact consumes the same envelopes used by AIV/AICPU kernels. */
-using NdsRaBackendPostSend = int (*)(const NdsDeviceQp *, const NdsDeviceSendWr *, void *stream);
-using NdsRaBackendPostRecv = int (*)(const NdsDeviceQp *, const NdsDeviceRecvWr *);
-using NdsRaBackendPollCq = int (*)(const NdsDeviceQp *, std::uint32_t, std::uint32_t, NdsDeviceWc *);
+using NdsRaBackendPostSend = int (*)(const NdsQpDescriptor *, const NdsSendWr *, void *stream);
+using NdsRaBackendPostRecv = int (*)(const NdsQpDescriptor *, const NdsRecvWr *);
+using NdsRaBackendPollCq = int (*)(const NdsQpDescriptor *, std::uint32_t, std::uint32_t, NdsWc *);
+using NdsRaBackendRdmaSend = int (*)(const NdsTransportDescriptor *, std::uint32_t, const NdsSendWr *);
+using NdsRaBackendRdmaRecv = int (*)(const NdsTransportDescriptor *, std::uint32_t, const NdsRecvWr *);
+using NdsRaBackendRdmaRead = int (*)(const NdsTransportDescriptor *, std::uint32_t, const NdsSendWr *);
+using NdsRaBackendRdmaWrite = int (*)(const NdsTransportDescriptor *, std::uint32_t, const NdsSendWr *);
 
 #endif

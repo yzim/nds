@@ -39,10 +39,6 @@ public:
     bool ok() const noexcept {
         return storage_.has_value();
     }
-    explicit operator bool() const noexcept {
-        return ok();
-    }
-
     T &value() & {
         return storage_.value();
     }
@@ -80,10 +76,6 @@ public:
     bool ok() const noexcept {
         return storage_.has_value();
     }
-    explicit operator bool() const noexcept {
-        return ok();
-    }
-
     Error &error() & {
         return storage_.error();
     }

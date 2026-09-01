@@ -19,11 +19,11 @@ Result<StorageBootstrap> exchange_bootstrap(Transport *transport, const uint8_t 
         return Error{ErrorCode::kProtocol, "invalid storage bootstrap record"};
     auto namespace_region =
         transport->register_memory(namespace_bytes, sizeof(namespace_bytes), MemoryAccess::LocalRead);
-    if (!namespace_region)
+    if (!namespace_region.ok())
         return namespace_region.error();
     if (const auto completed = transport->write(namespace_region.value(), bootstrap.namespace_response.address,
                                                 bootstrap.namespace_response.remote_key, sizeof(namespace_bytes));
-        !completed) {
+        !completed.ok()) {
         return completed.error();
     }
     return bootstrap;
@@ -33,13 +33,13 @@ Result<void> move_data(Transport *transport, std::vector<unsigned char> *storage
                        std::uint64_t length, const StorageMemory &remote, bool read) {
     auto *data = storage->data() + offset;
     auto data_region = transport->register_memory(data, length, MemoryAccess::LocalWrite);
-    if (!data_region)
+    if (!data_region.ok())
         return data_region.error();
     const auto transferred = read ? transport->write(data_region.value(), remote.address, remote.remote_key,
                                                      static_cast<std::uint32_t>(length))
                                   : transport->read(data_region.value(), remote.address, remote.remote_key,
                                                     static_cast<std::uint32_t>(length));
-    if (!transferred)
+    if (!transferred.ok())
         return transferred.error();
     return {};
 }
@@ -50,11 +50,11 @@ Result<void> process_batch(Transport *transport, std::vector<unsigned char> *sto
     const auto count = static_cast<std::size_t>(command.entry_count);
     std::vector<uint8_t> entry_bytes(count * kStorageBatchEntryBytes);
     auto entry_region = transport->register_memory(entry_bytes.data(), entry_bytes.size(), MemoryAccess::LocalWrite);
-    if (!entry_region)
+    if (!entry_region.ok())
         return entry_region.error();
     if (const auto fetched = transport->read(entry_region.value(), command.entries.address, command.entries.remote_key,
                                              static_cast<std::uint32_t>(entry_bytes.size()));
-        !fetched)
+        !fetched.ok())
         return fetched.error();
 
     std::vector<Entry> entries(count);
@@ -79,7 +79,7 @@ Result<void> process_batch(Transport *transport, std::vector<unsigned char> *sto
     if (completion->status != StorageStatus::Success)
         return {};
     for (const Entry &entry : entries) {
-        if (const auto moved = move_data(transport, storage, entry.offset, entry.length, entry.data, read); !moved)
+        if (const auto moved = move_data(transport, storage, entry.offset, entry.length, entry.data, read); !moved.ok())
             return moved.error();
     }
     completion->bytes_transferred = total_length;
@@ -94,7 +94,8 @@ Result<void> process_single(Transport *transport, std::vector<unsigned char> *st
         completion->status = StorageStatus::RangeError;
         return {};
     }
-    if (const auto moved = move_data(transport, storage, command.offset, command.length, command.data, read); !moved)
+    if (const auto moved = move_data(transport, storage, command.offset, command.length, command.data, read);
+        !moved.ok())
         return moved.error();
     completion->bytes_transferred = command.length;
     return {};
@@ -109,23 +110,27 @@ Result<void> serve_commands(Transport *transport, std::vector<unsigned char> *st
     uint8_t command_bytes[kStorageCommandBytes]{};
     uint8_t completion_bytes[kStorageCompletionBytes]{};
     uint8_t bootstrap_bytes[kStorageBootstrapBytes]{};
-    auto bootstrap_region = transport->prepare_receive(bootstrap_bytes, sizeof(bootstrap_bytes));
-    if (!bootstrap_region)
+    auto bootstrap_region =
+        transport->register_memory(bootstrap_bytes, sizeof(bootstrap_bytes), MemoryAccess::LocalWrite);
+    if (!bootstrap_region.ok())
         return bootstrap_region.error();
+    NDS_RETURN_IF_ERROR(transport->post_receive(bootstrap_region.value()));
     auto completion_region =
         transport->register_memory(completion_bytes, sizeof(completion_bytes), MemoryAccess::LocalRead);
-    if (!completion_region)
+    if (!completion_region.ok())
         return completion_region.error();
-    if (const auto received = transport->receive(timeout_ms); !received)
+    if (const auto received = transport->wait_receive(timeout_ms); !received.ok())
         return received.error();
     const auto bootstrap = exchange_bootstrap(transport, bootstrap_bytes, storage->size());
-    if (!bootstrap)
+    if (!bootstrap.ok())
         return bootstrap.error();
     for (std::uint32_t command_index = 0U; command_index < command_count; ++command_index) {
-        auto command_region = transport->prepare_receive(command_bytes, sizeof(command_bytes));
-        if (!command_region)
+        auto command_region =
+            transport->register_memory(command_bytes, sizeof(command_bytes), MemoryAccess::LocalWrite);
+        if (!command_region.ok())
             return command_region.error();
-        if (const auto result = transport->receive(timeout_ms); !result)
+        NDS_RETURN_IF_ERROR(transport->post_receive(command_region.value()));
+        if (const auto result = transport->wait_receive(timeout_ms); !result.ok())
             return result.error();
 
         StorageOperation operation{};
@@ -171,14 +176,14 @@ Result<void> serve_commands(Transport *transport, std::vector<unsigned char> *st
                 break;
             }
         }
-        if (!processed)
+        if (!processed.ok())
             return processed.error();
         if (serialize_storage_completion(completion, completion_bytes, sizeof(completion_bytes)) !=
             StorageSerdeResult::Ok)
             return Error{ErrorCode::kProtocol, "invalid storage completion"};
         if (const auto completed = transport->write(completion_region.value(), bootstrap.value().completion.address,
                                                     bootstrap.value().completion.remote_key, sizeof(completion_bytes));
-            !completed)
+            !completed.ok())
             return completed.error();
     }
     return {};

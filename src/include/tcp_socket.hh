@@ -30,6 +30,7 @@ public:
 
     static Result<TcpConnection> connect(const std::string &ipv4, std::uint16_t port, std::uint32_t timeout_ms);
 
+    bool is_open() const noexcept;
     Result<void> send(std::span<const std::byte> bytes) const;
     Result<void> receive(std::span<std::byte> bytes) const;
 

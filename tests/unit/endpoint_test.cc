@@ -347,7 +347,7 @@ TEST(EndpointTest, RaVerbsUseQueuePairExecutionView) {
     nds::client::Runtime runtime;
     runtime.libruntime().set_device = fake_set_device;
     runtime.libruntime().rdma_db_send = fake_doorbell;
-    const NdsDeviceSendWr send{1U, NDS_DEVICE_WR_SEND, NDS_DEVICE_SEND_SIGNALED, {0x1000U, 64U, 0x99U}, 0U, 0U, 0U};
+    const NdsSendWr send{1U, NDS_WR_SEND, NDS_SEND_SIGNALED, {0x1000U, 64U, 0x99U}, 0U, 0U, 0U};
     EXPECT_TRUE(nds::NdsRaPostSend(&runtime, &qp, send, nullptr).ok());
     EXPECT_EQ(fake.send_calls, 1);
     EXPECT_EQ(fake.send.buffers->address, 0x1000U);
@@ -357,7 +357,7 @@ TEST(EndpointTest, RaVerbsUseQueuePairExecutionView) {
     EXPECT_EQ(fake.doorbell_info, 0x100000017U);
     EXPECT_TRUE(nds::NdsRaPostRecv(&qp, {2U, {0x2000U, 64U, 0x88U}}).ok());
     EXPECT_EQ(fake.recv_calls, 1);
-    NdsDeviceWc output[NDS_DEVICE_MAX_COMPLETIONS]{};
+    NdsWc output[NDS_MAX_COMPLETIONS]{};
     const auto polled = nds::NdsRaPollCq(&qp, true, 1U, output);
     EXPECT_TRUE(polled.ok());
     EXPECT_EQ(polled.value(), 0U);

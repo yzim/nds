@@ -29,13 +29,13 @@ nds::QpInfo endpoint() {
 
 TEST(TransportCodecTest, ParsesTcpExchangeAddress) {
     const auto parsed = nds::parse_tcp_address("192.168.100.100:18515");
-    ASSERT_TRUE(parsed);
+    ASSERT_TRUE(parsed.ok());
     EXPECT_EQ(parsed.value().ipv4, "192.168.100.100");
     EXPECT_EQ(parsed.value().port, 18515U);
 
-    EXPECT_FALSE(nds::parse_tcp_address("192.168.100.100"));
-    EXPECT_FALSE(nds::parse_tcp_address("192.168.100.100:0"));
-    EXPECT_FALSE(nds::parse_tcp_address("host:18515"));
+    EXPECT_FALSE(nds::parse_tcp_address("192.168.100.100").ok());
+    EXPECT_FALSE(nds::parse_tcp_address("192.168.100.100:0").ok());
+    EXPECT_FALSE(nds::parse_tcp_address("host:18515").ok());
 }
 
 TEST(TransportCodecTest, RoundTripsTransportRecord) {
@@ -50,4 +50,10 @@ TEST(TransportCodecTest, RoundTripsTransportRecord) {
 
     wire.magic = 0U;
     EXPECT_NE(nds::transport::decode(&wire, &decoded), nds::transport::CodecResult::Ok);
+}
+
+TEST(TransportCodecTest, RejectsRemoteMemoryRangeOverflow) {
+    const nds::RemoteMemory source{UINT64_MAX - 7U, 16U, 0x1234U};
+    nds::wire::RemoteMemory wire{};
+    EXPECT_EQ(nds::transport::encode(&source, &wire), nds::transport::CodecResult::InvalidRecord);
 }

@@ -30,13 +30,13 @@ inline void *NdsAicpuResolveSymbol(const char *name) {
     return verbs == nullptr ? nullptr : dlsym(verbs, name);
 }
 
-inline bool NdsAicpuValidQp(const NdsDeviceQp *qp) {
+inline bool NdsAicpuValidQp(const NdsQpDescriptor *qp) {
     return qp != nullptr;
 }
 
 inline void NdsAicpuSetReturnValue(int32_t *return_value, uint32_t status) {
     if (return_value != nullptr)
-        *return_value = status == NDS_DEVICE_OPERATION_SUCCESS ? 0 : -static_cast<int32_t>(status);
+        *return_value = status == NDS_OPERATION_SUCCESS ? 0 : -static_cast<int32_t>(status);
     NdsAicpuBarrier();
 }
 

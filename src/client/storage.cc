@@ -3,11 +3,13 @@
 #include "backends/aicpu/launcher.hh"
 #include "backends/aicpu/launch_args.hh"
 #include "backends/aiv/launcher.hh"
+#include "backends/launcher.hh"
 #include "ra/ra.hh"
 
 #include <chrono>
 #include <cstddef>
 #include <limits>
+#include <memory>
 #include <string>
 #include <thread>
 #include <utility>
@@ -46,9 +48,9 @@ public:
         if (runtime_ == nullptr || buffer_.data() != nullptr)
             return Error{ErrorCode::kInvalidArgument, "device allocation requires one runtime and empty storage"};
         auto allocated = runtime_->allocate(size, MemoryLocation::Device);
-        if (!allocated)
+        if (!allocated.ok())
             return Error{allocated.error()};
-        buffer_ = std::move(*allocated);
+        buffer_ = std::move(allocated).value();
         return {};
     }
 
@@ -107,13 +109,56 @@ const char *aicpu_storage_kernel(StorageOperation operation) {
     return nullptr;
 }
 
+struct StreamOwner {
+    aclrtStream stream{};
+
+    ~StreamOwner() {
+        if (stream != nullptr)
+            (void)aclrtDestroyStream(stream);
+    }
+};
+
+Result<void> submit_transport_bootstrap(Runtime *runtime, Transport *transport, const MemoryRegion &region,
+                                        std::uint32_t length) {
+    if (runtime == nullptr || transport == nullptr)
+        return Error{ErrorCode::kInvalidArgument, "storage bootstrap requires a runtime and transport"};
+    NDS_ASSIGN_OR_RETURN(std::unique_ptr<Launcher> launcher,
+                         Launcher::open(runtime, transport->backend().mode, transport->backend().artifact_path));
+    NDS_ASSIGN_OR_RETURN(NdsQpDescriptor host_qp, transport->host_qp_descriptor(0U));
+
+    StreamOwner stream;
+    if (transport->backend().mode != BackendMode::Ra) {
+        const int result = aclrtCreateStream(&stream.stream);
+        if (result != ACL_SUCCESS || stream.stream == nullptr)
+            return Error{ErrorCode::kRuntime, "storage bootstrap stream creation failed: " + std::to_string(result)};
+    }
+    const LaunchConfig config{.stream = stream.stream, .sync = true, .sync_timeout_ms = kCompletionTimeoutMs};
+    const NdsSendWr wr{1U, NDS_WR_SEND, NDS_SEND_SIGNALED, {region.address(), length, region.local_key()}, 0U, 0U, 0U};
+    NDS_RETURN_IF_ERROR(launcher->rdma_send(config, transport->device_transport(), 0U, wr));
+
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(kCompletionTimeoutMs);
+    while (std::chrono::steady_clock::now() < deadline) {
+        NdsWc completion{};
+        NDS_ASSIGN_OR_RETURN(std::uint32_t count,
+                             launcher->with_config(config).poll_cq(host_qp, true, 1U, &completion));
+        if (count == 0U) {
+            std::this_thread::yield();
+            continue;
+        }
+        if (completion.wr_id != wr.wr_id || completion.status != NDS_WC_SUCCESS)
+            return Error{ErrorCode::kTransport, "storage bootstrap send completion failed"};
+        return {};
+    }
+    return Error{ErrorCode::kRuntime, "timed out waiting for storage bootstrap send completion"};
+}
+
 template <typename Args, typename Command>
 Result<void> submit_device_storage(Runtime *runtime, Transport *transport, const BackendConfig &backend,
                                    const MemoryRegion &command_region, const MemoryRegion &completion,
                                    std::uint64_t capacity, StorageOperation operation, const Command &command) {
     if (transport == nullptr)
         return Error{ErrorCode::kInvalidArgument, "storage requires a transport"};
-    NdsDeviceStorageContext context{};
+    NdsStorageContext context{};
     context.transport = transport->device_transport();
     context.command_buffer = {command_region.address(), static_cast<std::uint32_t>(command_region.length()),
                               command_region.local_key()};
@@ -127,12 +172,13 @@ Result<void> submit_device_storage(Runtime *runtime, Transport *transport, const
         args.command = command;
         args.return_value = std::numeric_limits<std::int32_t>::min();
         AicpuLauncher launcher;
-        if (const auto loaded = launcher.load(backend.artifact_path); !loaded)
+        if (const auto loaded = launcher.load(backend.artifact_path); !loaded.ok())
             return Error{loaded.error()};
         const char *kernel_name = aicpu_storage_kernel(operation);
         if (kernel_name == nullptr)
             return Error{ErrorCode::kInvalidArgument, "device storage operation is invalid"};
-        if (const auto launched = launch_aicpu(runtime, &launcher, kernel_name, &args, kCompletionTimeoutMs); !launched)
+        if (const auto launched = launch_aicpu(runtime, &launcher, kernel_name, &args, kCompletionTimeoutMs);
+            !launched.ok())
             return Error{launched.error()};
         if (args.return_value != 0)
             return Error{ErrorCode::kRuntime, "device storage operation failed: " + std::to_string(args.return_value)};
@@ -141,22 +187,24 @@ Result<void> submit_device_storage(Runtime *runtime, Transport *transport, const
         DeviceAllocation device_context(runtime);
         DeviceAllocation device_command(runtime);
         DeviceAllocation device_return_value(runtime);
-        if (const auto allocated = device_context.allocate(sizeof(context)); !allocated)
+        if (const auto allocated = device_context.allocate(sizeof(context)); !allocated.ok())
             return Error{allocated.error()};
-        if (const auto allocated = device_command.allocate(sizeof(command)); !allocated)
+        if (const auto allocated = device_command.allocate(sizeof(command)); !allocated.ok())
             return Error{allocated.error()};
-        if (const auto allocated = device_return_value.allocate(sizeof(return_value)); !allocated)
+        if (const auto allocated = device_return_value.allocate(sizeof(return_value)); !allocated.ok())
             return Error{allocated.error()};
-        if (const auto copied = runtime->copy_host_to_device(device_context.get(), &context, sizeof(context)); !copied)
+        if (const auto copied = runtime->copy_host_to_device(device_context.get(), &context, sizeof(context));
+            !copied.ok())
             return Error{copied.error()};
-        if (const auto copied = runtime->copy_host_to_device(device_command.get(), &command, sizeof(command)); !copied)
+        if (const auto copied = runtime->copy_host_to_device(device_command.get(), &command, sizeof(command));
+            !copied.ok())
             return Error{copied.error()};
         if (const auto copied =
                 runtime->copy_host_to_device(device_return_value.get(), &return_value, sizeof(return_value));
-            !copied)
+            !copied.ok())
             return Error{copied.error()};
         AivLauncher launcher;
-        if (const auto loaded = launcher.load(backend.artifact_path); !loaded)
+        if (const auto loaded = launcher.load(backend.artifact_path); !loaded.ok())
             return Error{loaded.error()};
         const char *kernel_name = aiv_storage_kernel(operation);
         if (kernel_name == nullptr)
@@ -166,11 +214,11 @@ Result<void> submit_device_storage(Runtime *runtime, Transport *transport, const
                                            reinterpret_cast<std::uint64_t>(device_return_value.get())};
         if (const auto launched =
                 launcher.launch_and_wait(kernel_name, &arguments, sizeof(arguments), kCompletionTimeoutMs);
-            !launched)
+            !launched.ok())
             return Error{launched.error()};
         if (const auto copied =
                 runtime->copy_device_to_host(&return_value, device_return_value.get(), sizeof(return_value));
-            !copied)
+            !copied.ok())
             return Error{copied.error()};
         if (return_value != 0)
             return Error{ErrorCode::kRuntime, "device storage operation failed: " + std::to_string(return_value)};
@@ -185,7 +233,7 @@ Result<DeviceStorageWaitResult> wait_device_storage(Runtime *runtime, Transport 
                                                     std::int32_t timeout_ms) {
     if (transport == nullptr)
         return Error{ErrorCode::kInvalidArgument, "storage requires a transport"};
-    NdsDeviceStorageContext context{};
+    NdsStorageContext context{};
     context.transport = transport->device_transport();
     context.command_buffer = {command_region.address(), static_cast<std::uint32_t>(command_region.length()),
                               command_region.local_key()};
@@ -195,49 +243,50 @@ Result<DeviceStorageWaitResult> wait_device_storage(Runtime *runtime, Transport 
     std::int32_t return_value = std::numeric_limits<std::int32_t>::min();
 
     if (backend.mode == BackendMode::Aicpu) {
-        NdsDeviceStorageWaitArgs args{};
+        NdsStorageWaitArgs args{};
         args.context = context;
         args.command_id = command_id;
         args.expected_bytes = expected_bytes;
         args.return_value = return_value;
         AicpuLauncher launcher;
-        if (const auto loaded = launcher.load(backend.artifact_path); !loaded)
+        if (const auto loaded = launcher.load(backend.artifact_path); !loaded.ok())
             return Error{loaded.error()};
         if (const auto launched = launch_aicpu(runtime, &launcher, "nds_aicpu_storage_wait_kernel", &args, timeout_ms);
-            !launched)
+            !launched.ok())
             return Error{launched.error()};
         return_value = args.return_value;
     } else {
         DeviceAllocation device_context(runtime);
         DeviceAllocation device_return_value(runtime);
-        if (const auto allocated = device_context.allocate(sizeof(context)); !allocated)
+        if (const auto allocated = device_context.allocate(sizeof(context)); !allocated.ok())
             return Error{allocated.error()};
-        if (const auto allocated = device_return_value.allocate(sizeof(return_value)); !allocated)
+        if (const auto allocated = device_return_value.allocate(sizeof(return_value)); !allocated.ok())
             return Error{allocated.error()};
-        if (const auto copied = runtime->copy_host_to_device(device_context.get(), &context, sizeof(context)); !copied)
+        if (const auto copied = runtime->copy_host_to_device(device_context.get(), &context, sizeof(context));
+            !copied.ok())
             return Error{copied.error()};
         if (const auto copied =
                 runtime->copy_host_to_device(device_return_value.get(), &return_value, sizeof(return_value));
-            !copied)
+            !copied.ok())
             return Error{copied.error()};
         AivLauncher launcher;
-        if (const auto loaded = launcher.load(backend.artifact_path); !loaded)
+        if (const auto loaded = launcher.load(backend.artifact_path); !loaded.ok())
             return Error{loaded.error()};
         AivStorageWaitArguments arguments{reinterpret_cast<std::uint64_t>(device_context.get()), command_id,
                                           expected_bytes, reinterpret_cast<std::uint64_t>(device_return_value.get())};
         if (const auto launched =
                 launcher.launch_and_wait("nds_aiv_storage_wait_kernel", &arguments, sizeof(arguments), timeout_ms);
-            !launched)
+            !launched.ok())
             return Error{launched.error()};
         if (const auto copied =
                 runtime->copy_device_to_host(&return_value, device_return_value.get(), sizeof(return_value));
-            !copied)
+            !copied.ok())
             return Error{copied.error()};
     }
     std::uint8_t completion_bytes[kStorageCompletionBytes]{};
     if (const auto copied = runtime->copy_device_to_host(
             completion_bytes, reinterpret_cast<void *>(completion.address()), sizeof(completion_bytes));
-        !copied)
+        !copied.ok())
         return Error{copied.error()};
     StorageCompletion observed{};
     const bool terminal = deserialize_storage_completion(completion_bytes, sizeof(completion_bytes), &observed) ==
@@ -255,36 +304,36 @@ Result<void> StorageClient::open(Runtime *runtime, Transport *transport) {
     runtime_ = runtime;
     transport_ = transport;
     auto command_buffer = runtime_->allocate(kStorageCommandBytes, MemoryLocation::Device);
-    if (!command_buffer)
+    if (!command_buffer.ok())
         return Error{command_buffer.error()};
-    command_buffer_ = std::move(*command_buffer);
+    command_buffer_ = std::move(command_buffer).value();
     auto completion_buffer = runtime_->allocate(kStorageCompletionBytes, MemoryLocation::Device);
-    if (!completion_buffer)
+    if (!completion_buffer.ok())
         return Error{completion_buffer.error()};
-    completion_buffer_ = std::move(*completion_buffer);
+    completion_buffer_ = std::move(completion_buffer).value();
     auto namespace_buffer = runtime_->allocate(kStorageNamespaceBytes, MemoryLocation::Device);
-    if (!namespace_buffer)
+    if (!namespace_buffer.ok())
         return Error{namespace_buffer.error()};
-    namespace_buffer_ = std::move(*namespace_buffer);
+    namespace_buffer_ = std::move(namespace_buffer).value();
     auto command_region = transport_->register_memory(
         command_buffer_, MemoryAccess::LocalWrite | MemoryAccess::RemoteWrite | MemoryAccess::RemoteRead);
-    if (!command_region)
+    if (!command_region.ok())
         return Error{command_region.error()};
-    command_region_ = std::move(*command_region);
+    command_region_ = std::move(command_region).value();
     auto completion_region = transport_->register_memory(
         completion_buffer_, MemoryAccess::LocalWrite | MemoryAccess::RemoteWrite | MemoryAccess::RemoteRead);
-    if (!completion_region)
+    if (!completion_region.ok())
         return Error{completion_region.error()};
-    completion_region_ = std::move(*completion_region);
+    completion_region_ = std::move(completion_region).value();
     auto namespace_region = transport_->register_memory(
         namespace_buffer_, MemoryAccess::LocalWrite | MemoryAccess::RemoteWrite | MemoryAccess::RemoteRead);
-    if (!namespace_region)
+    if (!namespace_region.ok())
         return Error{namespace_region.error()};
-    namespace_region_ = std::move(*namespace_region);
+    namespace_region_ = std::move(namespace_region).value();
     const auto capacity = exchange_bootstrap();
-    if (!capacity)
+    if (!capacity.ok())
         return Error{capacity.error()};
-    capacity_ = *capacity;
+    capacity_ = capacity.value();
     const nds::QpInfo &local = transport_->local_qp_info();
     next_command_id_ = (static_cast<std::uint64_t>(local.qp_num) << 32U) | local.psn;
     if (next_command_id_ == 0U)
@@ -294,51 +343,51 @@ Result<void> StorageClient::open(Runtime *runtime, Transport *transport) {
 }
 
 Result<StorageCompletionHandle> StorageClient::read(std::uint64_t offset, MemoryBuffer *data, std::uint32_t length) {
-    if (const auto ready = begin_submission(); !ready)
+    if (const auto ready = begin_submission(); !ready.ok())
         return Error{ready.error()};
-    if (const auto valid = validate_io({offset, data, length}); !valid)
+    if (const auto valid = validate_io({offset, data, length}); !valid.ok())
         return Error{valid.error()};
     auto region = transport_->register_memory(
         *data, MemoryAccess::LocalWrite | MemoryAccess::RemoteWrite | MemoryAccess::RemoteRead);
-    if (!region)
+    if (!region.ok())
         return Error{region.error()};
     const std::uint64_t command_id = allocate_command_id();
     PendingRequest pending{};
     pending.command_id = command_id;
     pending.expected_bytes = length;
     const StorageReadCommand command{
-        command_id, offset, length, {region->address(), region->length(), region->remote_key()}};
-    pending.data_regions.push_back(std::move(*region));
-    if (const auto submitted = execute_storage_read(command); !submitted)
+        command_id, offset, length, {region.value().address(), region.value().length(), region.value().remote_key()}};
+    pending.data_regions.push_back(std::move(region).value());
+    if (const auto submitted = execute_storage_read(command); !submitted.ok())
         return Error{submitted.error()};
     pending_ = std::move(pending);
     return StorageCompletionHandle{command_id};
 }
 
 Result<StorageCompletionHandle> StorageClient::write(std::uint64_t offset, MemoryBuffer *data, std::uint32_t length) {
-    if (const auto ready = begin_submission(); !ready)
+    if (const auto ready = begin_submission(); !ready.ok())
         return Error{ready.error()};
-    if (const auto valid = validate_io({offset, data, length}); !valid)
+    if (const auto valid = validate_io({offset, data, length}); !valid.ok())
         return Error{valid.error()};
     auto region = transport_->register_memory(
         *data, MemoryAccess::LocalWrite | MemoryAccess::RemoteWrite | MemoryAccess::RemoteRead);
-    if (!region)
+    if (!region.ok())
         return Error{region.error()};
     const std::uint64_t command_id = allocate_command_id();
     PendingRequest pending{};
     pending.command_id = command_id;
     pending.expected_bytes = length;
     const StorageWriteCommand command{
-        command_id, offset, length, {region->address(), region->length(), region->remote_key()}};
-    pending.data_regions.push_back(std::move(*region));
-    if (const auto submitted = execute_storage_write(command); !submitted)
+        command_id, offset, length, {region.value().address(), region.value().length(), region.value().remote_key()}};
+    pending.data_regions.push_back(std::move(region).value());
+    if (const auto submitted = execute_storage_write(command); !submitted.ok())
         return Error{submitted.error()};
     pending_ = std::move(pending);
     return StorageCompletionHandle{command_id};
 }
 
 Result<StorageCompletionHandle> StorageClient::read_batch(std::span<const StorageIo> requests) {
-    if (const auto ready = begin_submission(); !ready)
+    if (const auto ready = begin_submission(); !ready.ok())
         return Error{ready.error()};
     if (requests.empty())
         return Error{ErrorCode::kInvalidArgument, "storage batch read requires at least one request"};
@@ -350,16 +399,16 @@ Result<StorageCompletionHandle> StorageClient::read_batch(std::span<const Storag
     pending.data_regions.reserve(requests.size());
     std::uint64_t total_length{};
     for (const StorageIo &request : requests) {
-        if (const auto valid = validate_io(request); !valid)
+        if (const auto valid = validate_io(request); !valid.ok())
             return Error{valid.error()};
         if (request.length > std::numeric_limits<std::uint64_t>::max() - total_length)
             return Error{ErrorCode::kInvalidArgument, "storage batch read byte count overflows"};
         total_length += request.length;
         auto region = transport_->register_memory(
             *request.data, MemoryAccess::LocalWrite | MemoryAccess::RemoteWrite | MemoryAccess::RemoteRead);
-        if (!region)
+        if (!region.ok())
             return Error{region.error()};
-        pending.data_regions.push_back(std::move(*region));
+        pending.data_regions.push_back(std::move(region).value());
     }
     std::vector<uint8_t> bytes(requests.size() * kStorageBatchEntryBytes);
     for (std::size_t index = 0U; index < requests.size(); ++index) {
@@ -372,27 +421,30 @@ Result<StorageCompletionHandle> StorageClient::read_batch(std::span<const Storag
             return Error{ErrorCode::kProtocol, "invalid storage batch-read entry"};
     }
     auto descriptor_buffer = runtime_->allocate(bytes.size(), MemoryLocation::Device);
-    if (!descriptor_buffer)
+    if (!descriptor_buffer.ok())
         return Error{descriptor_buffer.error()};
-    if (const auto copied = runtime_->copy_to(&*descriptor_buffer, bytes.data(), bytes.size()); !copied)
+    if (const auto copied = runtime_->copy_to(&descriptor_buffer.value(), bytes.data(), bytes.size()); !copied.ok())
         return Error{copied.error()};
     auto region = transport_->register_memory(
-        *descriptor_buffer, MemoryAccess::LocalWrite | MemoryAccess::RemoteWrite | MemoryAccess::RemoteRead);
-    if (!region)
+        descriptor_buffer.value(), MemoryAccess::LocalWrite | MemoryAccess::RemoteWrite | MemoryAccess::RemoteRead);
+    if (!region.ok())
         return Error{region.error()};
     pending.expected_bytes = total_length;
     const StorageBatchReadCommand command{
-        command_id, requests.size(), total_length, {region->address(), region->length(), region->remote_key()}};
-    pending.descriptor_buffer = std::move(*descriptor_buffer);
-    pending.descriptor_region = std::move(*region);
-    if (const auto submitted = execute_storage_batch_read(command); !submitted)
+        command_id,
+        requests.size(),
+        total_length,
+        {region.value().address(), region.value().length(), region.value().remote_key()}};
+    pending.descriptor_buffer = std::move(descriptor_buffer).value();
+    pending.descriptor_region = std::move(region).value();
+    if (const auto submitted = execute_storage_batch_read(command); !submitted.ok())
         return Error{submitted.error()};
     pending_ = std::move(pending);
     return StorageCompletionHandle{command_id};
 }
 
 Result<StorageCompletionHandle> StorageClient::write_batch(std::span<const StorageIo> requests) {
-    if (const auto ready = begin_submission(); !ready)
+    if (const auto ready = begin_submission(); !ready.ok())
         return Error{ready.error()};
     if (requests.empty())
         return Error{ErrorCode::kInvalidArgument, "storage batch write requires at least one request"};
@@ -404,16 +456,16 @@ Result<StorageCompletionHandle> StorageClient::write_batch(std::span<const Stora
     pending.data_regions.reserve(requests.size());
     std::uint64_t total_length{};
     for (const StorageIo &request : requests) {
-        if (const auto valid = validate_io(request); !valid)
+        if (const auto valid = validate_io(request); !valid.ok())
             return Error{valid.error()};
         if (request.length > std::numeric_limits<std::uint64_t>::max() - total_length)
             return Error{ErrorCode::kInvalidArgument, "storage batch write byte count overflows"};
         total_length += request.length;
         auto region = transport_->register_memory(
             *request.data, MemoryAccess::LocalWrite | MemoryAccess::RemoteWrite | MemoryAccess::RemoteRead);
-        if (!region)
+        if (!region.ok())
             return Error{region.error()};
-        pending.data_regions.push_back(std::move(*region));
+        pending.data_regions.push_back(std::move(region).value());
     }
     std::vector<uint8_t> bytes(requests.size() * kStorageBatchEntryBytes);
     for (std::size_t index = 0U; index < requests.size(); ++index) {
@@ -426,20 +478,23 @@ Result<StorageCompletionHandle> StorageClient::write_batch(std::span<const Stora
             return Error{ErrorCode::kProtocol, "invalid storage batch-write entry"};
     }
     auto descriptor_buffer = runtime_->allocate(bytes.size(), MemoryLocation::Device);
-    if (!descriptor_buffer)
+    if (!descriptor_buffer.ok())
         return Error{descriptor_buffer.error()};
-    if (const auto copied = runtime_->copy_to(&*descriptor_buffer, bytes.data(), bytes.size()); !copied)
+    if (const auto copied = runtime_->copy_to(&descriptor_buffer.value(), bytes.data(), bytes.size()); !copied.ok())
         return Error{copied.error()};
     auto region = transport_->register_memory(
-        *descriptor_buffer, MemoryAccess::LocalWrite | MemoryAccess::RemoteWrite | MemoryAccess::RemoteRead);
-    if (!region)
+        descriptor_buffer.value(), MemoryAccess::LocalWrite | MemoryAccess::RemoteWrite | MemoryAccess::RemoteRead);
+    if (!region.ok())
         return Error{region.error()};
     pending.expected_bytes = total_length;
     const StorageBatchWriteCommand command{
-        command_id, requests.size(), total_length, {region->address(), region->length(), region->remote_key()}};
-    pending.descriptor_buffer = std::move(*descriptor_buffer);
-    pending.descriptor_region = std::move(*region);
-    if (const auto submitted = execute_storage_batch_write(command); !submitted)
+        command_id,
+        requests.size(),
+        total_length,
+        {region.value().address(), region.value().length(), region.value().remote_key()}};
+    pending.descriptor_buffer = std::move(descriptor_buffer).value();
+    pending.descriptor_region = std::move(region).value();
+    if (const auto submitted = execute_storage_batch_write(command); !submitted.ok())
         return Error{submitted.error()};
     pending_ = std::move(pending);
     return StorageCompletionHandle{command_id};
@@ -472,21 +527,21 @@ Result<void> StorageClient::wait(StorageCompletionHandle handle, std::uint32_t t
         return Error{ErrorCode::kInvalidArgument, "storage wait requires a positive timeout"};
     if (transport_->backend().mode == BackendMode::Ra) {
         const auto completion = observe_completion(handle.command_id, pending_->expected_bytes, timeout_ms);
-        if (!completion)
+        if (!completion.ok())
             return Error{completion.error()};
         pending_.reset();
-        if (completion->status != StorageStatus::Success)
+        if (completion.value().status != StorageStatus::Success)
             return Error{ErrorCode::kProtocol, "storage completion returned a failure status"};
         return {};
     }
     const auto completed =
         wait_device_storage(runtime_, transport_, transport_->backend(), command_region_, completion_region_, capacity_,
                             handle.command_id, pending_->expected_bytes, static_cast<std::int32_t>(timeout_ms));
-    if (!completed)
+    if (!completed.ok())
         return Error{completed.error()};
-    if (completed->terminal)
+    if (completed.value().terminal)
         pending_.reset();
-    if (completed->return_value != 0)
+    if (completed.value().return_value != 0)
         return Error{ErrorCode::kProtocol, "device storage wait returned a failure status"};
     return {};
 }
@@ -496,7 +551,8 @@ Result<StorageCompletion> StorageClient::observe_completion(std::uint64_t comman
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
     while (std::chrono::steady_clock::now() < deadline) {
         uint8_t bytes[kStorageCompletionBytes]{};
-        if (const auto copied = runtime_->copy_device_to_host(bytes, completion_buffer_.data(), sizeof(bytes)); !copied)
+        if (const auto copied = runtime_->copy_device_to_host(bytes, completion_buffer_.data(), sizeof(bytes));
+            !copied.ok())
             return Error{copied.error()};
         StorageCompletion completion{};
         if (deserialize_storage_completion(bytes, sizeof(bytes), &completion) != StorageSerdeResult::Ok)
@@ -520,7 +576,7 @@ std::uint64_t StorageClient::allocate_command_id() noexcept {
 }
 
 Result<void> StorageClient::execute_storage_read(const StorageReadCommand &command) {
-    if (const auto ready = transport_->ready(); !ready)
+    if (const auto ready = transport_->ready(); !ready.ok())
         return Error{ready.error()};
     if (transport_->backend().mode == BackendMode::Ra) {
         const RaStorageContext context{
@@ -534,13 +590,12 @@ Result<void> StorageClient::execute_storage_read(const StorageReadCommand &comma
             capacity_};
         return NdsRaStorageRead(context, command);
     }
-    return submit_device_storage<NdsDeviceStorageReadArgs>(runtime_, transport_, transport_->backend(), command_region_,
-                                                           completion_region_, capacity_, StorageOperation::Read,
-                                                           command);
+    return submit_device_storage<NdsStorageReadArgs>(runtime_, transport_, transport_->backend(), command_region_,
+                                                     completion_region_, capacity_, StorageOperation::Read, command);
 }
 
 Result<void> StorageClient::execute_storage_write(const StorageWriteCommand &command) {
-    if (const auto ready = transport_->ready(); !ready)
+    if (const auto ready = transport_->ready(); !ready.ok())
         return Error{ready.error()};
     if (transport_->backend().mode == BackendMode::Ra) {
         const RaStorageContext context{
@@ -554,13 +609,12 @@ Result<void> StorageClient::execute_storage_write(const StorageWriteCommand &com
             capacity_};
         return NdsRaStorageWrite(context, command);
     }
-    return submit_device_storage<NdsDeviceStorageWriteArgs>(runtime_, transport_, transport_->backend(),
-                                                            command_region_, completion_region_, capacity_,
-                                                            StorageOperation::Write, command);
+    return submit_device_storage<NdsStorageWriteArgs>(runtime_, transport_, transport_->backend(), command_region_,
+                                                      completion_region_, capacity_, StorageOperation::Write, command);
 }
 
 Result<void> StorageClient::execute_storage_batch_read(const StorageBatchReadCommand &command) {
-    if (const auto ready = transport_->ready(); !ready)
+    if (const auto ready = transport_->ready(); !ready.ok())
         return Error{ready.error()};
     if (transport_->backend().mode == BackendMode::Ra) {
         const RaStorageContext context{
@@ -574,13 +628,13 @@ Result<void> StorageClient::execute_storage_batch_read(const StorageBatchReadCom
             capacity_};
         return NdsRaStorageBatchRead(context, command);
     }
-    return submit_device_storage<NdsDeviceStorageBatchReadArgs>(runtime_, transport_, transport_->backend(),
-                                                                command_region_, completion_region_, capacity_,
-                                                                StorageOperation::BatchRead, command);
+    return submit_device_storage<NdsStorageBatchReadArgs>(runtime_, transport_, transport_->backend(), command_region_,
+                                                          completion_region_, capacity_, StorageOperation::BatchRead,
+                                                          command);
 }
 
 Result<void> StorageClient::execute_storage_batch_write(const StorageBatchWriteCommand &command) {
-    if (const auto ready = transport_->ready(); !ready)
+    if (const auto ready = transport_->ready(); !ready.ok())
         return Error{ready.error()};
     if (transport_->backend().mode == BackendMode::Ra) {
         const RaStorageContext context{
@@ -594,9 +648,9 @@ Result<void> StorageClient::execute_storage_batch_write(const StorageBatchWriteC
             capacity_};
         return NdsRaStorageBatchWrite(context, command);
     }
-    return submit_device_storage<NdsDeviceStorageBatchWriteArgs>(runtime_, transport_, transport_->backend(),
-                                                                 command_region_, completion_region_, capacity_,
-                                                                 StorageOperation::BatchWrite, command);
+    return submit_device_storage<NdsStorageBatchWriteArgs>(runtime_, transport_, transport_->backend(), command_region_,
+                                                           completion_region_, capacity_, StorageOperation::BatchWrite,
+                                                           command);
 }
 
 Result<std::uint64_t> StorageClient::exchange_bootstrap() {
@@ -608,22 +662,19 @@ Result<std::uint64_t> StorageClient::exchange_bootstrap() {
     StorageNamespace storage_namespace{};
     if (serialize_storage_bootstrap(bootstrap, bootstrap_bytes, sizeof(bootstrap_bytes)) != StorageSerdeResult::Ok)
         return Error{ErrorCode::kProtocol, "invalid storage bootstrap record"};
-    if (const auto cleared = runtime_->copy_to(&namespace_buffer_, namespace_bytes, sizeof(namespace_bytes)); !cleared)
+    if (const auto cleared = runtime_->copy_to(&namespace_buffer_, namespace_bytes, sizeof(namespace_bytes));
+        !cleared.ok())
         return Error{cleared.error()};
-    if (const auto copied = runtime_->copy_to(&command_buffer_, bootstrap_bytes, sizeof(bootstrap_bytes)); !copied)
+    if (const auto copied = runtime_->copy_to(&command_buffer_, bootstrap_bytes, sizeof(bootstrap_bytes)); !copied.ok())
         return Error{copied.error()};
-    if (const auto ready = transport_->ready(); !ready)
+    if (const auto ready = transport_->ready(); !ready.ok())
         return Error{ready.error()};
-    const auto queue = transport_->queue(0U);
-    if (!queue)
-        return Error{queue.error()};
-    if (const auto sent = transport_->send(*queue, {&command_region_, kStorageBootstrapBytes}); !sent)
-        return Error{sent.error()};
+    NDS_RETURN_IF_ERROR(submit_transport_bootstrap(runtime_, transport_, command_region_, kStorageBootstrapBytes));
 
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(kCompletionTimeoutMs);
     while (std::chrono::steady_clock::now() < deadline) {
         if (const auto copied = runtime_->copy_from(namespace_bytes, namespace_buffer_, sizeof(namespace_bytes));
-            !copied)
+            !copied.ok())
             return Error{copied.error()};
         if (deserialize_storage_namespace(namespace_bytes, sizeof(namespace_bytes), &storage_namespace) ==
             StorageSerdeResult::Ok) {

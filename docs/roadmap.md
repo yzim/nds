@@ -24,6 +24,10 @@ current architecture and protocol contract.
   CANN-root, CPU-kernel mode-0 package deployment path. The
   CPU-written NDS completion record remains the protocol completion in every
   mode.
+- The transport baseline is a bounded indexed QP set with QP-count negotiation,
+  endpoint metadata exchange, complete `NdsTransportDescriptor` descriptor and
+  parallel per-QP state export, and explicit launcher data-path entrypoints.
+  There is no general queue-credit or multi-request scheduling contract.
 
 ## Delivered Work
 
@@ -49,8 +53,22 @@ current architecture and protocol contract.
   and configured RDMA Write are tested for RA, AIV, and AICPU. AI-QPs request
   caller-owned CQ metadata; AICPU continues to use the CANN-root mode-0
   package for its provider-backed Send path.
+- The verbs correctness example and bounded E2E path are complete for the
+  current scope. Verbs error propagation remains intentionally unfinished.
 
 ## Active Engineering Work
+
+### Transport Layer
+
+- Refine the launcher request and completion contract, including ownership of
+  posted work and CQ observation outside the control-path `Transport`.
+- Define queue depth, credits, receive-WR replenishment, and ownership for
+  indexed QPs before exposing concurrent requests or claiming throughput gains.
+- Specify backend-consistent batch behavior and partial-post error reporting;
+  the current AIV multi-request path is an implementation capability, not yet a
+  portable batching contract.
+- Add transport-focused correctness and performance measurements that separate
+  TCP/QP bootstrap, device posting, CQ retirement, and peer data movement.
 
 ### Bootstrap Configuration
 
@@ -94,6 +112,8 @@ current architecture and protocol contract.
 
 - Define an opt-in target benchmark plan before optimizing: workload, payload
   sizes, warmup, iteration count, backend, topology, and success criteria.
+- No performance benchmark is currently included. Define the workload and
+  validation contract before adding an opt-in target benchmark.
 - Measure end-to-end latency and throughput separately from control-path,
   device-post, CPU data-movement, and completion-observation costs.
 - Compare changes only against recorded baselines on the same target and report

@@ -24,8 +24,8 @@ target_include_directories(nds_device_hns_codec_test PRIVATE
 nds_add_unit_test(nds_device_connection_test device_connection_test.cc)
 target_include_directories(nds_device_connection_test PRIVATE
     ${PROJECT_SOURCE_DIR}/src/client/include)
-nds_add_unit_test(nds_device_storage_test device_storage_test.cc)
-target_include_directories(nds_device_storage_test PRIVATE
+nds_add_unit_test(nds_storage_test device_storage_test.cc)
+target_include_directories(nds_storage_test PRIVATE
     ${PROJECT_SOURCE_DIR}/src/client/include
     ${PROJECT_SOURCE_DIR}/src/include)
 nds_add_unit_test(nds_logging_test logging_test.cc)

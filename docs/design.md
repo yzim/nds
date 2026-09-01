@@ -5,6 +5,12 @@ NPU client dynamically loads the narrow CANN RA boundary; the CPU server uses
 ordinary `libibverbs`. The production path does not initialize HCOMM, HCCL,
 TSD, a rank table, or a second NPU.
 
+The direct verbs implementation and paired example currently define the
+settled lower-layer correctness baseline. Their error-propagation contract and
+performance benchmark are not complete. The active design work is the
+transport layer: its request, completion, queue-credit, and multi-QP contracts
+must be made explicit before storage concurrency is expanded.
+
 ## Architecture and ownership
 
 The endpoint-local dependency direction is:
@@ -26,12 +32,16 @@ command semantics.
 `Runtime` owns AscendCL, network-service lifecycle, NPU allocation/copy, and
 memory services. The client `Transport` borrows the runtime and owns an
 `Endpoint`, a bounded indexed QP set, peer metadata, one TCP-backed peer
-channel, and required per-QP AI-QP WR-ID storage. It opens the channel first,
+channel, and the backend-specific complete `NdsTransportDescriptor` descriptor.
+It opens the channel first,
 sends a `TransportInfo` QP-count request, and creates QPs only after the
 server replies with the accepted count. The endpoints then exchange one fixed
 `TransportInfo` record containing the ordered QP descriptors and connect QPs
 by index.
-`Endpoint` owns the RA lifecycle and rdev. `StorageClient` borrows the runtime
+The client `Endpoint` owns the RA lifecycle and rdev. The server `Endpoint`
+owns one CPU verbs context, protection domain, QP, and registered-memory
+objects; server `Transport` owns the negotiated indexed set of those QPs and
+the TCP bootstrap. `StorageClient` borrows the runtime
 and transport, owns protocol buffers and command sequencing, and registers
 them through the endpoint.
 
@@ -48,7 +58,7 @@ The source layout reflects these boundaries:
 src/client/             NPU lifecycle, transport, and storage session
 src/client/loaders/     dynamic CANN, RA, and DSMI ABI loaders
 src/client/backends/    RA, AIV, and AICPU client backends
-src/server/             CPU protocol, transport, and verbs backend
+src/server/             CPU protocol, endpoint, and multi-QP transport
 src/common/             shared transport implementation
 src/torch/              reusable PyTorch extension
 ```
@@ -141,6 +151,17 @@ zero or a negative normalized error, and PollCq reports its WC count or a
 negative normalized error. Provider diagnostics are not part of the device
 verbs API; a future extended or debug interface may define them separately.
 
+`NdsTransportDescriptor` is the complete multi-QP device descriptor. Its
+`qp_descriptors_address` and `qp_states_address` fields point to parallel
+arrays, and a queue index selects the corresponding entries in both arrays.
+`NdsQpDescriptor` remains the hardware-facing descriptor; `NdsTransportQpState`
+contains transport-owned scheduling fields that do not belong to a QP, namely
+the signal interval, unsignaled count, and send/receive credit values. The
+arrays are owned by `Transport` through `MemoryBuffer`: RA uses host buffers,
+while AIV and AICPU use device buffers. The initial credit values mirror the
+negotiated/configured queue capacities. Credit accounting and signal policy are
+not yet a submission contract, so current launchers do not mutate these fields.
+
 Resources remain valid through the selected local CQ completion path, the CPU
 data movement and terminal completion Write, and NPU observation of the
 completion record. Teardown is reverse ownership order:
@@ -195,10 +216,10 @@ The four command semantics are explicit across backend environments:
 
 | Operation | Shared semantic command | RA input | AIV/AICPU invocation |
 |---|---|---|---|
-| Read | `StorageReadCommand` | `RaStorageContext` plus command | `NdsDeviceStorageReadArgs` |
-| Write | `StorageWriteCommand` | `RaStorageContext` plus command | `NdsDeviceStorageWriteArgs` |
-| Batch Read | `StorageBatchReadCommand` | `RaStorageContext` plus command | `NdsDeviceStorageBatchReadArgs` |
-| Batch Write | `StorageBatchWriteCommand` | `RaStorageContext` plus command | `NdsDeviceStorageBatchWriteArgs` |
+| Read | `StorageReadCommand` | `RaStorageContext` plus command | `NdsStorageReadArgs` |
+| Write | `StorageWriteCommand` | `RaStorageContext` plus command | `NdsStorageWriteArgs` |
+| Batch Read | `StorageBatchReadCommand` | `RaStorageContext` plus command | `NdsStorageBatchReadArgs` |
+| Batch Write | `StorageBatchWriteCommand` | `RaStorageContext` plus command | `NdsStorageBatchWriteArgs` |
 
 The invocation arguments are host-device ABI envelopes, not network records.
 AIV copies command fields between global and local memory outside serde; serde
@@ -218,41 +239,62 @@ execution.
 
 ### Submission
 
-The host transport API exposes indexed opaque queue handles and NDS-owned
-`send`, `receive`, `read`, and `write` requests. A request names a registered
-local region, transfer length, and, for RDMA read/write, an NDS-owned remote
-memory record `{address, key, length}`. Storage records and backend/device WR
-layouts are not part of this API. The caller owns its buffers and registered
-regions; successful submission means only that the transport accepted the
-request, not that the peer storage operation completed.
+The client transport API owns control-path setup, memory registration, QP state,
+and descriptor export. It does not submit data-path work. Callers construct
+NDS-owned `NdsSendWr` or `NdsRecvWr` records and invoke the
+stateless `Launcher::rdma_send`, `rdma_recv`, `rdma_read`, or `rdma_write`
+operation with an explicit `LaunchConfig`, the complete `NdsTransportDescriptor`,
+and a queue index. Storage records and backend/device WR layouts are not part
+of the transport control API. The caller owns its buffers, registered regions,
+WR IDs, and completion handling.
 
-Each operation also has an operation-specific batch API. A batch is one future
-submission boundary: RA will prepare its WQEs before one runtime doorbell, AIV
-will populate its WQEs before one doorbell, and AICPU will use its linked
-provider WR list. Multi-request lowering is enabled with transport CQ-credit
-ownership; until then the public batch APIs accept exactly one request.
+The launcher also has an operation-specific send-batch API, but batching is still
+a bounded transport capability rather than a general asynchronous scheduler.
+The AIV path currently accepts multi-request send/read/write batches; RA and
+AICPU accept only one request for those operations. A one-request batch is
+therefore portable, while multi-request batches are explicitly AIV-only.
+Receive batches are not part of the client control API. There is no general
+queue-credit policy, request
+demultiplexing, or multi-request receive replenishment yet, so callers must not
+assume that a batch provides pipelining or a single device doorbell.
 
-The transport will own local CQ processing and credit accounting. It will poll
-opportunistically from submission paths, with no dedicated polling thread, and
-callers will not poll local CQs through the transport API. The direct verbs
-example explicitly opts its AI-QP into caller CQ polling; storage completion
-remains a separate protocol-visible completion-slot state.
+The direct verbs launcher API provides CQ polling over a host QP descriptor;
+transport callers own the polling sequence and completion interpretation. For
+AI QPs, the transport exports a contiguous device descriptor array and leaves
+host-only opaque handles unset in that device copy. The RA path instead exports
+the host descriptor array and does not allocate a device descriptor buffer.
+Storage completion remains a separate protocol-visible completion-slot state.
 
-Each current single-request submission is post-and-submit on every supported
-backend. It returns success only after the work request has been submitted to
-its transport path; it does not expose a deferred-doorbell option.
+The CPU verbs transport applies the same receive lifecycle: each successful
+post consumes one per-QP receive credit and assigns a transport-owned WR ID;
+`wait_receive` rejects a wait without a pending post, preserves the pending
+post across a timeout, and retires it after any observed CQE. CPU send, RDMA
+read, and RDMA write retirement also validate their expected WR IDs. The CPU
+queue depth is fixed by the backend's configured QP capacity, and this
+credit accounting is separate from storage-command scheduling.
 
-`NdsAivPostSendBatch` is an AIV-only transport entrypoint for one contiguous,
-device-global `NdsDeviceSendWr` array. Its launch envelope carries the array
-address and count. The array remains valid until the AIV launch completes. The
-entrypoint traverses the array in order, populating and publishing each valid
-WQE. It advances the producer once and rings one doorbell for the successfully
-posted prefix. On an invalid WR or exhausted SQ, it stops at that element and
-reports the error after ringing the prefix, following `ibv_post_send` partial
-post behavior. This entrypoint has the same single-producer-per-QP requirement
-as `NdsAivPostSend`. On an error, `bad_wr_address` identifies the first
-unposted array element, equivalent to `ibv_post_send`'s `bad_wr`; it is zero
-on success.
+`LaunchConfig::sync_timeout_ms` bounds backend launch synchronization. Its
+default remains five seconds and it is an internal launch setting; it is not a
+CLI option. CQ wait policy belongs to the caller of the verbs launcher.
+
+Transport submission is a post operation. It does not imply local CQ
+retirement or peer storage completion.
+
+The AIV path also accepts a contiguous device-global `NdsSendWr` array
+for a multi-request send/read/write batch. The launcher copies that array to
+device memory and invokes the AIV batch entrypoint, which rings one doorbell
+for the successfully posted prefix. The result reports the prefix length and
+the first unposted request. It has the same single-producer-per-QP
+requirement as a single post. Queue credits and the corresponding RA/AICPU
+batching contract remain transport work; do not infer a common deferred-
+submission API from this capability.
+
+The client `register_memory` API creates a move-only `MemoryRegion`; the caller
+keeps that region alive through the selected launcher operation and its CQ
+completion. The CPU verbs endpoint configures sixteen incoming and outgoing RDMA-read
+credits on each QP, matching the bounded AIV batch limit. This is a transport
+capacity setting; it is separate from storage-command completion and does not
+make batches a general asynchronous scheduler.
 
 For RA, `RaTypicalSendWr` prepares a WQE and returns `{dbIndex, dbInfo}`. The
 RA interface has no doorbell-ring call, so NDS immediately invokes the CANN
@@ -283,7 +325,7 @@ Send, Receive, Read, Write, and an optional caller-owned `PollCq(is_send_cq)` AP
 image to be one CCEC translation unit, though standalone objects remain for
 compile and symbol verification.
 
-`NdsDevicePostSendArgs`, `NdsDevicePostRecvArgs`, and `NdsDevicePollCqArgs`
+`NdsPostSendArgs`, `NdsPostRecvArgs`, and `NdsPollCqArgs`
 are operation-launch envelopes for AIV and AICPU. Their payload fields retain
 the verbs-shaped `SendWr`, `RecvWr`, and completion-output contract; they do
 not define a second verbs request layer. Every envelope is allocated in

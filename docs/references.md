@@ -35,5 +35,12 @@ Open-source HCOMM transport is not an NDS fallback. It assumes a reciprocal
 HCOMM peer, communicator state, flag buffers, and synchronization semantics
 that NDS intentionally does not implement.
 
+Current target evidence records the bounded verbs correctness workflow. The
+transport implementation has a bounded request baseline, but its focused target
+validation, queue-credit behavior, and throughput are still open. The evidence
+also does not establish a complete verbs error-propagation contract or verbs
+performance baseline. Those claims require separate, bounded experiments
+recorded under ignored `.local/` state.
+
 For the resulting NDS contracts, see [design](design.md). Future work and its
 required validation belong in [the roadmap](roadmap.md).

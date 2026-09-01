@@ -4,7 +4,7 @@
 
 namespace {
 
-nds::Result<nds::RaConnection> host_connection(const NdsDeviceQp &qp) {
+nds::Result<nds::RaConnection> host_connection(const NdsQpDescriptor &qp) {
     auto *runtime = reinterpret_cast<nds::client::Runtime *>(qp.host_runtime_address);
     auto *queue_pair = reinterpret_cast<nds::client::QueuePair *>(qp.host_qp_address);
     if (runtime == nullptr || queue_pair == nullptr)
@@ -13,29 +13,29 @@ nds::Result<nds::RaConnection> host_connection(const NdsDeviceQp &qp) {
 }
 
 template <typename WorkRequest>
-int rdma_operation(const NdsDeviceTransport *transport, const WorkRequest *wr,
+int rdma_operation(const NdsTransportDescriptor *transport, std::uint32_t queue_index, const WorkRequest *wr,
                    nds::Result<void> (*operation)(const nds::RaConnection &, const WorkRequest &)) {
     if (transport == nullptr || wr == nullptr)
         return -1;
-    const NdsDeviceQp *qp = nds_device_transport_qp(transport, 0U);
+    const NdsQpDescriptor *qp = nds_transport_qp(transport, queue_index);
     if (qp == nullptr)
         return -1;
     const auto connection = host_connection(*qp);
-    if (!connection)
+    if (!connection.ok())
         return -1;
     return operation(connection.value(), *wr).ok() ? 0 : -1;
 }
 
 template <typename Command>
-int storage_operation(const NdsDeviceStorageContext *context, const Command *command,
+int storage_operation(const NdsStorageContext *context, const Command *command,
                       nds::Result<void> (*operation)(const nds::RaStorageContext &, const Command &)) {
     if (context == nullptr || command == nullptr)
         return -1;
-    const NdsDeviceQp *qp = nds_device_transport_qp(&context->transport, 0U);
+    const NdsQpDescriptor *qp = nds_transport_qp(&context->transport, 0U);
     if (qp == nullptr)
         return -1;
     const auto connection = host_connection(*qp);
-    if (!connection)
+    if (!connection.ok())
         return -1;
     const nds::RaStorageContext host_context{
         {connection.value().runtime, connection.value().qp},
@@ -49,7 +49,7 @@ int storage_operation(const NdsDeviceStorageContext *context, const Command *com
 
 }  // namespace
 
-extern "C" int nds_ra_backend_post_send(const NdsDeviceQp *qp, const NdsDeviceSendWr *wr, void *stream) {
+extern "C" int nds_ra_backend_post_send(const NdsQpDescriptor *qp, const NdsSendWr *wr, void *stream) {
     if (qp == nullptr || wr == nullptr)
         return -1;
     const auto connection = host_connection(*qp);
@@ -58,15 +58,15 @@ extern "C" int nds_ra_backend_post_send(const NdsDeviceQp *qp, const NdsDeviceSe
                : -1;
 }
 
-extern "C" int nds_ra_backend_post_recv(const NdsDeviceQp *qp, const NdsDeviceRecvWr *wr) {
+extern "C" int nds_ra_backend_post_recv(const NdsQpDescriptor *qp, const NdsRecvWr *wr) {
     if (qp == nullptr || wr == nullptr)
         return -1;
     const auto connection = host_connection(*qp);
     return connection.ok() && nds::NdsRaPostRecv(connection.value().qp, *wr).ok() ? 0 : -1;
 }
 
-extern "C" int nds_ra_backend_poll_cq(const NdsDeviceQp *qp, std::uint32_t send_cq, std::uint32_t max_completions,
-                                      NdsDeviceWc *wc) {
+extern "C" int nds_ra_backend_poll_cq(const NdsQpDescriptor *qp, std::uint32_t send_cq, std::uint32_t max_completions,
+                                      NdsWc *wc) {
     if (qp == nullptr)
         return -1;
     auto *queue_pair = reinterpret_cast<nds::client::QueuePair *>(qp->host_qp_address);
@@ -76,38 +76,40 @@ extern "C" int nds_ra_backend_poll_cq(const NdsDeviceQp *qp, std::uint32_t send_
     return result.ok() ? static_cast<int>(result.value()) : -1;
 }
 
-extern "C" int nds_ra_backend_rdma_send(const NdsDeviceTransport *transport, const NdsDeviceSendWr *wr) {
-    return rdma_operation(transport, wr, nds::NdsRaRdmaSend);
+extern "C" int nds_ra_backend_rdma_send(const NdsTransportDescriptor *transport, std::uint32_t queue_index,
+                                        const NdsSendWr *wr) {
+    return rdma_operation(transport, queue_index, wr, nds::NdsRaRdmaSend);
 }
 
-extern "C" int nds_ra_backend_rdma_recv(const NdsDeviceTransport *transport, const NdsDeviceRecvWr *wr) {
-    return rdma_operation(transport, wr, nds::NdsRaRdmaRecv);
+extern "C" int nds_ra_backend_rdma_recv(const NdsTransportDescriptor *transport, std::uint32_t queue_index,
+                                        const NdsRecvWr *wr) {
+    return rdma_operation(transport, queue_index, wr, nds::NdsRaRdmaRecv);
 }
 
-extern "C" int nds_ra_backend_rdma_read(const NdsDeviceTransport *transport, const NdsDeviceSendWr *wr) {
-    return rdma_operation(transport, wr, nds::NdsRaRdmaRead);
+extern "C" int nds_ra_backend_rdma_read(const NdsTransportDescriptor *transport, std::uint32_t queue_index,
+                                        const NdsSendWr *wr) {
+    return rdma_operation(transport, queue_index, wr, nds::NdsRaRdmaRead);
 }
 
-extern "C" int nds_ra_backend_rdma_write(const NdsDeviceTransport *transport, const NdsDeviceSendWr *wr) {
-    return rdma_operation(transport, wr, nds::NdsRaRdmaWrite);
+extern "C" int nds_ra_backend_rdma_write(const NdsTransportDescriptor *transport, std::uint32_t queue_index,
+                                         const NdsSendWr *wr) {
+    return rdma_operation(transport, queue_index, wr, nds::NdsRaRdmaWrite);
 }
 
-extern "C" int nds_ra_backend_storage_read(const NdsDeviceStorageContext *context,
-                                           const nds::StorageReadCommand *command) {
+extern "C" int nds_ra_backend_storage_read(const NdsStorageContext *context, const nds::StorageReadCommand *command) {
     return storage_operation(context, command, nds::NdsRaStorageRead);
 }
 
-extern "C" int nds_ra_backend_storage_write(const NdsDeviceStorageContext *context,
-                                            const nds::StorageWriteCommand *command) {
+extern "C" int nds_ra_backend_storage_write(const NdsStorageContext *context, const nds::StorageWriteCommand *command) {
     return storage_operation(context, command, nds::NdsRaStorageWrite);
 }
 
-extern "C" int nds_ra_backend_storage_batch_read(const NdsDeviceStorageContext *context,
+extern "C" int nds_ra_backend_storage_batch_read(const NdsStorageContext *context,
                                                  const nds::StorageBatchReadCommand *command) {
     return storage_operation(context, command, nds::NdsRaStorageBatchRead);
 }
 
-extern "C" int nds_ra_backend_storage_batch_write(const NdsDeviceStorageContext *context,
+extern "C" int nds_ra_backend_storage_batch_write(const NdsStorageContext *context,
                                                   const nds::StorageBatchWriteCommand *command) {
     return storage_operation(context, command, nds::NdsRaStorageBatchWrite);
 }

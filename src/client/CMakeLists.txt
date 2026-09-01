@@ -76,8 +76,6 @@ target_include_directories(nds_client_control PUBLIC
 target_link_libraries(nds_client_control PUBLIC
     nds_client_runtime
     nds_client_endpoint
-    nds_ra
-    nds_backend_launchers
     nds_transport)
 target_compile_options(nds_client_control PRIVATE -Wall -Wextra -Wpedantic -Werror)
 

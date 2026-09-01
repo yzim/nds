@@ -16,12 +16,12 @@ namespace {
 
 template <typename T>
 T value_or_throw(Result<T> result) {
-    TORCH_CHECK(result, "NDS: ", result.error().message);
-    return std::move(*result);
+    TORCH_CHECK(result.ok(), "NDS: ", result.error().message);
+    return std::move(result).value();
 }
 
 void check(Result<void> result) {
-    TORCH_CHECK(result, "NDS: ", result.error().message);
+    TORCH_CHECK(result.ok(), "NDS: ", result.error().message);
 }
 
 void check_tensor(const ::torch::Tensor &tensor) {
@@ -44,7 +44,7 @@ client::BackendMode backend_mode(const std::string &backend_name) {
 class Session : public std::enable_shared_from_this<Session> {
 public:
     Session(std::string server, std::string backend_name, std::string backend_artifact_path) {
-        TORCH_CHECK(parse_tcp_address(server), "server must be IPv4:port");
+        TORCH_CHECK(parse_tcp_address(server).ok(), "server must be IPv4:port");
         const auto device = c10_npu::current_device();
         TORCH_CHECK(device >= 0, "torch_npu has no active NPU device");
 

@@ -28,18 +28,17 @@ struct RaStorageContext {
 
 /* Verbs layer. A caller that owns a bounded verbs window may prepare several
  * WQEs and ring the final response once; PostSend remains the one-WR helper. */
-Result<Libra::SendResponse> NdsRaPrepareSend(client::QueuePair *qp, const NdsDeviceSendWr &wr, Libra::Sge *sge);
+Result<Libra::SendResponse> NdsRaPrepareSend(client::QueuePair *qp, const NdsSendWr &wr, Libra::Sge *sge);
 Result<void> NdsRaRingSend(client::Runtime *runtime, const Libra::SendResponse &response, void *stream);
-Result<void> NdsRaPostSend(client::Runtime *runtime, client::QueuePair *qp, const NdsDeviceSendWr &wr, void *stream);
-Result<void> NdsRaPostRecv(client::QueuePair *qp, const NdsDeviceRecvWr &wr);
-Result<std::uint32_t> NdsRaPollCq(client::QueuePair *qp, bool is_send_cq, std::uint32_t max_completions,
-                                  NdsDeviceWc *wc);
+Result<void> NdsRaPostSend(client::Runtime *runtime, client::QueuePair *qp, const NdsSendWr &wr, void *stream);
+Result<void> NdsRaPostRecv(client::QueuePair *qp, const NdsRecvWr &wr);
+Result<std::uint32_t> NdsRaPollCq(client::QueuePair *qp, bool is_send_cq, std::uint32_t max_completions, NdsWc *wc);
 
 /* Connection layer. Send/Read/Write build a work request and submit it. */
-Result<void> NdsRaRdmaSend(const RaConnection &connection, const NdsDeviceSendWr &wr);
-Result<void> NdsRaRdmaRecv(const RaConnection &connection, const NdsDeviceRecvWr &wr);
-Result<void> NdsRaRdmaRead(const RaConnection &connection, const NdsDeviceSendWr &wr);
-Result<void> NdsRaRdmaWrite(const RaConnection &connection, const NdsDeviceSendWr &wr);
+Result<void> NdsRaRdmaSend(const RaConnection &connection, const NdsSendWr &wr);
+Result<void> NdsRaRdmaRecv(const RaConnection &connection, const NdsRecvWr &wr);
+Result<void> NdsRaRdmaRead(const RaConnection &connection, const NdsSendWr &wr);
+Result<void> NdsRaRdmaWrite(const RaConnection &connection, const NdsSendWr &wr);
 
 /* Storage layer. Completion is the CPU-written NDS protocol record. */
 Result<void> NdsRaStorageRead(const RaStorageContext &context, const StorageReadCommand &command);

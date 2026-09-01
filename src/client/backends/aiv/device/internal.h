@@ -18,11 +18,11 @@ __aicore__ inline void NdsAivCacheSync(__gm__ uint8_t *address, uint64_t length)
 __aicore__ inline void NdsAivSetReturnValue(__gm__ int32_t *return_value, uint32_t status) {
     if (return_value == nullptr)
         return;
-    *return_value = status == NDS_DEVICE_OPERATION_SUCCESS ? 0 : -static_cast<int32_t>(status);
+    *return_value = status == NDS_OPERATION_SUCCESS ? 0 : -static_cast<int32_t>(status);
     NdsAivCacheSync(reinterpret_cast<__gm__ uint8_t *>(return_value), sizeof(*return_value));
 }
 
-__aicore__ inline bool NdsAivValidQp(__gm__ const NdsDeviceQp *qp) {
+__aicore__ inline bool NdsAivValidQp(__gm__ const NdsQpDescriptor *qp) {
     return qp != nullptr;
 }
 

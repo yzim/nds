@@ -64,29 +64,29 @@ nds::Result<Config> parse(int argc, char **argv) {
 }
 
 template <typename LauncherView>
-nds::Result<void> poll_completion(const LauncherView &launcher, const NdsDeviceQp &device_qp, bool send_cq) {
+nds::Result<void> poll_completion(const LauncherView &launcher, const NdsQpDescriptor &device_qp, bool send_cq) {
     const std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
     while (std::chrono::steady_clock::now() < deadline) {
-        NdsDeviceWc completion{};
+        NdsWc completion{};
         NDS_ASSIGN_OR_RETURN(std::uint32_t completion_count, launcher.poll_cq(device_qp, send_cq, 1U, &completion));
         if (completion_count == 0U) {
             std::this_thread::yield();
             continue;
         }
-        if (completion.status != NDS_DEVICE_WC_SUCCESS)
+        if (completion.status != NDS_WC_SUCCESS)
             return nds::Error{nds::ErrorCode::kRa, "CQ completion failed"};
         return {};
     }
     return nds::Error{nds::ErrorCode::kRuntime, "CQ completion timed out"};
 }
 
-nds::Result<void> run_send(nds::client::Launcher *launcher, const NdsDeviceQp &device_qp,
+nds::Result<void> run_send(nds::client::Launcher *launcher, const NdsQpDescriptor &device_qp,
                            const nds::client::MemoryRegion &payload_region, std::uint32_t payload_length,
                            nds::TcpConnection *connection, aclrtStream stream) {
-    const NdsDeviceSendWr send_wr{
+    const NdsSendWr send_wr{
         .wr_id = 1U,
-        .opcode = NDS_DEVICE_WR_SEND,
-        .flags = NDS_DEVICE_SEND_SIGNALED,
+        .opcode = NDS_WR_SEND,
+        .flags = NDS_SEND_SIGNALED,
         .local = {.address = payload_region.address(),
                   .length = payload_length,
                   .local_key = payload_region.local_key()},
@@ -112,10 +112,10 @@ nds::Result<void> run_send(nds::client::Launcher *launcher, const NdsDeviceQp &d
     return nds::examples::verbs::wait_barrier(*connection);
 }
 
-nds::Result<void> run_receive(nds::client::Launcher *launcher, const NdsDeviceQp &device_qp,
+nds::Result<void> run_receive(nds::client::Launcher *launcher, const NdsQpDescriptor &device_qp,
                               const nds::client::MemoryRegion &payload_region, std::uint32_t payload_length,
                               nds::TcpConnection *connection, aclrtStream stream) {
-    const NdsDeviceRecvWr receive_wr{
+    const NdsRecvWr receive_wr{
         .wr_id = 2U,
         .local = {.address = payload_region.address(),
                   .length = payload_length,
@@ -143,14 +143,14 @@ nds::Result<void> run_receive(nds::client::Launcher *launcher, const NdsDeviceQp
     return nds::examples::verbs::wait_barrier(*connection);
 }
 
-nds::Result<void> run_write(nds::client::Launcher *launcher, const NdsDeviceQp &device_qp,
+nds::Result<void> run_write(nds::client::Launcher *launcher, const NdsQpDescriptor &device_qp,
                             const nds::client::MemoryRegion &payload_region, std::uint32_t payload_length,
                             nds::TcpConnection *connection, aclrtStream stream) {
     NDS_ASSIGN_OR_RETURN(nds::RemoteMemory remote_memory, nds::examples::verbs::receive_remote_memory(*connection));
-    const NdsDeviceSendWr write_wr{
+    const NdsSendWr write_wr{
         .wr_id = 3U,
-        .opcode = NDS_DEVICE_WR_RDMA_WRITE,
-        .flags = NDS_DEVICE_SEND_SIGNALED,
+        .opcode = NDS_WR_RDMA_WRITE,
+        .flags = NDS_SEND_SIGNALED,
         .local = {.address = payload_region.address(),
                   .length = payload_length,
                   .local_key = payload_region.local_key()},
@@ -176,14 +176,14 @@ nds::Result<void> run_write(nds::client::Launcher *launcher, const NdsDeviceQp &
     return nds::examples::verbs::send_barrier(*connection);
 }
 
-nds::Result<void> run_read(nds::client::Launcher *launcher, const NdsDeviceQp &device_qp,
+nds::Result<void> run_read(nds::client::Launcher *launcher, const NdsQpDescriptor &device_qp,
                            const nds::client::MemoryRegion &payload_region, std::uint32_t payload_length,
                            nds::TcpConnection *connection, aclrtStream stream) {
     NDS_ASSIGN_OR_RETURN(nds::RemoteMemory remote_memory, nds::examples::verbs::receive_remote_memory(*connection));
-    const NdsDeviceSendWr read_wr{
+    const NdsSendWr read_wr{
         .wr_id = 4U,
-        .opcode = NDS_DEVICE_WR_RDMA_READ,
-        .flags = NDS_DEVICE_SEND_SIGNALED,
+        .opcode = NDS_WR_RDMA_READ,
+        .flags = NDS_SEND_SIGNALED,
         .local = {.address = payload_region.address(),
                   .length = payload_length,
                   .local_key = payload_region.local_key()},
@@ -209,7 +209,7 @@ nds::Result<void> run_read(nds::client::Launcher *launcher, const NdsDeviceQp &d
     return nds::examples::verbs::send_barrier(*connection);
 }
 
-nds::Result<void> run_operation(Operation operation, nds::client::Launcher *launcher, const NdsDeviceQp &device_qp,
+nds::Result<void> run_operation(Operation operation, nds::client::Launcher *launcher, const NdsQpDescriptor &device_qp,
                                 const nds::client::MemoryRegion &payload_region, std::uint32_t payload_length,
                                 nds::TcpConnection *connection, aclrtStream stream) {
     switch (operation) {
@@ -267,7 +267,7 @@ nds::Result<void> run(int argc, char **argv) {
     NDS_ASSIGN_OR_RETURN(std::unique_ptr<nds::client::Launcher> launcher,
                          nds::client::Launcher::open(&runtime, config.backend, config.backend_artifact_path));
 
-    NDS_ASSIGN_OR_RETURN(NdsDeviceQp device_qp, queue_pair.device_qp());
+    NDS_ASSIGN_OR_RETURN(NdsQpDescriptor device_qp, queue_pair.device_qp());
 
     // TCP starts only after the local RoCE runtime, endpoint, QP, and MR exist.
     NDS_ASSIGN_OR_RETURN(nds::TcpConnection connection, nds::TcpConnection::connect(address.ipv4, address.port, 5000U));

@@ -5,7 +5,8 @@ target_include_directories(nds_transport_client PRIVATE
 target_link_libraries(nds_transport_client PRIVATE
     CLI11::CLI11
     nds_logging
-    nds_client_control)
+    nds_client_control
+    nds_backend_launchers)
 target_compile_options(nds_transport_client PRIVATE -Wall -Wextra -Wpedantic -Werror)
 set_target_properties(nds_transport_client PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 

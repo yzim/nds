@@ -5,6 +5,7 @@
 #include <charconv>
 #include <cstring>
 #include <fcntl.h>
+#include <limits>
 #include <netinet/in.h>
 #include <poll.h>
 #include <sys/socket.h>
@@ -68,6 +69,10 @@ TcpConnection &TcpConnection::operator=(TcpConnection &&other) noexcept {
     return *this;
 }
 
+bool TcpConnection::is_open() const noexcept {
+    return fd_ >= 0;
+}
+
 Result<void> TcpConnection::send(std::span<const std::byte> bytes) const {
     if (fd_ < 0)
         return Error{ErrorCode::kInvalidArgument, "an open TCP connection is required"};
@@ -113,6 +118,8 @@ Result<void> TcpConnection::write_full(int fd, const void *buffer, std::size_t l
 }
 
 Result<TcpConnection> TcpConnection::connect(const std::string &ipv4, std::uint16_t port, std::uint32_t timeout_ms) {
+    if (timeout_ms > static_cast<std::uint32_t>(std::numeric_limits<int>::max()))
+        return Error{ErrorCode::kInvalidArgument, "TCP connection timeout is outside the supported range"};
     sockaddr_in address{};
     address.sin_family = AF_INET;
     address.sin_port = htons(port);
@@ -134,7 +141,7 @@ Result<TcpConnection> TcpConnection::connect(const std::string &ipv4, std::uint1
     }
     if (connect_result != 0) {
         const auto waited = wait_for_fd(socket_fd, POLLOUT, timeout_ms);
-        if (!waited) {
+        if (!waited.ok()) {
             (void)close(socket_fd);
             return Error{waited.error()};
         }

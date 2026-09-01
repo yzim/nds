@@ -124,7 +124,7 @@ Result<HostPinnedAllocation> Runtime::allocate_host_pinned_memory(std::size_t si
         return Error{ErrorCode::kInvalidArgument,
                      "host-pinned allocation requires an initialized runtime and nonzero size"};
     const auto rounded_size = page_rounded_size(size);
-    if (!rounded_size)
+    if (!rounded_size.ok())
         return Error{rounded_size.error()};
     void *host_ptr = nullptr;
     if (posix_memalign(&host_ptr, kHostPageSize, rounded_size.value()) != 0 || host_ptr == nullptr)
@@ -238,14 +238,14 @@ Result<MemoryBuffer> Runtime::allocate(std::size_t size, MemoryLocation location
     MemoryBuffer buffer;
     if (location == MemoryLocation::Device) {
         auto allocated = allocate_device_memory(size);
-        if (!allocated)
+        if (!allocated.ok())
             return Error{allocated.error()};
         buffer.data_ = allocated.value();
         buffer.rdma_data_ = allocated.value();
         buffer.runtime_ = this;
     } else if (location == MemoryLocation::HostPinned) {
         auto allocated = allocate_host_pinned_memory(size);
-        if (!allocated)
+        if (!allocated.ok())
             return Error{allocated.error()};
         buffer.data_ = allocated.value().host_address;
         buffer.rdma_data_ = allocated.value().device_address;
