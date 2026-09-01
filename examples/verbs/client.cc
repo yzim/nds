@@ -80,9 +80,9 @@ nds::Result<void> poll_completion(const LauncherView &launcher, const NdsDeviceQ
     return nds::Error{nds::ErrorCode::kRuntime, "CQ completion timed out"};
 }
 
-nds::Result<void> run_simple_send(nds::client::Launcher *launcher, const NdsDeviceQp &device_qp,
-                                  const nds::client::MemoryRegion &payload_region, std::uint32_t payload_length,
-                                  nds::TcpConnection *connection, aclrtStream stream) {
+nds::Result<void> run_send(nds::client::Launcher *launcher, const NdsDeviceQp &device_qp,
+                           const nds::client::MemoryRegion &payload_region, std::uint32_t payload_length,
+                           nds::TcpConnection *connection, aclrtStream stream) {
     const NdsDeviceSendWr send_wr{
         .wr_id = 1U,
         .opcode = NDS_DEVICE_WR_SEND,
@@ -98,21 +98,23 @@ nds::Result<void> run_simple_send(nds::client::Launcher *launcher, const NdsDevi
                             ->with_config({
                                 .block_dim = 1U,
                                 .stream = stream,
+                                .sync = true,
                                 .sync_timeout_ms = 5000,
                             })
                             .post_send(device_qp, send_wr));
     NDS_RETURN_IF_ERROR(poll_completion(launcher->with_config({
                                             .block_dim = 1U,
                                             .stream = stream,
+                                            .sync = true,
                                             .sync_timeout_ms = 5000,
                                         }),
                                         device_qp, true));
     return nds::examples::verbs::wait_barrier(*connection);
 }
 
-nds::Result<void> run_simple_receive(nds::client::Launcher *launcher, const NdsDeviceQp &device_qp,
-                                     const nds::client::MemoryRegion &payload_region, std::uint32_t payload_length,
-                                     nds::TcpConnection *connection, aclrtStream stream) {
+nds::Result<void> run_receive(nds::client::Launcher *launcher, const NdsDeviceQp &device_qp,
+                              const nds::client::MemoryRegion &payload_region, std::uint32_t payload_length,
+                              nds::TcpConnection *connection, aclrtStream stream) {
     const NdsDeviceRecvWr receive_wr{
         .wr_id = 2U,
         .local = {.address = payload_region.address(),
@@ -123,6 +125,7 @@ nds::Result<void> run_simple_receive(nds::client::Launcher *launcher, const NdsD
                             ->with_config({
                                 .block_dim = 1U,
                                 .stream = stream,
+                                .sync = true,
                                 .sync_timeout_ms = 5000,
                             })
                             .post_recv(device_qp, receive_wr));
@@ -132,6 +135,7 @@ nds::Result<void> run_simple_receive(nds::client::Launcher *launcher, const NdsD
     NDS_RETURN_IF_ERROR(poll_completion(launcher->with_config({
                                             .block_dim = 1U,
                                             .stream = stream,
+                                            .sync = true,
                                             .sync_timeout_ms = 5000,
                                         }),
                                         device_qp, false));
@@ -158,12 +162,14 @@ nds::Result<void> run_write(nds::client::Launcher *launcher, const NdsDeviceQp &
                             ->with_config({
                                 .block_dim = 1U,
                                 .stream = stream,
+                                .sync = true,
                                 .sync_timeout_ms = 5000,
                             })
                             .post_send(device_qp, write_wr));
     NDS_RETURN_IF_ERROR(poll_completion(launcher->with_config({
                                             .block_dim = 1U,
                                             .stream = stream,
+                                            .sync = true,
                                             .sync_timeout_ms = 5000,
                                         }),
                                         device_qp, true));
@@ -189,12 +195,14 @@ nds::Result<void> run_read(nds::client::Launcher *launcher, const NdsDeviceQp &d
                             ->with_config({
                                 .block_dim = 1U,
                                 .stream = stream,
+                                .sync = true,
                                 .sync_timeout_ms = 5000,
                             })
                             .post_send(device_qp, read_wr));
     NDS_RETURN_IF_ERROR(poll_completion(launcher->with_config({
                                             .block_dim = 1U,
                                             .stream = stream,
+                                            .sync = true,
                                             .sync_timeout_ms = 5000,
                                         }),
                                         device_qp, true));
@@ -206,9 +214,9 @@ nds::Result<void> run_operation(Operation operation, nds::client::Launcher *laun
                                 nds::TcpConnection *connection, aclrtStream stream) {
     switch (operation) {
         case Operation::Send:
-            return run_simple_send(launcher, device_qp, payload_region, payload_length, connection, stream);
+            return run_send(launcher, device_qp, payload_region, payload_length, connection, stream);
         case Operation::Receive:
-            return run_simple_receive(launcher, device_qp, payload_region, payload_length, connection, stream);
+            return run_receive(launcher, device_qp, payload_region, payload_length, connection, stream);
         case Operation::Read:
             return run_read(launcher, device_qp, payload_region, payload_length, connection, stream);
         case Operation::Write:
