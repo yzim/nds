@@ -28,8 +28,8 @@ device boundary.
 - [rdma-core](https://github.com/linux-rdma/rdma-core): standard verbs and
   provider patterns. The patched HNS provider is relevant only to the narrow
   AICPU device-side post boundary.
-- Public Ascend/CANN documentation and headers: AscendCL lifecycle, binary and
-  CPU-kernel package loading, and public toolchain behavior.
+- [Public Ascend/CANN documentation and headers](https://www.hiascend.com/document):
+  AscendCL lifecycle, binary and CPU-kernel package loading, and public toolchain behavior.
 
 Open-source HCOMM transport is not an NDS fallback. It assumes a reciprocal
 HCOMM peer, communicator state, flag buffers, and synchronization semantics
