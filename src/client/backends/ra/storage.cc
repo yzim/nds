@@ -45,7 +45,6 @@ Result<void> execute(const RaStorageContext &context, const Request &command, Se
                   .local_key = context.command_buffer.local_key},
         .remote_address = 0U,
         .remote_key = 0U,
-        .reserved = 0U,
     };
     return NdsRaRdmaSend(context.connection, context.state, transfer);
 }

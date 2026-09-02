@@ -45,7 +45,6 @@ __aicore__ inline NdsSendWr LoadSendWr(__gm__ const NdsSendWr *wr) {
     local.local.local_key = wr->local.local_key;
     local.remote_address = wr->remote_address;
     local.remote_key = wr->remote_key;
-    local.reserved = wr->reserved;
     return local;
 }
 

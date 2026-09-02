@@ -56,7 +56,6 @@ __aicore__ inline void ExecuteSerialized(__gm__ const NdsStorageContext *context
                   .local_key = context->command_buffer.local_key},
         .remote_address = 0U,
         .remote_key = 0U,
-        .reserved = 0U,
     };
     nds_aiv_rdma_send(&context->transport, 0U, &transfer, return_value, scratch);
 }

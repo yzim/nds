@@ -92,7 +92,6 @@ nds::Result<void> run_send(nds::client::Launcher *launcher, const NdsQpDescripto
                   .local_key = payload_region.local_key()},
         .remote_address = 0U,
         .remote_key = 0U,
-        .reserved = 0U,
     };
     NDS_RETURN_IF_ERROR(launcher
                             ->with_config({
@@ -156,7 +155,6 @@ nds::Result<void> run_write(nds::client::Launcher *launcher, const NdsQpDescript
                   .local_key = payload_region.local_key()},
         .remote_address = remote_memory.address,
         .remote_key = remote_memory.remote_key,
-        .reserved = 0U,
     };
     NDS_RETURN_IF_ERROR(launcher
                             ->with_config({
@@ -189,7 +187,6 @@ nds::Result<void> run_read(nds::client::Launcher *launcher, const NdsQpDescripto
                   .local_key = payload_region.local_key()},
         .remote_address = remote_memory.address,
         .remote_key = remote_memory.remote_key,
-        .reserved = 0U,
     };
     NDS_RETURN_IF_ERROR(launcher
                             ->with_config({

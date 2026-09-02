@@ -32,7 +32,6 @@ uint32_t execute(const NdsStorageContext *context, const Request *command, Seria
                   .local_key = context->command_buffer.local_key},
         .remote_address = 0U,
         .remote_key = 0U,
-        .reserved = 0U,
     };
     const uint32_t sent = nds_aicpu_rdma_send(&context->transport, 0U, &transfer, return_value);
     return sent;

@@ -137,7 +137,6 @@ Result<void> submit_transport_bootstrap(Runtime *runtime, Transport *transport, 
         .local = {.address = region.address(), .length = length, .local_key = region.local_key()},
         .remote_address = 0U,
         .remote_key = 0U,
-        .reserved = 0U,
     };
     NDS_RETURN_IF_ERROR(launcher
                             ->with_config({

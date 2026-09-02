@@ -98,7 +98,7 @@ typedef struct NdsSge {
  * the caller-facing WR unit passed to the RA connection layer and carried by
  * the AIV/AICPU launch envelopes. Provider structs (NdsRaSendWr,
  * NdsHnsSendWr, the raw HNS WQE) are internal translations and are not
- * caller-visible. */
+ * caller-visible. Callers should omit the ABI padding member `_reserved`. */
 typedef struct NdsSendWr {
     uint64_t wr_id;
     uint32_t opcode;
@@ -106,7 +106,11 @@ typedef struct NdsSendWr {
     NdsSge local;
     uint64_t remote_address;
     uint32_t remote_key;
-    uint32_t reserved;
+#ifdef __cplusplus
+    uint32_t _reserved{};
+#else
+    uint32_t _reserved;
+#endif
 } NdsSendWr;
 
 typedef struct NdsRecvWr {

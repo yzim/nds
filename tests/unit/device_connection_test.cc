@@ -12,7 +12,6 @@ TEST(DeviceConnectionTest, BuildsWorkRequests) {
         .local = {.address = UINT64_C(0x1000), .length = 4096U, .local_key = UINT32_C(0x77)},
         .remote_address = UINT64_C(0x2000),
         .remote_key = UINT32_C(0x88),
-        .reserved = 0U,
     };
     EXPECT_TRUE(send.wr_id == UINT64_C(0x55));
     EXPECT_TRUE(send.opcode == NDS_WR_RDMA_WRITE);

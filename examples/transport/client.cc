@@ -132,7 +132,6 @@ nds::Result<void> run_send(nds::client::Transport *transport, nds::client::Launc
         .local = {.address = region.address(), .length = kBytes, .local_key = region.local_key()},
         .remote_address = 0U,
         .remote_key = 0U,
-        .reserved = 0U,
     };
     NDS_RETURN_IF_ERROR(launcher
                             ->with_config({
@@ -176,7 +175,6 @@ nds::Result<void> run_read(nds::client::Runtime *runtime, nds::client::Transport
         .local = {.address = region.address(), .length = kBytes, .local_key = region.local_key()},
         .remote_address = remote.address,
         .remote_key = remote.remote_key,
-        .reserved = 0U,
     };
     NDS_RETURN_IF_ERROR(launcher
                             ->with_config({
@@ -200,7 +198,6 @@ nds::Result<void> run_write(nds::client::Transport *transport, nds::client::Laun
         .local = {.address = region.address(), .length = kBytes, .local_key = region.local_key()},
         .remote_address = remote.address,
         .remote_key = remote.remote_key,
-        .reserved = 0U,
     };
     NDS_RETURN_IF_ERROR(launcher
                             ->with_config({
@@ -217,7 +214,6 @@ nds::Result<void> run_write(nds::client::Transport *transport, nds::client::Laun
         .local = {.address = region.address(), .length = 1U, .local_key = region.local_key()},
         .remote_address = 0U,
         .remote_key = 0U,
-        .reserved = 0U,
     };
     return launcher
         ->with_config({
