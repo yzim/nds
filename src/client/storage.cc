@@ -130,9 +130,14 @@ Result<void> submit_transport_bootstrap(Runtime *runtime, Transport *transport, 
         if (result != ACL_SUCCESS || stream.stream == nullptr)
             return Error{ErrorCode::kRuntime, "storage bootstrap stream creation failed: " + std::to_string(result)};
     }
-    const LaunchConfig config{.stream = stream.stream, .sync = true, .sync_timeout_ms = kCompletionTimeoutMs};
     const NdsSendWr wr{1U, NDS_WR_SEND, 0U, {region.address(), length, region.local_key()}, 0U, 0U, 0U};
-    NDS_RETURN_IF_ERROR(launcher->with_config(config).rdma_send(transport->device_transport(), 0U, wr));
+    NDS_RETURN_IF_ERROR(launcher
+                            ->with_config({
+                                .stream = stream.stream,
+                                .sync = true,
+                                .sync_timeout_ms = kCompletionTimeoutMs,
+                            })
+                            .rdma_send(transport->device_transport(), 0U, wr));
     return {};
 }
 
