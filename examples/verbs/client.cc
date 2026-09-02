@@ -38,12 +38,12 @@ enum class Operation {
 nds::Result<Config> parse(int argc, char **argv) {
     Config config;
     CLI::App app{"Exercise direct NPU verbs with a TCP QP bootstrap."};
+    std::string backend_mode_name{"ra"};
+    app.add_option("--backend-mode", backend_mode_name, "Backend: ra, aiv, or aicpu");
     app.add_option("--backend-artifact-path", config.backend_artifact_path,
                    "RA backend shared artifact, AIV kernel object, or AICPU package descriptor");
     app.add_option("--logical-device", config.runtime.logical_device_id)->required();
     app.add_option("--server", config.server)->required();
-    std::string backend_mode_name{"ra"};
-    app.add_option("--backend-mode", backend_mode_name, "Backend: ra, aiv, or aicpu");
     try {
         app.parse(argc, argv);
     } catch (const CLI::ParseError &error) {

@@ -34,10 +34,10 @@ nds::Result<Config> parse(int argc, char **argv) {
     app.add_option("--backend-mode", backend, "Backend mode: ra, aiv, or aicpu")
         ->required()
         ->check(CLI::IsMember({"ra", "aiv", "aicpu"}));
-    app.add_option("--operation", operation, "Transport operation")
-        ->check(CLI::IsMember({"send", "recv", "read", "write"}));
     app.add_option("--backend-artifact-path", config.backend.artifact_path,
                    "RA backend shared artifact, AIV kernel object, or AICPU package descriptor");
+    app.add_option("--operation", operation, "Transport operation")
+        ->check(CLI::IsMember({"send", "recv", "read", "write"}));
     app.add_option("--logical-device", config.runtime.logical_device_id, "NPU logical device")->required();
     app.add_option("--server", config.transport.server_address, "Server TCP exchange address as IPv4:port")->required();
     app.add_option("--qp-count", config.transport.qp_count, "Number of indexed transport queues")
