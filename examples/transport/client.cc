@@ -125,7 +125,15 @@ nds::Result<void> verify_payload(nds::client::Runtime *runtime, const nds::clien
 
 nds::Result<void> run_send(nds::client::Transport *transport, nds::client::Launcher *launcher,
                            std::uint32_t queue_index, const nds::client::MemoryRegion &region, aclrtStream stream) {
-    const NdsSendWr send_wr{1U, NDS_WR_SEND, 0U, {region.address(), kBytes, region.local_key()}, 0U, 0U, 0U};
+    const NdsSendWr send_wr{
+        .wr_id = 1U,
+        .opcode = NDS_WR_SEND,
+        .flags = 0U,
+        .local = {.address = region.address(), .length = kBytes, .local_key = region.local_key()},
+        .remote_address = 0U,
+        .remote_key = 0U,
+        .reserved = 0U,
+    };
     NDS_RETURN_IF_ERROR(launcher
                             ->with_config({
                                 .block_dim = 1U,
@@ -161,13 +169,15 @@ nds::Result<void> run_read(nds::client::Runtime *runtime, nds::client::Transport
                            const nds::client::MemoryRegion &region, const nds::client::MemoryBuffer &buffer,
                            aclrtStream stream) {
     NDS_ASSIGN_OR_RETURN(nds::RemoteMemory remote, receive_remote_memory(transport->exchange_channel()));
-    const NdsSendWr read_wr{1U,
-                            NDS_WR_RDMA_READ,
-                            0U,
-                            {region.address(), kBytes, region.local_key()},
-                            remote.address,
-                            remote.remote_key,
-                            0U};
+    const NdsSendWr read_wr{
+        .wr_id = 1U,
+        .opcode = NDS_WR_RDMA_READ,
+        .flags = 0U,
+        .local = {.address = region.address(), .length = kBytes, .local_key = region.local_key()},
+        .remote_address = remote.address,
+        .remote_key = remote.remote_key,
+        .reserved = 0U,
+    };
     NDS_RETURN_IF_ERROR(launcher
                             ->with_config({
                                 .block_dim = 1U,
@@ -183,13 +193,15 @@ nds::Result<void> run_read(nds::client::Runtime *runtime, nds::client::Transport
 nds::Result<void> run_write(nds::client::Transport *transport, nds::client::Launcher *launcher,
                             std::uint32_t queue_index, const nds::client::MemoryRegion &region, aclrtStream stream) {
     NDS_ASSIGN_OR_RETURN(nds::RemoteMemory remote, receive_remote_memory(transport->exchange_channel()));
-    const NdsSendWr write_wr{1U,
-                             NDS_WR_RDMA_WRITE,
-                             0U,
-                             {region.address(), kBytes, region.local_key()},
-                             remote.address,
-                             remote.remote_key,
-                             0U};
+    const NdsSendWr write_wr{
+        .wr_id = 1U,
+        .opcode = NDS_WR_RDMA_WRITE,
+        .flags = 0U,
+        .local = {.address = region.address(), .length = kBytes, .local_key = region.local_key()},
+        .remote_address = remote.address,
+        .remote_key = remote.remote_key,
+        .reserved = 0U,
+    };
     NDS_RETURN_IF_ERROR(launcher
                             ->with_config({
                                 .block_dim = 1U,
@@ -198,7 +210,15 @@ nds::Result<void> run_write(nds::client::Transport *transport, nds::client::Laun
                                 .sync_timeout_ms = 5000,
                             })
                             .rdma_write(transport->device_transport(), queue_index, write_wr));
-    const NdsSendWr signal_wr{2U, NDS_WR_SEND, 0U, {region.address(), 1U, region.local_key()}, 0U, 0U, 0U};
+    const NdsSendWr signal_wr{
+        .wr_id = 2U,
+        .opcode = NDS_WR_SEND,
+        .flags = 0U,
+        .local = {.address = region.address(), .length = 1U, .local_key = region.local_key()},
+        .remote_address = 0U,
+        .remote_key = 0U,
+        .reserved = 0U,
+    };
     return launcher
         ->with_config({
             .block_dim = 1U,

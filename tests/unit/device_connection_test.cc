@@ -5,13 +5,15 @@
 #include <cstdint>
 
 TEST(DeviceConnectionTest, BuildsWorkRequests) {
-    const NdsSendWr send{UINT64_C(0x55),
-                         NDS_WR_RDMA_WRITE,
-                         NDS_SEND_SIGNALED,
-                         {UINT64_C(0x1000), 4096U, UINT32_C(0x77)},
-                         UINT64_C(0x2000),
-                         UINT32_C(0x88),
-                         0U};
+    const NdsSendWr send{
+        .wr_id = UINT64_C(0x55),
+        .opcode = NDS_WR_RDMA_WRITE,
+        .flags = NDS_SEND_SIGNALED,
+        .local = {.address = UINT64_C(0x1000), .length = 4096U, .local_key = UINT32_C(0x77)},
+        .remote_address = UINT64_C(0x2000),
+        .remote_key = UINT32_C(0x88),
+        .reserved = 0U,
+    };
     EXPECT_TRUE(send.wr_id == UINT64_C(0x55));
     EXPECT_TRUE(send.opcode == NDS_WR_RDMA_WRITE);
     EXPECT_TRUE(send.flags == NDS_SEND_SIGNALED);

@@ -36,13 +36,17 @@ Result<void> execute(const RaStorageContext &context, const Request &command, Se
         !copied.ok())
         return Error{copied.error()};
 
-    const NdsSendWr transfer{command.command_id,
-                             NDS_WR_SEND,
-                             0U,
-                             {context.command_buffer.address, kStorageCommandBytes, context.command_buffer.local_key},
-                             0U,
-                             0U,
-                             0U};
+    const NdsSendWr transfer{
+        .wr_id = command.command_id,
+        .opcode = NDS_WR_SEND,
+        .flags = 0U,
+        .local = {.address = context.command_buffer.address,
+                  .length = kStorageCommandBytes,
+                  .local_key = context.command_buffer.local_key},
+        .remote_address = 0U,
+        .remote_key = 0U,
+        .reserved = 0U,
+    };
     return NdsRaRdmaSend(context.connection, context.state, transfer);
 }
 

@@ -24,13 +24,16 @@ uint32_t execute(const NdsStorageContext *context, const Request *command, Seria
     for (uint32_t index = 0U; index < sizeof(command_bytes); ++index) command_address[index] = command_bytes[index];
     NdsAicpuBarrier();
     const NdsSendWr transfer{
-        command->command_id,
-        NDS_WR_SEND,
-        0U,
-        {context->command_buffer.address, nds::kStorageCommandBytes, context->command_buffer.local_key},
-        0U,
-        0U,
-        0U};
+        .wr_id = command->command_id,
+        .opcode = NDS_WR_SEND,
+        .flags = 0U,
+        .local = {.address = context->command_buffer.address,
+                  .length = nds::kStorageCommandBytes,
+                  .local_key = context->command_buffer.local_key},
+        .remote_address = 0U,
+        .remote_key = 0U,
+        .reserved = 0U,
+    };
     const uint32_t sent = nds_aicpu_rdma_send(&context->transport, 0U, &transfer, return_value);
     return sent;
 }
