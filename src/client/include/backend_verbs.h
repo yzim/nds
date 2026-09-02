@@ -113,6 +113,9 @@ typedef struct NdsSendWr {
 #endif
 } NdsSendWr;
 
+/* Receive WRs are always completion-producing when consumed; they do not have
+ * a signal flag or a batch signal schedule. Transport code only tracks receive
+ * credits and reclaims the resulting receive CQEs. */
 typedef struct NdsRecvWr {
     uint64_t wr_id;
     NdsSge local;

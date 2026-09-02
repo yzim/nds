@@ -50,6 +50,12 @@ struct TransportArguments {
     std::uint64_t return_value_address;
 };
 
+struct StorageArguments {
+    std::uint64_t storage_address;
+    std::uint64_t command_address;
+    std::uint64_t return_value_address;
+};
+
 template <typename WorkRequest>
 Result<void> launch_post_and_wait(Runtime *runtime, const AivLauncher *launcher, const LaunchConfig &config,
                                   const char *entry, const NdsQpDescriptor &qp, const WorkRequest &work_request) {
@@ -195,6 +201,29 @@ Result<PostSendBatchResult> launch_transport_batch_and_wait(Runtime *runtime, co
             posted = static_cast<std::size_t>(delta / sizeof(NdsSendWr));
     }
     return PostSendBatchResult{posted, request.return_value};
+}
+
+template <typename Request>
+Result<void> launch_storage_and_wait(Runtime *runtime, const AivLauncher *launcher, const LaunchConfig &config,
+                                     const char *entry, Request request) {
+    if (runtime == nullptr || launcher == nullptr)
+        return Error{ErrorCode::kRuntime, "AIV backend is not loaded"};
+    NDS_ASSIGN_OR_RETURN(MemoryBuffer device_request, runtime->allocate(sizeof(request), MemoryLocation::Device));
+    NDS_RETURN_IF_ERROR(runtime->copy_to(&device_request, &request, sizeof(request)));
+    const std::uint64_t address = reinterpret_cast<std::uint64_t>(device_request.data());
+    const StorageArguments arguments{address + offsetof(Request, storage), address + offsetof(Request, command),
+                                     address + offsetof(Request, return_value)};
+    const int launch_result =
+        launcher->launch(entry, config, const_cast<StorageArguments *>(&arguments), sizeof(arguments));
+    if (launch_result != ACL_SUCCESS)
+        return Error{ErrorCode::kRuntime, "AIV storage launch failed: " + std::to_string(launch_result)};
+    const int sync_result = aclrtSynchronizeStreamWithTimeout(config.stream, config.sync_timeout_ms);
+    if (sync_result != ACL_SUCCESS)
+        return Error{ErrorCode::kRuntime, "AIV storage synchronization failed: " + std::to_string(sync_result)};
+    NDS_RETURN_IF_ERROR(runtime->copy_from(&request, device_request, sizeof(request)));
+    return request.return_value == 0
+               ? Result<void>{}
+               : Error{ErrorCode::kRuntime, "AIV storage operation failed: " + std::to_string(request.return_value)};
 }
 
 }  // namespace
@@ -365,6 +394,36 @@ Result<PostSendBatchResult> AivLauncher::rdma_send_batch_with_config(const Launc
                                                                      std::uint32_t queue_index,
                                                                      std::span<const NdsSendWr> wrs) const {
     return launch_transport_batch_and_wait(runtime_, this, config, transport, queue_index, wrs);
+}
+
+Result<void> AivLauncher::storage_read_with_config(const LaunchConfig &config, const NdsStorageDescriptor &storage,
+                                                   const nds::StorageReadCommand &command) const {
+    const NdsStorageReadArgs request{
+        .storage = storage, .command = command, .return_value = std::numeric_limits<std::int32_t>::min()};
+    return launch_storage_and_wait(runtime_, this, config, "nds_aiv_storage_read_kernel", request);
+}
+
+Result<void> AivLauncher::storage_write_with_config(const LaunchConfig &config, const NdsStorageDescriptor &storage,
+                                                    const nds::StorageWriteCommand &command) const {
+    const NdsStorageWriteArgs request{
+        .storage = storage, .command = command, .return_value = std::numeric_limits<std::int32_t>::min()};
+    return launch_storage_and_wait(runtime_, this, config, "nds_aiv_storage_write_kernel", request);
+}
+
+Result<void> AivLauncher::storage_read_batch_with_config(const LaunchConfig &config,
+                                                         const NdsStorageDescriptor &storage,
+                                                         const nds::StorageBatchReadCommand &command) const {
+    const NdsStorageBatchReadArgs request{
+        .storage = storage, .command = command, .return_value = std::numeric_limits<std::int32_t>::min()};
+    return launch_storage_and_wait(runtime_, this, config, "nds_aiv_storage_batch_read_kernel", request);
+}
+
+Result<void> AivLauncher::storage_write_batch_with_config(const LaunchConfig &config,
+                                                          const NdsStorageDescriptor &storage,
+                                                          const nds::StorageBatchWriteCommand &command) const {
+    const NdsStorageBatchWriteArgs request{
+        .storage = storage, .command = command, .return_value = std::numeric_limits<std::int32_t>::min()};
+    return launch_storage_and_wait(runtime_, this, config, "nds_aiv_storage_batch_write_kernel", request);
 }
 
 }  // namespace nds::client

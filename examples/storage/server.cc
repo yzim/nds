@@ -33,7 +33,7 @@ int parse(int argc, char **argv, Config *config, bool *exit_requested) {
         ->check(CLI::Range(1U, 65535U));
     app.add_option("--namespace-bytes", config->namespace_bytes)->check(CLI::Range(1U, 64U * 1024U * 1024U));
     app.add_option("--storage-commands", config->storage_commands,
-                   "Number of serial storage commands to serve on one transport")
+                   "Number of storage commands to serve on one transport")
         ->check(CLI::Range(1U, 65535U));
     app.add_flag("--seed-pattern", config->seed_pattern, "Initialize the namespace with the NDS test pattern");
     app.add_option("--verify-write-bytes", config->verify_write_bytes,

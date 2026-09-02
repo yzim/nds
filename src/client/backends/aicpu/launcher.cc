@@ -191,4 +191,34 @@ Result<void> AicpuLauncher::rdma_write_with_config(const LaunchConfig &config, c
     return launch_device_and_wait(runtime_, this, config, "nds_aicpu_rdma_write_kernel", request);
 }
 
+Result<void> AicpuLauncher::storage_read_with_config(const LaunchConfig &config, const NdsStorageDescriptor &storage,
+                                                     const nds::StorageReadCommand &command) const {
+    const NdsStorageReadArgs request{
+        .storage = storage, .command = command, .return_value = std::numeric_limits<std::int32_t>::min()};
+    return launch_device_and_wait(runtime_, this, config, "nds_aicpu_storage_read_kernel", request);
+}
+
+Result<void> AicpuLauncher::storage_write_with_config(const LaunchConfig &config, const NdsStorageDescriptor &storage,
+                                                      const nds::StorageWriteCommand &command) const {
+    const NdsStorageWriteArgs request{
+        .storage = storage, .command = command, .return_value = std::numeric_limits<std::int32_t>::min()};
+    return launch_device_and_wait(runtime_, this, config, "nds_aicpu_storage_write_kernel", request);
+}
+
+Result<void> AicpuLauncher::storage_read_batch_with_config(const LaunchConfig &config,
+                                                           const NdsStorageDescriptor &storage,
+                                                           const nds::StorageBatchReadCommand &command) const {
+    const NdsStorageBatchReadArgs request{
+        .storage = storage, .command = command, .return_value = std::numeric_limits<std::int32_t>::min()};
+    return launch_device_and_wait(runtime_, this, config, "nds_aicpu_storage_batch_read_kernel", request);
+}
+
+Result<void> AicpuLauncher::storage_write_batch_with_config(const LaunchConfig &config,
+                                                            const NdsStorageDescriptor &storage,
+                                                            const nds::StorageBatchWriteCommand &command) const {
+    const NdsStorageBatchWriteArgs request{
+        .storage = storage, .command = command, .return_value = std::numeric_limits<std::int32_t>::min()};
+    return launch_device_and_wait(runtime_, this, config, "nds_aicpu_storage_batch_write_kernel", request);
+}
+
 }  // namespace nds::client

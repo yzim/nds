@@ -29,13 +29,16 @@ int rdma_operation(const NdsTransportDescriptor *transport, std::uint32_t queue_
 }
 
 template <typename Command>
-int storage_operation(const NdsStorageContext *context, const Command *command,
+int storage_operation(const NdsStorageDescriptor *descriptor, const Command *command,
                       nds::Result<void> (*operation)(const nds::RaStorageContext &, const Command &)) {
-    if (context == nullptr || command == nullptr)
+    if (descriptor == nullptr || command == nullptr)
         return -1;
-    const NdsQpDescriptor *qp = nds_transport_qp(&context->transport, 0U);
-    NdsTransportQpState *state = nds_transport_qp_state(&context->transport, 0U);
-    if (qp == nullptr || state == nullptr)
+    const NdsStorageSlotDescriptor *slot = nds_storage_slot(descriptor, command->slot_index);
+    if (slot == nullptr || !nds_storage_slot_valid(descriptor, command->slot_index))
+        return -1;
+    const NdsQpDescriptor *qp = nds_transport_qp(&descriptor->transport, slot->qp_index);
+    NdsTransportQpState *state = nds_transport_qp_state(&descriptor->transport, slot->qp_index);
+    if (slot == nullptr || qp == nullptr || state == nullptr)
         return -1;
     const auto connection = host_connection(*qp);
     if (!connection.ok())
@@ -43,11 +46,11 @@ int storage_operation(const NdsStorageContext *context, const Command *command,
     const nds::RaStorageContext host_context{
         {connection.value().runtime, connection.value().qp},
         state,
-        reinterpret_cast<void *>(context->command_buffer.address),
-        {context->command_buffer.address, context->command_buffer.length, context->command_buffer.local_key},
-        reinterpret_cast<void *>(context->completion.address),
-        {context->completion.address, context->completion.length, context->completion.local_key},
-        context->capacity};
+        reinterpret_cast<void *>(slot->command_buffer.address),
+        {slot->command_buffer.address, slot->command_buffer.length, slot->command_buffer.local_key},
+        reinterpret_cast<void *>(slot->completion_buffer.address),
+        {slot->completion_buffer.address, slot->completion_buffer.length, slot->completion_buffer.local_key},
+        descriptor->capacity};
     return operation(host_context, *command).ok() ? 0 : -1;
 }
 
@@ -100,20 +103,22 @@ extern "C" int nds_ra_backend_rdma_write(const NdsTransportDescriptor *transport
     return rdma_operation(transport, queue_index, wr, nds::NdsRaRdmaWrite);
 }
 
-extern "C" int nds_ra_backend_storage_read(const NdsStorageContext *context, const nds::StorageReadCommand *command) {
-    return storage_operation(context, command, nds::NdsRaStorageRead);
+extern "C" int nds_ra_backend_storage_read(const NdsStorageDescriptor *descriptor,
+                                           const nds::StorageReadCommand *command) {
+    return storage_operation(descriptor, command, nds::NdsRaStorageRead);
 }
 
-extern "C" int nds_ra_backend_storage_write(const NdsStorageContext *context, const nds::StorageWriteCommand *command) {
-    return storage_operation(context, command, nds::NdsRaStorageWrite);
+extern "C" int nds_ra_backend_storage_write(const NdsStorageDescriptor *descriptor,
+                                            const nds::StorageWriteCommand *command) {
+    return storage_operation(descriptor, command, nds::NdsRaStorageWrite);
 }
 
-extern "C" int nds_ra_backend_storage_batch_read(const NdsStorageContext *context,
+extern "C" int nds_ra_backend_storage_batch_read(const NdsStorageDescriptor *descriptor,
                                                  const nds::StorageBatchReadCommand *command) {
-    return storage_operation(context, command, nds::NdsRaStorageBatchRead);
+    return storage_operation(descriptor, command, nds::NdsRaStorageBatchRead);
 }
 
-extern "C" int nds_ra_backend_storage_batch_write(const NdsStorageContext *context,
+extern "C" int nds_ra_backend_storage_batch_write(const NdsStorageDescriptor *descriptor,
                                                   const nds::StorageBatchWriteCommand *command) {
-    return storage_operation(context, command, nds::NdsRaStorageBatchWrite);
+    return storage_operation(descriptor, command, nds::NdsRaStorageBatchWrite);
 }

@@ -90,6 +90,42 @@ Result<PostSendBatchResult> ConfiguredLauncherView::rdma_send_batch(const NdsTra
     return launcher_->rdma_send_batch_with_config(config_, transport, queue_index, wrs);
 }
 
+Result<void> ConfiguredLauncherView::storage_read(const NdsStorageDescriptor &storage,
+                                                  const nds::StorageReadCommand &command) const {
+    if (launcher_ == nullptr)
+        return Error{ErrorCode::kInvalidArgument, "configured launcher is empty"};
+    if (!config_.sync)
+        return Error{ErrorCode::kInvalidArgument, "asynchronous launcher calls are not supported"};
+    return launcher_->storage_read_with_config(config_, storage, command);
+}
+
+Result<void> ConfiguredLauncherView::storage_write(const NdsStorageDescriptor &storage,
+                                                   const nds::StorageWriteCommand &command) const {
+    if (launcher_ == nullptr)
+        return Error{ErrorCode::kInvalidArgument, "configured launcher is empty"};
+    if (!config_.sync)
+        return Error{ErrorCode::kInvalidArgument, "asynchronous launcher calls are not supported"};
+    return launcher_->storage_write_with_config(config_, storage, command);
+}
+
+Result<void> ConfiguredLauncherView::storage_read_batch(const NdsStorageDescriptor &storage,
+                                                        const nds::StorageBatchReadCommand &command) const {
+    if (launcher_ == nullptr)
+        return Error{ErrorCode::kInvalidArgument, "configured launcher is empty"};
+    if (!config_.sync)
+        return Error{ErrorCode::kInvalidArgument, "asynchronous launcher calls are not supported"};
+    return launcher_->storage_read_batch_with_config(config_, storage, command);
+}
+
+Result<void> ConfiguredLauncherView::storage_write_batch(const NdsStorageDescriptor &storage,
+                                                         const nds::StorageBatchWriteCommand &command) const {
+    if (launcher_ == nullptr)
+        return Error{ErrorCode::kInvalidArgument, "configured launcher is empty"};
+    if (!config_.sync)
+        return Error{ErrorCode::kInvalidArgument, "asynchronous launcher calls are not supported"};
+    return launcher_->storage_write_batch_with_config(config_, storage, command);
+}
+
 Result<std::unique_ptr<Launcher>> Launcher::open(Runtime *runtime, BackendMode mode, const std::string &artifact) {
     if (runtime == nullptr || !runtime->initialized())
         return Error{ErrorCode::kInvalidArgument, "launcher open requires an initialized runtime"};

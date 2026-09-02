@@ -7,6 +7,7 @@
 #include "result.hh"
 #include "backend_transport.h"
 #include "backend_verbs.h"
+#include "backend_storage.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -44,6 +45,12 @@ public:
                             const NdsSendWr &wr) const;
     Result<PostSendBatchResult> rdma_send_batch(const NdsTransportDescriptor &transport, std::uint32_t queue_index,
                                                 std::span<const NdsSendWr> wrs) const;
+    Result<void> storage_read(const NdsStorageDescriptor &storage, const nds::StorageReadCommand &command) const;
+    Result<void> storage_write(const NdsStorageDescriptor &storage, const nds::StorageWriteCommand &command) const;
+    Result<void> storage_read_batch(const NdsStorageDescriptor &storage,
+                                    const nds::StorageBatchReadCommand &command) const;
+    Result<void> storage_write_batch(const NdsStorageDescriptor &storage,
+                                     const nds::StorageBatchWriteCommand &command) const;
 
 private:
     friend class Launcher;
@@ -77,6 +84,14 @@ public:
                             std::uint32_t queue_index, const NdsSendWr &wr) const;
     Result<PostSendBatchResult> rdma_send_batch(const LaunchConfig &config, const NdsTransportDescriptor &transport,
                                                 std::uint32_t queue_index, std::span<const NdsSendWr> wrs) const;
+    Result<void> storage_read(const LaunchConfig &config, const NdsStorageDescriptor &storage,
+                              const nds::StorageReadCommand &command) const;
+    Result<void> storage_write(const LaunchConfig &config, const NdsStorageDescriptor &storage,
+                               const nds::StorageWriteCommand &command) const;
+    Result<void> storage_read_batch(const LaunchConfig &config, const NdsStorageDescriptor &storage,
+                                    const nds::StorageBatchReadCommand &command) const;
+    Result<void> storage_write_batch(const LaunchConfig &config, const NdsStorageDescriptor &storage,
+                                     const nds::StorageBatchWriteCommand &command) const;
     ConfiguredLauncherView with_config(const LaunchConfig &config) const;
 
 protected:
@@ -104,6 +119,15 @@ protected:
                                                                     const NdsTransportDescriptor &transport,
                                                                     std::uint32_t queue_index,
                                                                     std::span<const NdsSendWr> wrs) const;
+    virtual Result<void> storage_read_with_config(const LaunchConfig &config, const NdsStorageDescriptor &storage,
+                                                  const nds::StorageReadCommand &command) const = 0;
+    virtual Result<void> storage_write_with_config(const LaunchConfig &config, const NdsStorageDescriptor &storage,
+                                                   const nds::StorageWriteCommand &command) const = 0;
+    virtual Result<void> storage_read_batch_with_config(const LaunchConfig &config, const NdsStorageDescriptor &storage,
+                                                        const nds::StorageBatchReadCommand &command) const = 0;
+    virtual Result<void> storage_write_batch_with_config(const LaunchConfig &config,
+                                                         const NdsStorageDescriptor &storage,
+                                                         const nds::StorageBatchWriteCommand &command) const = 0;
 
 private:
     friend class ConfiguredLauncherView;

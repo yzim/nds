@@ -136,7 +136,7 @@ extern "C" __global__ __aicore__ void nds_aiv_rdma_send_batch_kernel(GM_ADDR tra
 /* Executes one serialized storage read and stores the operation return value. */
 extern "C" __global__ __aicore__ void nds_aiv_storage_read_kernel(GM_ADDR context_address, GM_ADDR command_address,
                                                                   GM_ADDR return_value) {
-    __gm__ const auto *context = reinterpret_cast<__gm__ const NdsStorageContext *>(context_address);
+    __gm__ const auto *context = reinterpret_cast<__gm__ const NdsStorageDescriptor *>(context_address);
     __gm__ const auto *command = reinterpret_cast<__gm__ const nds::StorageReadCommand *>(command_address);
     __gm__ auto *return_value_ptr = reinterpret_cast<__gm__ int32_t *>(return_value);
     TPipe pipe;
@@ -148,7 +148,7 @@ extern "C" __global__ __aicore__ void nds_aiv_storage_read_kernel(GM_ADDR contex
 /* Executes one serialized storage write and stores the operation return value. */
 extern "C" __global__ __aicore__ void nds_aiv_storage_write_kernel(GM_ADDR context_address, GM_ADDR command_address,
                                                                    GM_ADDR return_value) {
-    __gm__ const auto *context = reinterpret_cast<__gm__ const NdsStorageContext *>(context_address);
+    __gm__ const auto *context = reinterpret_cast<__gm__ const NdsStorageDescriptor *>(context_address);
     __gm__ const auto *command = reinterpret_cast<__gm__ const nds::StorageWriteCommand *>(command_address);
     __gm__ auto *return_value_ptr = reinterpret_cast<__gm__ int32_t *>(return_value);
     TPipe pipe;
@@ -160,7 +160,7 @@ extern "C" __global__ __aicore__ void nds_aiv_storage_write_kernel(GM_ADDR conte
 /* Executes one serialized storage batch-read and stores the operation return value. */
 extern "C" __global__ __aicore__ void nds_aiv_storage_batch_read_kernel(GM_ADDR context_address,
                                                                         GM_ADDR command_address, GM_ADDR return_value) {
-    __gm__ const auto *context = reinterpret_cast<__gm__ const NdsStorageContext *>(context_address);
+    __gm__ const auto *context = reinterpret_cast<__gm__ const NdsStorageDescriptor *>(context_address);
     __gm__ const auto *command = reinterpret_cast<__gm__ const nds::StorageBatchReadCommand *>(command_address);
     __gm__ auto *return_value_ptr = reinterpret_cast<__gm__ int32_t *>(return_value);
     TPipe pipe;
@@ -173,7 +173,7 @@ extern "C" __global__ __aicore__ void nds_aiv_storage_batch_read_kernel(GM_ADDR 
 extern "C" __global__ __aicore__ void nds_aiv_storage_batch_write_kernel(GM_ADDR context_address,
                                                                          GM_ADDR command_address,
                                                                          GM_ADDR return_value) {
-    __gm__ const auto *context = reinterpret_cast<__gm__ const NdsStorageContext *>(context_address);
+    __gm__ const auto *context = reinterpret_cast<__gm__ const NdsStorageDescriptor *>(context_address);
     __gm__ const auto *command = reinterpret_cast<__gm__ const nds::StorageBatchWriteCommand *>(command_address);
     __gm__ auto *return_value_ptr = reinterpret_cast<__gm__ int32_t *>(return_value);
     TPipe pipe;
@@ -184,10 +184,11 @@ extern "C" __global__ __aicore__ void nds_aiv_storage_batch_write_kernel(GM_ADDR
 
 /* Waits for a storage completion and stores the operation return value. */
 extern "C" __global__ __aicore__ void nds_aiv_storage_wait_kernel(GM_ADDR context_address, uint64_t command_id,
-                                                                  uint64_t expected_bytes, GM_ADDR return_value) {
-    __gm__ const auto *context = reinterpret_cast<__gm__ const NdsStorageContext *>(context_address);
+                                                                  uint64_t expected_bytes, uint32_t slot_index,
+                                                                  GM_ADDR return_value) {
+    __gm__ const auto *context = reinterpret_cast<__gm__ const NdsStorageDescriptor *>(context_address);
     __gm__ auto *return_value_ptr = reinterpret_cast<__gm__ int32_t *>(return_value);
-    nds_aiv_storage_wait(context, command_id, expected_bytes, return_value_ptr);
+    nds_aiv_storage_wait(context, command_id, expected_bytes, slot_index, return_value_ptr);
 }
 
 static const struct FunLevelKType nds_aiv_post_send_kernel_type_section __attribute__((

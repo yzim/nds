@@ -122,8 +122,9 @@ cmake --build build-torch --target _nds_torch --parallel
 
 Add `build/bin` to `PYTHONPATH`, configure the CANN environment, import
 `torch_npu`, and select the device before constructing `_nds_torch.Session`.
-`Session` exposes `read_`, `write`, and `capacity`; calls are serialized over
-one connected storage session. It accepts nonempty contiguous CPU tensors and
+`Session` exposes `read_`, `write`, and `capacity`; its calls are serialized by
+the wrapper over one connected storage session. The native storage client uses
+a bounded four-slot-per-QP command window. It accepts nonempty contiguous CPU tensors and
 copies them through NDS-owned NPU allocations. Direct `torch_npu` tensor
 registration is intentionally unsupported pending an allocator-lifetime and
 stream-synchronization contract.

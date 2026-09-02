@@ -6,6 +6,7 @@
 
 #include <CLI/CLI.hpp>
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -16,6 +17,8 @@
 
 namespace {
 constexpr std::size_t kBytes = 64U;
+constexpr std::uint32_t kTransportStressWrCount = 65536U;
+constexpr std::uint32_t kTransportReceiveWindow = 16U;
 constexpr char kHelpRequested[] = "help requested";
 enum class Operation { Send, Recv, Read, Write };
 
@@ -125,22 +128,27 @@ nds::Result<void> verify_payload(nds::client::Runtime *runtime, const nds::clien
 
 nds::Result<void> run_send(nds::client::Transport *transport, nds::client::Launcher *launcher,
                            std::uint32_t queue_index, const nds::client::MemoryRegion &region, aclrtStream stream) {
-    const NdsSendWr send_wr{
-        .wr_id = 1U,
-        .opcode = NDS_WR_SEND,
-        .flags = 0U,
-        .local = {.address = region.address(), .length = kBytes, .local_key = region.local_key()},
-        .remote_address = 0U,
-        .remote_key = 0U,
-    };
-    NDS_RETURN_IF_ERROR(launcher
-                            ->with_config({
-                                .block_dim = 1U,
-                                .stream = stream,
-                                .sync = true,
-                                .sync_timeout_ms = 5000,
-                            })
-                            .rdma_send(transport->device_transport(), queue_index, send_wr));
+    for (std::uint32_t index = 0U; index < kTransportStressWrCount; ++index) {
+        const NdsSendWr send_wr{
+            .wr_id = index + 1U,
+            .opcode = NDS_WR_SEND,
+            .flags = 0U,
+            .local = {.address = region.address(), .length = kBytes, .local_key = region.local_key()},
+            .remote_address = 0U,
+            .remote_key = 0U,
+        };
+        const auto submitted = launcher
+                                   ->with_config({
+                                       .block_dim = 1U,
+                                       .stream = stream,
+                                       .sync = true,
+                                       .sync_timeout_ms = 5000,
+                                   })
+                                   .rdma_send(transport->device_transport(), queue_index, send_wr);
+        if (!submitted.ok())
+            return nds::Error{submitted.error().code,
+                              "RdmaSend WR " + std::to_string(index + 1U) + " failed: " + submitted.error().message};
+    }
     return wait_control_signal(transport->exchange_channel());
 }
 
@@ -148,18 +156,26 @@ nds::Result<void> run_receive(nds::client::Runtime *runtime, nds::client::Transp
                               nds::client::Launcher *launcher, std::uint32_t queue_index,
                               const nds::client::MemoryRegion &region, const nds::client::MemoryBuffer &buffer,
                               aclrtStream stream) {
-    const NdsRecvWr receive_wr{1U, {region.address(), kBytes, region.local_key()}};
-    NDS_RETURN_IF_ERROR(launcher
-                            ->with_config({
-                                .block_dim = 1U,
-                                .stream = stream,
-                                .sync = true,
-                                .sync_timeout_ms = 5000,
-                            })
-                            .rdma_recv(transport->device_transport(), queue_index, receive_wr));
-    // The server sends only after this TCP acknowledgement, so the receive is armed first.
-    NDS_RETURN_IF_ERROR(send_control_signal(transport->exchange_channel()));
-    NDS_RETURN_IF_ERROR(wait_control_signal(transport->exchange_channel()));
+    for (std::uint32_t start = 0U; start < kTransportStressWrCount; start += kTransportReceiveWindow) {
+        const std::uint32_t count = std::min(kTransportReceiveWindow, kTransportStressWrCount - start);
+        for (std::uint32_t index = 0U; index < count; ++index) {
+            const NdsRecvWr receive_wr{
+                .wr_id = start + index + 1U,
+                .local = {.address = region.address(), .length = kBytes, .local_key = region.local_key()},
+            };
+            NDS_RETURN_IF_ERROR(launcher
+                                    ->with_config({
+                                        .block_dim = 1U,
+                                        .stream = stream,
+                                        .sync = true,
+                                        .sync_timeout_ms = 5000,
+                                    })
+                                    .rdma_recv(transport->device_transport(), queue_index, receive_wr));
+        }
+        // The server sends only after this TCP acknowledgement, so the receive window is armed first.
+        NDS_RETURN_IF_ERROR(send_control_signal(transport->exchange_channel()));
+        NDS_RETURN_IF_ERROR(wait_control_signal(transport->exchange_channel()));
+    }
     return verify_payload(runtime, buffer);
 }
 
@@ -168,22 +184,27 @@ nds::Result<void> run_read(nds::client::Runtime *runtime, nds::client::Transport
                            const nds::client::MemoryRegion &region, const nds::client::MemoryBuffer &buffer,
                            aclrtStream stream) {
     NDS_ASSIGN_OR_RETURN(nds::RemoteMemory remote, receive_remote_memory(transport->exchange_channel()));
-    const NdsSendWr read_wr{
-        .wr_id = 1U,
-        .opcode = NDS_WR_RDMA_READ,
-        .flags = 0U,
-        .local = {.address = region.address(), .length = kBytes, .local_key = region.local_key()},
-        .remote_address = remote.address,
-        .remote_key = remote.remote_key,
-    };
-    NDS_RETURN_IF_ERROR(launcher
-                            ->with_config({
-                                .block_dim = 1U,
-                                .stream = stream,
-                                .sync = true,
-                                .sync_timeout_ms = 5000,
-                            })
-                            .rdma_read(transport->device_transport(), queue_index, read_wr));
+    for (std::uint32_t index = 0U; index < kTransportStressWrCount; ++index) {
+        const NdsSendWr read_wr{
+            .wr_id = index + 1U,
+            .opcode = NDS_WR_RDMA_READ,
+            .flags = 0U,
+            .local = {.address = region.address(), .length = kBytes, .local_key = region.local_key()},
+            .remote_address = remote.address,
+            .remote_key = remote.remote_key,
+        };
+        const auto submitted = launcher
+                                   ->with_config({
+                                       .block_dim = 1U,
+                                       .stream = stream,
+                                       .sync = true,
+                                       .sync_timeout_ms = 5000,
+                                   })
+                                   .rdma_read(transport->device_transport(), queue_index, read_wr);
+        if (!submitted.ok())
+            return nds::Error{submitted.error().code,
+                              "RdmaRead WR " + std::to_string(index + 1U) + " failed: " + submitted.error().message};
+    }
     NDS_RETURN_IF_ERROR(send_control_signal(transport->exchange_channel()));
     return verify_payload(runtime, buffer);
 }
@@ -191,24 +212,29 @@ nds::Result<void> run_read(nds::client::Runtime *runtime, nds::client::Transport
 nds::Result<void> run_write(nds::client::Transport *transport, nds::client::Launcher *launcher,
                             std::uint32_t queue_index, const nds::client::MemoryRegion &region, aclrtStream stream) {
     NDS_ASSIGN_OR_RETURN(nds::RemoteMemory remote, receive_remote_memory(transport->exchange_channel()));
-    const NdsSendWr write_wr{
-        .wr_id = 1U,
-        .opcode = NDS_WR_RDMA_WRITE,
-        .flags = 0U,
-        .local = {.address = region.address(), .length = kBytes, .local_key = region.local_key()},
-        .remote_address = remote.address,
-        .remote_key = remote.remote_key,
-    };
-    NDS_RETURN_IF_ERROR(launcher
-                            ->with_config({
-                                .block_dim = 1U,
-                                .stream = stream,
-                                .sync = true,
-                                .sync_timeout_ms = 5000,
-                            })
-                            .rdma_write(transport->device_transport(), queue_index, write_wr));
+    for (std::uint32_t index = 0U; index < kTransportStressWrCount; ++index) {
+        const NdsSendWr write_wr{
+            .wr_id = index + 1U,
+            .opcode = NDS_WR_RDMA_WRITE,
+            .flags = 0U,
+            .local = {.address = region.address(), .length = kBytes, .local_key = region.local_key()},
+            .remote_address = remote.address,
+            .remote_key = remote.remote_key,
+        };
+        const auto submitted = launcher
+                                   ->with_config({
+                                       .block_dim = 1U,
+                                       .stream = stream,
+                                       .sync = true,
+                                       .sync_timeout_ms = 5000,
+                                   })
+                                   .rdma_write(transport->device_transport(), queue_index, write_wr);
+        if (!submitted.ok())
+            return nds::Error{submitted.error().code,
+                              "RdmaWrite WR " + std::to_string(index + 1U) + " failed: " + submitted.error().message};
+    }
     const NdsSendWr signal_wr{
-        .wr_id = 2U,
+        .wr_id = kTransportStressWrCount + 1U,
         .opcode = NDS_WR_SEND,
         .flags = 0U,
         .local = {.address = region.address(), .length = 1U, .local_key = region.local_key()},
@@ -275,8 +301,8 @@ nds::Result<void> run(int argc, char **argv) {
         }
     } stream_guard{stream};
 
-    NDS_RETURN_IF_ERROR(run_operation(config.operation, &runtime, &transport, launcher.get(), 0U, region, buffer,
-                                      stream));
+    NDS_RETURN_IF_ERROR(
+        run_operation(config.operation, &runtime, &transport, launcher.get(), 0U, region, buffer, stream));
     return {};
 }
 }  // namespace

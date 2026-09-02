@@ -7,8 +7,9 @@ current architecture and protocol contract.
 
 ## Current Baseline
 
-- One connected RC QP carries one command at a time. Storage submission returns
-  one completion handle, and a protocol-record wait resolves it.
+- Each connected RC QP carries a bounded slot window. Storage submission returns
+  a slot-indexed completion handle, and a protocol-record wait resolves it;
+  the current client allocates four live slots per negotiated QP.
 - The NPU sends storage commands; the CPU uses `libibverbs` to receive them,
   move data, and write the terminal completion record.
 - A storage Write makes the CPU RDMA Read NPU-advertised data into its
@@ -27,8 +28,8 @@ current architecture and protocol contract.
 - The transport baseline is a bounded indexed QP set with QP-count negotiation,
   endpoint metadata exchange, complete `NdsTransportDescriptor` descriptor and
   parallel per-QP state export, explicit launcher data-path entrypoints, and
-  fixed per-QP signal/credit accounting. Concurrent multi-request scheduling
-  remains out of scope.
+  fixed per-QP signal/credit accounting. Storage assigns at most one live
+  command to each internal slot, with an explicit slot-to-QP mapping.
 - Transport backends own fixed-interval signaling, internal CQ reclamation, and
   per-QP send/receive credit updates. Signal scheduling is independent of public
   call and batch boundaries; callers do not poll transport CQs or set signal
@@ -39,8 +40,11 @@ current architecture and protocol contract.
 - Defined endpoint-local ownership across runtime, transport, storage, and
   backend code; shared wire records remain NDS-owned.
 - Implemented a memory-backed namespace with range validation, fixed command
-  and completion records, serial Read/Write semantics, and one-command batch
+  and completion records, per-QP Read/Write semantics, and one-command batch
   Read/Write with CPU-side whole-batch descriptor validation.
+- Added a fixed four-slot-per-QP storage window, explicit slot/QP mapping,
+  command-ID validation, per-slot completion records, and CPU receive-WR
+  pre-posting/replenishment for multiple commands in flight on each QP.
 - Implemented CPU-initiated RDMA Read/Write data movement and terminal
   completion writes.
 - Added a page-locked host client buffer for direct NPU RoCE data transfer
@@ -65,10 +69,12 @@ current architecture and protocol contract.
 
 ### Transport Layer
 
-- Measure transport behavior while separating TCP/QP bootstrap, device posting,
-  fixed-interval signaling, CQ retirement, and peer data movement.
-- Extend the fixed per-QP credit and signaling policy to concurrent storage
-  requests only with command IDs, completion demultiplexing, and explicit
+- Diagnose the long-run signal/CQ-reclamation failures observed when the
+  transport examples submit 65,536 individually signaled WRs. Keep TCP/QP
+  bootstrap, device posting, CQ retirement, and peer data movement separately
+  observable.
+- Increase the fixed storage slot window only with negotiated queue credits,
+  command-ID demultiplexing beyond slot selection, and explicit
   resource-lifetime rules.
 
 ### Bootstrap Configuration
@@ -123,27 +129,25 @@ current architecture and protocol contract.
 
 ## Protocol Evolution
 
-The initial serial session deliberately proves ordering, receive ownership,
-memory lifetime, and teardown before queue management. Later work must be
-designed as transport and protocol behavior, not application-side parallel
-loops:
+The current bounded session proves ordering, receive ownership, memory lifetime,
+and teardown while assigning one command to each of four internal slots per
+negotiated QP. Later work must be designed as transport and protocol behavior,
+not application-side parallel loops:
 
-1. Define queue depth, credits, receive-WR replenishment, command IDs,
-   completion demultiplexing, per-command timeouts, and error handling for
-   concurrent storage commands. `Transport` already retires its own final-CQE
-   windows in the submission path; storage needs a separate credit and
-   completion-demultiplexing policy.
-2. Define command/data-QP selection policy and the synchronization required by
-   concurrent device submitters. Transport now creates and connects a bounded,
-   index-paired QP set, but storage continues to use QP zero.
-3. Add multiple in-flight commands only with a bounded test matrix and
-   explicit resource-lifetime rules.
+1. Define a larger negotiated slot window, completion demultiplexing beyond
+   slot selection, per-command timeouts, and error handling for more commands
+   per QP. `Transport` retires its own CQ windows in the submission path;
+   storage has a separate slot and protocol-completion policy.
+2. Define synchronization for concurrent device submitters and any command/data
+   QP selection beyond the current index-paired slot policy.
+3. Add deeper command pipelining only with a bounded test matrix and explicit
+   resource-lifetime rules; the current four-slot window is the tested bound.
 4. Evaluate an optional two-sided completion mode in which the NPU pre-posts
    Receives and polls its receive CQ for CPU completion Sends. This is not
-   required for the current serial completion-record path.
+   required for the current protocol completion-record path.
 
 ## Later Scope
 
 Persistence, a block-device namespace backend, narrower per-command memory
-access policy, and a versioned public SDK are deferred until the serial protocol
-and concurrency contracts are stable.
+access policy, and a versioned public SDK are deferred until the bounded protocol
+and deeper concurrency contracts are stable.

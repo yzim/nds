@@ -19,7 +19,7 @@ void expect_memory(const T &value, std::uint64_t address, std::uint64_t length, 
 }
 
 std::array<std::uint8_t, nds::kStorageCommandBytes> read_golden() {
-    return {0x4eU, 0x44U, 0x53U, 0x43U, 0x00U, 0x02U, 0x00U, 0x01U, 0x10U, 0x20U, 0x30U, 0x40U, 0x50U, 0x60U,
+    return {0x4eU, 0x44U, 0x53U, 0x43U, 0x00U, 0x03U, 0x00U, 0x01U, 0x10U, 0x20U, 0x30U, 0x40U, 0x50U, 0x60U,
             0x70U, 0x80U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x10U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
             0x00U, 0x00U, 0x20U, 0x00U, 0x11U, 0x22U, 0x33U, 0x44U, 0x55U, 0x66U, 0x77U, 0x88U, 0x00U, 0x00U,
             0x00U, 0x00U, 0x00U, 0x00U, 0x20U, 0x00U, 0xa1U, 0xb2U, 0xc3U, 0xd4U, 0x00U, 0x00U, 0x00U, 0x02U};
@@ -77,6 +77,26 @@ TEST(StorageProtocolTest, RoundTripsReadAndWrite) {
     expect_memory(decoded_write.data, write.data.address, write.data.length, write.data.remote_key);
 }
 
+TEST(StorageProtocolTest, RoundTripsCommandSlotIndex) {
+    std::array<std::uint8_t, nds::kStorageCommandBytes> bytes{};
+    const nds::StorageReadCommand read{
+        .command_id = kCommandId,
+        .offset = 0U,
+        .length = 64U,
+        .data = {kAddress, 64U, kRemoteKey},
+        .slot_index = 3U,
+    };
+    nds::StorageReadCommand decoded{};
+
+    ASSERT_EQ(nds::serialize_storage_read(read, bytes.data(), bytes.size()), nds::StorageSerdeResult::Ok);
+    EXPECT_EQ(bytes[56U], 0x00U);
+    EXPECT_EQ(bytes[57U], 0x00U);
+    EXPECT_EQ(bytes[58U], 0x00U);
+    EXPECT_EQ(bytes[59U], 0x03U);
+    ASSERT_EQ(nds::deserialize_storage_read(bytes.data(), bytes.size(), &decoded), nds::StorageSerdeResult::Ok);
+    EXPECT_EQ(decoded.slot_index, read.slot_index);
+}
+
 TEST(StorageProtocolTest, RoundTripsBatchCommandsAndEntries) {
     std::array<std::uint8_t, nds::kStorageCommandBytes> command_bytes{};
     std::array<std::uint8_t, nds::kStorageBatchEntryBytes> entry_bytes{};
@@ -129,8 +149,12 @@ TEST(StorageProtocolTest, RoundTripsSessionAndCompletionRecords) {
     std::array<std::uint8_t, nds::kStorageNamespaceBytes> namespace_bytes{};
     std::array<std::uint8_t, nds::kStorageCompletionBytes> completion_bytes{};
 
-    const nds::StorageBootstrap bootstrap{{kAddress, nds::kStorageCompletionBytes, kRemoteKey},
-                                          {kAddress + 4096U, nds::kStorageNamespaceBytes, kRemoteKey}};
+    const nds::StorageBootstrap bootstrap{
+        .completion = {kAddress, nds::kStorageCompletionBytes, kRemoteKey},
+        .namespace_response = {kAddress + 4096U, nds::kStorageNamespaceBytes, kRemoteKey},
+        .slots = {kAddress + 8192U, 2U * sizeof(nds::StorageSlot), kRemoteKey},
+        .slot_count = 2U,
+    };
     nds::StorageBootstrap decoded_bootstrap{};
     ASSERT_EQ(nds::serialize_storage_bootstrap(bootstrap, bootstrap_bytes.data(), bootstrap_bytes.size()),
               nds::StorageSerdeResult::Ok);
@@ -138,6 +162,8 @@ TEST(StorageProtocolTest, RoundTripsSessionAndCompletionRecords) {
               nds::StorageSerdeResult::Ok);
     expect_memory(decoded_bootstrap.completion, kAddress, nds::kStorageCompletionBytes, kRemoteKey);
     expect_memory(decoded_bootstrap.namespace_response, kAddress + 4096U, nds::kStorageNamespaceBytes, kRemoteKey);
+    expect_memory(decoded_bootstrap.slots, kAddress + 8192U, 2U * sizeof(nds::StorageSlot), kRemoteKey);
+    EXPECT_EQ(decoded_bootstrap.slot_count, bootstrap.slot_count);
 
     const nds::StorageNamespace storage_namespace{UINT64_C(1024) * 1024U};
     nds::StorageNamespace decoded_namespace{};
@@ -180,8 +206,12 @@ TEST(StorageProtocolTest, RejectsWrongOperationAndAccess) {
 
 TEST(StorageProtocolTest, RejectsIncompleteBootstrapResponseDescriptor) {
     std::array<std::uint8_t, nds::kStorageBootstrapBytes> bytes{};
-    const nds::StorageBootstrap bootstrap{{kAddress, nds::kStorageCompletionBytes, kRemoteKey},
-                                          {kAddress + 4096U, nds::kStorageNamespaceBytes, kRemoteKey}};
+    const nds::StorageBootstrap bootstrap{
+        .completion = {kAddress, nds::kStorageCompletionBytes, kRemoteKey},
+        .namespace_response = {kAddress + 4096U, nds::kStorageNamespaceBytes, kRemoteKey},
+        .slots = {kAddress + 8192U, sizeof(nds::StorageSlot), kRemoteKey},
+        .slot_count = 1U,
+    };
     nds::StorageBootstrap decoded{};
     ASSERT_EQ(nds::serialize_storage_bootstrap(bootstrap, bytes.data(), bytes.size()), nds::StorageSerdeResult::Ok);
 

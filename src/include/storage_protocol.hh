@@ -11,7 +11,7 @@
 
 namespace nds {
 
-inline constexpr uint32_t kStorageBootstrapBytes = 64U;
+inline constexpr uint32_t kStorageBootstrapBytes = 96U;
 inline constexpr uint32_t kStorageNamespaceBytes = 16U;
 inline constexpr uint32_t kStorageCommandBytes = 64U;
 inline constexpr uint32_t kStorageBatchEntryBytes = 40U;
@@ -55,6 +55,7 @@ struct StorageReadCommand {
     uint64_t offset;
     uint64_t length;
     StorageMemory data;
+    uint32_t slot_index{};
 };
 
 struct StorageWriteCommand {
@@ -62,6 +63,7 @@ struct StorageWriteCommand {
     uint64_t offset;
     uint64_t length;
     StorageMemory data;
+    uint32_t slot_index{};
 };
 
 struct StorageBatchReadCommand {
@@ -69,6 +71,7 @@ struct StorageBatchReadCommand {
     uint64_t entry_count;
     uint64_t total_length;
     StorageMemory entries;
+    uint32_t slot_index{};
 };
 
 struct StorageBatchWriteCommand {
@@ -76,6 +79,7 @@ struct StorageBatchWriteCommand {
     uint64_t entry_count;
     uint64_t total_length;
     StorageMemory entries;
+    uint32_t slot_index{};
 };
 
 struct StorageBatchReadEntry {
@@ -100,7 +104,18 @@ struct StorageCompletion {
 struct StorageBootstrap {
     StorageMemory completion;
     StorageMemory namespace_response;
+    StorageMemory slots;
+    uint32_t slot_count{};
 };
+
+struct StorageSlot {
+    StorageMemory command;
+    StorageMemory completion;
+    uint32_t qp_index{};
+    uint32_t reserved{};
+};
+
+static_assert(sizeof(StorageSlot) == 56, "storage slot wire record size must match its descriptor size");
 
 struct StorageNamespace {
     uint64_t capacity;
@@ -112,8 +127,9 @@ inline constexpr uint32_t kBootstrapMagic = UINT32_C(0x4e445342);   // "NDSB"
 inline constexpr uint32_t kCommandMagic = UINT32_C(0x4e445343);     // "NDSC"
 inline constexpr uint32_t kCompletionMagic = UINT32_C(0x4e445344);  // "NDSD"
 inline constexpr uint32_t kNamespaceMagic = UINT32_C(0x4e44534e);   // "NDSN"
-inline constexpr uint16_t kVersion = 2U;
-inline constexpr uint16_t kBootstrapVersion = 3U;
+inline constexpr uint16_t kVersion = 3U;
+inline constexpr uint16_t kBootstrapVersion = 5U;
+inline constexpr uint32_t kStorageSlotDescriptorBytes = 56U;
 inline constexpr uint32_t kRemoteWrite = UINT32_C(0x00000002);
 inline constexpr uint32_t kRemoteRead = UINT32_C(0x00000004);
 
@@ -160,7 +176,8 @@ NDS_STORAGE_SERDE_INLINE bool memory_valid(const StorageMemory &memory, uint64_t
 NDS_STORAGE_SERDE_INLINE StorageSerdeResult serialize_command(StorageOperation operation, uint64_t command_id,
                                                               uint64_t offset, uint64_t length,
                                                               const StorageMemory &data, uint64_t required_data_length,
-                                                              uint32_t access, uint8_t *bytes, uint32_t size) {
+                                                              uint32_t access, uint32_t slot_index, uint8_t *bytes,
+                                                              uint32_t size) {
     if (bytes == nullptr || size < kStorageCommandBytes)
         return StorageSerdeResult::InvalidArgument;
     if (command_id == 0U || length == 0U || !memory_valid(data, required_data_length))
@@ -176,16 +193,17 @@ NDS_STORAGE_SERDE_INLINE StorageSerdeResult serialize_command(StorageOperation o
     write_u64(bytes + 40U, data.length);
     write_u32(bytes + 48U, data.remote_key);
     write_u32(bytes + 52U, access);
+    write_u32(bytes + 56U, slot_index);
     return StorageSerdeResult::Ok;
 }
 
 NDS_STORAGE_SERDE_INLINE StorageSerdeResult deserialize_command(const uint8_t *bytes, uint32_t size,
                                                                 StorageOperation expected_operation,
                                                                 uint32_t required_access, uint64_t *command_id,
-                                                                uint64_t *offset, uint64_t *length,
-                                                                StorageMemory *data) {
+                                                                uint64_t *offset, uint64_t *length, StorageMemory *data,
+                                                                uint32_t *slot_index) {
     if (bytes == nullptr || command_id == nullptr || offset == nullptr || length == nullptr || data == nullptr ||
-        size < kStorageCommandBytes)
+        slot_index == nullptr || size < kStorageCommandBytes)
         return StorageSerdeResult::InvalidArgument;
     if (read_u32(bytes) != kCommandMagic || read_u16(bytes + 4U) != kVersion ||
         read_u16(bytes + 6U) != static_cast<uint16_t>(expected_operation) ||
@@ -195,7 +213,8 @@ NDS_STORAGE_SERDE_INLINE StorageSerdeResult deserialize_command(const uint8_t *b
     *offset = read_u64(bytes + 16U);
     *length = read_u64(bytes + 24U);
     *data = {read_u64(bytes + 32U), read_u64(bytes + 40U), read_u32(bytes + 48U)};
-    if (*command_id == 0U || *length == 0U || !memory_valid(*data, 0U))
+    *slot_index = read_u32(bytes + 56U);
+    if (*command_id == 0U || *length == 0U || !memory_valid(*data, 0U) || read_u32(bytes + 60U) != 0U)
         return StorageSerdeResult::InvalidRecord;
     return StorageSerdeResult::Ok;
 }
@@ -238,7 +257,7 @@ NDS_STORAGE_SERDE_INLINE StorageSerdeResult serialize_storage_read(const Storage
                                                                    uint32_t size) {
     return storage_serde_detail::serialize_command(StorageOperation::Read, command.command_id, command.offset,
                                                    command.length, command.data, command.length,
-                                                   storage_serde_detail::kRemoteWrite, bytes, size);
+                                                   storage_serde_detail::kRemoteWrite, command.slot_index, bytes, size);
 }
 
 NDS_STORAGE_SERDE_INLINE StorageSerdeResult deserialize_storage_read(const uint8_t *bytes, uint32_t size,
@@ -247,7 +266,7 @@ NDS_STORAGE_SERDE_INLINE StorageSerdeResult deserialize_storage_read(const uint8
         return StorageSerdeResult::InvalidArgument;
     const StorageSerdeResult result = storage_serde_detail::deserialize_command(
         bytes, size, StorageOperation::Read, storage_serde_detail::kRemoteWrite, &command->command_id, &command->offset,
-        &command->length, &command->data);
+        &command->length, &command->data, &command->slot_index);
     if (result != StorageSerdeResult::Ok)
         return result;
     return command->data.length >= command->length ? StorageSerdeResult::Ok : StorageSerdeResult::InvalidRecord;
@@ -257,7 +276,7 @@ NDS_STORAGE_SERDE_INLINE StorageSerdeResult serialize_storage_write(const Storag
                                                                     uint32_t size) {
     return storage_serde_detail::serialize_command(StorageOperation::Write, command.command_id, command.offset,
                                                    command.length, command.data, command.length,
-                                                   storage_serde_detail::kRemoteRead, bytes, size);
+                                                   storage_serde_detail::kRemoteRead, command.slot_index, bytes, size);
 }
 
 NDS_STORAGE_SERDE_INLINE StorageSerdeResult deserialize_storage_write(const uint8_t *bytes, uint32_t size,
@@ -266,7 +285,7 @@ NDS_STORAGE_SERDE_INLINE StorageSerdeResult deserialize_storage_write(const uint
         return StorageSerdeResult::InvalidArgument;
     const StorageSerdeResult result = storage_serde_detail::deserialize_command(
         bytes, size, StorageOperation::Write, storage_serde_detail::kRemoteRead, &command->command_id, &command->offset,
-        &command->length, &command->data);
+        &command->length, &command->data, &command->slot_index);
     if (result != StorageSerdeResult::Ok)
         return result;
     return command->data.length >= command->length ? StorageSerdeResult::Ok : StorageSerdeResult::InvalidRecord;
@@ -277,9 +296,10 @@ NDS_STORAGE_SERDE_INLINE StorageSerdeResult serialize_storage_batch_read(const S
     if (command.entry_count == 0U || command.entry_count > kStorageMaxBatchEntries ||
         command.entries.length < command.entry_count * kStorageBatchEntryBytes)
         return StorageSerdeResult::InvalidRecord;
-    return storage_serde_detail::serialize_command(
-        StorageOperation::BatchRead, command.command_id, command.entry_count, command.total_length, command.entries,
-        command.entry_count * kStorageBatchEntryBytes, storage_serde_detail::kRemoteRead, bytes, size);
+    return storage_serde_detail::serialize_command(StorageOperation::BatchRead, command.command_id, command.entry_count,
+                                                   command.total_length, command.entries,
+                                                   command.entry_count * kStorageBatchEntryBytes,
+                                                   storage_serde_detail::kRemoteRead, command.slot_index, bytes, size);
 }
 
 NDS_STORAGE_SERDE_INLINE StorageSerdeResult deserialize_storage_batch_read(const uint8_t *bytes, uint32_t size,
@@ -288,7 +308,7 @@ NDS_STORAGE_SERDE_INLINE StorageSerdeResult deserialize_storage_batch_read(const
         return StorageSerdeResult::InvalidArgument;
     const StorageSerdeResult result = storage_serde_detail::deserialize_command(
         bytes, size, StorageOperation::BatchRead, storage_serde_detail::kRemoteRead, &command->command_id,
-        &command->entry_count, &command->total_length, &command->entries);
+        &command->entry_count, &command->total_length, &command->entries, &command->slot_index);
     if (result != StorageSerdeResult::Ok)
         return result;
     return command->entry_count <= kStorageMaxBatchEntries &&
@@ -302,9 +322,10 @@ NDS_STORAGE_SERDE_INLINE StorageSerdeResult serialize_storage_batch_write(const 
     if (command.entry_count == 0U || command.entry_count > kStorageMaxBatchEntries ||
         command.entries.length < command.entry_count * kStorageBatchEntryBytes)
         return StorageSerdeResult::InvalidRecord;
-    return storage_serde_detail::serialize_command(
-        StorageOperation::BatchWrite, command.command_id, command.entry_count, command.total_length, command.entries,
-        command.entry_count * kStorageBatchEntryBytes, storage_serde_detail::kRemoteRead, bytes, size);
+    return storage_serde_detail::serialize_command(StorageOperation::BatchWrite, command.command_id,
+                                                   command.entry_count, command.total_length, command.entries,
+                                                   command.entry_count * kStorageBatchEntryBytes,
+                                                   storage_serde_detail::kRemoteRead, command.slot_index, bytes, size);
 }
 
 NDS_STORAGE_SERDE_INLINE StorageSerdeResult deserialize_storage_batch_write(const uint8_t *bytes, uint32_t size,
@@ -313,7 +334,7 @@ NDS_STORAGE_SERDE_INLINE StorageSerdeResult deserialize_storage_batch_write(cons
         return StorageSerdeResult::InvalidArgument;
     const StorageSerdeResult result = storage_serde_detail::deserialize_command(
         bytes, size, StorageOperation::BatchWrite, storage_serde_detail::kRemoteRead, &command->command_id,
-        &command->entry_count, &command->total_length, &command->entries);
+        &command->entry_count, &command->total_length, &command->entries, &command->slot_index);
     if (result != StorageSerdeResult::Ok)
         return result;
     return command->entry_count <= kStorageMaxBatchEntries &&
@@ -411,7 +432,11 @@ NDS_STORAGE_SERDE_INLINE StorageSerdeResult serialize_storage_bootstrap(const St
     if (bytes == nullptr || size < kStorageBootstrapBytes)
         return StorageSerdeResult::InvalidArgument;
     if (!storage_serde_detail::memory_valid(bootstrap.completion, kStorageCompletionBytes) ||
-        !storage_serde_detail::memory_valid(bootstrap.namespace_response, kStorageNamespaceBytes))
+        !storage_serde_detail::memory_valid(bootstrap.namespace_response, kStorageNamespaceBytes) ||
+        bootstrap.slot_count == 0U ||
+        bootstrap.slot_count > UINT32_MAX / storage_serde_detail::kStorageSlotDescriptorBytes ||
+        !storage_serde_detail::memory_valid(bootstrap.slots, static_cast<uint64_t>(bootstrap.slot_count) *
+                                                                 storage_serde_detail::kStorageSlotDescriptorBytes))
         return StorageSerdeResult::InvalidRecord;
     storage_serde_detail::clear(bytes, kStorageBootstrapBytes);
     storage_serde_detail::write_u32(bytes, storage_serde_detail::kBootstrapMagic);
@@ -424,6 +449,11 @@ NDS_STORAGE_SERDE_INLINE StorageSerdeResult serialize_storage_bootstrap(const St
     storage_serde_detail::write_u64(bytes + 40U, bootstrap.namespace_response.length);
     storage_serde_detail::write_u32(bytes + 48U, bootstrap.namespace_response.remote_key);
     storage_serde_detail::write_u32(bytes + 52U, storage_serde_detail::kRemoteWrite);
+    storage_serde_detail::write_u64(bytes + 56U, bootstrap.slots.address);
+    storage_serde_detail::write_u64(bytes + 64U, bootstrap.slots.length);
+    storage_serde_detail::write_u32(bytes + 72U, bootstrap.slots.remote_key);
+    storage_serde_detail::write_u32(bytes + 76U, storage_serde_detail::kRemoteRead);
+    storage_serde_detail::write_u32(bytes + 80U, bootstrap.slot_count);
     return StorageSerdeResult::Ok;
 }
 
@@ -433,17 +463,25 @@ NDS_STORAGE_SERDE_INLINE StorageSerdeResult deserialize_storage_bootstrap(const 
         return StorageSerdeResult::InvalidArgument;
     if (storage_serde_detail::read_u32(bytes) != storage_serde_detail::kBootstrapMagic ||
         storage_serde_detail::read_u16(bytes + 4U) != storage_serde_detail::kBootstrapVersion ||
-        (storage_serde_detail::read_u32(bytes + 28U) & storage_serde_detail::kRemoteWrite) == 0U)
+        (storage_serde_detail::read_u32(bytes + 28U) & storage_serde_detail::kRemoteWrite) == 0U ||
+        (storage_serde_detail::read_u32(bytes + 76U) & storage_serde_detail::kRemoteRead) == 0U)
         return StorageSerdeResult::InvalidRecord;
     bootstrap->completion = {storage_serde_detail::read_u64(bytes + 8U), storage_serde_detail::read_u64(bytes + 16U),
                              storage_serde_detail::read_u32(bytes + 24U)};
     bootstrap->namespace_response = {storage_serde_detail::read_u64(bytes + 32U),
                                      storage_serde_detail::read_u64(bytes + 40U),
                                      storage_serde_detail::read_u32(bytes + 48U)};
+    bootstrap->slots = {storage_serde_detail::read_u64(bytes + 56U), storage_serde_detail::read_u64(bytes + 64U),
+                        storage_serde_detail::read_u32(bytes + 72U)};
+    bootstrap->slot_count = storage_serde_detail::read_u32(bytes + 80U);
     const uint32_t namespace_access = storage_serde_detail::read_u32(bytes + 52U);
-    return (namespace_access & storage_serde_detail::kRemoteWrite) != 0U &&
+    return (namespace_access & storage_serde_detail::kRemoteWrite) != 0U && bootstrap->slot_count != 0U &&
+                   bootstrap->slot_count <= UINT32_MAX / storage_serde_detail::kStorageSlotDescriptorBytes &&
                    storage_serde_detail::memory_valid(bootstrap->namespace_response, kStorageNamespaceBytes) &&
-                   storage_serde_detail::memory_valid(bootstrap->completion, kStorageCompletionBytes)
+                   storage_serde_detail::memory_valid(bootstrap->completion, kStorageCompletionBytes) &&
+                   storage_serde_detail::memory_valid(
+                       bootstrap->slots,
+                       static_cast<uint64_t>(bootstrap->slot_count) * storage_serde_detail::kStorageSlotDescriptorBytes)
                ? StorageSerdeResult::Ok
                : StorageSerdeResult::InvalidRecord;
 }

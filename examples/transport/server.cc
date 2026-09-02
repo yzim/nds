@@ -4,6 +4,7 @@
 
 #include <CLI/CLI.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -16,6 +17,8 @@
 namespace {
 
 constexpr std::size_t kBytes = 64U;
+constexpr std::uint32_t kTransportStressWrCount = 65536U;
+constexpr std::uint32_t kTransportReceiveWindow = 16U;
 constexpr char kHelpRequested[] = "help requested";
 enum class Operation { Send, Recv, Read, Write };
 
@@ -105,13 +108,15 @@ bool verify(const std::vector<std::byte> &received) {
 
 nds::Result<void> run_send(nds::server::Transport *transport, std::uint32_t completion_timeout_ms) {
     std::vector<std::byte> buffer(kBytes);
-    NDS_ASSIGN_OR_RETURN(nds::server::MemoryRegion receive_region,
-                         transport->register_memory(buffer.data(), buffer.size(),
-                                                    nds::server::MemoryAccess::LocalWrite));
-    NDS_RETURN_IF_ERROR(transport->post_receive(receive_region));
-    NDS_RETURN_IF_ERROR(transport->wait_receive(completion_timeout_ms));
-    if (!verify(buffer))
-        return nds::Error{nds::ErrorCode::kRuntime, "RdmaSend payload mismatch"};
+    NDS_ASSIGN_OR_RETURN(
+        nds::server::MemoryRegion receive_region,
+        transport->register_memory(buffer.data(), buffer.size(), nds::server::MemoryAccess::LocalWrite));
+    for (std::uint32_t index = 0U; index < kTransportStressWrCount; ++index) {
+        NDS_RETURN_IF_ERROR(transport->post_receive(receive_region));
+        NDS_RETURN_IF_ERROR(transport->wait_receive(completion_timeout_ms));
+        if (!verify(buffer))
+            return nds::Error{nds::ErrorCode::kRuntime, "RdmaSend payload mismatch"};
+    }
     return send_control_signal(transport->exchange_channel());
 }
 
@@ -120,9 +125,14 @@ nds::Result<void> run_receive(nds::server::Transport *transport) {
     NDS_ASSIGN_OR_RETURN(
         nds::server::MemoryRegion region,
         transport->register_memory(buffer.data(), buffer.size(), nds::server::MemoryAccess::LocalRead));
-    NDS_RETURN_IF_ERROR(wait_control_signal(transport->exchange_channel()));
-    NDS_RETURN_IF_ERROR(transport->send(region, static_cast<std::uint32_t>(buffer.size())));
-    return send_control_signal(transport->exchange_channel());
+    for (std::uint32_t start = 0U; start < kTransportStressWrCount; start += kTransportReceiveWindow) {
+        const std::uint32_t count = std::min(kTransportReceiveWindow, kTransportStressWrCount - start);
+        NDS_RETURN_IF_ERROR(wait_control_signal(transport->exchange_channel()));
+        for (std::uint32_t index = 0U; index < count; ++index)
+            NDS_RETURN_IF_ERROR(transport->send(region, static_cast<std::uint32_t>(buffer.size())));
+        NDS_RETURN_IF_ERROR(send_control_signal(transport->exchange_channel()));
+    }
+    return {};
 }
 
 nds::Result<void> run_read(nds::server::Transport *transport) {
@@ -138,9 +148,9 @@ nds::Result<void> run_read(nds::server::Transport *transport) {
 nds::Result<void> run_write(nds::server::Transport *transport, std::uint32_t completion_timeout_ms) {
     std::array<std::byte, 1U> completion{};
     // This receive is the client's post-write control message.
-    NDS_ASSIGN_OR_RETURN(nds::server::MemoryRegion control_region,
-                         transport->register_memory(completion.data(), completion.size(),
-                                                    nds::server::MemoryAccess::LocalWrite));
+    NDS_ASSIGN_OR_RETURN(
+        nds::server::MemoryRegion control_region,
+        transport->register_memory(completion.data(), completion.size(), nds::server::MemoryAccess::LocalWrite));
     NDS_RETURN_IF_ERROR(transport->post_receive(control_region));
     std::vector<std::byte> buffer(kBytes);
     NDS_ASSIGN_OR_RETURN(

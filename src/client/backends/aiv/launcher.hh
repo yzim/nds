@@ -54,6 +54,14 @@ private:
                                                             const NdsTransportDescriptor &transport,
                                                             std::uint32_t queue_index,
                                                             std::span<const NdsSendWr> wrs) const override;
+    Result<void> storage_read_with_config(const LaunchConfig &config, const NdsStorageDescriptor &storage,
+                                          const nds::StorageReadCommand &command) const override;
+    Result<void> storage_write_with_config(const LaunchConfig &config, const NdsStorageDescriptor &storage,
+                                           const nds::StorageWriteCommand &command) const override;
+    Result<void> storage_read_batch_with_config(const LaunchConfig &config, const NdsStorageDescriptor &storage,
+                                                const nds::StorageBatchReadCommand &command) const override;
+    Result<void> storage_write_batch_with_config(const LaunchConfig &config, const NdsStorageDescriptor &storage,
+                                                 const nds::StorageBatchWriteCommand &command) const override;
     Runtime *runtime_{};
     aclrtBinHandle binary_{};
     mutable std::unordered_map<std::string, aclrtFuncHandle> functions_;

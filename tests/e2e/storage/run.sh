@@ -45,10 +45,10 @@ run_client() {
     local case_dir="$3"
     local client_log="$4"
     local -a client=("${build}/bin/nds_storage_client" --backend-mode "${backend}"
-        --ascendcl "${cann}/aarch64-linux/lib64/libascendcl.so"
         --logical-device 0
         --server "${NDS_E2E_SERVER_ADDRESS}"
-        --operation "${operation}" --offset 0 --bytes "${bytes}" --log-level info)
+        --operation "${operation}" --offset 0 --bytes "${bytes}" --batch-count "${batch_count}"
+        --qp-count "${qp_count}" --log-level info)
 
     case "${backend}" in
         ra)
@@ -82,14 +82,15 @@ run_case() {
     local client_log="${case_dir}/client.log"
     local verify_bytes
     local -a server=("${build}/bin/nds_storage_server" --device "${NDS_E2E_DEVICE}" --gid-index "${NDS_E2E_GID_INDEX}"
-        --listen "${NDS_E2E_SERVER_ADDRESS}" --namespace-bytes 1048576 --log-level info)
+        --listen "${NDS_E2E_SERVER_ADDRESS}" --max-qp-count "${qp_count}"
+        --storage-commands "${storage_commands}" --namespace-bytes 1048576 --log-level info)
 
     if [[ "${operation}" == read || "${operation}" == batch-read ]]; then
         server+=(--seed-pattern)
     else
-        verify_bytes="${bytes}"
+        verify_bytes="$((bytes * storage_commands))"
         if [[ "${operation}" == batch-write ]]; then
-            verify_bytes="$((bytes * 2))"
+            verify_bytes="$((verify_bytes * batch_count))"
         fi
         server+=(--verify-write-bytes "${verify_bytes}")
     fi
@@ -129,6 +130,9 @@ build="${NDS_E2E_BUILD_DIR}"
 cann="${NDS_E2E_CANN_ROOT}"
 state_dir="${NDS_E2E_STATE_DIR:-${TMPDIR:-/tmp}/nds-e2e}"
 bytes=4096
+batch_count=2
+qp_count=4
+storage_commands=32
 case_timeout=45s
 server_pid=""
 mkdir -p "${state_dir}"

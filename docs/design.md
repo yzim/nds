@@ -7,9 +7,9 @@ TSD, a rank table, or a second NPU.
 
 The direct verbs implementation and paired example currently define the
 settled lower-layer correctness baseline. Their error-propagation contract and
-performance benchmark are not complete. The active design work is the
-transport layer: its request, completion, queue-credit, and multi-QP contracts
-must be made explicit before storage concurrency is expanded.
+performance benchmark are not complete. The transport layer owns the request,
+completion, queue-credit, and multi-QP contracts used by the bounded storage
+pipeline.
 
 ## Architecture and ownership
 
@@ -135,12 +135,16 @@ backend owns CQ reclamation. Without that flag, HCCP owns CQ consumption; NDS
 does not interpret HCCP CQ activity as storage completion. The client
 `Transport` layer does not expose CQ polling to transport callers: its backend
 polls internally when transport credit reclamation requires it.
-The current serial storage path uses QP zero and waits for the CPU-written
-protocol completion record. A listener may serve multiple sessions serially,
-with each session's QPs and verbs resources torn down before the next is
-accepted. Transport multiplicity does not add command scheduling, concurrent
-storage requests, or concurrent client sessions; those remain later design
-work.
+Storage bootstrap uses QP zero and waits for the CPU-written protocol
+completion record. After bootstrap, each negotiated QP has a bounded storage
+slot window and one worker on the CPU endpoint. The current client allocates
+four slots per QP; every slot descriptor carries its explicit QP index, and
+`StorageClient` can keep one live completion handle per slot. The slot index
+selects both the command/completion buffers and the matching transport QP. The
+CPU pre-posts the active receive window, processes completions in QP order, and
+reposts each slot buffer after its command has been handled. A listener may
+serve multiple sessions serially, with each session's QPs and verbs resources
+torn down before the next is accepted.
 The explicit NDS `PollCq(is_send_cq)` operation is available when the caller
 opts an AI-QP into caller-owned CQ mode with that RA flag. Its selector
 matches CANN RA `RaPollCq`: `true` selects the send CQ and `false` the receive CQ.
@@ -173,10 +177,11 @@ RaDeregisterMr -> free NPU allocation -> RaQpDestroy
 
 ## Storage protocol and completion
 
-One connected RC QP permits one command in flight. A storage Write causes the
-CPU to RDMA Read NPU application data into its namespace; a storage Read causes
-the CPU to RDMA Write namespace data to that buffer. The CPU posts the data
-operation and terminal completion Write in order on the same QP.
+Each connected RC QP permits one storage command per available slot in its
+bounded slot window. A storage Write causes the CPU to RDMA Read NPU
+application data into its namespace; a storage Read causes the CPU to RDMA
+Write namespace data to that buffer. The CPU posts the data operation and
+terminal completion Write in order on the command's QP.
 
 Storage session setup is a QP-zero control exchange. The CPU posts the
 bootstrap Receive before it publishes its local QP identity. The NPU sends the
@@ -188,28 +193,28 @@ permits storage submission. TCP has no storage-protocol payload after QP setup.
 `StorageClient::read`, `write`, and their batch variants submit a command and
 return a `StorageCompletionHandle`. `StorageClient::wait(handle, timeout_ms)`
 observes the CPU-written `StorageCompletion` record and validates its command
-ID, status, and byte count. It never depends on a client CQ. One client permits
-one live handle: it retains the command resources, application MRs, and batch
-descriptor allocation until the terminal record is observed. A timeout leaves
-the handle live, so those resources remain valid and the caller can wait again.
-A matching terminal failure releases the handle's resources before `wait`
-returns that failure.
+ID, status, and byte count. It never depends on a client CQ. A client permits
+one live handle per negotiated transport slot; it retains the command
+resources, application MRs, and batch descriptor allocation until the terminal
+record is observed. A timeout leaves the handle live, so those resources remain
+valid and the caller can wait again. A matching terminal failure releases the
+handle's resources before `wait` returns that failure.
 
 `StorageClient::read_batch` and `StorageClient::write_batch` each submit one
 cross-endpoint command. Its `BATCH_READ` or `BATCH_WRITE` record identifies an
 NPU-registered descriptor array and total payload bytes; the CPU RDMA Reads the
 array, validates every descriptor and the aggregate length, then performs its
 ordered payload operations before one terminal completion Write. A malformed
-batch has no namespace effect. The batch itself remains one command in flight;
-it does not introduce command pipelining.
+batch has no namespace effect. The batch itself remains one command in flight
+within its slot; other slots on the same QP may carry independent commands.
 
 The CPU polls its verbs CQ for command Receive and terminal completion Write.
 The CPU-written NDS completion record is the storage completion. An RA local
 CQE, HCCP AI-QP CQ activity, ACL synchronization, provider resolution, or an
 operator launch is not NDS storage completion. `StorageClient::wait` observes
-the record through bounded device-to-host copies for RA. AIV and AICPU launch
-their separate device wait operator, which deserializes the same record in
-device code; the host stream timeout bounds that operator but is not the
+the record through bounded device-to-host copies. Direct AIV and AICPU device
+integrations may use their separate wait entrypoints to deserialize the same
+record in device code; a host stream timeout bounds that operator but is not the
 storage completion signal.
 
 The four command semantics are explicit across backend environments:

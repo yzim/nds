@@ -70,10 +70,13 @@ env <NDS_E2E_* assignments> \
 ctest --test-dir build-e2e --output-on-failure --label-regex '^e2e$'
 ```
 
-Each single case transfers 4096 bytes; each batch case transfers two 4096-byte
-entries in one command. Read starts the server with its deterministic seed
-pattern, which the client verifies. Write enables server-side payload
-verification. AICPU uses the CANN-root mode-0 package in the client executable.
+Each native storage case submits 32 commands across four QPs. The client
+maintains four internal command slots per QP, fills two complete windows, and
+reuses those slots after completion. Single-command cases transfer 4096 bytes
+per command; batch cases transfer two 4096-byte entries per command.
+Read starts the server with its deterministic seed pattern, which the client
+verifies. Write enables server-side payload verification.
+AICPU uses the CANN-root mode-0 package in the client executable.
 Install that package explicitly before running the test; the E2E runner itself
 does not modify the CANN installation.
 
@@ -91,8 +94,11 @@ benchmarking are not covered by this runner.
 The transport cases are the current layer focus. They validate the bounded
 launcher `RdmaSend`, `RdmaRecv`, `RdmaRead`, and `RdmaWrite` paths for each
 available backend using the complete transport descriptor and an explicit queue
-index. The selected backend owns fixed-interval signaling, CQ reclamation, and
-transport queue credits; batch boundaries do not change the signal schedule.
-These tests do not claim concurrent storage requests or transport throughput.
+index. Each case submits 65,536 data-path WRs. Receive cases use fixed windows so
+the client exhausts and replenishes its receive credits; send, read, and write
+cases repeatedly exercise send-side CQ reclamation. The selected backend owns
+fixed-interval signaling, CQ reclamation, and transport queue credits; batch
+boundaries do not change the signal schedule. These tests do not claim
+transport throughput or storage-protocol coverage.
 The transport layer negotiates its QP count and MTU internally; the runner
 exposes only the backend and operation selection.

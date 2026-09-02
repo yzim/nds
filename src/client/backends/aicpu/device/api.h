@@ -27,16 +27,16 @@ uint32_t nds_aicpu_rdma_read(const NdsTransportDescriptor *transport, uint32_t q
 uint32_t nds_aicpu_rdma_write(const NdsTransportDescriptor *transport, uint32_t queue_index, const NdsSendWr *wr,
                               int32_t *return_value);
 
-uint32_t nds_aicpu_storage_read(const NdsStorageContext *context, const nds::StorageReadCommand *command,
+uint32_t nds_aicpu_storage_read(const NdsStorageDescriptor *descriptor, const nds::StorageReadCommand *command,
                                 int32_t *return_value);
-uint32_t nds_aicpu_storage_write(const NdsStorageContext *context, const nds::StorageWriteCommand *command,
+uint32_t nds_aicpu_storage_write(const NdsStorageDescriptor *descriptor, const nds::StorageWriteCommand *command,
                                  int32_t *return_value);
-uint32_t nds_aicpu_storage_batch_read(const NdsStorageContext *context, const nds::StorageBatchReadCommand *command,
-                                      int32_t *return_value);
-uint32_t nds_aicpu_storage_batch_write(const NdsStorageContext *context, const nds::StorageBatchWriteCommand *command,
-                                       int32_t *return_value);
-uint32_t nds_aicpu_storage_wait(const NdsStorageContext *context, uint64_t command_id, uint64_t expected_bytes,
-                                int32_t *return_value);
+uint32_t nds_aicpu_storage_batch_read(const NdsStorageDescriptor *descriptor,
+                                      const nds::StorageBatchReadCommand *command, int32_t *return_value);
+uint32_t nds_aicpu_storage_batch_write(const NdsStorageDescriptor *descriptor,
+                                       const nds::StorageBatchWriteCommand *command, int32_t *return_value);
+uint32_t nds_aicpu_storage_wait(const NdsStorageDescriptor *descriptor, uint64_t command_id, uint64_t expected_bytes,
+                                uint32_t slot_index, int32_t *return_value);
 
 #ifdef __cplusplus
 }

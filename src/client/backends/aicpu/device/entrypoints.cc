@@ -135,7 +135,7 @@ extern "C" __attribute__((visibility("default"))) uint32_t nds_aicpu_storage_rea
         return kEntryInvalidArgument;
     }
     const uint32_t status =
-        nds_aicpu_storage_read(&request->context, &request->command, launch_return_value<NdsStorageReadArgs>(args));
+        nds_aicpu_storage_read(&request->storage, &request->command, launch_return_value<NdsStorageReadArgs>(args));
     entry_barrier();
     return status;
 }
@@ -147,7 +147,7 @@ extern "C" __attribute__((visibility("default"))) uint32_t nds_aicpu_storage_wri
         return kEntryInvalidArgument;
     }
     const uint32_t status =
-        nds_aicpu_storage_write(&request->context, &request->command, launch_return_value<NdsStorageWriteArgs>(args));
+        nds_aicpu_storage_write(&request->storage, &request->command, launch_return_value<NdsStorageWriteArgs>(args));
     entry_barrier();
     return status;
 }
@@ -158,7 +158,7 @@ extern "C" __attribute__((visibility("default"))) uint32_t nds_aicpu_storage_bat
         set_invalid(launch_return_value<NdsStorageBatchReadArgs>(args));
         return kEntryInvalidArgument;
     }
-    const uint32_t status = nds_aicpu_storage_batch_read(&request->context, &request->command,
+    const uint32_t status = nds_aicpu_storage_batch_read(&request->storage, &request->command,
                                                          launch_return_value<NdsStorageBatchReadArgs>(args));
     entry_barrier();
     return status;
@@ -170,7 +170,7 @@ extern "C" __attribute__((visibility("default"))) uint32_t nds_aicpu_storage_bat
         set_invalid(launch_return_value<NdsStorageBatchWriteArgs>(args));
         return kEntryInvalidArgument;
     }
-    const uint32_t status = nds_aicpu_storage_batch_write(&request->context, &request->command,
+    const uint32_t status = nds_aicpu_storage_batch_write(&request->storage, &request->command,
                                                           launch_return_value<NdsStorageBatchWriteArgs>(args));
     entry_barrier();
     return status;
@@ -179,12 +179,12 @@ extern "C" __attribute__((visibility("default"))) uint32_t nds_aicpu_storage_bat
 extern "C" __attribute__((visibility("default"))) uint32_t nds_aicpu_storage_wait_kernel(void *args) {
     auto *request = device_args<NdsStorageWaitArgs>(args);
     if (!valid_storage_args(request) ||
-        !nds_storage_wait_valid(&request->context, request->command_id, request->expected_bytes)) {
+        !nds_storage_wait_valid(&request->storage, request->command_id, request->expected_bytes, request->slot_index)) {
         set_invalid(launch_return_value<NdsStorageWaitArgs>(args));
         return kEntryInvalidArgument;
     }
-    const uint32_t status = nds_aicpu_storage_wait(&request->context, request->command_id, request->expected_bytes,
-                                                   launch_return_value<NdsStorageWaitArgs>(args));
+    const uint32_t status = nds_aicpu_storage_wait(&request->storage, request->command_id, request->expected_bytes,
+                                                   request->slot_index, launch_return_value<NdsStorageWaitArgs>(args));
     entry_barrier();
     return status;
 }
