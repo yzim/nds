@@ -127,7 +127,8 @@ nds::Result<void> run_send(nds::client::Transport *transport, nds::client::Launc
                            const nds::client::LaunchConfig &launch_config, std::uint32_t queue_index,
                            const nds::client::MemoryRegion &region) {
     const NdsSendWr send_wr{1U, NDS_WR_SEND, 0U, {region.address(), kBytes, region.local_key()}, 0U, 0U, 0U};
-    NDS_RETURN_IF_ERROR(launcher->rdma_send(launch_config, transport->device_transport(), queue_index, send_wr));
+    NDS_RETURN_IF_ERROR(launcher->with_config(launch_config).rdma_send(transport->device_transport(), queue_index,
+                                                                        send_wr));
     return wait_control_signal(transport->exchange_channel());
 }
 
@@ -136,7 +137,8 @@ nds::Result<void> run_receive(nds::client::Runtime *runtime, nds::client::Transp
                               std::uint32_t queue_index, const nds::client::MemoryRegion &region,
                               const nds::client::MemoryBuffer &buffer) {
     const NdsRecvWr receive_wr{1U, {region.address(), kBytes, region.local_key()}};
-    NDS_RETURN_IF_ERROR(launcher->rdma_recv(launch_config, transport->device_transport(), queue_index, receive_wr));
+    NDS_RETURN_IF_ERROR(launcher->with_config(launch_config).rdma_recv(transport->device_transport(), queue_index,
+                                                                        receive_wr));
     // The server sends only after this TCP acknowledgement, so the receive is armed first.
     NDS_RETURN_IF_ERROR(send_control_signal(transport->exchange_channel()));
     NDS_RETURN_IF_ERROR(wait_control_signal(transport->exchange_channel()));
@@ -155,7 +157,8 @@ nds::Result<void> run_read(nds::client::Runtime *runtime, nds::client::Transport
                             remote.address,
                             remote.remote_key,
                             0U};
-    NDS_RETURN_IF_ERROR(launcher->rdma_read(launch_config, transport->device_transport(), queue_index, read_wr));
+    NDS_RETURN_IF_ERROR(launcher->with_config(launch_config).rdma_read(transport->device_transport(), queue_index,
+                                                                        read_wr));
     NDS_RETURN_IF_ERROR(send_control_signal(transport->exchange_channel()));
     return verify_payload(runtime, buffer);
 }
@@ -171,9 +174,10 @@ nds::Result<void> run_write(nds::client::Transport *transport, nds::client::Laun
                              remote.address,
                              remote.remote_key,
                              0U};
-    NDS_RETURN_IF_ERROR(launcher->rdma_write(launch_config, transport->device_transport(), queue_index, write_wr));
+    NDS_RETURN_IF_ERROR(launcher->with_config(launch_config).rdma_write(transport->device_transport(), queue_index,
+                                                                         write_wr));
     const NdsSendWr signal_wr{2U, NDS_WR_SEND, 0U, {region.address(), 1U, region.local_key()}, 0U, 0U, 0U};
-    return launcher->rdma_send(launch_config, transport->device_transport(), queue_index, signal_wr);
+    return launcher->with_config(launch_config).rdma_send(transport->device_transport(), queue_index, signal_wr);
 }
 
 nds::Result<void> run_operation(Operation operation, nds::client::Runtime *runtime, nds::client::Transport *transport,

@@ -34,6 +34,16 @@ public:
     Result<void> post_recv(const NdsQpDescriptor &qp, const NdsRecvWr &wr) const;
     Result<std::uint32_t> poll_cq(const NdsQpDescriptor &qp, bool send_cq, std::uint32_t max_completions,
                                   NdsWc *completions) const;
+    Result<void> rdma_send(const NdsTransportDescriptor &transport, std::uint32_t queue_index,
+                           const NdsSendWr &wr) const;
+    Result<void> rdma_recv(const NdsTransportDescriptor &transport, std::uint32_t queue_index,
+                           const NdsRecvWr &wr) const;
+    Result<void> rdma_read(const NdsTransportDescriptor &transport, std::uint32_t queue_index,
+                           const NdsSendWr &wr) const;
+    Result<void> rdma_write(const NdsTransportDescriptor &transport, std::uint32_t queue_index,
+                            const NdsSendWr &wr) const;
+    Result<PostSendBatchResult> rdma_send_batch(const NdsTransportDescriptor &transport, std::uint32_t queue_index,
+                                                std::span<const NdsSendWr> wrs) const;
 
 private:
     friend class Launcher;

@@ -44,6 +44,52 @@ Result<std::uint32_t> ConfiguredLauncherView::poll_cq(const NdsQpDescriptor &qp,
     return launcher_->poll_cq_with_config(config_, qp, send_cq, max_completions, completions);
 }
 
+Result<void> ConfiguredLauncherView::rdma_send(const NdsTransportDescriptor &transport, std::uint32_t queue_index,
+                                               const NdsSendWr &wr) const {
+    if (launcher_ == nullptr)
+        return Error{ErrorCode::kInvalidArgument, "configured launcher is empty"};
+    if (!config_.sync)
+        return Error{ErrorCode::kInvalidArgument, "asynchronous launcher calls are not supported"};
+    return launcher_->rdma_send_with_config(config_, transport, queue_index, wr);
+}
+
+Result<void> ConfiguredLauncherView::rdma_recv(const NdsTransportDescriptor &transport, std::uint32_t queue_index,
+                                               const NdsRecvWr &wr) const {
+    if (launcher_ == nullptr)
+        return Error{ErrorCode::kInvalidArgument, "configured launcher is empty"};
+    if (!config_.sync)
+        return Error{ErrorCode::kInvalidArgument, "asynchronous launcher calls are not supported"};
+    return launcher_->rdma_recv_with_config(config_, transport, queue_index, wr);
+}
+
+Result<void> ConfiguredLauncherView::rdma_read(const NdsTransportDescriptor &transport, std::uint32_t queue_index,
+                                               const NdsSendWr &wr) const {
+    if (launcher_ == nullptr)
+        return Error{ErrorCode::kInvalidArgument, "configured launcher is empty"};
+    if (!config_.sync)
+        return Error{ErrorCode::kInvalidArgument, "asynchronous launcher calls are not supported"};
+    return launcher_->rdma_read_with_config(config_, transport, queue_index, wr);
+}
+
+Result<void> ConfiguredLauncherView::rdma_write(const NdsTransportDescriptor &transport, std::uint32_t queue_index,
+                                                const NdsSendWr &wr) const {
+    if (launcher_ == nullptr)
+        return Error{ErrorCode::kInvalidArgument, "configured launcher is empty"};
+    if (!config_.sync)
+        return Error{ErrorCode::kInvalidArgument, "asynchronous launcher calls are not supported"};
+    return launcher_->rdma_write_with_config(config_, transport, queue_index, wr);
+}
+
+Result<PostSendBatchResult> ConfiguredLauncherView::rdma_send_batch(const NdsTransportDescriptor &transport,
+                                                                    std::uint32_t queue_index,
+                                                                    std::span<const NdsSendWr> wrs) const {
+    if (launcher_ == nullptr)
+        return Error{ErrorCode::kInvalidArgument, "configured launcher is empty"};
+    if (!config_.sync)
+        return Error{ErrorCode::kInvalidArgument, "asynchronous launcher calls are not supported"};
+    return launcher_->rdma_send_batch_with_config(config_, transport, queue_index, wrs);
+}
+
 Result<std::unique_ptr<Launcher>> Launcher::open(Runtime *runtime, BackendMode mode, const std::string &artifact) {
     if (runtime == nullptr || !runtime->initialized())
         return Error{ErrorCode::kInvalidArgument, "launcher open requires an initialized runtime"};
