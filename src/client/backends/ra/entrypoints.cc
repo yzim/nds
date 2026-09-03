@@ -28,30 +28,35 @@ int rdma_operation(const NdsTransportDescriptor *transport, std::uint32_t queue_
     return operation(connection.value(), state, *wr).ok() ? 0 : -1;
 }
 
-template <typename Command>
-int storage_operation(const NdsStorageDescriptor *descriptor, const Command *command,
-                      nds::Result<void> (*operation)(const nds::RaStorageContext &, const Command &)) {
-    if (descriptor == nullptr || command == nullptr)
+template <typename Args>
+int storage_operation(const Args *args, nds::Result<void> (*operation)(const nds::RaStorageContext &, const Args &)) {
+    if (args == nullptr || !nds_storage_descriptor_valid(&args->storage) ||
+        !nds_storage_slot_id_valid(&args->storage, args->operation.slot_id))
         return -1;
-    const NdsStorageSlotDescriptor *slot = nds_storage_slot(descriptor, command->slot_index);
-    if (slot == nullptr || !nds_storage_slot_valid(descriptor, command->slot_index))
+    const NdsStorageDescriptor *descriptor = &args->storage;
+    const std::uint32_t slot_index = nds_storage_slot_id_index(args->operation.slot_id);
+    const NdsStorageSlotDescriptor *slot = nds_storage_slot(descriptor, slot_index);
+    if (slot == nullptr)
         return -1;
     const NdsQpDescriptor *qp = nds_transport_qp(&descriptor->transport, slot->qp_index);
-    NdsTransportQpState *state = nds_transport_qp_state(&descriptor->transport, slot->qp_index);
-    if (slot == nullptr || qp == nullptr || state == nullptr)
+    NdsTransportQpState *transport_state = nds_transport_qp_state(&descriptor->transport, slot->qp_index);
+    NdsStorageState *storage_state = nds_storage_state(descriptor, slot_index);
+    if (slot == nullptr || qp == nullptr || transport_state == nullptr || storage_state == nullptr)
         return -1;
     const auto connection = host_connection(*qp);
     if (!connection.ok())
         return -1;
     const nds::RaStorageContext host_context{
         {connection.value().runtime, connection.value().qp},
-        state,
+        transport_state,
+        storage_state,
         reinterpret_cast<void *>(slot->command_buffer.address),
         {slot->command_buffer.address, slot->command_buffer.length, slot->command_buffer.local_key},
         reinterpret_cast<void *>(slot->completion_buffer.address),
         {slot->completion_buffer.address, slot->completion_buffer.length, slot->completion_buffer.local_key},
-        descriptor->capacity};
-    return operation(host_context, *command).ok() ? 0 : -1;
+        descriptor->capacity,
+        slot_index};
+    return operation(host_context, *args).ok() ? 0 : -1;
 }
 
 }  // namespace
@@ -103,22 +108,57 @@ extern "C" int nds_ra_backend_rdma_write(const NdsTransportDescriptor *transport
     return rdma_operation(transport, queue_index, wr, nds::NdsRaRdmaWrite);
 }
 
-extern "C" int nds_ra_backend_storage_read(const NdsStorageDescriptor *descriptor,
-                                           const nds::StorageReadCommand *command) {
-    return storage_operation(descriptor, command, nds::NdsRaStorageRead);
+extern "C" int nds_ra_backend_storage_bootstrap(const NdsStorageBootstrapDescriptor *bootstrap) {
+    if (bootstrap == nullptr || bootstrap->transport.qp_count == 0U || bootstrap->bootstrap.address == 0U)
+        return -1;
+    const NdsQpDescriptor *qp = nds_transport_qp(&bootstrap->transport, 0U);
+    NdsTransportQpState *state = nds_transport_qp_state(&bootstrap->transport, 0U);
+    if (qp == nullptr || state == nullptr)
+        return -1;
+    const auto connection = host_connection(*qp);
+    return connection.ok() && nds::NdsRaStorageBootstrap(connection.value(), state, bootstrap->bootstrap).ok() ? 0 : -1;
 }
 
-extern "C" int nds_ra_backend_storage_write(const NdsStorageDescriptor *descriptor,
-                                            const nds::StorageWriteCommand *command) {
-    return storage_operation(descriptor, command, nds::NdsRaStorageWrite);
+extern "C" int nds_ra_backend_storage_read(const NdsStorageOperationArgs *args) {
+    return storage_operation(args, nds::NdsRaStorageRead);
 }
 
-extern "C" int nds_ra_backend_storage_batch_read(const NdsStorageDescriptor *descriptor,
-                                                 const nds::StorageBatchReadCommand *command) {
-    return storage_operation(descriptor, command, nds::NdsRaStorageBatchRead);
+extern "C" int nds_ra_backend_storage_write(const NdsStorageOperationArgs *args) {
+    return storage_operation(args, nds::NdsRaStorageWrite);
 }
 
-extern "C" int nds_ra_backend_storage_batch_write(const NdsStorageDescriptor *descriptor,
-                                                  const nds::StorageBatchWriteCommand *command) {
-    return storage_operation(descriptor, command, nds::NdsRaStorageBatchWrite);
+extern "C" int nds_ra_backend_storage_batch_read(const NdsStorageBatchOperationArgs *args) {
+    return storage_operation(args, nds::NdsRaStorageBatchRead);
+}
+
+extern "C" int nds_ra_backend_storage_batch_write(const NdsStorageBatchOperationArgs *args) {
+    return storage_operation(args, nds::NdsRaStorageBatchWrite);
+}
+
+extern "C" int nds_ra_backend_storage_wait(const NdsStorageDescriptor *descriptor, std::uint32_t slot_id) {
+    if (descriptor == nullptr || !nds_storage_wait_valid(descriptor, slot_id))
+        return -1;
+    const std::uint32_t slot_index = nds_storage_slot_id_index(slot_id);
+    const NdsStorageSlotDescriptor *slot = nds_storage_slot(descriptor, slot_index);
+    const NdsQpDescriptor *qp = nds_transport_qp(&descriptor->transport, slot->qp_index);
+    const auto connection =
+        qp == nullptr
+            ? nds::Result<nds::RaConnection>(nds::Error{nds::ErrorCode::kInvalidArgument, "invalid storage wait QP"})
+            : host_connection(*qp);
+    if (!connection.ok())
+        return -1;
+    const nds::RaStorageContext context{
+        {connection.value().runtime, connection.value().qp},
+        nds_transport_qp_state(&descriptor->transport, slot->qp_index),
+        nds_storage_state(descriptor, slot_index),
+        reinterpret_cast<void *>(slot->command_buffer.address),
+        {slot->command_buffer.address, slot->command_buffer.length, slot->command_buffer.local_key},
+        reinterpret_cast<void *>(slot->completion_buffer.address),
+        {slot->completion_buffer.address, slot->completion_buffer.length, slot->completion_buffer.local_key},
+        descriptor->capacity,
+        slot_index};
+    const auto completion = nds::NdsRaStorageWait(context);
+    if (completion.ok())
+        return completion.value().status == nds::StorageStatus::Success ? 0 : -1;
+    return completion.error().message == "storage completion is pending" ? 1 : -1;
 }

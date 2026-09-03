@@ -6,14 +6,13 @@
 #include <cerrno>
 #include <cstring>
 #include <limits>
-#include <thread>
 #include <utility>
 #include <unistd.h>
 
 namespace nds::server {
 namespace {
 
-constexpr std::uint32_t kQpDepth = 16U;
+constexpr std::uint32_t kQpDepth = 128U;
 constexpr std::uint8_t kMaxRdAtomic = 16U;
 
 std::uint64_t next_wr_id(std::uint64_t current) {
@@ -121,8 +120,10 @@ QueuePair::QueuePair(QueuePair &&other) noexcept
       handle_(std::exchange(other.handle_, nullptr)),
       local_(other.local_),
       connected_(std::exchange(other.connected_, false)),
+      next_send_wr_id_(std::exchange(other.next_send_wr_id_, 4U)),
       next_receive_wr_id_(std::exchange(other.next_receive_wr_id_, 1U)),
-      pending_receive_ids_(std::move(other.pending_receive_ids_)) {}
+      pending_receive_ids_(std::move(other.pending_receive_ids_)),
+      pending_completions_(std::move(other.pending_completions_)) {}
 
 QueuePair &QueuePair::operator=(QueuePair &&other) noexcept {
     if (this != &other) {
@@ -132,8 +133,10 @@ QueuePair &QueuePair::operator=(QueuePair &&other) noexcept {
         handle_ = std::exchange(other.handle_, nullptr);
         local_ = other.local_;
         connected_ = std::exchange(other.connected_, false);
+        next_send_wr_id_ = std::exchange(other.next_send_wr_id_, 4U);
         next_receive_wr_id_ = std::exchange(other.next_receive_wr_id_, 1U);
         pending_receive_ids_ = std::move(other.pending_receive_ids_);
+        pending_completions_ = std::move(other.pending_completions_);
     }
     return *this;
 }
@@ -148,8 +151,10 @@ void QueuePair::reset() noexcept {
     handle_ = nullptr;
     local_ = {};
     connected_ = false;
+    next_send_wr_id_ = 4U;
     next_receive_wr_id_ = 1U;
     pending_receive_ids_.clear();
+    pending_completions_.clear();
 }
 
 const nds::QpInfo &QueuePair::local_qp_info() const noexcept {
@@ -207,15 +212,18 @@ bool QueuePair::connected() const noexcept {
     return connected_;
 }
 
-bool QueuePair::valid_local_region(const MemoryRegion &region, std::uint32_t length) const noexcept {
+bool QueuePair::valid_local_region(const MemoryRegion &region, std::uint64_t local_offset,
+                                   std::uint32_t length) const noexcept {
     const auto address = reinterpret_cast<std::uintptr_t>(region.address());
     return created() && connected() && region.belongs_to(endpoint_) && region.address() != nullptr &&
-           region.local_key() != 0U && length != 0U && length <= region.length() &&
-           address <= std::numeric_limits<std::uintptr_t>::max() - length;
+           region.local_key() != 0U && length != 0U && local_offset <= region.length() &&
+           length <= region.length() - local_offset &&
+           local_offset <= std::numeric_limits<std::uintptr_t>::max() - address &&
+           address + local_offset <= std::numeric_limits<std::uintptr_t>::max() - length;
 }
 
 Result<void> QueuePair::post_receive(const MemoryRegion &region) {
-    if (!valid_local_region(region, static_cast<std::uint32_t>(region.length())) ||
+    if (!valid_local_region(region, 0U, static_cast<std::uint32_t>(region.length())) ||
         region.length() > std::numeric_limits<std::uint32_t>::max())
         return Error{ErrorCode::kInvalidArgument, "CPU receive requires a valid QP and registered memory region"};
     if (pending_receive_ids_.size() >= kQpDepth)
@@ -234,23 +242,34 @@ Result<void> QueuePair::post_receive(const MemoryRegion &region) {
     return {};
 }
 
-Result<ibv_wc> QueuePair::poll_completion(std::uint32_t timeout_ms) {
+Result<ibv_wc> QueuePair::poll_matching(ibv_wc_opcode opcode, std::uint64_t expected_wr_id, std::uint32_t timeout_ms) {
     if (!created())
         return Error{ErrorCode::kInvalidArgument, "CPU verbs QP is not created"};
-    for (std::uint32_t elapsed = 0U; elapsed < timeout_ms; ++elapsed) {
+    for (auto iterator = pending_completions_.begin(); iterator != pending_completions_.end(); ++iterator) {
+        if (iterator->opcode == opcode && iterator->wr_id == expected_wr_id) {
+            const ibv_wc completion = *iterator;
+            pending_completions_.erase(iterator);
+            return completion;
+        }
+    }
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+    while (std::chrono::steady_clock::now() < deadline) {
         ibv_wc completion{};
         const int count = ibv_poll_cq(cq_, 1, &completion);
-        if (count == 1)
-            return completion;
+        if (count == 1) {
+            if (completion.opcode == opcode && completion.wr_id == expected_wr_id)
+                return completion;
+            pending_completions_.push_back(completion);
+            continue;
+        }
         if (count < 0)
             return Error{ErrorCode::kVerbs, "verbs CQ polling failed"};
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
     return Error{ErrorCode::kVerbs, "timed out waiting for verbs completion"};
 }
 
 Result<void> QueuePair::poll(ibv_wc_opcode opcode, std::uint64_t expected_wr_id, std::uint32_t timeout_ms) {
-    const auto completion = poll_completion(timeout_ms);
+    const auto completion = poll_matching(opcode, expected_wr_id, timeout_ms);
     if (!completion.ok())
         return completion.error();
     if (completion.value().status != IBV_WC_SUCCESS || completion.value().opcode != opcode ||
@@ -268,10 +287,10 @@ Result<void> QueuePair::wait_receive(std::uint32_t timeout_ms) {
         return Error{ErrorCode::kInvalidArgument, "CPU transport completion timeout is outside the supported range"};
     if (pending_receive_ids_.empty())
         return Error{ErrorCode::kInvalidArgument, "CPU receive completion has no pending receive"};
-    const auto completion = poll_completion(timeout_ms);
+    const std::uint64_t expected_wr_id = pending_receive_ids_.front();
+    const auto completion = poll_matching(IBV_WC_RECV, expected_wr_id, timeout_ms);
     if (!completion.ok())
         return completion.error();
-    const std::uint64_t expected_wr_id = pending_receive_ids_.front();
     pending_receive_ids_.pop_front();
     if (completion.value().status != IBV_WC_SUCCESS || completion.value().opcode != IBV_WC_RECV ||
         completion.value().wr_id != expected_wr_id)
@@ -285,39 +304,80 @@ Result<void> QueuePair::wait_receive(std::uint32_t timeout_ms) {
 }
 
 Result<void> QueuePair::send(const MemoryRegion &local, std::uint32_t length, std::uint32_t timeout_ms) {
-    if (!valid_local_region(local, length))
+    const auto posted = post_send(local, length);
+    if (!posted.ok())
+        return posted.error();
+    return poll(IBV_WC_SEND, posted.value(), timeout_ms);
+}
+
+Result<std::uint64_t> QueuePair::post_send(const MemoryRegion &local, std::uint32_t length) {
+    if (!valid_local_region(local, 0U, length))
         return Error{ErrorCode::kInvalidArgument, "invalid send length"};
     ibv_sge sge{reinterpret_cast<std::uintptr_t>(local.address()), length, local.local_key()};
     ibv_send_wr wr{};
     ibv_send_wr *bad = nullptr;
-    wr.wr_id = 3U;
+    wr.wr_id = next_send_wr_id_;
     wr.sg_list = &sge;
     wr.num_sge = 1;
     wr.opcode = IBV_WR_SEND;
     wr.send_flags = IBV_SEND_SIGNALED;
     if (ibv_post_send(handle_, &wr, &bad) != 0)
         return Error{ErrorCode::kVerbs, std::strerror(errno)};
-    return poll(IBV_WC_SEND, wr.wr_id, timeout_ms);
+    next_send_wr_id_ = next_wr_id(wr.wr_id);
+    return wr.wr_id;
 }
 
 Result<void> QueuePair::transfer(ibv_wr_opcode opcode, const MemoryRegion &local, std::uint64_t remote_address,
                                  std::uint32_t remote_key, std::uint32_t length, std::uint32_t timeout_ms) {
-    if (!valid_local_region(local, length) || remote_address == 0U || remote_key == 0U ||
-        remote_address > std::numeric_limits<std::uint64_t>::max() - length)
-        return Error{ErrorCode::kInvalidArgument, "invalid RDMA transfer range"};
-    ibv_sge sge{reinterpret_cast<std::uintptr_t>(local.address()), length, local.local_key()};
-    ibv_send_wr wr{};
+    const auto posted = post_transfer(opcode, local, 0U, remote_address, remote_key, length);
+    if (!posted.ok())
+        return posted.error();
+    return poll(opcode == IBV_WR_RDMA_READ ? IBV_WC_RDMA_READ : IBV_WC_RDMA_WRITE, posted.value(), timeout_ms);
+}
+
+Result<std::uint64_t> QueuePair::post_transfer(ibv_wr_opcode opcode, const MemoryRegion &local,
+                                               std::uint64_t local_offset, std::uint64_t remote_address,
+                                               std::uint32_t remote_key, std::uint32_t length) {
+    const TransferRequest request{&local, local_offset, remote_address, remote_key, length};
+    const auto posted = post_transfer_batch(opcode, std::span<const TransferRequest>{&request, 1U});
+    if (!posted.ok())
+        return posted.error();
+    return posted.value().front();
+}
+
+Result<std::vector<std::uint64_t>> QueuePair::post_transfer_batch(ibv_wr_opcode opcode,
+                                                                  std::span<const TransferRequest> requests) {
+    if (!created() || !connected() || requests.empty())
+        return Error{ErrorCode::kInvalidArgument, "invalid RDMA transfer batch"};
+
+    std::vector<ibv_sge> sges(requests.size());
+    std::vector<ibv_send_wr> wrs(requests.size());
+    std::vector<std::uint64_t> wr_ids(requests.size());
+    for (std::size_t index = 0U; index < requests.size(); ++index) {
+        const TransferRequest &request = requests[index];
+        if (request.local == nullptr || !valid_local_region(*request.local, request.local_offset, request.length) ||
+            request.remote_address == 0U || request.remote_key == 0U ||
+            request.remote_address > std::numeric_limits<std::uint64_t>::max() - request.length)
+            return Error{ErrorCode::kInvalidArgument, "invalid RDMA transfer range"};
+
+        wr_ids[index] = next_send_wr_id_;
+        sges[index] = {reinterpret_cast<std::uintptr_t>(request.local->address()) + request.local_offset,
+                       request.length, request.local->local_key()};
+        wrs[index].wr_id = wr_ids[index];
+        wrs[index].sg_list = &sges[index];
+        wrs[index].num_sge = 1U;
+        wrs[index].opcode = opcode;
+        wrs[index].send_flags = index + 1U == requests.size() ? static_cast<int>(IBV_SEND_SIGNALED) : 0U;
+        wrs[index].wr.rdma.remote_addr = request.remote_address;
+        wrs[index].wr.rdma.rkey = request.remote_key;
+        wrs[index].next = index + 1U == requests.size() ? nullptr : &wrs[index + 1U];
+        next_send_wr_id_ = next_wr_id(next_send_wr_id_);
+    }
+
     ibv_send_wr *bad = nullptr;
-    wr.wr_id = 2U;
-    wr.sg_list = &sge;
-    wr.num_sge = 1;
-    wr.opcode = opcode;
-    wr.send_flags = IBV_SEND_SIGNALED;
-    wr.wr.rdma.remote_addr = remote_address;
-    wr.wr.rdma.rkey = remote_key;
-    if (ibv_post_send(handle_, &wr, &bad) != 0)
+    if (ibv_post_send(handle_, wrs.data(), &bad) != 0)
         return Error{ErrorCode::kVerbs, std::strerror(errno)};
-    return poll(opcode == IBV_WR_RDMA_READ ? IBV_WC_RDMA_READ : IBV_WC_RDMA_WRITE, wr.wr_id, timeout_ms);
+    return wr_ids;
 }
 
 Result<void> QueuePair::read(const MemoryRegion &local, std::uint64_t remote_address, std::uint32_t remote_key,

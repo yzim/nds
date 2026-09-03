@@ -14,9 +14,11 @@ using NdsRaBackendRdmaSend = int (*)(const NdsTransportDescriptor *, std::uint32
 using NdsRaBackendRdmaRecv = int (*)(const NdsTransportDescriptor *, std::uint32_t, const NdsRecvWr *);
 using NdsRaBackendRdmaRead = int (*)(const NdsTransportDescriptor *, std::uint32_t, const NdsSendWr *);
 using NdsRaBackendRdmaWrite = int (*)(const NdsTransportDescriptor *, std::uint32_t, const NdsSendWr *);
-using NdsRaBackendStorageRead = int (*)(const NdsStorageDescriptor *, const nds::StorageReadCommand *);
-using NdsRaBackendStorageWrite = int (*)(const NdsStorageDescriptor *, const nds::StorageWriteCommand *);
-using NdsRaBackendStorageReadBatch = int (*)(const NdsStorageDescriptor *, const nds::StorageBatchReadCommand *);
-using NdsRaBackendStorageWriteBatch = int (*)(const NdsStorageDescriptor *, const nds::StorageBatchWriteCommand *);
+using NdsRaBackendStorageBootstrap = int (*)(const NdsStorageBootstrapDescriptor *);
+using NdsRaBackendStorageRead = int (*)(const NdsStorageOperationArgs *);
+using NdsRaBackendStorageWrite = int (*)(const NdsStorageOperationArgs *);
+using NdsRaBackendStorageReadBatch = int (*)(const NdsStorageBatchOperationArgs *);
+using NdsRaBackendStorageWriteBatch = int (*)(const NdsStorageBatchOperationArgs *);
+using NdsRaBackendStorageWait = int (*)(const NdsStorageDescriptor *, std::uint32_t);
 
 #endif

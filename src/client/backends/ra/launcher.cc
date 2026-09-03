@@ -4,6 +4,8 @@
 #include "backend_abi.hh"
 
 #include <utility>
+#include <chrono>
+#include <thread>
 
 namespace nds::client {
 
@@ -17,10 +19,12 @@ public:
     NdsRaBackendRdmaRecv rdma_recv{};
     NdsRaBackendRdmaRead rdma_read{};
     NdsRaBackendRdmaWrite rdma_write{};
+    NdsRaBackendStorageBootstrap storage_bootstrap{};
     NdsRaBackendStorageRead storage_read{};
     NdsRaBackendStorageWrite storage_write{};
     NdsRaBackendStorageReadBatch storage_read_batch{};
     NdsRaBackendStorageWriteBatch storage_write_batch{};
+    NdsRaBackendStorageWait storage_wait{};
 };
 
 RaLauncher::RaLauncher() = default;
@@ -52,6 +56,8 @@ Result<void> RaLauncher::load(const std::string &backend_path) {
                          library.resolve_required<NdsRaBackendRdmaRead>("nds_ra_backend_rdma_read"));
     NDS_ASSIGN_OR_RETURN(NdsRaBackendRdmaWrite rdma_write,
                          library.resolve_required<NdsRaBackendRdmaWrite>("nds_ra_backend_rdma_write"));
+    NDS_ASSIGN_OR_RETURN(NdsRaBackendStorageBootstrap storage_bootstrap,
+                         library.resolve_required<NdsRaBackendStorageBootstrap>("nds_ra_backend_storage_bootstrap"));
     NDS_ASSIGN_OR_RETURN(NdsRaBackendStorageRead storage_read,
                          library.resolve_required<NdsRaBackendStorageRead>("nds_ra_backend_storage_read"));
     NDS_ASSIGN_OR_RETURN(NdsRaBackendStorageWrite storage_write,
@@ -60,6 +66,8 @@ Result<void> RaLauncher::load(const std::string &backend_path) {
                          library.resolve_required<NdsRaBackendStorageReadBatch>("nds_ra_backend_storage_batch_read"));
     NDS_ASSIGN_OR_RETURN(NdsRaBackendStorageWriteBatch storage_write_batch,
                          library.resolve_required<NdsRaBackendStorageWriteBatch>("nds_ra_backend_storage_batch_write"));
+    NDS_ASSIGN_OR_RETURN(NdsRaBackendStorageWait storage_wait,
+                         library.resolve_required<NdsRaBackendStorageWait>("nds_ra_backend_storage_wait"));
     impl_ = std::make_unique<Impl>();
     impl_->library = std::move(library);
     impl_->post_send = post_send;
@@ -69,10 +77,12 @@ Result<void> RaLauncher::load(const std::string &backend_path) {
     impl_->rdma_recv = rdma_recv;
     impl_->rdma_read = rdma_read;
     impl_->rdma_write = rdma_write;
+    impl_->storage_bootstrap = storage_bootstrap;
     impl_->storage_read = storage_read;
     impl_->storage_write = storage_write;
     impl_->storage_read_batch = storage_read_batch;
     impl_->storage_write_batch = storage_write_batch;
+    impl_->storage_wait = storage_wait;
     return {};
 }
 
@@ -133,38 +143,96 @@ Result<void> RaLauncher::rdma_write_with_config(const LaunchConfig &, const NdsT
                                                                 : Error{ErrorCode::kRa, "RA backend RDMA write failed"};
 }
 
+Result<void> RaLauncher::storage_bootstrap_with_config(const LaunchConfig &,
+                                                       const NdsStorageBootstrapDescriptor &bootstrap) const {
+    if (impl_ == nullptr || impl_->storage_bootstrap == nullptr)
+        return Error{ErrorCode::kRuntime, "RA backend is not loaded"};
+    return impl_->storage_bootstrap(&bootstrap) == 0 ? Result<void>{}
+                                                     : Error{ErrorCode::kRa, "RA backend storage bootstrap failed"};
+}
+
 Result<void> RaLauncher::storage_read_with_config(const LaunchConfig &, const NdsStorageDescriptor &storage,
-                                                  const nds::StorageReadCommand &command) const {
+                                                  std::uint32_t slot_id, std::uint64_t server_offset,
+                                                  std::uint64_t buffer_address, std::uint32_t buffer_key,
+                                                  std::uint32_t length) const {
     if (impl_ == nullptr || impl_->storage_read == nullptr)
         return Error{ErrorCode::kRuntime, "RA backend is not loaded"};
-    return impl_->storage_read(&storage, &command) == 0 ? Result<void>{}
-                                                        : Error{ErrorCode::kRa, "RA backend storage Read failed"};
+    const NdsStorageOperationArgs args{.storage = storage,
+                                       .operation = {.slot_id = slot_id,
+                                                     .reserved = 0U,
+                                                     .server_offset = server_offset,
+                                                     .buffer_address = buffer_address,
+                                                     .buffer_key = buffer_key,
+                                                     .length = length},
+                                       .return_value = 0};
+    return impl_->storage_read(&args) == 0 ? Result<void>{} : Error{ErrorCode::kRa, "RA backend storage Read failed"};
 }
 
 Result<void> RaLauncher::storage_write_with_config(const LaunchConfig &, const NdsStorageDescriptor &storage,
-                                                   const nds::StorageWriteCommand &command) const {
+                                                   std::uint32_t slot_id, std::uint64_t server_offset,
+                                                   std::uint64_t buffer_address, std::uint32_t buffer_key,
+                                                   std::uint32_t length) const {
     if (impl_ == nullptr || impl_->storage_write == nullptr)
         return Error{ErrorCode::kRuntime, "RA backend is not loaded"};
-    return impl_->storage_write(&storage, &command) == 0 ? Result<void>{}
-                                                         : Error{ErrorCode::kRa, "RA backend storage Write failed"};
+    const NdsStorageOperationArgs args{.storage = storage,
+                                       .operation = {.slot_id = slot_id,
+                                                     .reserved = 0U,
+                                                     .server_offset = server_offset,
+                                                     .buffer_address = buffer_address,
+                                                     .buffer_key = buffer_key,
+                                                     .length = length},
+                                       .return_value = 0};
+    return impl_->storage_write(&args) == 0 ? Result<void>{} : Error{ErrorCode::kRa, "RA backend storage Write failed"};
 }
 
 Result<void> RaLauncher::storage_read_batch_with_config(const LaunchConfig &, const NdsStorageDescriptor &storage,
-                                                        const nds::StorageBatchReadCommand &command) const {
+                                                        std::uint32_t slot_id, std::uint64_t entries_address,
+                                                        std::uint32_t entries_key, std::uint32_t entry_count) const {
     if (impl_ == nullptr || impl_->storage_read_batch == nullptr)
         return Error{ErrorCode::kRuntime, "RA backend is not loaded"};
-    return impl_->storage_read_batch(&storage, &command) == 0
-               ? Result<void>{}
-               : Error{ErrorCode::kRa, "RA backend storage batch Read failed"};
+    const NdsStorageBatchOperationArgs args{.storage = storage,
+                                            .operation = {.slot_id = slot_id,
+                                                          .entry_count = entry_count,
+                                                          .entries_address = entries_address,
+                                                          .entries_key = entries_key,
+                                                          .reserved = 0U},
+                                            .return_value = 0};
+    return impl_->storage_read_batch(&args) == 0 ? Result<void>{}
+                                                 : Error{ErrorCode::kRa, "RA backend storage batch Read failed"};
 }
 
 Result<void> RaLauncher::storage_write_batch_with_config(const LaunchConfig &, const NdsStorageDescriptor &storage,
-                                                         const nds::StorageBatchWriteCommand &command) const {
+                                                         std::uint32_t slot_id, std::uint64_t entries_address,
+                                                         std::uint32_t entries_key, std::uint32_t entry_count) const {
     if (impl_ == nullptr || impl_->storage_write_batch == nullptr)
         return Error{ErrorCode::kRuntime, "RA backend is not loaded"};
-    return impl_->storage_write_batch(&storage, &command) == 0
-               ? Result<void>{}
-               : Error{ErrorCode::kRa, "RA backend storage batch Write failed"};
+    const NdsStorageBatchOperationArgs args{.storage = storage,
+                                            .operation = {.slot_id = slot_id,
+                                                          .entry_count = entry_count,
+                                                          .entries_address = entries_address,
+                                                          .entries_key = entries_key,
+                                                          .reserved = 0U},
+                                            .return_value = 0};
+    return impl_->storage_write_batch(&args) == 0 ? Result<void>{}
+                                                  : Error{ErrorCode::kRa, "RA backend storage batch Write failed"};
+}
+
+Result<void> RaLauncher::storage_wait_with_config(const LaunchConfig &config, const NdsStorageDescriptor &storage,
+                                                  std::uint32_t slot_id) const {
+    if (impl_ == nullptr || impl_->storage_wait == nullptr)
+        return Error{ErrorCode::kRuntime, "RA backend is not loaded"};
+    if (config.sync_timeout_ms <= 0)
+        return Error{ErrorCode::kInvalidArgument, "storage wait requires a positive timeout"};
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(config.sync_timeout_ms);
+    for (;;) {
+        const int result = impl_->storage_wait(&storage, slot_id);
+        if (result == 0)
+            return {};
+        if (result != 1 || std::chrono::steady_clock::now() >= deadline)
+            return Error{ErrorCode::kProtocol,
+                         result == 1 ? "timed out waiting for storage completion" : "RA storage completion failed"};
+        std::this_thread::yield();
+    }
 }
 
 }  // namespace nds::client

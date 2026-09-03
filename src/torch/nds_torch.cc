@@ -1,6 +1,7 @@
 #include "runtime.hh"
 #include "storage.hh"
 #include "transport.hh"
+#include "backends/launcher.hh"
 
 #include <torch/extension.h>
 #include <torch_npu/csrc/core/npu/NPUFunctions.h>
@@ -61,6 +62,17 @@ public:
         TORCH_CHECK(!backend.artifact_path.empty(), "NDS backend requires an artifact");
         check(transport_.open(&runtime_, transport_config, backend));
         check(storage_.open(&runtime_, &transport_));
+        launcher_ = value_or_throw(client::Launcher::open(&runtime_, backend.mode, backend.artifact_path));
+        if (backend.mode != client::BackendMode::Ra)
+            TORCH_CHECK(aclrtCreateStream(&stream_) == ACL_SUCCESS, "NDS: storage stream creation failed");
+        check(launcher_->with_config({.stream = stream_, .sync = true, .sync_timeout_ms = 5000})
+                  .storage_bootstrap(storage_.bootstrap_descriptor()));
+        check(storage_.complete_bootstrap(5000U));
+    }
+
+    ~Session() {
+        if (stream_ != nullptr)
+            (void)aclrtDestroyStream(stream_);
     }
 
     void read_(const ::torch::Tensor &output, std::int64_t offset);
@@ -71,15 +83,24 @@ private:
     client::Runtime runtime_;
     client::Transport transport_;
     client::StorageClient storage_;
+    std::unique_ptr<client::Launcher> launcher_;
+    aclrtStream stream_{};
 };
 
 void Session::read_(const ::torch::Tensor &output, std::int64_t offset) {
     check_tensor(output);
     TORCH_CHECK(offset >= 0, "storage offset must be nonnegative");
     auto buffer = value_or_throw(runtime_.allocate(output.nbytes(), client::MemoryLocation::Device));
-    const auto completion = value_or_throw(
-        storage_.read(static_cast<std::uint64_t>(offset), &buffer, static_cast<std::uint32_t>(output.nbytes())));
-    check(storage_.wait(completion, 5000U));
+    const auto region = value_or_throw(storage_.register_memory(buffer, client::MemoryAccess::LocalWrite |
+                                                                            client::MemoryAccess::RemoteWrite |
+                                                                            client::MemoryAccess::RemoteRead));
+    const auto slot = value_or_throw(storage_.allocate_slot());
+    check(launcher_->with_config({.stream = stream_, .sync = true, .sync_timeout_ms = 5000})
+              .storage_read(storage_.descriptor(), slot, static_cast<std::uint64_t>(offset), region.address(),
+                            region.remote_key(), static_cast<std::uint32_t>(output.nbytes())));
+    check(launcher_->with_config({.stream = stream_, .sync = true, .sync_timeout_ms = 5000})
+              .storage_wait(storage_.descriptor(), slot));
+    check(storage_.release_slot(slot));
     check(runtime_.copy_from(output.data_ptr(), buffer, output.nbytes()));
 }
 
@@ -88,9 +109,16 @@ void Session::write(const ::torch::Tensor &input, std::int64_t offset) {
     TORCH_CHECK(offset >= 0, "storage offset must be nonnegative");
     auto buffer = value_or_throw(runtime_.allocate(input.nbytes(), client::MemoryLocation::Device));
     check(runtime_.copy_to(&buffer, input.data_ptr(), input.nbytes()));
-    const auto completion = value_or_throw(
-        storage_.write(static_cast<std::uint64_t>(offset), &buffer, static_cast<std::uint32_t>(input.nbytes())));
-    check(storage_.wait(completion, 5000U));
+    const auto region = value_or_throw(storage_.register_memory(buffer, client::MemoryAccess::LocalWrite |
+                                                                            client::MemoryAccess::RemoteWrite |
+                                                                            client::MemoryAccess::RemoteRead));
+    const auto slot = value_or_throw(storage_.allocate_slot());
+    check(launcher_->with_config({.stream = stream_, .sync = true, .sync_timeout_ms = 5000})
+              .storage_write(storage_.descriptor(), slot, static_cast<std::uint64_t>(offset), region.address(),
+                             region.remote_key(), static_cast<std::uint32_t>(input.nbytes())));
+    check(launcher_->with_config({.stream = stream_, .sync = true, .sync_timeout_ms = 5000})
+              .storage_wait(storage_.descriptor(), slot));
+    check(storage_.release_slot(slot));
 }
 
 std::int64_t Session::capacity() const {

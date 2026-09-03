@@ -188,6 +188,24 @@ Result<void> Transport::write(std::size_t qp_index, const MemoryRegion &local, s
     return qp->write(local, address, key, length, completion_timeout_ms_);
 }
 
+Result<void> Transport::read_batch(std::size_t qp_index, std::span<const TransferRequest> requests) {
+    QueuePair *qp = queue_pair(qp_index);
+    if (qp == nullptr || requests.empty())
+        return Error{ErrorCode::kInvalidArgument, "CPU transport RDMA-read batch is invalid"};
+    NDS_ASSIGN_OR_RETURN(const std::vector<std::uint64_t> wr_ids, qp->post_transfer_batch(IBV_WR_RDMA_READ, requests));
+    // RC completion ordering makes the final signaled WQE a completion fence
+    // for the preceding payload WQEs in this linked batch.
+    return qp->poll(IBV_WC_RDMA_READ, wr_ids.back(), completion_timeout_ms_);
+}
+
+Result<void> Transport::write_batch(std::size_t qp_index, std::span<const TransferRequest> requests) {
+    QueuePair *qp = queue_pair(qp_index);
+    if (qp == nullptr || requests.empty())
+        return Error{ErrorCode::kInvalidArgument, "CPU transport RDMA-write batch is invalid"};
+    NDS_ASSIGN_OR_RETURN(const std::vector<std::uint64_t> wr_ids, qp->post_transfer_batch(IBV_WR_RDMA_WRITE, requests));
+    return qp->poll(IBV_WC_RDMA_WRITE, wr_ids.back(), completion_timeout_ms_);
+}
+
 std::size_t Transport::qp_count() const noexcept {
     return qps_.size();
 }

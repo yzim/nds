@@ -42,7 +42,7 @@ current architecture and protocol contract.
 - Implemented a memory-backed namespace with range validation, fixed command
   and completion records, per-QP Read/Write semantics, and one-command batch
   Read/Write with CPU-side whole-batch descriptor validation.
-- Added a fixed four-slot-per-QP storage window, explicit slot/QP mapping,
+- Added a fixed sixteen-slot-per-QP storage window, explicit slot/QP mapping,
   command-ID validation, per-slot completion records, and CPU receive-WR
   pre-posting/replenishment for multiple commands in flight on each QP.
 - Implemented CPU-initiated RDMA Read/Write data movement and terminal
@@ -141,7 +141,7 @@ not application-side parallel loops:
 2. Define synchronization for concurrent device submitters and any command/data
    QP selection beyond the current index-paired slot policy.
 3. Add deeper command pipelining only with a bounded test matrix and explicit
-   resource-lifetime rules; the current four-slot window is the tested bound.
+  resource-lifetime rules; the current sixteen-slot window is the tested bound.
 4. Evaluate an optional two-sided completion mode in which the NPU pre-posts
    Receives and polls its receive CQ for CPU completion Sends. This is not
    required for the current protocol completion-record path.

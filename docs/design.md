@@ -74,7 +74,7 @@ The TCP connection carries exact bytes and has no framing or typed operations.
 The transport protocol serializes these versioned `TransportInfo` records on
 that connection:
 
-- QP count: the client requests one through eight QPs before either endpoint
+- QP count: the client requests one through sixteen QPs before either endpoint
   creates QPs. The server replies with the lesser of that request and its
   configured per-client maximum. The accepted count applies only to that TCP
   session.
@@ -138,7 +138,7 @@ polls internally when transport credit reclamation requires it.
 Storage bootstrap uses QP zero and waits for the CPU-written protocol
 completion record. After bootstrap, each negotiated QP has a bounded storage
 slot window and one worker on the CPU endpoint. The current client allocates
-four slots per QP; every slot descriptor carries its explicit QP index, and
+sixteen slots per QP; every slot descriptor carries its explicit QP index, and
 `StorageClient` can keep one live completion handle per slot. The slot index
 selects both the command/completion buffers and the matching transport QP. The
 CPU pre-posts the active receive window, processes completions in QP order, and
@@ -190,18 +190,24 @@ validates that record and RDMA Writes `StorageNamespace` capacity to the
 client's registered response memory. The client waits for that record before it
 permits storage submission. TCP has no storage-protocol payload after QP setup.
 
-`StorageClient::read`, `write`, and their batch variants submit a command and
-return a `StorageCompletionHandle`. `StorageClient::wait(handle, timeout_ms)`
-observes the CPU-written `StorageCompletion` record and validates its command
-ID, status, and byte count. It never depends on a client CQ. A client permits
-one live handle per negotiated transport slot; it retains the command
-resources, application MRs, and batch descriptor allocation until the terminal
-record is observed. A timeout leaves the handle live, so those resources remain
-valid and the caller can wait again. A matching terminal failure releases the
-handle's resources before `wait` returns that failure.
+`StorageClient` is control-path only. It owns the bootstrap resources, storage
+slot descriptors, the per-slot state array, and host-side slot reservation
+bookkeeping. The application calls `allocate_slot()` (optionally selecting a
+queue), registers its application buffer through `register_memory()`, and
+passes the returned address and key to the stateless launcher. It calls
+`release_slot()` only after completion has been observed.
 
-`StorageClient::read_batch` and `StorageClient::write_batch` each submit one
-cross-endpoint command. Its `BATCH_READ` or `BATCH_WRITE` record identifies an
+The launcher exposes `storage_read`, `storage_write`, their batch variants,
+and a separate `storage_wait` operator. The operation arguments contain only
+the complete storage descriptor, packed queue/slot ID, server offset, client
+buffer address/key, and a 32-bit transfer length. Command IDs, slot metadata,
+and expected byte counts are allocated and maintained internally in the
+per-slot state. `storage_wait` observes the CPU-written `StorageCompletion`
+record and validates its command ID, status, and byte count. It never depends
+on a client CQ. A timeout leaves the slot active so the caller can wait again.
+
+Launcher batch operators each submit one cross-endpoint command. Its
+`BATCH_READ` or `BATCH_WRITE` record identifies an
 NPU-registered descriptor array and total payload bytes; the CPU RDMA Reads the
 array, validates every descriptor and the aggregate length, then performs its
 ordered payload operations before one terminal completion Write. A malformed
@@ -211,24 +217,24 @@ within its slot; other slots on the same QP may carry independent commands.
 The CPU polls its verbs CQ for command Receive and terminal completion Write.
 The CPU-written NDS completion record is the storage completion. An RA local
 CQE, HCCP AI-QP CQ activity, ACL synchronization, provider resolution, or an
-operator launch is not NDS storage completion. `StorageClient::wait` observes
-the record through bounded device-to-host copies. Direct AIV and AICPU device
-integrations may use their separate wait entrypoints to deserialize the same
-record in device code; a host stream timeout bounds that operator but is not the
-storage completion signal.
+operator launch is not NDS storage completion. The host launcher observes the
+record through bounded probes. Direct AIV and AICPU device integrations may
+use their separate wait entrypoints to probe the same record in device code;
+the host stream timeout bounds the probes but is not the storage completion
+signal.
 
 The four command semantics are explicit across backend environments:
 
-| Operation | Shared semantic command | RA input | AIV/AICPU invocation |
-|---|---|---|---|
-| Read | `StorageReadCommand` | `RaStorageContext` plus command | `NdsStorageReadArgs` |
-| Write | `StorageWriteCommand` | `RaStorageContext` plus command | `NdsStorageWriteArgs` |
-| Batch Read | `StorageBatchReadCommand` | `RaStorageContext` plus command | `NdsStorageBatchReadArgs` |
-| Batch Write | `StorageBatchWriteCommand` | `RaStorageContext` plus command | `NdsStorageBatchWriteArgs` |
+| Operation | Shared semantic command | Launcher arguments |
+|---|---|---|
+| Read | `StorageReadCommand` | `NdsStorageOperationArgs` |
+| Write | `StorageWriteCommand` | `NdsStorageOperationArgs` |
+| Batch Read | `StorageBatchReadCommand` | `NdsStorageBatchOperationArgs` |
+| Batch Write | `StorageBatchWriteCommand` | `NdsStorageBatchOperationArgs` |
 
 The invocation arguments are host-device ABI envelopes, not network records.
-AIV copies command fields between global and local memory outside serde; serde
-itself has no backend-mode branches.
+The RA, AIV, and AICPU adapters construct the shared protocol command from
+these fields; serde itself has no backend-mode branches.
 
 ## Backend modes
 

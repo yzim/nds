@@ -67,6 +67,8 @@ public:
                        std::uint32_t length);
     Result<void> write(std::size_t qp_index, const MemoryRegion &local, std::uint64_t remote_address,
                        std::uint32_t remote_key, std::uint32_t length);
+    Result<void> read_batch(std::size_t qp_index, std::span<const TransferRequest> requests);
+    Result<void> write_batch(std::size_t qp_index, std::span<const TransferRequest> requests);
     std::size_t qp_count() const noexcept;
     bool opened() const noexcept;
     TcpConnection *exchange_channel() noexcept;

@@ -55,6 +55,13 @@
       "opKernelLib": "AICPUKernel"
     }
   },
+  "nds_aicpu_storage_bootstrap_kernel": {
+    "opInfo": {
+      "functionName": "nds_aicpu_storage_bootstrap_kernel",
+      "kernelSo": "@NDS_AICPU_STANDARD_KERNEL_SO@",
+      "opKernelLib": "AICPUKernel"
+    }
+  },
   "nds_aicpu_storage_write_kernel": {
     "opInfo": {
       "functionName": "nds_aicpu_storage_write_kernel",

@@ -8,6 +8,7 @@ NdsStorageDescriptor valid_context() {
     static NdsQpDescriptor qp_descriptors[1]{};
     static NdsTransportQpState qp_states[1]{};
     static NdsStorageSlotDescriptor slot_descriptors[1]{};
+    static NdsStorageState storage_states[1]{};
     qp_descriptors[0] = {};
     qp_states[0] = {};
     slot_descriptors[0] = NdsStorageSlotDescriptor{
@@ -24,6 +25,7 @@ NdsStorageDescriptor valid_context() {
         .reserved = 0U,
     };
     context.slot_descriptors_address = reinterpret_cast<uint64_t>(slot_descriptors);
+    context.storage_states_address = reinterpret_cast<uint64_t>(storage_states);
     context.slot_count = 1U;
     context.reserved = 0U;
     context.capacity = 4096U;
@@ -99,12 +101,11 @@ TEST(DeviceStorageTest, ValidatesBatchOperationCommands) {
 TEST(DeviceStorageTest, ValidatesCompletionWait) {
     NdsStorageDescriptor context = valid_context();
 
-    EXPECT_TRUE(nds_storage_wait_valid(&context, 1U, 64U, 0U));
-    EXPECT_FALSE(nds_storage_wait_valid(&context, 0U, 64U, 0U));
-    EXPECT_FALSE(nds_storage_wait_valid(&context, 1U, 0U, 0U));
-    EXPECT_FALSE(nds_storage_wait_valid(&context, 1U, 64U, 1U));
+    EXPECT_TRUE(nds_storage_wait_valid(&context, nds_storage_slot_id(0U, 0U)));
+    EXPECT_FALSE(nds_storage_wait_valid(&context, nds_storage_slot_id(1U, 0U)));
+    EXPECT_FALSE(nds_storage_wait_valid(&context, nds_storage_slot_id(0U, 1U)));
     context.slot_descriptors_address = 0U;
-    EXPECT_FALSE(nds_storage_wait_valid(&context, 1U, 64U, 0U));
+    EXPECT_FALSE(nds_storage_wait_valid(&context, nds_storage_slot_id(0U, 0U)));
 }
 
 TEST(DeviceStorageTest, ValidatesSlotQueueMappingAndReservedBits) {
@@ -113,19 +114,19 @@ TEST(DeviceStorageTest, ValidatesSlotQueueMappingAndReservedBits) {
         reinterpret_cast<NdsStorageSlotDescriptor *>(static_cast<uintptr_t>(context.slot_descriptors_address));
 
     slot->qp_index = 1U;
-    EXPECT_FALSE(nds_storage_wait_valid(&context, 1U, 64U, 0U));
+    EXPECT_FALSE(nds_storage_wait_valid(&context, nds_storage_slot_id(0U, 0U)));
     slot->qp_index = 0U;
     slot->reserved = 1U;
-    EXPECT_FALSE(nds_storage_wait_valid(&context, 1U, 64U, 0U));
+    EXPECT_FALSE(nds_storage_wait_valid(&context, nds_storage_slot_id(0U, 0U)));
 }
 
 TEST(DeviceStorageTest, DefinesDirectOperatorResultEnvelopes) {
     constexpr std::int32_t kResult = -3;
 
-    NdsStorageReadArgs read{};
-    NdsStorageWriteArgs write{};
-    NdsStorageBatchReadArgs batch_read{};
-    NdsStorageBatchWriteArgs batch_write{};
+    NdsStorageOperationArgs read{};
+    NdsStorageOperationArgs write{};
+    NdsStorageBatchOperationArgs batch_read{};
+    NdsStorageBatchOperationArgs batch_write{};
     NdsStorageWaitArgs wait{};
     read.return_value = kResult;
     write.return_value = kResult;

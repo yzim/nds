@@ -31,7 +31,7 @@ int parse(int argc, char **argv, Config *config, bool *exit_requested) {
         ->check(CLI::Range(1U, nds::wire::kMaxQpInfoBatch));
     app.add_option("--clients", config->clients, "Number of serial client sessions to serve")
         ->check(CLI::Range(1U, 65535U));
-    app.add_option("--namespace-bytes", config->namespace_bytes)->check(CLI::Range(1U, 64U * 1024U * 1024U));
+    app.add_option("--namespace-bytes", config->namespace_bytes)->check(CLI::Range(1U, 1024U * 1024U * 1024U));
     app.add_option("--storage-commands", config->storage_commands,
                    "Number of storage commands to serve on one transport")
         ->check(CLI::Range(1U, 65535U));
@@ -80,7 +80,7 @@ int main(int argc, char **argv) {
             return EXIT_FAILURE;
         }
         if (const auto served = nds::server::serve_commands(&transport, &storage, config.storage_commands,
-                                                             config.transport.completion_timeout_ms);
+                                                            config.transport.completion_timeout_ms);
             !served.ok()) {
             NDS_LOG_ERROR("cpu-server", "client {} protocol command failed: {}", client_index, served.error().message);
             return EXIT_FAILURE;

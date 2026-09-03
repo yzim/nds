@@ -17,14 +17,14 @@ if(NDS_DEVICE_KIND STREQUAL "aicpu")
     set(symbols
         nds_aicpu_post_send_kernel nds_aicpu_post_recv_kernel nds_aicpu_poll_cq_kernel
         nds_aicpu_rdma_send_kernel nds_aicpu_rdma_recv_kernel nds_aicpu_rdma_read_kernel nds_aicpu_rdma_write_kernel
-        nds_aicpu_storage_read_kernel nds_aicpu_storage_write_kernel
+        nds_aicpu_storage_bootstrap_kernel nds_aicpu_storage_read_kernel nds_aicpu_storage_write_kernel
         nds_aicpu_storage_batch_read_kernel nds_aicpu_storage_batch_write_kernel)
 elseif(NDS_DEVICE_KIND STREQUAL "aiv")
     set(nm_args -g)
     set(symbols
         nds_aiv_post_send_kernel nds_aiv_post_send_batch_kernel nds_aiv_post_recv_kernel nds_aiv_poll_cq_kernel
         nds_aiv_rdma_send_kernel nds_aiv_rdma_recv_kernel nds_aiv_rdma_read_kernel nds_aiv_rdma_write_kernel
-        nds_aiv_storage_read_kernel nds_aiv_storage_write_kernel
+        nds_aiv_storage_bootstrap_kernel nds_aiv_storage_read_kernel nds_aiv_storage_write_kernel
         nds_aiv_storage_batch_read_kernel nds_aiv_storage_batch_write_kernel)
 else()
     message(FATAL_ERROR "unknown device API kind: ${NDS_DEVICE_KIND}")

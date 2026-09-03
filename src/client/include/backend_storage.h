@@ -9,10 +9,16 @@
 typedef struct NdsStorageDescriptor {
     NdsTransportDescriptor transport;
     uint64_t slot_descriptors_address;
+    uint64_t storage_states_address;
     uint32_t slot_count;
     uint32_t reserved;
     uint64_t capacity;
 } NdsStorageDescriptor;
+
+typedef struct NdsStorageBootstrapDescriptor {
+    NdsTransportDescriptor transport;
+    NdsSge bootstrap;
+} NdsStorageBootstrapDescriptor;
 
 typedef struct NdsStorageSlotDescriptor {
     NdsSge command_buffer;
@@ -21,44 +27,81 @@ typedef struct NdsStorageSlotDescriptor {
     uint32_t reserved;
 } NdsStorageSlotDescriptor;
 
-typedef struct NdsStorageReadArgs {
-    NdsStorageDescriptor storage;
-    nds::StorageReadCommand command;
-    int32_t return_value;
-} NdsStorageReadArgs;
+/* The backend claims this state before posting the command. The host control
+ * path assigns command_id when it reserves a slot and clears the record when
+ * the caller releases the completed slot. */
+typedef struct NdsStorageState {
+    uint64_t command_id;
+    uint32_t expected_bytes;
+    uint32_t in_flight;
+    uint32_t reserved;
+} NdsStorageState;
 
-typedef struct NdsStorageWriteArgs {
-    NdsStorageDescriptor storage;
-    nds::StorageWriteCommand command;
-    int32_t return_value;
-} NdsStorageWriteArgs;
+typedef struct NdsStorageOperation {
+    uint32_t slot_id;
+    uint32_t reserved;
+    uint64_t server_offset;
+    uint64_t buffer_address;
+    uint32_t buffer_key;
+    uint32_t length;
+} NdsStorageOperation;
 
-typedef struct NdsStorageBatchReadArgs {
-    NdsStorageDescriptor storage;
-    nds::StorageBatchReadCommand command;
-    int32_t return_value;
-} NdsStorageBatchReadArgs;
+typedef struct NdsStorageBatchOperation {
+    uint32_t slot_id;
+    uint32_t entry_count;
+    uint64_t entries_address;
+    uint32_t entries_key;
+    uint32_t reserved;
+} NdsStorageBatchOperation;
 
-typedef struct NdsStorageBatchWriteArgs {
-    NdsStorageDescriptor storage;
-    nds::StorageBatchWriteCommand command;
+typedef struct NdsStorageBootstrapArgs {
+    NdsStorageBootstrapDescriptor bootstrap;
     int32_t return_value;
-} NdsStorageBatchWriteArgs;
+} NdsStorageBootstrapArgs;
+
+typedef struct NdsStorageOperationArgs {
+    NdsStorageDescriptor storage;
+    NdsStorageOperation operation;
+    int32_t return_value;
+} NdsStorageOperationArgs;
+
+typedef struct NdsStorageBatchOperationArgs {
+    NdsStorageDescriptor storage;
+    NdsStorageBatchOperation operation;
+    int32_t return_value;
+} NdsStorageBatchOperationArgs;
 
 typedef struct NdsStorageWaitArgs {
     NdsStorageDescriptor storage;
-    uint64_t command_id;
-    uint64_t expected_bytes;
-    uint32_t slot_index;
+    uint32_t slot_id;
     uint32_t reserved;
     int32_t return_value;
 } NdsStorageWaitArgs;
 
+static inline uint32_t nds_storage_slot_id(uint32_t queue_index, uint32_t slot_index) {
+    return (queue_index << 16U) | (slot_index & UINT32_C(0xffff));
+}
+
+static inline uint32_t nds_storage_slot_id_queue(uint32_t slot_id) {
+    return slot_id >> 16U;
+}
+
+static inline uint32_t nds_storage_slot_id_index(uint32_t slot_id) {
+    return slot_id & UINT32_C(0xffff);
+}
+
 static inline int nds_storage_descriptor_valid(const NdsStorageDescriptor *descriptor) {
-    return descriptor != nullptr && descriptor->slot_descriptors_address != 0U && descriptor->slot_count != 0U &&
+    return descriptor != nullptr && descriptor->slot_descriptors_address != 0U &&
+           descriptor->storage_states_address != 0U && descriptor->slot_count != 0U &&
            descriptor->transport.qp_count != 0U && descriptor->capacity != 0U && descriptor->reserved == 0U &&
            descriptor->transport.reserved == 0U && descriptor->transport.qp_descriptors_address != 0U &&
            descriptor->transport.qp_states_address != 0U;
+}
+
+static inline NdsStorageState *nds_storage_state(const NdsStorageDescriptor *descriptor, uint32_t slot_index) {
+    if (!nds_storage_descriptor_valid(descriptor) || slot_index >= descriptor->slot_count)
+        return nullptr;
+    return (NdsStorageState *)(uintptr_t)(descriptor->storage_states_address) + slot_index;
 }
 
 static inline const NdsStorageSlotDescriptor *nds_storage_slot(const NdsStorageDescriptor *descriptor,
@@ -76,12 +119,26 @@ static inline int nds_storage_slot_valid(const NdsStorageDescriptor *descriptor,
            slot->completion_buffer.local_key != 0U && slot->completion_buffer.length >= nds::kStorageCompletionBytes;
 }
 
+static inline int nds_storage_slot_id_valid(const NdsStorageDescriptor *descriptor, uint32_t slot_id) {
+    const uint32_t slot_index = nds_storage_slot_id_index(slot_id);
+    const uint32_t queue_index = nds_storage_slot_id_queue(slot_id);
+    const NdsStorageSlotDescriptor *slot = nds_storage_slot(descriptor, slot_index);
+    return nds_storage_slot_valid(descriptor, slot_index) && slot->qp_index == queue_index;
+}
+
 #if defined(__CCE_AICORE__)
 __aicore__ __gm__ inline const NdsStorageSlotDescriptor *nds_storage_slot_global(
     __gm__ const NdsStorageDescriptor *descriptor, uint32_t slot_index) {
     if (descriptor == 0 || descriptor->slot_descriptors_address == 0U || slot_index >= descriptor->slot_count)
         return 0;
     return (__gm__ const NdsStorageSlotDescriptor *)(uintptr_t)(descriptor->slot_descriptors_address) + slot_index;
+}
+
+__aicore__ __gm__ inline NdsStorageState *nds_storage_state_global(__gm__ const NdsStorageDescriptor *descriptor,
+                                                                   uint32_t slot_index) {
+    if (descriptor == 0 || descriptor->storage_states_address == 0U || slot_index >= descriptor->slot_count)
+        return 0;
+    return (__gm__ NdsStorageState *)(uintptr_t)(descriptor->storage_states_address) + slot_index;
 }
 #endif
 
@@ -90,7 +147,8 @@ static inline int nds_storage_read_valid(const NdsStorageDescriptor *descriptor,
     return nds_storage_slot_valid(descriptor, command == nullptr ? 0U : command->slot_index) && command != nullptr &&
            command->command_id != 0U && command->length != 0U && command->data.address != 0U &&
            command->data.remote_key != 0U && command->data.length >= command->length &&
-           command->offset <= descriptor->capacity && command->length <= descriptor->capacity - command->offset;
+           command->offset <= descriptor->capacity && command->length <= descriptor->capacity - command->offset &&
+           command->length <= UINT32_MAX;
 }
 
 static inline int nds_storage_write_valid(const NdsStorageDescriptor *descriptor,
@@ -98,7 +156,8 @@ static inline int nds_storage_write_valid(const NdsStorageDescriptor *descriptor
     return nds_storage_slot_valid(descriptor, command == nullptr ? 0U : command->slot_index) && command != nullptr &&
            command->command_id != 0U && command->length != 0U && command->data.address != 0U &&
            command->data.remote_key != 0U && command->data.length >= command->length &&
-           command->offset <= descriptor->capacity && command->length <= descriptor->capacity - command->offset;
+           command->offset <= descriptor->capacity && command->length <= descriptor->capacity - command->offset &&
+           command->length <= UINT32_MAX;
 }
 
 static inline int nds_storage_batch_read_valid(const NdsStorageDescriptor *descriptor,
@@ -119,27 +178,19 @@ static inline int nds_storage_batch_write_valid(const NdsStorageDescriptor *desc
            command->entries.length >= command->entry_count * nds::kStorageBatchEntryBytes;
 }
 
-static inline int nds_storage_wait_valid(const NdsStorageDescriptor *descriptor, uint64_t command_id,
-                                         uint64_t expected_bytes, uint32_t slot_index) {
-    return nds_storage_slot_valid(descriptor, slot_index) && command_id != 0U && expected_bytes != 0U;
+static inline int nds_storage_wait_valid(const NdsStorageDescriptor *descriptor, uint32_t slot_id) {
+    return nds_storage_slot_id_valid(descriptor, slot_id);
 }
 
 static_assert(sizeof(NdsStorageSlotDescriptor) == 40, "device storage slot ABI changed");
-static_assert(sizeof(NdsStorageDescriptor) == 48, "device storage descriptor ABI changed");
-static_assert(sizeof(NdsStorageReadArgs) == 112, "device storage read ABI changed");
-static_assert(sizeof(NdsStorageWriteArgs) == 112, "device storage write ABI changed");
-static_assert(sizeof(NdsStorageBatchReadArgs) == 112, "device storage batch-read ABI changed");
-static_assert(sizeof(NdsStorageBatchWriteArgs) == 112, "device storage batch-write ABI changed");
-static_assert(sizeof(NdsStorageWaitArgs) == 80, "device storage wait ABI changed");
-static_assert(offsetof(NdsStorageReadArgs, return_value) > offsetof(NdsStorageReadArgs, command),
-              "device storage read result must follow the request");
-static_assert(offsetof(NdsStorageWriteArgs, return_value) > offsetof(NdsStorageWriteArgs, command),
-              "device storage write result must follow the request");
-static_assert(offsetof(NdsStorageBatchReadArgs, return_value) > offsetof(NdsStorageBatchReadArgs, command),
-              "device storage batch-read result must follow the request");
-static_assert(offsetof(NdsStorageBatchWriteArgs, return_value) > offsetof(NdsStorageBatchWriteArgs, command),
-              "device storage batch-write result must follow the request");
-static_assert(offsetof(NdsStorageWaitArgs, return_value) > offsetof(NdsStorageWaitArgs, expected_bytes),
-              "device storage wait result must follow the request");
+static_assert(sizeof(NdsStorageState) == 24, "device storage state ABI changed");
+static_assert(sizeof(NdsStorageOperation) == 32, "device storage operation ABI changed");
+static_assert(sizeof(NdsStorageBatchOperation) == 24, "device storage batch operation ABI changed");
+static_assert(sizeof(NdsStorageDescriptor) == 56, "device storage descriptor ABI changed");
+static_assert(sizeof(NdsStorageBootstrapDescriptor) == 40, "device storage bootstrap ABI changed");
+static_assert(sizeof(NdsStorageBootstrapArgs) == 48, "device storage bootstrap args ABI changed");
+static_assert(sizeof(NdsStorageOperationArgs) == 96, "device storage operation ABI changed");
+static_assert(sizeof(NdsStorageBatchOperationArgs) == 88, "device storage batch operation ABI changed");
+static_assert(sizeof(NdsStorageWaitArgs) == 72, "device storage wait ABI changed");
 
 #endif

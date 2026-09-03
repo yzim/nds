@@ -11,7 +11,7 @@
 namespace nds::client {
 namespace {
 
-constexpr std::uint32_t kTransportSignalInterval = 1U;
+constexpr std::uint32_t kTransportSignalInterval = 32U;
 
 Result<void> send_transport_info(TcpConnection *channel, const nds::transport::TransportInfo &info) {
     if (channel == nullptr)

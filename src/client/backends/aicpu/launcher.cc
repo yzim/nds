@@ -4,6 +4,8 @@
 #include "runtime.hh"
 
 #include <limits>
+#include <chrono>
+#include <thread>
 
 namespace nds::client {
 
@@ -191,34 +193,88 @@ Result<void> AicpuLauncher::rdma_write_with_config(const LaunchConfig &config, c
     return launch_device_and_wait(runtime_, this, config, "nds_aicpu_rdma_write_kernel", request);
 }
 
+Result<void> AicpuLauncher::storage_bootstrap_with_config(const LaunchConfig &config,
+                                                          const NdsStorageBootstrapDescriptor &bootstrap) const {
+    const NdsStorageBootstrapArgs request{.bootstrap = bootstrap,
+                                          .return_value = std::numeric_limits<std::int32_t>::min()};
+    return launch_device_and_wait(runtime_, this, config, "nds_aicpu_storage_bootstrap_kernel", request);
+}
+
 Result<void> AicpuLauncher::storage_read_with_config(const LaunchConfig &config, const NdsStorageDescriptor &storage,
-                                                     const nds::StorageReadCommand &command) const {
-    const NdsStorageReadArgs request{
-        .storage = storage, .command = command, .return_value = std::numeric_limits<std::int32_t>::min()};
+                                                     std::uint32_t slot_id, std::uint64_t server_offset,
+                                                     std::uint64_t buffer_address, std::uint32_t buffer_key,
+                                                     std::uint32_t length) const {
+    const NdsStorageOperationArgs request{.storage = storage,
+                                          .operation = {.slot_id = slot_id,
+                                                        .reserved = 0U,
+                                                        .server_offset = server_offset,
+                                                        .buffer_address = buffer_address,
+                                                        .buffer_key = buffer_key,
+                                                        .length = length},
+                                          .return_value = std::numeric_limits<std::int32_t>::min()};
     return launch_device_and_wait(runtime_, this, config, "nds_aicpu_storage_read_kernel", request);
 }
 
 Result<void> AicpuLauncher::storage_write_with_config(const LaunchConfig &config, const NdsStorageDescriptor &storage,
-                                                      const nds::StorageWriteCommand &command) const {
-    const NdsStorageWriteArgs request{
-        .storage = storage, .command = command, .return_value = std::numeric_limits<std::int32_t>::min()};
+                                                      std::uint32_t slot_id, std::uint64_t server_offset,
+                                                      std::uint64_t buffer_address, std::uint32_t buffer_key,
+                                                      std::uint32_t length) const {
+    const NdsStorageOperationArgs request{.storage = storage,
+                                          .operation = {.slot_id = slot_id,
+                                                        .reserved = 0U,
+                                                        .server_offset = server_offset,
+                                                        .buffer_address = buffer_address,
+                                                        .buffer_key = buffer_key,
+                                                        .length = length},
+                                          .return_value = std::numeric_limits<std::int32_t>::min()};
     return launch_device_and_wait(runtime_, this, config, "nds_aicpu_storage_write_kernel", request);
 }
 
 Result<void> AicpuLauncher::storage_read_batch_with_config(const LaunchConfig &config,
-                                                           const NdsStorageDescriptor &storage,
-                                                           const nds::StorageBatchReadCommand &command) const {
-    const NdsStorageBatchReadArgs request{
-        .storage = storage, .command = command, .return_value = std::numeric_limits<std::int32_t>::min()};
+                                                           const NdsStorageDescriptor &storage, std::uint32_t slot_id,
+                                                           std::uint64_t entries_address, std::uint32_t entries_key,
+                                                           std::uint32_t entry_count) const {
+    const NdsStorageBatchOperationArgs request{.storage = storage,
+                                               .operation = {.slot_id = slot_id,
+                                                             .entry_count = entry_count,
+                                                             .entries_address = entries_address,
+                                                             .entries_key = entries_key,
+                                                             .reserved = 0U},
+                                               .return_value = std::numeric_limits<std::int32_t>::min()};
     return launch_device_and_wait(runtime_, this, config, "nds_aicpu_storage_batch_read_kernel", request);
 }
 
 Result<void> AicpuLauncher::storage_write_batch_with_config(const LaunchConfig &config,
-                                                            const NdsStorageDescriptor &storage,
-                                                            const nds::StorageBatchWriteCommand &command) const {
-    const NdsStorageBatchWriteArgs request{
-        .storage = storage, .command = command, .return_value = std::numeric_limits<std::int32_t>::min()};
+                                                            const NdsStorageDescriptor &storage, std::uint32_t slot_id,
+                                                            std::uint64_t entries_address, std::uint32_t entries_key,
+                                                            std::uint32_t entry_count) const {
+    const NdsStorageBatchOperationArgs request{.storage = storage,
+                                               .operation = {.slot_id = slot_id,
+                                                             .entry_count = entry_count,
+                                                             .entries_address = entries_address,
+                                                             .entries_key = entries_key,
+                                                             .reserved = 0U},
+                                               .return_value = std::numeric_limits<std::int32_t>::min()};
     return launch_device_and_wait(runtime_, this, config, "nds_aicpu_storage_batch_write_kernel", request);
+}
+
+Result<void> AicpuLauncher::storage_wait_with_config(const LaunchConfig &config, const NdsStorageDescriptor &storage,
+                                                     std::uint32_t slot_id) const {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(config.sync_timeout_ms);
+    for (;;) {
+        const NdsStorageWaitArgs request{.storage = storage,
+                                         .slot_id = slot_id,
+                                         .reserved = 0U,
+                                         .return_value = std::numeric_limits<std::int32_t>::min()};
+        const auto probe = launch_device_and_wait(runtime_, this, config, "nds_aicpu_storage_wait_kernel", request);
+        if (probe.ok())
+            return {};
+        if (probe.error().message.find(": -4") == std::string::npos)
+            return probe.error();
+        if (std::chrono::steady_clock::now() >= deadline)
+            return Error{ErrorCode::kProtocol, "timed out waiting for storage completion"};
+        std::this_thread::yield();
+    }
 }
 
 }  // namespace nds::client

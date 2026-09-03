@@ -90,40 +90,64 @@ Result<PostSendBatchResult> ConfiguredLauncherView::rdma_send_batch(const NdsTra
     return launcher_->rdma_send_batch_with_config(config_, transport, queue_index, wrs);
 }
 
-Result<void> ConfiguredLauncherView::storage_read(const NdsStorageDescriptor &storage,
-                                                  const nds::StorageReadCommand &command) const {
+Result<void> ConfiguredLauncherView::storage_bootstrap(const NdsStorageBootstrapDescriptor &bootstrap) const {
     if (launcher_ == nullptr)
         return Error{ErrorCode::kInvalidArgument, "configured launcher is empty"};
     if (!config_.sync)
         return Error{ErrorCode::kInvalidArgument, "asynchronous launcher calls are not supported"};
-    return launcher_->storage_read_with_config(config_, storage, command);
+    return launcher_->storage_bootstrap_with_config(config_, bootstrap);
 }
 
-Result<void> ConfiguredLauncherView::storage_write(const NdsStorageDescriptor &storage,
-                                                   const nds::StorageWriteCommand &command) const {
+Result<void> ConfiguredLauncherView::storage_read(const NdsStorageDescriptor &storage, std::uint32_t slot_id,
+                                                  std::uint64_t server_offset, std::uint64_t buffer_address,
+                                                  std::uint32_t buffer_key, std::uint32_t length) const {
     if (launcher_ == nullptr)
         return Error{ErrorCode::kInvalidArgument, "configured launcher is empty"};
     if (!config_.sync)
         return Error{ErrorCode::kInvalidArgument, "asynchronous launcher calls are not supported"};
-    return launcher_->storage_write_with_config(config_, storage, command);
+    return launcher_->storage_read_with_config(config_, storage, slot_id, server_offset, buffer_address, buffer_key,
+                                               length);
 }
 
-Result<void> ConfiguredLauncherView::storage_read_batch(const NdsStorageDescriptor &storage,
-                                                        const nds::StorageBatchReadCommand &command) const {
+Result<void> ConfiguredLauncherView::storage_write(const NdsStorageDescriptor &storage, std::uint32_t slot_id,
+                                                   std::uint64_t server_offset, std::uint64_t buffer_address,
+                                                   std::uint32_t buffer_key, std::uint32_t length) const {
     if (launcher_ == nullptr)
         return Error{ErrorCode::kInvalidArgument, "configured launcher is empty"};
     if (!config_.sync)
         return Error{ErrorCode::kInvalidArgument, "asynchronous launcher calls are not supported"};
-    return launcher_->storage_read_batch_with_config(config_, storage, command);
+    return launcher_->storage_write_with_config(config_, storage, slot_id, server_offset, buffer_address, buffer_key,
+                                                length);
 }
 
-Result<void> ConfiguredLauncherView::storage_write_batch(const NdsStorageDescriptor &storage,
-                                                         const nds::StorageBatchWriteCommand &command) const {
+Result<void> ConfiguredLauncherView::storage_read_batch(const NdsStorageDescriptor &storage, std::uint32_t slot_id,
+                                                        std::uint64_t entries_address, std::uint32_t entries_key,
+                                                        std::uint32_t entry_count) const {
     if (launcher_ == nullptr)
         return Error{ErrorCode::kInvalidArgument, "configured launcher is empty"};
     if (!config_.sync)
         return Error{ErrorCode::kInvalidArgument, "asynchronous launcher calls are not supported"};
-    return launcher_->storage_write_batch_with_config(config_, storage, command);
+    return launcher_->storage_read_batch_with_config(config_, storage, slot_id, entries_address, entries_key,
+                                                     entry_count);
+}
+
+Result<void> ConfiguredLauncherView::storage_write_batch(const NdsStorageDescriptor &storage, std::uint32_t slot_id,
+                                                         std::uint64_t entries_address, std::uint32_t entries_key,
+                                                         std::uint32_t entry_count) const {
+    if (launcher_ == nullptr)
+        return Error{ErrorCode::kInvalidArgument, "configured launcher is empty"};
+    if (!config_.sync)
+        return Error{ErrorCode::kInvalidArgument, "asynchronous launcher calls are not supported"};
+    return launcher_->storage_write_batch_with_config(config_, storage, slot_id, entries_address, entries_key,
+                                                      entry_count);
+}
+
+Result<void> ConfiguredLauncherView::storage_wait(const NdsStorageDescriptor &storage, std::uint32_t slot_id) const {
+    if (launcher_ == nullptr)
+        return Error{ErrorCode::kInvalidArgument, "configured launcher is empty"};
+    if (!config_.sync)
+        return Error{ErrorCode::kInvalidArgument, "asynchronous launcher calls are not supported"};
+    return launcher_->storage_wait_with_config(config_, storage, slot_id);
 }
 
 Result<std::unique_ptr<Launcher>> Launcher::open(Runtime *runtime, BackendMode mode, const std::string &artifact) {
@@ -181,6 +205,40 @@ Result<PostSendBatchResult> Launcher::rdma_send_batch(const LaunchConfig &config
                                                       const NdsTransportDescriptor &transport,
                                                       std::uint32_t queue_index, std::span<const NdsSendWr> wrs) const {
     return rdma_send_batch_with_config(config, transport, queue_index, wrs);
+}
+
+Result<void> Launcher::storage_bootstrap(const LaunchConfig &config,
+                                         const NdsStorageBootstrapDescriptor &bootstrap) const {
+    return storage_bootstrap_with_config(config, bootstrap);
+}
+
+Result<void> Launcher::storage_read(const LaunchConfig &config, const NdsStorageDescriptor &storage,
+                                    std::uint32_t slot_id, std::uint64_t server_offset, std::uint64_t buffer_address,
+                                    std::uint32_t buffer_key, std::uint32_t length) const {
+    return storage_read_with_config(config, storage, slot_id, server_offset, buffer_address, buffer_key, length);
+}
+
+Result<void> Launcher::storage_write(const LaunchConfig &config, const NdsStorageDescriptor &storage,
+                                     std::uint32_t slot_id, std::uint64_t server_offset, std::uint64_t buffer_address,
+                                     std::uint32_t buffer_key, std::uint32_t length) const {
+    return storage_write_with_config(config, storage, slot_id, server_offset, buffer_address, buffer_key, length);
+}
+
+Result<void> Launcher::storage_read_batch(const LaunchConfig &config, const NdsStorageDescriptor &storage,
+                                          std::uint32_t slot_id, std::uint64_t entries_address,
+                                          std::uint32_t entries_key, std::uint32_t entry_count) const {
+    return storage_read_batch_with_config(config, storage, slot_id, entries_address, entries_key, entry_count);
+}
+
+Result<void> Launcher::storage_write_batch(const LaunchConfig &config, const NdsStorageDescriptor &storage,
+                                           std::uint32_t slot_id, std::uint64_t entries_address,
+                                           std::uint32_t entries_key, std::uint32_t entry_count) const {
+    return storage_write_batch_with_config(config, storage, slot_id, entries_address, entries_key, entry_count);
+}
+
+Result<void> Launcher::storage_wait(const LaunchConfig &config, const NdsStorageDescriptor &storage,
+                                    std::uint32_t slot_id) const {
+    return storage_wait_with_config(config, storage, slot_id);
 }
 
 ConfiguredLauncherView Launcher::with_config(const LaunchConfig &config) const {

@@ -45,12 +45,18 @@ public:
                             const NdsSendWr &wr) const;
     Result<PostSendBatchResult> rdma_send_batch(const NdsTransportDescriptor &transport, std::uint32_t queue_index,
                                                 std::span<const NdsSendWr> wrs) const;
-    Result<void> storage_read(const NdsStorageDescriptor &storage, const nds::StorageReadCommand &command) const;
-    Result<void> storage_write(const NdsStorageDescriptor &storage, const nds::StorageWriteCommand &command) const;
-    Result<void> storage_read_batch(const NdsStorageDescriptor &storage,
-                                    const nds::StorageBatchReadCommand &command) const;
-    Result<void> storage_write_batch(const NdsStorageDescriptor &storage,
-                                     const nds::StorageBatchWriteCommand &command) const;
+    Result<void> storage_bootstrap(const NdsStorageBootstrapDescriptor &bootstrap) const;
+    Result<void> storage_read(const NdsStorageDescriptor &storage, std::uint32_t slot_id, std::uint64_t server_offset,
+                              std::uint64_t buffer_address, std::uint32_t buffer_key, std::uint32_t length) const;
+    Result<void> storage_write(const NdsStorageDescriptor &storage, std::uint32_t slot_id, std::uint64_t server_offset,
+                               std::uint64_t buffer_address, std::uint32_t buffer_key, std::uint32_t length) const;
+    Result<void> storage_read_batch(const NdsStorageDescriptor &storage, std::uint32_t slot_id,
+                                    std::uint64_t entries_address, std::uint32_t entries_key,
+                                    std::uint32_t entry_count) const;
+    Result<void> storage_write_batch(const NdsStorageDescriptor &storage, std::uint32_t slot_id,
+                                     std::uint64_t entries_address, std::uint32_t entries_key,
+                                     std::uint32_t entry_count) const;
+    Result<void> storage_wait(const NdsStorageDescriptor &storage, std::uint32_t slot_id) const;
 
 private:
     friend class Launcher;
@@ -84,14 +90,21 @@ public:
                             std::uint32_t queue_index, const NdsSendWr &wr) const;
     Result<PostSendBatchResult> rdma_send_batch(const LaunchConfig &config, const NdsTransportDescriptor &transport,
                                                 std::uint32_t queue_index, std::span<const NdsSendWr> wrs) const;
-    Result<void> storage_read(const LaunchConfig &config, const NdsStorageDescriptor &storage,
-                              const nds::StorageReadCommand &command) const;
-    Result<void> storage_write(const LaunchConfig &config, const NdsStorageDescriptor &storage,
-                               const nds::StorageWriteCommand &command) const;
+    Result<void> storage_bootstrap(const LaunchConfig &config, const NdsStorageBootstrapDescriptor &bootstrap) const;
+    Result<void> storage_read(const LaunchConfig &config, const NdsStorageDescriptor &storage, std::uint32_t slot_id,
+                              std::uint64_t server_offset, std::uint64_t buffer_address, std::uint32_t buffer_key,
+                              std::uint32_t length) const;
+    Result<void> storage_write(const LaunchConfig &config, const NdsStorageDescriptor &storage, std::uint32_t slot_id,
+                               std::uint64_t server_offset, std::uint64_t buffer_address, std::uint32_t buffer_key,
+                               std::uint32_t length) const;
     Result<void> storage_read_batch(const LaunchConfig &config, const NdsStorageDescriptor &storage,
-                                    const nds::StorageBatchReadCommand &command) const;
+                                    std::uint32_t slot_id, std::uint64_t entries_address, std::uint32_t entries_key,
+                                    std::uint32_t entry_count) const;
     Result<void> storage_write_batch(const LaunchConfig &config, const NdsStorageDescriptor &storage,
-                                     const nds::StorageBatchWriteCommand &command) const;
+                                     std::uint32_t slot_id, std::uint64_t entries_address, std::uint32_t entries_key,
+                                     std::uint32_t entry_count) const;
+    Result<void> storage_wait(const LaunchConfig &config, const NdsStorageDescriptor &storage,
+                              std::uint32_t slot_id) const;
     ConfiguredLauncherView with_config(const LaunchConfig &config) const;
 
 protected:
@@ -119,15 +132,25 @@ protected:
                                                                     const NdsTransportDescriptor &transport,
                                                                     std::uint32_t queue_index,
                                                                     std::span<const NdsSendWr> wrs) const;
+    virtual Result<void> storage_bootstrap_with_config(const LaunchConfig &config,
+                                                       const NdsStorageBootstrapDescriptor &bootstrap) const = 0;
     virtual Result<void> storage_read_with_config(const LaunchConfig &config, const NdsStorageDescriptor &storage,
-                                                  const nds::StorageReadCommand &command) const = 0;
+                                                  std::uint32_t slot_id, std::uint64_t server_offset,
+                                                  std::uint64_t buffer_address, std::uint32_t buffer_key,
+                                                  std::uint32_t length) const = 0;
     virtual Result<void> storage_write_with_config(const LaunchConfig &config, const NdsStorageDescriptor &storage,
-                                                   const nds::StorageWriteCommand &command) const = 0;
+                                                   std::uint32_t slot_id, std::uint64_t server_offset,
+                                                   std::uint64_t buffer_address, std::uint32_t buffer_key,
+                                                   std::uint32_t length) const = 0;
     virtual Result<void> storage_read_batch_with_config(const LaunchConfig &config, const NdsStorageDescriptor &storage,
-                                                        const nds::StorageBatchReadCommand &command) const = 0;
+                                                        std::uint32_t slot_id, std::uint64_t entries_address,
+                                                        std::uint32_t entries_key, std::uint32_t entry_count) const = 0;
     virtual Result<void> storage_write_batch_with_config(const LaunchConfig &config,
-                                                         const NdsStorageDescriptor &storage,
-                                                         const nds::StorageBatchWriteCommand &command) const = 0;
+                                                         const NdsStorageDescriptor &storage, std::uint32_t slot_id,
+                                                         std::uint64_t entries_address, std::uint32_t entries_key,
+                                                         std::uint32_t entry_count) const = 0;
+    virtual Result<void> storage_wait_with_config(const LaunchConfig &config, const NdsStorageDescriptor &storage,
+                                                  std::uint32_t slot_id) const = 0;
 
 private:
     friend class ConfiguredLauncherView;

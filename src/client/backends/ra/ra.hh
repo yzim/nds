@@ -19,12 +19,14 @@ struct RaConnection {
 
 struct RaStorageContext {
     RaConnection connection{};
-    NdsTransportQpState *state{};
+    NdsTransportQpState *transport_state{};
+    NdsStorageState *storage_state{};
     void *command_device{};
     Libra::Sge command_buffer{};
     void *completion_device{};
     Libra::Sge completion{};
     std::uint64_t capacity{};
+    std::uint32_t slot_index{};
 };
 
 /* Verbs layer. A caller that owns a bounded verbs window may prepare several
@@ -42,10 +44,12 @@ Result<void> NdsRaRdmaRead(const RaConnection &connection, NdsTransportQpState *
 Result<void> NdsRaRdmaWrite(const RaConnection &connection, NdsTransportQpState *state, const NdsSendWr &wr);
 
 /* Storage layer. Completion is the CPU-written NDS protocol record. */
-Result<void> NdsRaStorageRead(const RaStorageContext &context, const StorageReadCommand &command);
-Result<void> NdsRaStorageWrite(const RaStorageContext &context, const StorageWriteCommand &command);
-Result<void> NdsRaStorageBatchRead(const RaStorageContext &context, const StorageBatchReadCommand &command);
-Result<void> NdsRaStorageBatchWrite(const RaStorageContext &context, const StorageBatchWriteCommand &command);
+Result<void> NdsRaStorageBootstrap(const RaConnection &connection, NdsTransportQpState *state, const NdsSge &bootstrap);
+Result<void> NdsRaStorageRead(const RaStorageContext &context, const NdsStorageOperationArgs &args);
+Result<void> NdsRaStorageWrite(const RaStorageContext &context, const NdsStorageOperationArgs &args);
+Result<void> NdsRaStorageBatchRead(const RaStorageContext &context, const NdsStorageBatchOperationArgs &args);
+Result<void> NdsRaStorageBatchWrite(const RaStorageContext &context, const NdsStorageBatchOperationArgs &args);
+Result<StorageCompletion> NdsRaStorageWait(const RaStorageContext &context);
 
 }  // namespace nds
 

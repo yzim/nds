@@ -43,21 +43,24 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void nds_aiv_rdma_send_batch(__gm__ const 
                                                                    uint32_t wr_count, __gm__ int32_t *return_value,
                                                                    __gm__ uint64_t *bad_wr, AscendC::TBuf<> *scratch);
 
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void nds_aiv_storage_read(__gm__ const NdsStorageDescriptor *context,
-                                                                __gm__ const nds::StorageReadCommand *command,
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void nds_aiv_storage_bootstrap(
+    __gm__ const NdsStorageBootstrapDescriptor *bootstrap, __gm__ int32_t *return_value, AscendC::TBuf<> *scratch);
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void nds_aiv_storage_read(__gm__ const NdsStorageDescriptor *storage,
+                                                                __gm__ const NdsStorageOperation *operation,
                                                                 __gm__ int32_t *return_value, AscendC::TBuf<> *scratch);
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void nds_aiv_storage_write(__gm__ const NdsStorageDescriptor *context,
-                                                                 __gm__ const nds::StorageWriteCommand *command,
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void nds_aiv_storage_write(__gm__ const NdsStorageDescriptor *storage,
+                                                                 __gm__ const NdsStorageOperation *operation,
                                                                  __gm__ int32_t *return_value,
                                                                  AscendC::TBuf<> *scratch);
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void nds_aiv_storage_batch_read(
-    __gm__ const NdsStorageDescriptor *context, __gm__ const nds::StorageBatchReadCommand *command,
-    __gm__ int32_t *return_value, AscendC::TBuf<> *scratch);
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void nds_aiv_storage_batch_write(
-    __gm__ const NdsStorageDescriptor *context, __gm__ const nds::StorageBatchWriteCommand *command,
-    __gm__ int32_t *return_value, AscendC::TBuf<> *scratch);
-NDS_AIV_DEVICE_API_LINKAGE __aicore__ void nds_aiv_storage_wait(__gm__ const NdsStorageDescriptor *context,
-                                                                uint64_t command_id, uint64_t expected_bytes,
-                                                                uint32_t slot_index, __gm__ int32_t *return_value);
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void nds_aiv_storage_batch_read(__gm__ const NdsStorageDescriptor *storage,
+                                                                      __gm__ const NdsStorageBatchOperation *operation,
+                                                                      __gm__ int32_t *return_value,
+                                                                      AscendC::TBuf<> *scratch);
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void nds_aiv_storage_batch_write(__gm__ const NdsStorageDescriptor *storage,
+                                                                       __gm__ const NdsStorageBatchOperation *operation,
+                                                                       __gm__ int32_t *return_value,
+                                                                       AscendC::TBuf<> *scratch);
+NDS_AIV_DEVICE_API_LINKAGE __aicore__ void nds_aiv_storage_wait(__gm__ const NdsStorageDescriptor *descriptor,
+                                                                uint32_t slot_id, __gm__ int32_t *return_value);
 
 #endif

@@ -8,9 +8,9 @@ namespace nds::wire {
 
 inline constexpr uint32_t kQpInfoMagic = UINT32_C(0x4e445331);  // "NDS1"
 inline constexpr uint16_t kQpInfoVersion = UINT16_C(3);
-inline constexpr uint32_t kMaxQpInfoBatch = 8U;
+inline constexpr uint32_t kMaxQpInfoBatch = 16U;
 inline constexpr uint32_t kTransportInfoMagic = UINT32_C(0x4e445354);  // "NDST"
-inline constexpr uint16_t kTransportInfoVersion = UINT16_C(1);
+inline constexpr uint16_t kTransportInfoVersion = UINT16_C(2);
 inline constexpr uint32_t kRemoteMemoryMagic = UINT32_C(0x4e445332);  // "NDS2"
 inline constexpr uint16_t kRemoteMemoryVersion = UINT16_C(1);
 inline constexpr uint32_t kGidBytes = 16U;
@@ -45,7 +45,7 @@ struct __attribute__((packed)) TransportInfo {
     QpInfo qps[kMaxQpInfoBatch];
 };
 
-static_assert(sizeof(TransportInfo) == 652, "NDS transport info must remain a fixed 652-byte message");
+static_assert(sizeof(TransportInfo) == 1292, "NDS transport info must remain a fixed 1292-byte message");
 
 /* Remote memory metadata exchanged after QP setup. */
 struct __attribute__((packed)) RemoteMemory {

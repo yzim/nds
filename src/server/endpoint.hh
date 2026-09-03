@@ -9,7 +9,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <span>
 #include <string>
+#include <vector>
 
 namespace nds::server {
 
@@ -45,6 +47,14 @@ private:
     const Endpoint *owner_{};
 };
 
+struct TransferRequest {
+    const MemoryRegion *local{};
+    std::uint64_t local_offset{};
+    std::uint64_t remote_address{};
+    std::uint32_t remote_key{};
+    std::uint32_t length{};
+};
+
 class QueuePair {
 public:
     QueuePair() = default;
@@ -71,8 +81,14 @@ private:
     friend class Transport;
     QueuePair(Endpoint *endpoint, const nds::QpInfo &local, ibv_cq *cq, ibv_qp *handle);
     void reset() noexcept;
-    bool valid_local_region(const MemoryRegion &region, std::uint32_t length) const noexcept;
-    Result<ibv_wc> poll_completion(std::uint32_t timeout_ms);
+    bool valid_local_region(const MemoryRegion &region, std::uint64_t local_offset,
+                            std::uint32_t length) const noexcept;
+    Result<std::uint64_t> post_send(const MemoryRegion &local, std::uint32_t length);
+    Result<std::uint64_t> post_transfer(ibv_wr_opcode opcode, const MemoryRegion &local, std::uint64_t local_offset,
+                                        std::uint64_t remote_address, std::uint32_t remote_key, std::uint32_t length);
+    Result<std::vector<std::uint64_t>> post_transfer_batch(ibv_wr_opcode opcode,
+                                                           std::span<const TransferRequest> requests);
+    Result<ibv_wc> poll_matching(ibv_wc_opcode opcode, std::uint64_t expected_wr_id, std::uint32_t timeout_ms);
     Result<void> poll(ibv_wc_opcode opcode, std::uint64_t expected_wr_id, std::uint32_t timeout_ms);
     Result<void> transfer(ibv_wr_opcode opcode, const MemoryRegion &local, std::uint64_t remote_address,
                           std::uint32_t remote_key, std::uint32_t length, std::uint32_t timeout_ms);
@@ -82,8 +98,10 @@ private:
     ibv_qp *handle_{};
     nds::QpInfo local_{};
     bool connected_{};
+    std::uint64_t next_send_wr_id_{4U};
     std::uint64_t next_receive_wr_id_{1U};
     std::deque<std::uint64_t> pending_receive_ids_;
+    std::deque<ibv_wc> pending_completions_;
 };
 
 class Endpoint {

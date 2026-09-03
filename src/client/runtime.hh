@@ -18,6 +18,7 @@ class Endpoint;
 struct EndpointConfig;
 struct EndpointTestAccess;
 struct RuntimeTestAccess;
+struct StorageClientTestAccess;
 
 struct HostPinnedAllocation {
     void *host_address{};
@@ -48,6 +49,7 @@ private:
     friend class Runtime;
     friend struct EndpointTestAccess;
     friend struct RuntimeTestAccess;
+    friend struct StorageClientTestAccess;
     void reset() noexcept;
 
     Runtime *runtime_{};
