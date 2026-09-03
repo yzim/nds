@@ -58,6 +58,10 @@ public:
     Result<void> wait_receive(std::size_t qp_index, std::uint32_t timeout_ms);
     Result<void> send(const MemoryRegion &local, std::uint32_t length);
     Result<void> send(std::size_t qp_index, const MemoryRegion &local, std::uint32_t length);
+    Result<std::uint64_t> post_send(const MemoryRegion &local, std::uint32_t length);
+    Result<std::uint64_t> post_send(std::size_t qp_index, const MemoryRegion &local, std::uint32_t length);
+    Result<void> wait_send(std::uint64_t wr_id, std::uint32_t timeout_ms);
+    Result<void> wait_send(std::size_t qp_index, std::uint64_t wr_id, std::uint32_t timeout_ms);
     Result<MemoryRegion> register_memory(void *buffer, std::size_t length, MemoryAccess access);
     Result<void> read(const MemoryRegion &local, std::uint64_t remote_address, std::uint32_t remote_key,
                       std::uint32_t length);
@@ -67,6 +71,22 @@ public:
                        std::uint32_t length);
     Result<void> write(std::size_t qp_index, const MemoryRegion &local, std::uint64_t remote_address,
                        std::uint32_t remote_key, std::uint32_t length);
+    Result<std::uint64_t> post_read(const MemoryRegion &local, std::uint64_t remote_address, std::uint32_t remote_key,
+                                    std::uint32_t length);
+    Result<std::uint64_t> post_read(std::size_t qp_index, const MemoryRegion &local, std::uint64_t remote_address,
+                                    std::uint32_t remote_key, std::uint32_t length);
+    Result<void> wait_read(std::uint64_t wr_id, std::uint32_t timeout_ms);
+    Result<void> wait_read(std::size_t qp_index, std::uint64_t wr_id, std::uint32_t timeout_ms);
+    Result<std::uint64_t> post_write(const MemoryRegion &local, std::uint64_t remote_address, std::uint32_t remote_key,
+                                     std::uint32_t length);
+    Result<std::uint64_t> post_write(std::size_t qp_index, const MemoryRegion &local, std::uint64_t remote_address,
+                                     std::uint32_t remote_key, std::uint32_t length);
+    Result<void> wait_write(std::uint64_t wr_id, std::uint32_t timeout_ms);
+    Result<void> wait_write(std::size_t qp_index, std::uint64_t wr_id, std::uint32_t timeout_ms);
+    Result<std::uint64_t> post_read_batch(std::size_t qp_index, std::span<const TransferRequest> requests);
+    Result<void> wait_read_batch(std::size_t qp_index, std::uint64_t wr_id, std::uint32_t timeout_ms);
+    Result<std::uint64_t> post_write_batch(std::size_t qp_index, std::span<const TransferRequest> requests);
+    Result<void> wait_write_batch(std::size_t qp_index, std::uint64_t wr_id, std::uint32_t timeout_ms);
     Result<void> read_batch(std::size_t qp_index, std::span<const TransferRequest> requests);
     Result<void> write_batch(std::size_t qp_index, std::span<const TransferRequest> requests);
     std::size_t qp_count() const noexcept;

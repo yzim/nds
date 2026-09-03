@@ -143,10 +143,30 @@ Result<void> Transport::send(const MemoryRegion &local, std::uint32_t length) {
 }
 
 Result<void> Transport::send(std::size_t qp_index, const MemoryRegion &local, std::uint32_t length) {
+    NDS_ASSIGN_OR_RETURN(const std::uint64_t wr_id, post_send(qp_index, local, length));
+    return wait_send(qp_index, wr_id, completion_timeout_ms_);
+}
+
+Result<std::uint64_t> Transport::post_send(const MemoryRegion &local, std::uint32_t length) {
+    return post_send(0U, local, length);
+}
+
+Result<std::uint64_t> Transport::post_send(std::size_t qp_index, const MemoryRegion &local, std::uint32_t length) {
     QueuePair *qp = queue_pair(qp_index);
     if (qp == nullptr)
         return Error{ErrorCode::kInvalidArgument, "CPU transport QP index is out of range"};
-    return qp->send(local, length, completion_timeout_ms_);
+    return qp->post_send(local, length);
+}
+
+Result<void> Transport::wait_send(std::uint64_t wr_id, std::uint32_t timeout_ms) {
+    return wait_send(0U, wr_id, timeout_ms);
+}
+
+Result<void> Transport::wait_send(std::size_t qp_index, std::uint64_t wr_id, std::uint32_t timeout_ms) {
+    QueuePair *qp = queue_pair(qp_index);
+    if (qp == nullptr)
+        return Error{ErrorCode::kInvalidArgument, "CPU transport QP index is out of range"};
+    return qp->poll(IBV_WC_SEND, wr_id, timeout_ms);
 }
 
 Result<MemoryRegion> Transport::register_memory(void *buffer, std::size_t length, MemoryAccess access) {
@@ -169,10 +189,32 @@ Result<void> Transport::read(const MemoryRegion &local, std::uint64_t address, s
 
 Result<void> Transport::read(std::size_t qp_index, const MemoryRegion &local, std::uint64_t address, std::uint32_t key,
                              std::uint32_t length) {
+    NDS_ASSIGN_OR_RETURN(const std::uint64_t wr_id, post_read(qp_index, local, address, key, length));
+    return wait_read(qp_index, wr_id, completion_timeout_ms_);
+}
+
+Result<std::uint64_t> Transport::post_read(const MemoryRegion &local, std::uint64_t address, std::uint32_t key,
+                                           std::uint32_t length) {
+    return post_read(0U, local, address, key, length);
+}
+
+Result<std::uint64_t> Transport::post_read(std::size_t qp_index, const MemoryRegion &local, std::uint64_t address,
+                                           std::uint32_t key, std::uint32_t length) {
     QueuePair *qp = queue_pair(qp_index);
     if (qp == nullptr)
         return Error{ErrorCode::kInvalidArgument, "CPU transport QP index is out of range"};
-    return qp->read(local, address, key, length, completion_timeout_ms_);
+    return qp->post_transfer(IBV_WR_RDMA_READ, local, 0U, address, key, length);
+}
+
+Result<void> Transport::wait_read(std::uint64_t wr_id, std::uint32_t timeout_ms) {
+    return wait_read(0U, wr_id, timeout_ms);
+}
+
+Result<void> Transport::wait_read(std::size_t qp_index, std::uint64_t wr_id, std::uint32_t timeout_ms) {
+    QueuePair *qp = queue_pair(qp_index);
+    if (qp == nullptr)
+        return Error{ErrorCode::kInvalidArgument, "CPU transport QP index is out of range"};
+    return qp->poll(IBV_WC_RDMA_READ, wr_id, timeout_ms);
 }
 
 Result<void> Transport::write(const MemoryRegion &local, std::uint64_t address, std::uint32_t key,
@@ -182,28 +224,68 @@ Result<void> Transport::write(const MemoryRegion &local, std::uint64_t address, 
 
 Result<void> Transport::write(std::size_t qp_index, const MemoryRegion &local, std::uint64_t address, std::uint32_t key,
                               std::uint32_t length) {
+    NDS_ASSIGN_OR_RETURN(const std::uint64_t wr_id, post_write(qp_index, local, address, key, length));
+    return wait_write(qp_index, wr_id, completion_timeout_ms_);
+}
+
+Result<std::uint64_t> Transport::post_write(const MemoryRegion &local, std::uint64_t address, std::uint32_t key,
+                                            std::uint32_t length) {
+    return post_write(0U, local, address, key, length);
+}
+
+Result<std::uint64_t> Transport::post_write(std::size_t qp_index, const MemoryRegion &local, std::uint64_t address,
+                                            std::uint32_t key, std::uint32_t length) {
     QueuePair *qp = queue_pair(qp_index);
     if (qp == nullptr)
         return Error{ErrorCode::kInvalidArgument, "CPU transport QP index is out of range"};
-    return qp->write(local, address, key, length, completion_timeout_ms_);
+    return qp->post_transfer(IBV_WR_RDMA_WRITE, local, 0U, address, key, length);
 }
 
-Result<void> Transport::read_batch(std::size_t qp_index, std::span<const TransferRequest> requests) {
+Result<void> Transport::wait_write(std::uint64_t wr_id, std::uint32_t timeout_ms) {
+    return wait_write(0U, wr_id, timeout_ms);
+}
+
+Result<void> Transport::wait_write(std::size_t qp_index, std::uint64_t wr_id, std::uint32_t timeout_ms) {
+    QueuePair *qp = queue_pair(qp_index);
+    if (qp == nullptr)
+        return Error{ErrorCode::kInvalidArgument, "CPU transport QP index is out of range"};
+    return qp->poll(IBV_WC_RDMA_WRITE, wr_id, timeout_ms);
+}
+
+Result<std::uint64_t> Transport::post_read_batch(std::size_t qp_index, std::span<const TransferRequest> requests) {
     QueuePair *qp = queue_pair(qp_index);
     if (qp == nullptr || requests.empty())
         return Error{ErrorCode::kInvalidArgument, "CPU transport RDMA-read batch is invalid"};
     NDS_ASSIGN_OR_RETURN(const std::vector<std::uint64_t> wr_ids, qp->post_transfer_batch(IBV_WR_RDMA_READ, requests));
-    // RC completion ordering makes the final signaled WQE a completion fence
-    // for the preceding payload WQEs in this linked batch.
-    return qp->poll(IBV_WC_RDMA_READ, wr_ids.back(), completion_timeout_ms_);
+    return wr_ids.back();
 }
 
-Result<void> Transport::write_batch(std::size_t qp_index, std::span<const TransferRequest> requests) {
+Result<void> Transport::wait_read_batch(std::size_t qp_index, std::uint64_t wr_id, std::uint32_t timeout_ms) {
+    return wait_read(qp_index, wr_id, timeout_ms);
+}
+
+Result<std::uint64_t> Transport::post_write_batch(std::size_t qp_index, std::span<const TransferRequest> requests) {
     QueuePair *qp = queue_pair(qp_index);
     if (qp == nullptr || requests.empty())
         return Error{ErrorCode::kInvalidArgument, "CPU transport RDMA-write batch is invalid"};
     NDS_ASSIGN_OR_RETURN(const std::vector<std::uint64_t> wr_ids, qp->post_transfer_batch(IBV_WR_RDMA_WRITE, requests));
-    return qp->poll(IBV_WC_RDMA_WRITE, wr_ids.back(), completion_timeout_ms_);
+    return wr_ids.back();
+}
+
+Result<void> Transport::wait_write_batch(std::size_t qp_index, std::uint64_t wr_id, std::uint32_t timeout_ms) {
+    return wait_write(qp_index, wr_id, timeout_ms);
+}
+
+Result<void> Transport::read_batch(std::size_t qp_index, std::span<const TransferRequest> requests) {
+    NDS_ASSIGN_OR_RETURN(const std::uint64_t wr_id, post_read_batch(qp_index, requests));
+    // RC completion ordering makes the final signaled WQE a completion fence
+    // for the preceding payload WQEs in this linked batch.
+    return wait_read_batch(qp_index, wr_id, completion_timeout_ms_);
+}
+
+Result<void> Transport::write_batch(std::size_t qp_index, std::span<const TransferRequest> requests) {
+    NDS_ASSIGN_OR_RETURN(const std::uint64_t wr_id, post_write_batch(qp_index, requests));
+    return wait_write_batch(qp_index, wr_id, completion_timeout_ms_);
 }
 
 std::size_t Transport::qp_count() const noexcept {

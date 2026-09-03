@@ -76,6 +76,11 @@ current architecture and protocol contract.
 - Increase the fixed storage slot window only with negotiated queue credits,
   command-ID demultiplexing beyond slot selection, and explicit
   resource-lifetime rules.
+- Defer unifying the client and server transport implementations until the
+  server-side data path is performance-stable. Revisit extracting shared QP
+  identity, bootstrap, MTU, signaling, credit, and completion-fence policy
+  into `src/common`, while keeping CANN and `libibverbs` resource and CQ
+  adapters separate.
 
 ### Bootstrap Configuration
 

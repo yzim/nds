@@ -67,101 +67,29 @@ Result<std::vector<StorageSlot>> fetch_slots(Transport *transport, const Storage
     return slots;
 }
 
-Result<void> move_data(Transport *transport, std::size_t qp_index, const MemoryRegion *storage_region,
-                       std::uint64_t offset, std::uint64_t length, const StorageMemory &remote, bool read) {
-    if (length > std::numeric_limits<std::uint32_t>::max())
-        return Error{ErrorCode::kProtocol, "storage transfer exceeds the transport length limit"};
-    if (storage_region == nullptr)
-        return Error{ErrorCode::kInvalidArgument, "storage namespace registration is missing"};
-    const TransferRequest request{storage_region, offset, remote.address, remote.remote_key,
-                                  static_cast<std::uint32_t>(length)};
-    const std::array<TransferRequest, 1U> requests{request};
-    const auto transferred =
-        read ? transport->write_batch(qp_index, requests) : transport->read_batch(qp_index, requests);
-    if (!transferred.ok())
-        return transferred.error();
-    return {};
-}
-
-template <typename Entry>
-Result<void> move_batch_data(Transport *transport, std::size_t qp_index, const MemoryRegion *storage_region,
-                             const std::vector<Entry> &entries, bool read) {
-    std::vector<TransferRequest> requests;
-    requests.reserve(entries.size());
-    for (const Entry &entry : entries) {
-        requests.push_back({storage_region, entry.offset, entry.data.address, entry.data.remote_key,
-                            static_cast<std::uint32_t>(entry.length)});
-    }
-    const auto moved = read ? transport->write_batch(qp_index, requests) : transport->read_batch(qp_index, requests);
-    if (!moved.ok())
-        return moved.error();
-    return {};
-}
-
-template <typename Command, typename Entry, typename DeserializeEntry>
-Result<void> process_batch(Transport *transport, std::size_t qp_index, std::vector<unsigned char> *storage,
-                           const MemoryRegion *storage_region, const Command &command, bool read,
-                           DeserializeEntry deserialize_entry, StorageCompletion *completion) {
-    const auto count = static_cast<std::size_t>(command.entry_count);
-    std::vector<std::uint8_t> entry_bytes(count * kStorageBatchEntryBytes);
-    auto entry_region = transport->register_memory(entry_bytes.data(), entry_bytes.size(), MemoryAccess::LocalWrite);
-    if (!entry_region.ok())
-        return entry_region.error();
-    if (const auto fetched =
-            transport->read(qp_index, entry_region.value(), command.entries.address, command.entries.remote_key,
-                            static_cast<std::uint32_t>(entry_bytes.size()));
-        !fetched.ok())
-        return fetched.error();
-
-    std::vector<Entry> entries(count);
-    std::uint64_t total_length{};
-    for (std::size_t index = 0U; index < count; ++index) {
-        if (deserialize_entry(entry_bytes.data() + index * kStorageBatchEntryBytes, kStorageBatchEntryBytes,
-                              &entries[index]) != StorageSerdeResult::Ok) {
-            completion->status = StorageStatus::InvalidCommand;
-            break;
-        }
-        if (entries[index].offset > storage->size() ||
-            entries[index].length > storage->size() - entries[index].offset ||
-            entries[index].length > std::numeric_limits<std::uint32_t>::max() ||
-            entries[index].length > std::numeric_limits<std::uint64_t>::max() - total_length) {
-            completion->status = StorageStatus::RangeError;
-            break;
-        }
-        total_length += entries[index].length;
-    }
-    if (completion->status == StorageStatus::Success && total_length != command.total_length)
-        completion->status = StorageStatus::InvalidCommand;
-    if (completion->status != StorageStatus::Success)
-        return {};
-    NDS_RETURN_IF_ERROR(move_batch_data(transport, qp_index, storage_region, entries, read));
-    completion->bytes_transferred = total_length;
-    return {};
-}
-
-template <typename Command>
-Result<void> process_single(Transport *transport, std::size_t qp_index, std::vector<unsigned char> *storage,
-                            const MemoryRegion *storage_region, const Command &command, bool read,
-                            StorageCompletion *completion) {
-    if (command.offset > storage->size() || command.length > storage->size() - command.offset ||
-        command.length > std::numeric_limits<std::uint32_t>::max()) {
-        completion->status = StorageStatus::RangeError;
-        return {};
-    }
-    if (const auto moved =
-            move_data(transport, qp_index, storage_region, command.offset, command.length, command.data, read);
-        !moved.ok())
-        return moved.error();
-    completion->bytes_transferred = command.length;
-    return {};
-}
-
 struct WorkerSlot {
     std::size_t slot_index{};
     std::array<std::uint8_t, kStorageCommandBytes> command_bytes{};
     std::array<std::uint8_t, kStorageCompletionBytes> completion_bytes{};
+    std::vector<std::uint8_t> entry_bytes;
     MemoryRegion command_region;
     MemoryRegion completion_region;
+    MemoryRegion entry_region;
+};
+
+struct PendingCommand {
+    WorkerSlot *slot{};
+    StorageCompletion completion{};
+    bool storage_read{};
+    bool batch{};
+    std::uint32_t entry_count{};
+    std::uint64_t total_length{};
+    bool descriptor_pending{};
+    std::uint64_t descriptor_wr_id{};
+    std::vector<TransferRequest> requests;
+    std::uint64_t payload_wr_id{};
+    bool payload_pending{};
+    std::uint64_t completion_wr_id{};
 };
 
 struct Worker {
@@ -218,85 +146,214 @@ Result<void> run_worker(Transport *transport, std::vector<unsigned char> *storag
     for (std::size_t index = 0U; index < active_slots; ++index)
         NDS_RETURN_IF_ERROR(transport->post_receive(worker->qp_index, worker->slots[index].command_region));
 
-    for (std::uint32_t command_index = 0U; command_index < worker->command_count; ++command_index) {
-        WorkerSlot &slot = worker->slots[command_index % active_slots];
-        NDS_RETURN_IF_ERROR(transport->wait_receive(worker->qp_index, timeout_ms));
+    for (std::uint32_t command_index = 0U; command_index < worker->command_count;) {
+        const std::size_t window = std::min<std::size_t>(active_slots, worker->command_count - command_index);
+        std::vector<PendingCommand> pending;
+        pending.reserve(window);
 
-        StorageOperation operation{};
-        if (deserialize_storage_operation(slot.command_bytes.data(), slot.command_bytes.size(), &operation) !=
-            StorageSerdeResult::Ok)
-            return Error{ErrorCode::kProtocol, "invalid storage operation"};
-        StorageCompletion completion{
-            .command_id = 0U,
-            .state = StorageCompletionState::Complete,
-            .status = StorageStatus::Success,
-            .bytes_transferred = 0U,
-        };
-        Result<void> processed;
-        switch (operation) {
-            case StorageOperation::Read: {
-                StorageReadCommand command{};
-                if (deserialize_storage_read(slot.command_bytes.data(), slot.command_bytes.size(), &command) !=
-                    StorageSerdeResult::Ok)
-                    return Error{ErrorCode::kProtocol, "invalid storage read command"};
-                if (command.slot_index != slot.slot_index)
-                    return Error{ErrorCode::kProtocol, "storage read arrived in the wrong slot"};
-                completion.command_id = command.command_id;
-                processed =
-                    process_single(transport, worker->qp_index, storage, storage_region, command, true, &completion);
-                break;
+        for (std::size_t window_index = 0U; window_index < window; ++window_index) {
+            WorkerSlot &slot = worker->slots[window_index];
+            NDS_RETURN_IF_ERROR(transport->wait_receive(worker->qp_index, timeout_ms));
+
+            StorageOperation operation{};
+            if (deserialize_storage_operation(slot.command_bytes.data(), slot.command_bytes.size(), &operation) !=
+                StorageSerdeResult::Ok)
+                return Error{ErrorCode::kProtocol, "invalid storage operation"};
+            pending.push_back({.slot = &slot,
+                               .completion = {.command_id = 0U,
+                                              .state = StorageCompletionState::Complete,
+                                              .status = StorageStatus::Success,
+                                              .bytes_transferred = 0U},
+                               .storage_read = false,
+                               .batch = false,
+                               .entry_count = 0U,
+                               .total_length = 0U,
+                               .descriptor_pending = false,
+                               .descriptor_wr_id = 0U,
+                               .requests = {},
+                               .payload_wr_id = 0U,
+                               .payload_pending = false,
+                               .completion_wr_id = 0U});
+            PendingCommand &command_state = pending.back();
+
+            switch (operation) {
+                case StorageOperation::Read: {
+                    StorageReadCommand command{};
+                    if (deserialize_storage_read(slot.command_bytes.data(), slot.command_bytes.size(), &command) !=
+                        StorageSerdeResult::Ok)
+                        return Error{ErrorCode::kProtocol, "invalid storage read command"};
+                    if (command.slot_index != slot.slot_index)
+                        return Error{ErrorCode::kProtocol, "storage read arrived in the wrong slot"};
+                    command_state.completion.command_id = command.command_id;
+                    command_state.storage_read = true;
+                    if (command.offset > storage->size() || command.length > storage->size() - command.offset ||
+                        command.length > std::numeric_limits<std::uint32_t>::max()) {
+                        command_state.completion.status = StorageStatus::RangeError;
+                        break;
+                    }
+                    command_state.requests.push_back({storage_region, command.offset, command.data.address,
+                                                      command.data.remote_key,
+                                                      static_cast<std::uint32_t>(command.length)});
+                    command_state.completion.bytes_transferred = command.length;
+                    break;
+                }
+                case StorageOperation::Write: {
+                    StorageWriteCommand command{};
+                    if (deserialize_storage_write(slot.command_bytes.data(), slot.command_bytes.size(), &command) !=
+                        StorageSerdeResult::Ok)
+                        return Error{ErrorCode::kProtocol, "invalid storage write command"};
+                    if (command.slot_index != slot.slot_index)
+                        return Error{ErrorCode::kProtocol, "storage write arrived in the wrong slot"};
+                    command_state.completion.command_id = command.command_id;
+                    if (command.offset > storage->size() || command.length > storage->size() - command.offset ||
+                        command.length > std::numeric_limits<std::uint32_t>::max()) {
+                        command_state.completion.status = StorageStatus::RangeError;
+                        break;
+                    }
+                    command_state.requests.push_back({storage_region, command.offset, command.data.address,
+                                                      command.data.remote_key,
+                                                      static_cast<std::uint32_t>(command.length)});
+                    command_state.completion.bytes_transferred = command.length;
+                    break;
+                }
+                case StorageOperation::BatchRead: {
+                    StorageBatchReadCommand command{};
+                    if (deserialize_storage_batch_read(slot.command_bytes.data(), slot.command_bytes.size(),
+                                                       &command) != StorageSerdeResult::Ok)
+                        return Error{ErrorCode::kProtocol, "invalid storage batch-read command"};
+                    if (command.slot_index != slot.slot_index)
+                        return Error{ErrorCode::kProtocol, "storage batch-read arrived in the wrong slot"};
+                    command_state.completion.command_id = command.command_id;
+                    command_state.storage_read = true;
+                    command_state.batch = true;
+                    command_state.entry_count = static_cast<std::uint32_t>(command.entry_count);
+                    command_state.total_length = command.total_length;
+                    NDS_ASSIGN_OR_RETURN(command_state.descriptor_wr_id,
+                                         transport->post_read(worker->qp_index, slot.entry_region,
+                                                              command.entries.address, command.entries.remote_key,
+                                                              command_state.entry_count * kStorageBatchEntryBytes));
+                    command_state.descriptor_pending = true;
+                    break;
+                }
+                case StorageOperation::BatchWrite: {
+                    StorageBatchWriteCommand command{};
+                    if (deserialize_storage_batch_write(slot.command_bytes.data(), slot.command_bytes.size(),
+                                                        &command) != StorageSerdeResult::Ok)
+                        return Error{ErrorCode::kProtocol, "invalid storage batch-write command"};
+                    if (command.slot_index != slot.slot_index)
+                        return Error{ErrorCode::kProtocol, "storage batch-write arrived in the wrong slot"};
+                    command_state.completion.command_id = command.command_id;
+                    command_state.batch = true;
+                    command_state.entry_count = static_cast<std::uint32_t>(command.entry_count);
+                    command_state.total_length = command.total_length;
+                    NDS_ASSIGN_OR_RETURN(command_state.descriptor_wr_id,
+                                         transport->post_read(worker->qp_index, slot.entry_region,
+                                                              command.entries.address, command.entries.remote_key,
+                                                              command_state.entry_count * kStorageBatchEntryBytes));
+                    command_state.descriptor_pending = true;
+                    break;
+                }
             }
-            case StorageOperation::Write: {
-                StorageWriteCommand command{};
-                if (deserialize_storage_write(slot.command_bytes.data(), slot.command_bytes.size(), &command) !=
-                    StorageSerdeResult::Ok)
-                    return Error{ErrorCode::kProtocol, "invalid storage write command"};
-                if (command.slot_index != slot.slot_index)
-                    return Error{ErrorCode::kProtocol, "storage write arrived in the wrong slot"};
-                completion.command_id = command.command_id;
-                processed =
-                    process_single(transport, worker->qp_index, storage, storage_region, command, false, &completion);
-                break;
-            }
-            case StorageOperation::BatchRead: {
-                StorageBatchReadCommand command{};
-                if (deserialize_storage_batch_read(slot.command_bytes.data(), slot.command_bytes.size(), &command) !=
-                    StorageSerdeResult::Ok)
-                    return Error{ErrorCode::kProtocol, "invalid storage batch-read command"};
-                if (command.slot_index != slot.slot_index)
-                    return Error{ErrorCode::kProtocol, "storage batch-read arrived in the wrong slot"};
-                completion.command_id = command.command_id;
-                processed = process_batch<StorageBatchReadCommand, StorageBatchReadEntry>(
-                    transport, worker->qp_index, storage, storage_region, command, true,
-                    deserialize_storage_batch_read_entry, &completion);
-                break;
-            }
-            case StorageOperation::BatchWrite: {
-                StorageBatchWriteCommand command{};
-                if (deserialize_storage_batch_write(slot.command_bytes.data(), slot.command_bytes.size(), &command) !=
-                    StorageSerdeResult::Ok)
-                    return Error{ErrorCode::kProtocol, "invalid storage batch-write command"};
-                if (command.slot_index != slot.slot_index)
-                    return Error{ErrorCode::kProtocol, "storage batch-write arrived in the wrong slot"};
-                completion.command_id = command.command_id;
-                processed = process_batch<StorageBatchWriteCommand, StorageBatchWriteEntry>(
-                    transport, worker->qp_index, storage, storage_region, command, false,
-                    deserialize_storage_batch_write_entry, &completion);
-                break;
+
+            if (!command_state.batch && command_state.completion.status == StorageStatus::Success) {
+                if (command_state.storage_read) {
+                    NDS_ASSIGN_OR_RETURN(command_state.payload_wr_id,
+                                         transport->post_write_batch(worker->qp_index, command_state.requests));
+                } else {
+                    NDS_ASSIGN_OR_RETURN(command_state.payload_wr_id,
+                                         transport->post_read_batch(worker->qp_index, command_state.requests));
+                }
+                command_state.payload_pending = true;
             }
         }
-        if (!processed.ok())
-            return processed.error();
-        if (serialize_storage_completion(completion, slot.completion_bytes.data(), slot.completion_bytes.size()) !=
-            StorageSerdeResult::Ok)
-            return Error{ErrorCode::kProtocol, "invalid storage completion"};
-        const StorageMemory &remote_completion = (*slots)[slot.slot_index].completion;
-        if (const auto completed = transport->write(worker->qp_index, slot.completion_region, remote_completion.address,
-                                                    remote_completion.remote_key, sizeof(slot.completion_bytes));
-            !completed.ok())
-            return completed.error();
-        if (command_index + 1U < worker->command_count)
-            NDS_RETURN_IF_ERROR(transport->post_receive(worker->qp_index, slot.command_region));
+
+        for (PendingCommand &command_state : pending) {
+            if (!command_state.descriptor_pending)
+                continue;
+            NDS_RETURN_IF_ERROR(transport->wait_read(worker->qp_index, command_state.descriptor_wr_id, timeout_ms));
+            command_state.requests.reserve(command_state.entry_count);
+            std::uint64_t total_length{};
+            for (std::size_t index = 0U; index < command_state.entry_count; ++index) {
+                const std::uint8_t *entry_bytes =
+                    command_state.slot->entry_bytes.data() + index * kStorageBatchEntryBytes;
+                std::uint64_t offset{};
+                std::uint64_t length{};
+                StorageMemory data{};
+                if (command_state.storage_read) {
+                    StorageBatchReadEntry entry{};
+                    if (deserialize_storage_batch_read_entry(entry_bytes, kStorageBatchEntryBytes, &entry) !=
+                        StorageSerdeResult::Ok) {
+                        command_state.completion.status = StorageStatus::InvalidCommand;
+                        break;
+                    }
+                    offset = entry.offset;
+                    length = entry.length;
+                    data = entry.data;
+                } else {
+                    StorageBatchWriteEntry entry{};
+                    if (deserialize_storage_batch_write_entry(entry_bytes, kStorageBatchEntryBytes, &entry) !=
+                        StorageSerdeResult::Ok) {
+                        command_state.completion.status = StorageStatus::InvalidCommand;
+                        break;
+                    }
+                    offset = entry.offset;
+                    length = entry.length;
+                    data = entry.data;
+                }
+                if (offset > storage->size() || length > storage->size() - offset ||
+                    length > std::numeric_limits<std::uint32_t>::max() ||
+                    length > std::numeric_limits<std::uint64_t>::max() - total_length) {
+                    command_state.completion.status = StorageStatus::RangeError;
+                    break;
+                }
+                total_length += length;
+                command_state.requests.push_back(
+                    {storage_region, offset, data.address, data.remote_key, static_cast<std::uint32_t>(length)});
+            }
+            if (command_state.completion.status == StorageStatus::Success && total_length != command_state.total_length)
+                command_state.completion.status = StorageStatus::InvalidCommand;
+            if (command_state.completion.status != StorageStatus::Success)
+                continue;
+            command_state.completion.bytes_transferred = total_length;
+            if (command_state.storage_read) {
+                NDS_ASSIGN_OR_RETURN(command_state.payload_wr_id,
+                                     transport->post_write_batch(worker->qp_index, command_state.requests));
+            } else {
+                NDS_ASSIGN_OR_RETURN(command_state.payload_wr_id,
+                                     transport->post_read_batch(worker->qp_index, command_state.requests));
+            }
+            command_state.payload_pending = true;
+        }
+
+        for (PendingCommand &command_state : pending) {
+            if (!command_state.payload_pending)
+                continue;
+            if (command_state.storage_read)
+                NDS_RETURN_IF_ERROR(
+                    transport->wait_write_batch(worker->qp_index, command_state.payload_wr_id, timeout_ms));
+            else
+                NDS_RETURN_IF_ERROR(
+                    transport->wait_read_batch(worker->qp_index, command_state.payload_wr_id, timeout_ms));
+        }
+
+        for (PendingCommand &command_state : pending) {
+            if (serialize_storage_completion(command_state.completion, command_state.slot->completion_bytes.data(),
+                                             command_state.slot->completion_bytes.size()) != StorageSerdeResult::Ok)
+                return Error{ErrorCode::kProtocol, "invalid storage completion"};
+            const StorageMemory &remote_completion = (*slots)[command_state.slot->slot_index].completion;
+            NDS_ASSIGN_OR_RETURN(command_state.completion_wr_id,
+                                 transport->post_write(worker->qp_index, command_state.slot->completion_region,
+                                                       remote_completion.address, remote_completion.remote_key,
+                                                       sizeof(command_state.slot->completion_bytes)));
+        }
+        for (PendingCommand &command_state : pending)
+            NDS_RETURN_IF_ERROR(transport->wait_write(worker->qp_index, command_state.completion_wr_id, timeout_ms));
+
+        command_index += static_cast<std::uint32_t>(window);
+        if (command_index < worker->command_count) {
+            for (PendingCommand &command_state : pending)
+                NDS_RETURN_IF_ERROR(transport->post_receive(worker->qp_index, command_state.slot->command_region));
+        }
     }
     return {};
 }
@@ -337,6 +394,7 @@ Result<void> serve_commands(Transport *transport, std::vector<unsigned char> *st
             workers[index].slots.emplace_back();
             WorkerSlot &worker_slot = workers[index].slots.back();
             worker_slot.slot_index = slot_index;
+            worker_slot.entry_bytes.resize(static_cast<std::size_t>(kStorageMaxBatchEntries) * kStorageBatchEntryBytes);
             NDS_ASSIGN_OR_RETURN(
                 worker_slot.command_region,
                 transport->register_memory(worker_slot.command_bytes.data(), worker_slot.command_bytes.size(),
@@ -345,6 +403,9 @@ Result<void> serve_commands(Transport *transport, std::vector<unsigned char> *st
                 worker_slot.completion_region,
                 transport->register_memory(worker_slot.completion_bytes.data(), worker_slot.completion_bytes.size(),
                                            MemoryAccess::LocalRead));
+            NDS_ASSIGN_OR_RETURN(worker_slot.entry_region,
+                                 transport->register_memory(worker_slot.entry_bytes.data(),
+                                                            worker_slot.entry_bytes.size(), MemoryAccess::LocalWrite));
         }
         if (workers[index].slots.empty())
             return Error{ErrorCode::kProtocol, "storage slot table does not cover a command QP"};
