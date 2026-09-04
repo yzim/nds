@@ -7,6 +7,7 @@
 #include <limits>
 #include <string>
 #include <thread>
+#include <utility>
 
 namespace nds::client {
 
@@ -247,13 +248,22 @@ Result<void> launch_storage_operation_and_wait(Runtime *runtime, const AivLaunch
     NDS_ASSIGN_OR_RETURN(MemoryBuffer device_request, runtime->allocate(sizeof(request), MemoryLocation::Device));
     NDS_RETURN_IF_ERROR(runtime->copy_to(&device_request, &request, sizeof(request)));
     const std::uint64_t address = reinterpret_cast<std::uint64_t>(device_request.data());
+    const std::uint64_t return_value_address =
+        config.sync ? address + offsetof(Request, return_value)
+                    : request.storage.storage_states_address +
+                          static_cast<std::uint64_t>(nds_storage_slot_id_index(request.operation.slot_id)) *
+                              sizeof(NdsStorageState) +
+                          offsetof(NdsStorageState, status);
     const StorageOperationArguments arguments{address + offsetof(Request, storage),
-                                              address + offsetof(Request, operation),
-                                              address + offsetof(Request, return_value)};
+                                              address + offsetof(Request, operation), return_value_address};
     const int launch_result =
         launcher->launch(entry, config, const_cast<StorageOperationArguments *>(&arguments), sizeof(arguments));
     if (launch_result != ACL_SUCCESS)
         return Error{ErrorCode::kRuntime, "AIV storage launch failed: " + std::to_string(launch_result)};
+    if (!config.sync) {
+        launcher->retain_async_storage_request(std::move(device_request));
+        return {};
+    }
     const int sync_result = aclrtSynchronizeStreamWithTimeout(config.stream, config.sync_timeout_ms);
     if (sync_result != ACL_SUCCESS)
         return Error{ErrorCode::kRuntime, "AIV storage synchronization failed: " + std::to_string(sync_result)};
@@ -289,6 +299,14 @@ Result<void> launch_storage_wait_and_wait(Runtime *runtime, const AivLauncher *l
 
 AivLauncher::~AivLauncher() {
     reset();
+}
+
+void AivLauncher::retain_async_storage_request(MemoryBuffer request) const {
+    async_storage_requests_.push_back(std::move(request));
+}
+
+void AivLauncher::release_async_storage_requests() const noexcept {
+    async_storage_requests_.clear();
 }
 
 Result<std::unique_ptr<Launcher>> AivLauncher::open(Runtime *runtime, const std::string &kernel_path) {
@@ -371,6 +389,7 @@ Result<void> AivLauncher::launch_and_wait(const char *kernel_name, void *argumen
 }
 
 void AivLauncher::reset() noexcept {
+    async_storage_requests_.clear();
     functions_.clear();
     if (binary_ != nullptr)
         (void)aclrtBinaryUnLoad(binary_);
@@ -530,6 +549,7 @@ Result<void> AivLauncher::storage_wait_with_config(const LaunchConfig &config, c
                                          .reserved = 0U,
                                          .return_value = std::numeric_limits<std::int32_t>::min()};
         const auto probe = launch_storage_wait_and_wait(runtime_, this, config, request);
+        release_async_storage_requests();
         if (probe.ok())
             return {};
         if (probe.error().message.find(": -4") == std::string::npos)

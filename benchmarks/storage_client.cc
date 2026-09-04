@@ -101,10 +101,10 @@ nds::Result<void> submit(nds::client::Launcher *launcher, const NdsStorageDescri
     if (launcher == nullptr)
         return nds::Error{nds::ErrorCode::kInvalidArgument, "storage benchmark launcher is empty"};
     if (read) {
-        return launcher->with_config({.stream = stream, .sync = true, .sync_timeout_ms = kLaunchTimeoutMs})
+        return launcher->with_config({.stream = stream, .sync = false, .sync_timeout_ms = kLaunchTimeoutMs})
             .storage_read_batch(storage, work.slot_id, work.entries_address, work.entries_key, work.entry_count);
     }
-    return launcher->with_config({.stream = stream, .sync = true, .sync_timeout_ms = kLaunchTimeoutMs})
+    return launcher->with_config({.stream = stream, .sync = false, .sync_timeout_ms = kLaunchTimeoutMs})
         .storage_write_batch(storage, work.slot_id, work.entries_address, work.entries_key, work.entry_count);
 }
 

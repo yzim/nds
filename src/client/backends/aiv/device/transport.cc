@@ -135,7 +135,7 @@ __aicore__ inline uint32_t WaitForSendCompletion(__gm__ const NdsQpDescriptor *q
 
 __aicore__ inline uint32_t PostTransportSend(__gm__ const NdsTransportDescriptor *transport, uint32_t queue_index,
                                              const NdsSendWr *wr, __gm__ int32_t *return_value, TBuf<> *scratch) {
-    if (transport == nullptr || wr == nullptr || return_value == nullptr || scratch == nullptr)
+    if (transport == nullptr || wr == nullptr || scratch == nullptr)
         return NDS_OPERATION_INVALID_ARGUMENT;
     __gm__ const NdsQpDescriptor *qp = nds_transport_qp_global(transport, queue_index);
     __gm__ NdsTransportQpState *state = nds_transport_qp_state_global(transport, queue_index);
@@ -153,7 +153,7 @@ __aicore__ inline uint32_t PostTransportSend(__gm__ const NdsTransportDescriptor
     scheduled.flags = signaled != 0U ? NDS_SEND_SIGNALED : 0U;
     const NdsQpDescriptor local_qp = LoadQp(qp);
     nds_aiv_post_send(&local_qp, &scheduled, return_value, scratch);
-    if (*return_value != 0)
+    if (return_value != nullptr && *return_value != 0)
         return static_cast<uint32_t>(-*return_value);
     if (next.send_credits == 0U)
         return NDS_OPERATION_QUEUE_FULL;
@@ -245,8 +245,6 @@ __aicore__ inline uint32_t PostTransportSendBatch(__gm__ const NdsTransportDescr
 NDS_AIV_DEVICE_API_LINKAGE __aicore__ void nds_aiv_rdma_send(__gm__ const NdsTransportDescriptor *transport,
                                                              uint32_t queue_index, const NdsSendWr *wr,
                                                              __gm__ int32_t *return_value, TBuf<> *scratch) {
-    if (return_value == nullptr)
-        return;
     NdsAivSetReturnValue(return_value, PostTransportSend(transport, queue_index, wr, return_value, scratch));
 }
 
@@ -292,15 +290,11 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void nds_aiv_rdma_recv(__gm__ const NdsTra
 NDS_AIV_DEVICE_API_LINKAGE __aicore__ void nds_aiv_rdma_read(__gm__ const NdsTransportDescriptor *transport,
                                                              uint32_t queue_index, const NdsSendWr *wr,
                                                              __gm__ int32_t *return_value, TBuf<> *scratch) {
-    if (return_value == nullptr)
-        return;
     NdsAivSetReturnValue(return_value, PostTransportSend(transport, queue_index, wr, return_value, scratch));
 }
 
 NDS_AIV_DEVICE_API_LINKAGE __aicore__ void nds_aiv_rdma_write(__gm__ const NdsTransportDescriptor *transport,
                                                               uint32_t queue_index, const NdsSendWr *wr,
                                                               __gm__ int32_t *return_value, TBuf<> *scratch) {
-    if (return_value == nullptr)
-        return;
     NdsAivSetReturnValue(return_value, PostTransportSend(transport, queue_index, wr, return_value, scratch));
 }

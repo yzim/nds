@@ -7,8 +7,8 @@ namespace {
 template <typename Request, typename Serialize>
 uint32_t execute(const NdsStorageDescriptor *descriptor, uint32_t slot_id, uint32_t expected_bytes,
                  const Request &command, Serialize serialize, int32_t *return_value) {
-    if (return_value == nullptr || !nds_storage_descriptor_valid(descriptor) ||
-        !nds_storage_slot_id_valid(descriptor, slot_id) || expected_bytes == 0U)
+    if (!nds_storage_descriptor_valid(descriptor) || !nds_storage_slot_id_valid(descriptor, slot_id) ||
+        expected_bytes == 0U)
         return kNdsAicpuInvalidArgument;
     const uint32_t slot_index = nds_storage_slot_id_index(slot_id);
     NdsStorageState *state = nds_storage_state(descriptor, slot_index);
@@ -17,6 +17,7 @@ uint32_t execute(const NdsStorageDescriptor *descriptor, uint32_t slot_id, uint3
         return kNdsAicpuInvalidArgument;
     state->expected_bytes = expected_bytes;
     state->in_flight = 1U;
+    state->status = 0;
     uint8_t pending[nds::kStorageCompletionBytes]{};
     uint8_t command_bytes[nds::kStorageCommandBytes]{};
     Request local = command;
@@ -44,7 +45,13 @@ uint32_t execute(const NdsStorageDescriptor *descriptor, uint32_t slot_id, uint3
                                        .local_key = slot->command_buffer.local_key},
                              .remote_address = 0U,
                              .remote_key = 0U};
-    return nds_aicpu_rdma_send(&descriptor->transport, slot->qp_index, &transfer, return_value);
+    int32_t post_status = -static_cast<int32_t>(NDS_OPERATION_PROVIDER_FAILED);
+    const uint32_t provider_status =
+        nds_aicpu_rdma_send(&descriptor->transport, slot->qp_index, &transfer, &post_status);
+    state->status = post_status;
+    NdsAicpuSetReturnValue(return_value, state->status == 0 ? static_cast<uint32_t>(NDS_OPERATION_SUCCESS)
+                                                            : static_cast<uint32_t>(-state->status));
+    return provider_status;
 }
 
 uint32_t batch_bytes(const NdsStorageBatchOperationArgs *args, bool write) {
@@ -160,6 +167,10 @@ extern "C" uint32_t nds_aicpu_storage_wait(const NdsStorageDescriptor *descripto
     const NdsStorageSlotDescriptor *slot = nds_storage_slot(descriptor, slot_index);
     if (state == nullptr || slot == nullptr || state->in_flight == 0U)
         return kNdsAicpuInvalidArgument;
+    if (state->status != 0) {
+        NdsAicpuSetReturnValue(return_value, static_cast<uint32_t>(-state->status));
+        return kNdsAicpuSuccess;
+    }
     uint8_t observed[nds::kStorageCompletionBytes]{};
     auto *completion = reinterpret_cast<volatile uint8_t *>(slot->completion_buffer.address);
     for (uint32_t index = 0U; index < sizeof(observed); ++index) observed[index] = completion[index];

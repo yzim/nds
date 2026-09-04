@@ -34,7 +34,8 @@ typedef struct NdsStorageState {
     uint64_t command_id;
     uint32_t expected_bytes;
     uint32_t in_flight;
-    uint32_t reserved;
+    /* Asynchronous launch result: zero or a negative NDS operation code. */
+    int32_t status;
 } NdsStorageState;
 
 typedef struct NdsStorageOperation {

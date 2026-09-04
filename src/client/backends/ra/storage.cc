@@ -17,7 +17,7 @@ Result<void> validate_context(const RaStorageContext &context) {
         context.completion.address == 0U || context.completion.local_key == 0U ||
         context.completion.length < kStorageCompletionBytes || context.capacity == 0U ||
         context.storage_state == nullptr || context.storage_state->command_id == 0U ||
-        context.storage_state->reserved != 0U)
+        context.storage_state->status != 0)
         return Error{ErrorCode::kInvalidArgument, "invalid RA storage context"};
     return {};
 }
@@ -34,6 +34,7 @@ Result<std::uint64_t> claim(const RaStorageContext &context, std::uint64_t expec
 void abandon(const RaStorageContext &context) {
     context.storage_state->expected_bytes = 0U;
     context.storage_state->in_flight = 0U;
+    context.storage_state->status = 0;
 }
 
 template <typename Request, typename Serialize>

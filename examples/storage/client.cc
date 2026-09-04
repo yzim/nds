@@ -207,12 +207,12 @@ nds::Result<int> run(int argc, char **argv) {
                                                                   nds::client::MemoryAccess::RemoteRead));
                 resources.entries_region = std::move(entries_region);
                 submitted =
-                    read ? launcher->with_config({.stream = stream.stream, .sync = true, .sync_timeout_ms = 5000})
+                    read ? launcher->with_config({.stream = stream.stream, .sync = false, .sync_timeout_ms = 5000})
                                .storage_read_batch(client.descriptor(), resources.slot_id,
                                                    resources.entries_region.address(),
                                                    resources.entries_region.remote_key(),
                                                    static_cast<std::uint32_t>(resources.requests.size()))
-                         : launcher->with_config({.stream = stream.stream, .sync = true, .sync_timeout_ms = 5000})
+                         : launcher->with_config({.stream = stream.stream, .sync = false, .sync_timeout_ms = 5000})
                                .storage_write_batch(client.descriptor(), resources.slot_id,
                                                     resources.entries_region.address(),
                                                     resources.entries_region.remote_key(),
@@ -220,10 +220,10 @@ nds::Result<int> run(int argc, char **argv) {
             } else {
                 const auto &region = resources.regions.front();
                 submitted =
-                    read ? launcher->with_config({.stream = stream.stream, .sync = true, .sync_timeout_ms = 5000})
+                    read ? launcher->with_config({.stream = stream.stream, .sync = false, .sync_timeout_ms = 5000})
                                .storage_read(client.descriptor(), resources.slot_id, resources.requests.front().first,
                                              region.address(), region.remote_key(), config.bytes)
-                         : launcher->with_config({.stream = stream.stream, .sync = true, .sync_timeout_ms = 5000})
+                         : launcher->with_config({.stream = stream.stream, .sync = false, .sync_timeout_ms = 5000})
                                .storage_write(client.descriptor(), resources.slot_id, resources.requests.front().first,
                                               region.address(), region.remote_key(), config.bytes);
             }

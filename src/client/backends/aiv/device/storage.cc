@@ -37,6 +37,7 @@ __aicore__ inline bool Claim(__gm__ const NdsStorageDescriptor *context, uint32_
         return false;
     (*state)->expected_bytes = expected_bytes;
     (*state)->in_flight = 1U;
+    (*state)->status = 0;
     return true;
 }
 
@@ -72,6 +73,7 @@ __aicore__ inline void ExecuteSerialized(__gm__ const NdsStorageDescriptor *cont
         .remote_key = 0U,
     };
     nds_aiv_rdma_send(&context->transport, slot->qp_index, &transfer, return_value, scratch);
+    state->status = *return_value;
 }
 
 __aicore__ inline uint32_t BatchTotal(__gm__ const NdsStorageBatchOperation *args, bool write) {
@@ -226,6 +228,10 @@ NDS_AIV_DEVICE_API_LINKAGE __aicore__ void nds_aiv_storage_wait(__gm__ const Nds
     if (!ContextValid(context) || state == nullptr || slot == nullptr || !SlotIdValid(context, slot_id) ||
         state->command_id == 0U || state->expected_bytes == 0U || state->in_flight == 0U) {
         NdsAivSetReturnValue(return_value, NDS_OPERATION_INVALID_ARGUMENT);
+        return;
+    }
+    if (state->status != 0) {
+        NdsAivSetReturnValue(return_value, static_cast<uint32_t>(-state->status));
         return;
     }
     uint8_t observed[nds::kStorageCompletionBytes]{};

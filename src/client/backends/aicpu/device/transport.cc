@@ -43,7 +43,7 @@ uint32_t wait_for_send_completion(const NdsQpDescriptor *qp, NdsTransportQpState
 
 uint32_t post_send(const NdsTransportDescriptor *transport, uint32_t queue_index, const NdsSendWr *wr,
                    int32_t *return_value) {
-    if (transport == nullptr || wr == nullptr || return_value == nullptr)
+    if (transport == nullptr || wr == nullptr)
         return kNdsAicpuInvalidArgument;
     const NdsQpDescriptor *qp = nds_transport_qp(transport, queue_index);
     NdsTransportQpState *state = nds_transport_qp_state(transport, queue_index);

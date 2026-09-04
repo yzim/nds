@@ -3,6 +3,7 @@
 
 #include "backends/launch_config.hh"
 #include "backends/launcher.hh"
+#include "runtime.hh"
 
 #include <acl/acl_rt.h>
 
@@ -11,6 +12,7 @@
 #include <span>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace nds::client {
 
@@ -32,6 +34,10 @@ public:
     Result<void> load(const std::string &kernel_path);
     void reset() noexcept;
     bool loaded() const noexcept;
+
+    /* Async storage requests retain their device argument until stream sync. */
+    void retain_async_storage_request(MemoryBuffer request) const;
+    void release_async_storage_requests() const noexcept;
 
 private:
     Result<void> post_send_with_config(const LaunchConfig &config, const NdsQpDescriptor &qp,
@@ -75,6 +81,7 @@ private:
     Runtime *runtime_{};
     aclrtBinHandle binary_{};
     mutable std::unordered_map<std::string, aclrtFuncHandle> functions_;
+    mutable std::vector<MemoryBuffer> async_storage_requests_;
 };
 
 }  // namespace nds::client

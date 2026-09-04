@@ -139,8 +139,6 @@ __aicore__ inline void RingLocalSendDoorbell(uint32_t service_level, const NdsWo
 
 NDS_AIV_DEVICE_API_LINKAGE __aicore__ void nds_aiv_post_send(const NdsQpDescriptor *qp, const NdsSendWr *wr,
                                                              __gm__ int32_t *return_value, TBuf<> *scratch) {
-    if (return_value == nullptr)
-        return;
     if (qp == nullptr || !ValidSendWr(wr) || scratch == nullptr) {
         NdsAivSetReturnValue(return_value, NDS_OPERATION_INVALID_ARGUMENT);
         return;

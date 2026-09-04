@@ -103,8 +103,6 @@ Result<void> ConfiguredLauncherView::storage_read(const NdsStorageDescriptor &st
                                                   std::uint32_t buffer_key, std::uint32_t length) const {
     if (launcher_ == nullptr)
         return Error{ErrorCode::kInvalidArgument, "configured launcher is empty"};
-    if (!config_.sync)
-        return Error{ErrorCode::kInvalidArgument, "asynchronous launcher calls are not supported"};
     return launcher_->storage_read_with_config(config_, storage, slot_id, server_offset, buffer_address, buffer_key,
                                                length);
 }
@@ -114,8 +112,6 @@ Result<void> ConfiguredLauncherView::storage_write(const NdsStorageDescriptor &s
                                                    std::uint32_t buffer_key, std::uint32_t length) const {
     if (launcher_ == nullptr)
         return Error{ErrorCode::kInvalidArgument, "configured launcher is empty"};
-    if (!config_.sync)
-        return Error{ErrorCode::kInvalidArgument, "asynchronous launcher calls are not supported"};
     return launcher_->storage_write_with_config(config_, storage, slot_id, server_offset, buffer_address, buffer_key,
                                                 length);
 }
@@ -125,8 +121,6 @@ Result<void> ConfiguredLauncherView::storage_read_batch(const NdsStorageDescript
                                                         std::uint32_t entry_count) const {
     if (launcher_ == nullptr)
         return Error{ErrorCode::kInvalidArgument, "configured launcher is empty"};
-    if (!config_.sync)
-        return Error{ErrorCode::kInvalidArgument, "asynchronous launcher calls are not supported"};
     return launcher_->storage_read_batch_with_config(config_, storage, slot_id, entries_address, entries_key,
                                                      entry_count);
 }
@@ -136,8 +130,6 @@ Result<void> ConfiguredLauncherView::storage_write_batch(const NdsStorageDescrip
                                                          std::uint32_t entry_count) const {
     if (launcher_ == nullptr)
         return Error{ErrorCode::kInvalidArgument, "configured launcher is empty"};
-    if (!config_.sync)
-        return Error{ErrorCode::kInvalidArgument, "asynchronous launcher calls are not supported"};
     return launcher_->storage_write_batch_with_config(config_, storage, slot_id, entries_address, entries_key,
                                                       entry_count);
 }

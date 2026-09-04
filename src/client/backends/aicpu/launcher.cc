@@ -33,6 +33,26 @@ Result<void> launch_device_and_wait(Runtime *runtime, const AicpuLauncher *launc
                                                               "): " + std::to_string(return_value)};
 }
 
+template <typename Request>
+Result<void> launch_storage(Runtime *runtime, const AicpuLauncher *launcher, const LaunchConfig &config,
+                            const char *entry, Request request) {
+    if (runtime == nullptr || launcher == nullptr)
+        return Error{ErrorCode::kRuntime, "AICPU backend is not loaded"};
+    if (config.sync)
+        return launch_device_and_wait(runtime, launcher, config, entry, request);
+    request.return_value = std::numeric_limits<std::int32_t>::min();
+    const std::uint32_t slot_index = nds_storage_slot_id_index(request.operation.slot_id);
+    const std::uint64_t status_address = request.storage.storage_states_address +
+                                         static_cast<std::uint64_t>(slot_index) * sizeof(NdsStorageState) +
+                                         offsetof(NdsStorageState, status);
+    const NdsAicpuLaunchArgs<Request> async_arguments{.request = request, .return_value_address = status_address};
+    const int launch_result = launcher->launch(
+        entry, config, const_cast<NdsAicpuLaunchArgs<Request> *>(&async_arguments), sizeof(async_arguments));
+    return launch_result == ACL_SUCCESS
+               ? Result<void>{}
+               : Error{ErrorCode::kRuntime, "AICPU kernel launch failed: " + std::to_string(launch_result)};
+}
+
 }  // namespace
 
 AicpuLauncher::~AicpuLauncher() {
@@ -212,7 +232,7 @@ Result<void> AicpuLauncher::storage_read_with_config(const LaunchConfig &config,
                                                         .buffer_key = buffer_key,
                                                         .length = length},
                                           .return_value = std::numeric_limits<std::int32_t>::min()};
-    return launch_device_and_wait(runtime_, this, config, "nds_aicpu_storage_read_kernel", request);
+    return launch_storage(runtime_, this, config, "nds_aicpu_storage_read_kernel", request);
 }
 
 Result<void> AicpuLauncher::storage_write_with_config(const LaunchConfig &config, const NdsStorageDescriptor &storage,
@@ -227,7 +247,7 @@ Result<void> AicpuLauncher::storage_write_with_config(const LaunchConfig &config
                                                         .buffer_key = buffer_key,
                                                         .length = length},
                                           .return_value = std::numeric_limits<std::int32_t>::min()};
-    return launch_device_and_wait(runtime_, this, config, "nds_aicpu_storage_write_kernel", request);
+    return launch_storage(runtime_, this, config, "nds_aicpu_storage_write_kernel", request);
 }
 
 Result<void> AicpuLauncher::storage_read_batch_with_config(const LaunchConfig &config,
@@ -241,7 +261,7 @@ Result<void> AicpuLauncher::storage_read_batch_with_config(const LaunchConfig &c
                                                              .entries_key = entries_key,
                                                              .reserved = 0U},
                                                .return_value = std::numeric_limits<std::int32_t>::min()};
-    return launch_device_and_wait(runtime_, this, config, "nds_aicpu_storage_batch_read_kernel", request);
+    return launch_storage(runtime_, this, config, "nds_aicpu_storage_batch_read_kernel", request);
 }
 
 Result<void> AicpuLauncher::storage_write_batch_with_config(const LaunchConfig &config,
@@ -255,7 +275,7 @@ Result<void> AicpuLauncher::storage_write_batch_with_config(const LaunchConfig &
                                                              .entries_key = entries_key,
                                                              .reserved = 0U},
                                                .return_value = std::numeric_limits<std::int32_t>::min()};
-    return launch_device_and_wait(runtime_, this, config, "nds_aicpu_storage_batch_write_kernel", request);
+    return launch_storage(runtime_, this, config, "nds_aicpu_storage_batch_write_kernel", request);
 }
 
 Result<void> AicpuLauncher::storage_wait_with_config(const LaunchConfig &config, const NdsStorageDescriptor &storage,

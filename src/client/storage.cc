@@ -185,7 +185,8 @@ Result<std::uint32_t> StorageClient::allocate_slot() {
             allocated_slots_[index] = true;
             next_slot_ = (index + 1U) % slots_.size();
             const std::uint32_t slot_id = nds_storage_slot_id(slots_[index].qp_index, index);
-            const NdsStorageState state{allocate_command_id(), 0U, 0U, 0U};
+            const NdsStorageState state{
+                .command_id = allocate_command_id(), .expected_bytes = 0U, .in_flight = 0U, .status = 0};
             if (const auto state_result = clear_state(static_cast<std::uint32_t>(index)); !state_result.ok()) {
                 allocated_slots_[index] = false;
                 return state_result.error();
@@ -216,7 +217,8 @@ Result<std::uint32_t> StorageClient::allocate_slot(std::uint32_t queue_index) {
         if (!allocated_slots_[index] && slots_[index].qp_index == queue_index) {
             allocated_slots_[index] = true;
             next_slot_ = (index + 1U) % slots_.size();
-            const NdsStorageState state{allocate_command_id(), 0U, 0U, 0U};
+            const NdsStorageState state{
+                .command_id = allocate_command_id(), .expected_bytes = 0U, .in_flight = 0U, .status = 0};
             if (storage_states_buffer_.location() == MemoryLocation::Host) {
                 std::memcpy(static_cast<std::byte *>(storage_states_buffer_.data()) + index * sizeof(NdsStorageState),
                             &state, sizeof(state));
